@@ -18,7 +18,7 @@ type UpdateRequest struct {
 // GetUpdates returns all updates for a group
 func GetUpdates(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupID := c.Param("groupId")
+		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
@@ -41,7 +41,7 @@ func GetUpdates(db *gorm.DB) gin.HandlerFunc {
 // CreateUpdate creates a new update/post in a group
 func CreateUpdate(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupID := c.Param("groupId")
+		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 

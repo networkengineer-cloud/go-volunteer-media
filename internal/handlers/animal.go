@@ -35,7 +35,7 @@ func checkGroupAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, grou
 // GetAnimals returns all animals in a group
 func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupID := c.Param("groupId")
+		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
@@ -58,8 +58,8 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 // GetAnimal returns a specific animal by ID
 func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupID := c.Param("groupId")
-		animalID := c.Param("id")
+		groupID := c.Param("id")
+		animalID := c.Param("animalId")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
@@ -82,7 +82,7 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 // CreateAnimal creates a new animal in a group
 func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupID := c.Param("groupId")
+		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
@@ -131,8 +131,8 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 // UpdateAnimal updates an existing animal
 func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupID := c.Param("groupId")
-		animalID := c.Param("id")
+		groupID := c.Param("id")
+		animalID := c.Param("animalId")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
@@ -176,8 +176,8 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 // DeleteAnimal deletes an animal
 func DeleteAnimal(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupID := c.Param("groupId")
-		animalID := c.Param("id")
+		groupID := c.Param("id")
+		animalID := c.Param("animalId")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
