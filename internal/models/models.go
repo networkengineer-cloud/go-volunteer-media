@@ -1,0 +1,63 @@
+package models
+
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
+
+// User represents a user in the system
+type User struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	Username  string         `gorm:"uniqueIndex;not null" json:"username"`
+	Email     string         `gorm:"uniqueIndex;not null" json:"email"`
+	Password  string         `gorm:"not null" json:"-"`
+	IsAdmin   bool           `gorm:"default:false" json:"is_admin"`
+	Groups    []Group        `gorm:"many2many:user_groups;" json:"groups,omitempty"`
+}
+
+// Group represents a volunteer group (dogs, cats, modsquad, etc.)
+type Group struct {
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	Name        string         `gorm:"uniqueIndex;not null" json:"name"`
+	Description string         `json:"description"`
+	Users       []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
+	Animals     []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
+	Updates     []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
+}
+
+// Animal represents an animal in a group
+type Animal struct {
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	GroupID     uint           `gorm:"not null;index" json:"group_id"`
+	Name        string         `gorm:"not null" json:"name"`
+	Species     string         `json:"species"`
+	Breed       string         `json:"breed"`
+	Age         int            `json:"age"`
+	Description string         `json:"description"`
+	ImageURL    string         `json:"image_url"`
+	Status      string         `gorm:"default:'available'" json:"status"` // available, adopted, fostered
+}
+
+// Update represents a post/update in a group
+type Update struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	GroupID   uint           `gorm:"not null;index" json:"group_id"`
+	UserID    uint           `gorm:"not null;index" json:"user_id"`
+	Title     string         `gorm:"not null" json:"title"`
+	Content   string         `gorm:"not null" json:"content"`
+	ImageURL  string         `json:"image_url"`
+	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
