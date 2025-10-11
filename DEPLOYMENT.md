@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers deploying the Volunteer Media application to production.
+This guide covers deploying the Haws Volunteers application to production.
 
 ## Security Checklist
 
@@ -183,7 +183,7 @@ sudo nano /etc/systemd/system/volunteer-media.service
 Content:
 ```ini
 [Unit]
-Description=Volunteer Media API
+Description=Haws Volunteers API
 After=network.target postgresql.service
 
 [Service]

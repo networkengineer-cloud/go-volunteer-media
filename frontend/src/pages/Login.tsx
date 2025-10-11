@@ -30,7 +30,7 @@ const Login: React.FC = () => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1>Volunteer Media</h1>
+  <h1>Haws Volunteers</h1>
         <h2>{isLogin ? 'Login' : 'Register'}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">

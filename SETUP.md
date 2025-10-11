@@ -1,6 +1,6 @@
 # Setup Guide
 
-This guide will help you set up and run the Volunteer Media application locally.
+This guide will help you set up and run the Haws Volunteers application locally.
 
 ## Prerequisites
 

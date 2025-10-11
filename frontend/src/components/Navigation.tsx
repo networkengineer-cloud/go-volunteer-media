@@ -10,7 +10,7 @@ const Navigation: React.FC = () => {
     <nav className="navigation">
       <div className="nav-container">
         <Link to={isAuthenticated ? '/dashboard' : '/'} className="nav-brand">
-          Volunteer Media
+          Haws Volunteers
         </Link>
         <div className="nav-right">
           {!isAuthenticated ? (

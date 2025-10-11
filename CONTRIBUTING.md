@@ -1,6 +1,6 @@
-# Contributing to Volunteer Media
+# Contributing to Haws Volunteers
 
-Thank you for your interest in contributing to the Volunteer Media project! This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to the Haws Volunteers project! This document provides guidelines for contributing to the project.
 
 ## Code of Conduct
 
@@ -250,4 +250,4 @@ By contributing, you agree that your contributions will be licensed under the sa
 
 Contributors will be recognized in the project README and release notes.
 
-Thank you for contributing to Volunteer Media! 🐾
+Thank you for contributing to Haws Volunteers! 🐾
