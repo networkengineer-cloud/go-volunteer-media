@@ -37,7 +37,6 @@ func GetGroups(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid admin flag"})
 			return
 		}
-		
 		if adminFlag {
 			// Admins can see all groups
 			if err := db.WithContext(ctx).Find(&groups).Error; err != nil {
