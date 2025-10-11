@@ -38,23 +38,23 @@ type Animal struct {
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
-	GroupID     uint           `gorm:"not null;index" json:"group_id"`
+	GroupID     uint           `gorm:"not null;index:idx_animal_group_status" json:"group_id"`
 	Name        string         `gorm:"not null" json:"name"`
 	Species     string         `json:"species"`
 	Breed       string         `json:"breed"`
 	Age         int            `json:"age"`
 	Description string         `json:"description"`
 	ImageURL    string         `json:"image_url"`
-	Status      string         `gorm:"default:'available'" json:"status"` // available, adopted, fostered
+	Status      string         `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, adopted, fostered
 }
 
 // Update represents a post/update in a group
 type Update struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt time.Time      `json:"created_at"`
+	CreatedAt time.Time      `gorm:"index:idx_update_group_created" json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	GroupID   uint           `gorm:"not null;index" json:"group_id"`
+	GroupID   uint           `gorm:"not null;index:idx_update_group_created" json:"group_id"`
 	UserID    uint           `gorm:"not null;index" json:"user_id"`
 	Title     string         `gorm:"not null" json:"title"`
 	Content   string         `gorm:"not null" json:"content"`

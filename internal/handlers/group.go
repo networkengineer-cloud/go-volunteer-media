@@ -10,28 +10,43 @@ import (
 )
 
 type GroupRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Description string `json:"description"`
+	Name        string `json:"name" binding:"required,min=2,max=100"`
+	Description string `json:"description" binding:"max=500"`
 }
 
 // GetGroups returns all groups the user has access to
 func GetGroups(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
+		ctx := c.Request.Context()
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+		
+		isAdmin, exists := c.Get("is_admin")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Admin context not found"})
+			return
+		}
 
 		var groups []models.Group
-		
-		if isAdmin.(bool) {
+
+		adminFlag, ok := isAdmin.(bool)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid admin flag"})
+			return
+		}
+		if adminFlag {
 			// Admins can see all groups
-			if err := db.Find(&groups).Error; err != nil {
+			if err := db.WithContext(ctx).Find(&groups).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch groups"})
 				return
 			}
 		} else {
 			// Regular users see only their groups
 			var user models.User
-			if err := db.Preload("Groups").First(&user, userID).Error; err != nil {
+			if err := db.WithContext(ctx).Preload("Groups").First(&user, userID).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user groups"})
 				return
 			}

@@ -10,9 +10,9 @@ import (
 )
 
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required"`
+	Username string `json:"username" binding:"required,min=3,max=50,alphanum"`
 	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	Password string `json:"password" binding:"required,min=8,max=72"` // bcrypt limit is 72
 }
 
 type LoginRequest struct {
@@ -21,13 +21,14 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	Token string       `json:"token"`
-	User  models.User  `json:"user"`
+	Token string      `json:"token"`
+	User  models.User `json:"user"`
 }
 
 // Register creates a new user account
 func Register(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		var req RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -36,7 +37,7 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if username or email already exists
 		var existing models.User
-		if err := db.Where("username = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
+		if err := db.WithContext(ctx).Where("username = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or email already exists"})
 			return
 		}
@@ -56,7 +57,7 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 			IsAdmin:  false,
 		}
 
-		if err := db.Create(&user).Error; err != nil {
+		if err := db.WithContext(ctx).Create(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
 		}
@@ -78,6 +79,7 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 // Login authenticates a user and returns a token
 func Login(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		var req LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -86,7 +88,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 
 		// Find user
 		var user models.User
-		if err := db.Preload("Groups").Where("username = ?", req.Username).First(&user).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").Where("username = ?", req.Username).First(&user).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 			return
 		}
@@ -114,10 +116,15 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 // GetCurrentUser returns the current authenticated user
 func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, _ := c.Get("user_id")
+		ctx := c.Request.Context()
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
 
 		var user models.User
-		if err := db.Preload("Groups").First(&user, userID).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
