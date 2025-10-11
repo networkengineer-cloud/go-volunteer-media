@@ -3,7 +3,7 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-600) 100%);
 }
 
 .login-card {
@@ -16,7 +16,7 @@
 }
 
 .login-card h1 {
-  color: #667eea;
+  color: var(--brand);
   text-align: center;
   margin-bottom: 0.5rem;
 }
@@ -49,8 +49,8 @@
 
 .form-group input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.15);
 }
 
 .error {
@@ -64,7 +64,7 @@
 .btn-primary {
   width: 100%;
   padding: 0.75rem;
-  background: #667eea;
+  background: var(--brand);
   color: white;
   border: none;
   border-radius: 4px;
@@ -75,15 +75,15 @@
 }
 
 .btn-primary:hover {
-  background: #5568d3;
+  background: var(--brand-600);
 }
 
 .btn-secondary {
   width: 100%;
   padding: 0.75rem;
   background: transparent;
-  color: #667eea;
-  border: 1px solid #667eea;
+  color: var(--brand);
+  border: 1px solid var(--brand);
   border-radius: 4px;
   font-size: 1rem;
   cursor: pointer;
