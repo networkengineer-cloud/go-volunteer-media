@@ -8,8 +8,9 @@ COPY frontend/package*.json ./
 COPY frontend/ ./
 
 # Install dependencies and build (if package.json exists)
+# Note: Removed --production flag because devDependencies (typescript, vite) are needed for build
 RUN if [ -f "package.json" ]; then \
-      npm ci --production && \
+      npm ci && \
       npm run build; \
     fi
 
