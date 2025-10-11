@@ -20,7 +20,7 @@
   align-items: center;
   min-height: 50vh;
   font-size: 1.2rem;
-  color: #667eea;
+  color: #0e6c55;
 }
 
 .groups-grid {
@@ -46,7 +46,7 @@
 }
 
 .group-card h3 {
-  color: #667eea;
+  color: #0e6c55;
   margin-bottom: 0.5rem;
   text-transform: capitalize;
 }

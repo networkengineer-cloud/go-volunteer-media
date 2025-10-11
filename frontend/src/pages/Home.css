@@ -48,12 +48,12 @@
 
 /* Palette inspired by hawspets.org: deep navy + bright teal + warm gold */
 .btn.btn-primary {
-  background-color: #00a3ad; /* teal */
+  background-color: #0e6c55; /* brand green */
   color: #fff;
   text-decoration: none;
 }
 .btn.btn-primary:hover {
-  background-color: #008e96;
+  background-color: #0c5c49;
 }
 
 .features {

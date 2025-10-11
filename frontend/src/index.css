@@ -12,7 +12,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: #f5f8fa;
-  color: #022e3a;
+  color: #1f2937; /* neutral text base, keep brand color for accents */
 }
 
 #root {

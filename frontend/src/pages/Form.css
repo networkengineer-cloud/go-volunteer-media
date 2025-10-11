@@ -43,8 +43,8 @@
 .form-group textarea:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #0e6c55;
+  box-shadow: 0 0 0 3px rgba(14, 108, 85, 0.15);
 }
 
 .form-group textarea {

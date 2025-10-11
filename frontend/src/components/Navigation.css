@@ -18,7 +18,7 @@
 .nav-brand {
   font-size: 1.25rem;
   font-weight: 800;
-  color: #022e3a;
+  color: #0e6c55;
   text-decoration: none;
   letter-spacing: 0.3px;
 }
@@ -30,14 +30,14 @@
 }
 
 .nav-user {
-  color: #334e57;
+  color: #0e6c55;
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
 .admin-badge {
-  background: #00a3ad;
+  background: #0e6c55;
   color: #fff;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
@@ -60,7 +60,7 @@
 }
 
 .nav-login {
-  color: #00a3ad;
+  color: #0e6c55;
   font-weight: 700;
   text-decoration: none;
 }
