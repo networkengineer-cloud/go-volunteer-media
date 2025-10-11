@@ -1,5 +1,20 @@
-# Build stage
-FROM golang:1.24-alpine AS builder
+# Frontend build stage (optional - only runs if frontend source exists)
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copy frontend files
+COPY frontend/package*.json ./
+COPY frontend/ ./
+
+# Install dependencies and build (if package.json exists)
+RUN if [ -f "package.json" ]; then \
+      npm ci --production && \
+      npm run build; \
+    fi
+
+# Backend build stage
+FROM golang:1.24-alpine AS backend-builder
 
 # Install security updates and build dependencies
 RUN apk update && apk upgrade && \
@@ -27,15 +42,15 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "
 FROM scratch
 
 # Copy certificates, timezone data, and user info from builder
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
-COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=backend-builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=backend-builder /etc/passwd /etc/passwd
 
-# Copy binary from builder
-COPY --from=builder /app/api /api
+# Copy binary from backend builder
+COPY --from=backend-builder /app/api /api
 
-# Copy frontend if it exists
-COPY --from=builder /app/frontend/dist /frontend/dist
+# Copy frontend build if it exists
+COPY --from=frontend-builder /app/frontend/dist /frontend/dist
 
 # Use non-root user
 USER appuser

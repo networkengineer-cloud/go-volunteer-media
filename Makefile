@@ -44,7 +44,7 @@ clean: ## Clean build artifacts
 	rm -rf frontend/dist
 	rm -rf frontend/node_modules
 
-docker-build: ## Build Docker image
+docker-build: build-frontend ## Build Docker image
 	@echo "Building Docker image..."
 	docker build -t volunteer-media:latest .
 
