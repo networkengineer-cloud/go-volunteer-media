@@ -28,6 +28,36 @@
   --link-hover: var(--brand-600);
 }
 
+[data-theme='dark'] {
+  /* Brand stays consistent in dark */
+  --brand: #0e6c55;
+  --brand-600: #0c5c49;
+  --brand-contrast: #ffffff;
+  --brand-rgb: 14, 108, 85;
+
+  /* Secondary/Accent (slightly softened in dark) */
+  --accent: #e6b50a;
+  --accent-600: #c59a08;
+  --accent-contrast: #0b1114;
+
+  /* Danger */
+  --danger: #ef4444;
+  --danger-600: #dc2626;
+  --danger-contrast: #0b1114;
+
+  /* Neutrals */
+  --bg: #0b1114;
+  --surface: #111827;
+  --neutral-900: #f3f4f6; /* base text */
+  --neutral-700: #e5e7eb;
+  --neutral-600: #d1d5db;
+  --neutral-200: #334155;
+
+  /* Links */
+  --link: #7bd1bf; /* brand tint for dark */
+  --link-hover: #63b6a5;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -43,6 +73,22 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg);
   color: var(--neutral-900);
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+}
+
+a:focus-visible {
+  outline: 2px solid rgba(var(--brand-rgb), 0.5);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 #root {
