@@ -119,7 +119,6 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		
 		userID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
