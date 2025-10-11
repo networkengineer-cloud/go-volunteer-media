@@ -2,9 +2,9 @@
 .git
 .gitignore
 
-# Documentation
-*.md
-!README.md
+# Documentation (keep for context)
+# *.md
+# !README.md
 
 # Development files
 .env
@@ -20,7 +20,6 @@
 # Frontend development
 frontend/node_modules
 frontend/.env.local
-frontend/src
 
 # Go
 *.test
@@ -28,9 +27,8 @@ frontend/src
 coverage.*
 profile.cov
 
-# Build artifacts
+# Build artifacts (built binary, not source)
 api
-dist
 
 # Logs
 *.log
