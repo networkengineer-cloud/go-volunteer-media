@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # Development Database
+  postgres_dev:
+    image: postgres:15-alpine
+    container_name: volunteer_media_db_dev
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: volunteer_media_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Production Database (for testing production setup)
+  postgres_prod:
+    image: postgres:15-alpine
+    container_name: volunteer_media_db_prod
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PROD_DB_PASSWORD:-changeme}
+      POSTGRES_DB: volunteer_media_prod
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: volunteer_media_api
+    ports:
+      - "8080:8080"
+    environment:
+      ENV: ${ENV:-development}
+      PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      DB_HOST: ${DB_HOST:-postgres_dev}
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-volunteer_media_dev}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+    depends_on:
+      postgres_dev:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_dev_data:
+  postgres_prod_data:
