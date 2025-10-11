@@ -40,6 +40,17 @@ func Initialize() (*gorm.DB, error) {
 		dbSSLMode = "disable"
 	}
 
+	// Validate SSL mode to prevent injection
+	validSSLModes := map[string]bool{
+		"disable":     true,
+		"require":     true,
+		"verify-ca":   true,
+		"verify-full": true,
+	}
+	if !validSSLModes[dbSSLMode] {
+		return nil, fmt.Errorf("invalid SSL mode: %s (must be one of: disable, require, verify-ca, verify-full)", dbSSLMode)
+	}
+
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		dbHost, dbPort, dbUser, dbPassword, dbName, dbSSLMode)
 

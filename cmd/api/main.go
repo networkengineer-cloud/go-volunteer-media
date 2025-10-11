@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -22,6 +27,18 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
+
+	// Get underlying SQL database for proper connection management
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal("Failed to get database instance:", err)
+	}
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			log.Printf("Error closing database: %v", err)
+		}
+		log.Println("Database connection closed")
+	}()
 
 	// Run migrations
 	if err := database.RunMigrations(db); err != nil {
@@ -90,8 +107,36 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("Server starting on port %s...", port)
-	if err := router.Run(":" + port); err != nil {
-		log.Fatal("Failed to start server:", err)
+	// Create HTTP server with timeouts
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
+
+	// Start server in a goroutine
+	go func() {
+		log.Printf("Server starting on port %s...", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal("Failed to start server:", err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	// Graceful shutdown with 5 second timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server forced to shutdown:", err)
+	}
+
+	log.Println("Server exited gracefully")
 }

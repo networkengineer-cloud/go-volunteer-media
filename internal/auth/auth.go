@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"log"
 	"os"
 	"time"
 
@@ -14,7 +15,10 @@ var jwtSecret []byte
 func init() {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "your-secret-key-change-in-production"
+		log.Fatal("JWT_SECRET environment variable is required")
+	}
+	if len(secret) < 32 {
+		log.Fatal("JWT_SECRET must be at least 32 characters long for security")
 	}
 	jwtSecret = []byte(secret)
 }
