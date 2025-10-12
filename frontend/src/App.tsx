@@ -8,6 +8,7 @@ import GroupPage from './pages/GroupPage';
 import AnimalForm from './pages/AnimalForm';
 import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
+import UsersPage from './pages/UsersPage';
 import './App.css';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -15,9 +16,17 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 };
 
+
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
   return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" />;
+};
+
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isAdmin } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (!isAdmin) return <Navigate to="/dashboard" />;
+  return <>{children}</>;
 };
 
 function App() {
@@ -80,6 +89,14 @@ function App() {
               <PrivateRoute>
                 <UpdateForm />
               </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <AdminRoute>
+                <UsersPage />
+              </AdminRoute>
             }
           />
         </Routes>

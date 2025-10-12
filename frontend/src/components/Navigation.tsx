@@ -64,6 +64,9 @@ const Navigation: React.FC = () => {
             <Link to="/login" className="nav-login">Login</Link>
           ) : (
             <>
+              {user?.is_admin && (
+                <Link to="/admin/users" className="nav-admin-users">Users</Link>
+              )}
               <span className="nav-user">
                 {user?.username}
                 {user?.is_admin && <span className="admin-badge">Admin</span>}

@@ -1,3 +1,15 @@
+// Users API (admin)
+export const usersApi = {
+  getAll: () => api.get<User[]>('/admin/users'),
+  create: (data: { username: string; email: string; password: string; is_admin?: boolean; group_ids?: number[] }) =>
+    api.post<User>('/admin/users', data),
+  promote: (userId: number) => api.post(`/admin/users/${userId}/promote`),
+  demote: (userId: number) => api.post(`/admin/users/${userId}/demote`),
+  deactivate: (userId: number) => api.post(`/admin/users/${userId}/deactivate`),
+  delete: (userId: number) => api.delete(`/admin/users/${userId}`),
+  assignGroup: (userId: number, groupId: number) => api.post(`/admin/users/${userId}/groups/${groupId}`),
+  removeGroup: (userId: number, groupId: number) => api.delete(`/admin/users/${userId}/groups/${groupId}`),
+};
 import axios from 'axios';
 
 const api = axios.create({
