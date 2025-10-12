@@ -67,11 +67,13 @@ func main() {
 
 		// Group routes
 		protected.GET("/groups", handlers.GetGroups(db))
-		
+
 		// Admin only routes
 		admin := protected.Group("/admin")
 		admin.Use(middleware.AdminRequired())
 		{
+			admin.GET("/users", handlers.GetAllUsers(db))
+			admin.POST("/users", handlers.AdminCreateUser(db))
 			admin.POST("/groups", handlers.CreateGroup(db))
 			admin.PUT("/groups/:id", handlers.UpdateGroup(db))
 			admin.DELETE("/groups/:id", handlers.DeleteGroup(db))
@@ -83,7 +85,7 @@ func main() {
 		group := protected.Group("/groups/:id")
 		{
 			group.GET("", handlers.GetGroup(db))
-			
+
 			// Animal routes (group members can access)
 			group.GET("/animals", handlers.GetAnimals(db))
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
