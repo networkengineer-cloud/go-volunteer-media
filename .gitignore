@@ -39,3 +39,7 @@ frontend/.env.local
 
 # Logs
 *.log
+
+# Uploaded files
+public/uploads/*
+!public/uploads/.gitkeep

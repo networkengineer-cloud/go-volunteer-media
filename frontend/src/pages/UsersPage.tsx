@@ -1,13 +1,13 @@
 import React from 'react';
 import './UsersPage.css';
 import type { User, Group } from '../api/client';
-import api from '../api/client';
 import { usersApi, groupsApi } from '../api/client';
 
 const UsersPage: React.FC = () => {
   const [users, setUsers] = React.useState<User[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [showDeleted, setShowDeleted] = React.useState(false);
 
   // Group modal state
   const [groupModalUser, setGroupModalUser] = React.useState<User | null>(null);
@@ -15,11 +15,12 @@ const UsersPage: React.FC = () => {
   const [groupModalLoading, setGroupModalLoading] = React.useState(false);
   const [groupModalError, setGroupModalError] = React.useState<string | null>(null);
 
-  // Fetch users
+  // Fetch users (active or deleted)
   const fetchUsers = React.useCallback(() => {
     setLoading(true);
     setError(null);
-    api.get<User[]>('/admin/users')
+    const apiCall = showDeleted ? usersApi.getDeleted() : usersApi.getAll();
+    apiCall
       .then(res => {
         setUsers(res.data);
         setLoading(false);
@@ -28,7 +29,7 @@ const UsersPage: React.FC = () => {
         setError(err.response?.data?.error || 'Failed to fetch users');
         setLoading(false);
       });
-  }, []);
+  }, [showDeleted]);
 
   React.useEffect(() => {
     fetchUsers();
@@ -48,14 +49,6 @@ const UsersPage: React.FC = () => {
     }
   };
 
-  const handleDeactivate = async (user: User) => {
-    try {
-      await usersApi.deactivate(user.id);
-      fetchUsers();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to deactivate user');
-    }
-  };
 
   const handleDelete = async (user: User) => {
     if (!window.confirm(`Delete user ${user.username}? This cannot be undone.`)) return;
@@ -64,6 +57,16 @@ const UsersPage: React.FC = () => {
       fetchUsers();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to delete user');
+    }
+  };
+
+  // Restore deleted user
+  const handleRestore = async (user: User) => {
+    try {
+      await usersApi.restore(user.id);
+      fetchUsers();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to restore user');
     }
   };
 
@@ -163,12 +166,19 @@ const UsersPage: React.FC = () => {
   return (
     <div className="users-page">
       <h1>Manage Users</h1>
-      <div className="users-create-bar">
+      <div className="users-create-bar" style={{display: 'flex', gap: '1rem', alignItems: 'center'}}>
         <button className="user-action-btn" onClick={() => setShowCreate(s => !s)}>
           {showCreate ? 'Cancel' : 'Add User'}
         </button>
+        <button
+          className="user-action-btn"
+          style={{background: showDeleted ? 'var(--brand, #0e6c55)' : undefined, color: showDeleted ? '#fff' : undefined}}
+          onClick={() => setShowDeleted(v => !v)}
+        >
+          {showDeleted ? 'Show Active Users' : 'Show Deleted Users'}
+        </button>
       </div>
-      {showCreate && (
+      {showCreate && !showDeleted && (
         <form className="users-create-form" onSubmit={handleCreateSubmit}>
           <div>
             <label>
@@ -231,6 +241,7 @@ const UsersPage: React.FC = () => {
               <th>Admin</th>
               <th>Groups</th>
               <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -240,41 +251,46 @@ const UsersPage: React.FC = () => {
                 <td>{user.email}</td>
                 <td>{user.is_admin ? 'Yes' : 'No'}</td>
                 <td>{user.groups?.map(g => g.name).join(', ') || '-'}</td>
-                <td>{(user as any).deleted_at ? 'Deleted' : 'Active'}</td>
+                <td>{showDeleted ? 'Deleted' : 'Active'}</td>
                 <td>
                   <div className="user-actions">
-                    <button
-                      className="user-action-btn"
-                      title={user.is_admin ? 'Demote from admin' : 'Promote to admin'}
-                      disabled={(user as any).deleted_at}
-                      onClick={() => handlePromoteDemote(user)}
-                    >
-                      {user.is_admin ? 'Demote' : 'Promote'}
-                    </button>
-                    <button
-                      className="user-action-btn"
-                      title="Assign/Remove Group"
-                      disabled={(user as any).deleted_at}
-                      onClick={() => openGroupModal(user)}
-                    >
-                      Groups
-                    </button>
-                    <button
-                      className="user-action-btn"
-                      title="Deactivate user"
-                      disabled={(user as any).deleted_at}
-                      onClick={() => handleDeactivate(user)}
-                    >
-                      Deactivate
-                    </button>
-                    <button
-                      className="user-action-btn danger"
-                      title="Delete user"
-                      disabled={(user as any).deleted_at}
-                      onClick={() => handleDelete(user)}
-                    >
-                      Delete
-                    </button>
+                    {showDeleted ? (
+                      <button
+                        className="user-action-btn"
+                        title="Restore user"
+                        onClick={() => handleRestore(user)}
+                      >
+                        Restore
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          className="user-action-btn"
+                          title={user.is_admin ? 'Demote from admin' : 'Promote to admin'}
+                          disabled={(user as any).deleted_at}
+                          onClick={() => handlePromoteDemote(user)}
+                        >
+                          {user.is_admin ? 'Demote' : 'Promote'}
+                        </button>
+                        <button
+                          className="user-action-btn"
+                          title="Assign/Remove Group"
+                          disabled={(user as any).deleted_at}
+                          onClick={() => openGroupModal(user)}
+                        >
+                          Groups
+                        </button>
+                        {/* Deactivate button removed; Delete now performs soft-delete/deactivation */}
+                        <button
+                          className="user-action-btn danger"
+                          title="Delete user"
+                          disabled={(user as any).deleted_at}
+                          onClick={() => handleDelete(user)}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>

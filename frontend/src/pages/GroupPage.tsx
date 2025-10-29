@@ -1,8 +1,11 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { groupsApi, animalsApi, updatesApi } from '../api/client';
 import type { Group, Animal, Update } from '../api/client';
-import './GroupPage.css';
+
+
+
 
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -14,8 +17,9 @@ const GroupPage: React.FC = () => {
 
   useEffect(() => {
     if (id) {
-      loadGroupData(parseInt(id));
+      loadGroupData(Number(id));
     }
+    // eslint-disable-next-line
   }, [id]);
 
   const loadGroupData = async (groupId: number) => {
@@ -85,10 +89,12 @@ const GroupPage: React.FC = () => {
                   className="animal-card"
                 >
                   {animal.image_url && (
-                    <img src={animal.image_url} alt={animal.name} />
+                    <img
+                      src={animal.image_url}
+                      alt={animal.name}
+                    />
                   )}
                   <div className="animal-info">
-                    <h3>{animal.name}</h3>
                     <p className="species">{animal.species} {animal.breed && `- ${animal.breed}`}</p>
                     <p className="age">{animal.age} years old</p>
                     <span className={`status ${animal.status}`}>{animal.status}</span>
@@ -134,4 +140,5 @@ const GroupPage: React.FC = () => {
   );
 };
 
+// Only one export default should exist. Removed duplicate.
 export default GroupPage;

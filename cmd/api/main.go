@@ -9,6 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin/binding"
+
+	"regexp"
+
+	"github.com/go-playground/validator/v10"
+
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
@@ -17,6 +23,16 @@ import (
 )
 
 func main() {
+	// Register custom username validator
+	v, ok := binding.Validator.Engine().(*validator.Validate)
+	if ok {
+		_ = v.RegisterValidation("usernamechars", func(fl validator.FieldLevel) bool {
+			username := fl.Field().String()
+			// Allow letters, numbers, underscore, dot, and dash
+			matched, _ := regexp.MatchString(`^[a-zA-Z0-9_.-]+$`, username)
+			return matched
+		})
+	}
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment variables")
@@ -51,6 +67,9 @@ func main() {
 	// CORS middleware
 	router.Use(middleware.CORS())
 
+	// Serve uploaded images
+	router.Static("/uploads", "./public/uploads")
+
 	// Public routes
 	api := router.Group("/api")
 	{
@@ -68,12 +87,20 @@ func main() {
 		// Group routes
 		protected.GET("/groups", handlers.GetGroups(db))
 
+		// Image upload (authenticated users only)
+		protected.POST("/animals/upload-image", handlers.UploadAnimalImage())
+
 		// Admin only routes
 		admin := protected.Group("/admin")
 		admin.Use(middleware.AdminRequired())
 		{
 			admin.GET("/users", handlers.GetAllUsers(db))
 			admin.POST("/users", handlers.AdminCreateUser(db))
+			admin.DELETE("/users/:userId", handlers.AdminDeleteUser(db))
+			admin.GET("/users/deleted", handlers.GetDeletedUsers(db))
+			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))
+			admin.POST("/users/:userId/promote", handlers.PromoteUser(db))
+			admin.POST("/users/:userId/demote", handlers.DemoteUser(db))
 			admin.POST("/groups", handlers.CreateGroup(db))
 			admin.PUT("/groups/:id", handlers.UpdateGroup(db))
 			admin.DELETE("/groups/:id", handlers.DeleteGroup(db))
