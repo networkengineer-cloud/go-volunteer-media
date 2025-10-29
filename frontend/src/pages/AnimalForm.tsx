@@ -133,10 +133,40 @@ const AnimalForm: React.FC = () => {
             <label htmlFor="image_url">Image URL</label>
             <input
               id="image_url"
-              type="url"
+              type="text"
               value={formData.image_url}
               onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+              placeholder="Paste an image URL or upload a file"
             />
+            <label htmlFor="image_upload">Or upload image</label>
+            <input
+              id="image_upload"
+              type="file"
+              accept=".jpg,.jpeg,.png,.gif"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setLoading(true);
+                try {
+                  const res = await animalsApi.uploadImage(file);
+                  setFormData({ ...formData, image_url: res.data.url });
+                  alert('Image uploaded successfully!');
+                } catch (err: any) {
+                  console.error('Upload error:', err);
+                  const errorMsg = err.response?.data?.error || err.message || 'Failed to upload image';
+                  alert('Failed to upload image: ' + errorMsg);
+                } finally {
+                  setLoading(false);
+                  // Clear the file input
+                  e.target.value = '';
+                }
+              }}
+            />
+            {formData.image_url && (
+              <div style={{ marginTop: '8px' }}>
+                  <img src={formData.image_url} alt="Animal" style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 8, border: "1px solid #ccc", marginTop: 8 }} />
+              </div>
+            )}
           </div>
 
           <div className="form-group">

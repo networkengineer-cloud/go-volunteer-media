@@ -1,13 +1,58 @@
 package handlers
 
 import (
+	"fmt"
+	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
+
+// UploadAnimalImage handles secure animal image uploads
+func UploadAnimalImage() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		file, err := c.FormFile("image")
+		if err != nil {
+			log.Printf("Failed to get form file: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded: " + err.Error()})
+			return
+		}
+
+		// Only allow jpg, jpeg, png, gif
+		ext := strings.ToLower(filepath.Ext(file.Filename))
+		allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true}
+		if !allowed[ext] {
+			log.Printf("Invalid file type: %s", ext)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file type"})
+			return
+		}
+
+		// Generate unique filename
+		fname := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), uuid.New().String(), ext)
+		uploadPath := filepath.Join("public", "uploads", fname)
+
+		log.Printf("Attempting to save file to: %s", uploadPath)
+
+		// Save file
+		if err := c.SaveUploadedFile(file, uploadPath); err != nil {
+			log.Printf("Failed to save file: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file: " + err.Error()})
+			return
+		}
+
+		// Return public URL
+		url := "/uploads/" + fname
+		log.Printf("File uploaded successfully: %s", url)
+		c.JSON(http.StatusOK, gin.H{"url": url})
+	}
+}
 
 type AnimalRequest struct {
 	Name        string `json:"name" binding:"required"`
@@ -15,7 +60,7 @@ type AnimalRequest struct {
 	Breed       string `json:"breed"`
 	Age         int    `json:"age"`
 	Description string `json:"description"`
-	ImageURL    string `json:"image_url"`
+	ImageURL    string `json:"image_url,omitempty"`
 	Status      string `json:"status"`
 }
 

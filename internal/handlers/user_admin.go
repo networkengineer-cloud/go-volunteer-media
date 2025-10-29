@@ -9,8 +9,105 @@ import (
 	"gorm.io/gorm"
 )
 
+// PromoteUser sets is_admin to true for a user
+func PromoteUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		userId := c.Param("userId")
+		var user models.User
+		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		if user.IsAdmin {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already admin"})
+			return
+		}
+		if err := db.WithContext(ctx).Model(&user).Update("is_admin", true).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to promote user"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "User promoted to admin"})
+	}
+}
+
+// DemoteUser sets is_admin to false for a user
+func DemoteUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		userId := c.Param("userId")
+		var user models.User
+		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		if !user.IsAdmin {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not admin"})
+			return
+		}
+		if err := db.WithContext(ctx).Model(&user).Update("is_admin", false).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to demote user"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "User demoted from admin"})
+	}
+}
+
+// GetDeletedUsers returns all soft-deleted users (admin only)
+func GetDeletedUsers(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		var users []models.User
+		if err := db.WithContext(ctx).Unscoped().Preload("Groups").Where("deleted_at IS NOT NULL").Find(&users).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch deleted users"})
+			return
+		}
+		c.JSON(http.StatusOK, users)
+	}
+}
+
+// RestoreUser restores a soft-deleted user (admin only)
+func RestoreUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		userId := c.Param("userId")
+		var user models.User
+		if err := db.WithContext(ctx).Unscoped().First(&user, userId).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		if user.DeletedAt.Valid {
+			if err := db.WithContext(ctx).Unscoped().Model(&user).Update("deleted_at", nil).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to restore user"})
+				return
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "User restored"})
+	}
+}
+
+// AdminDeleteUser soft-deletes (deactivates) a user (marks as deleted, disables login)
+func AdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		userId := c.Param("userId")
+		var user models.User
+		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		if err := db.WithContext(ctx).Delete(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+	}
+}
+
+// (removed duplicate import block)
+
 type AdminCreateUserRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=50,alphanum"`
+	Username string `json:"username" binding:"required,min=3,max=50,usernamechars"`
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8,max=72"`
 	IsAdmin  bool   `json:"is_admin"`

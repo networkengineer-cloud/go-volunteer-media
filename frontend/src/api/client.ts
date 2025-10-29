@@ -5,10 +5,11 @@ export const usersApi = {
     api.post<User>('/admin/users', data),
   promote: (userId: number) => api.post(`/admin/users/${userId}/promote`),
   demote: (userId: number) => api.post(`/admin/users/${userId}/demote`),
-  deactivate: (userId: number) => api.post(`/admin/users/${userId}/deactivate`),
   delete: (userId: number) => api.delete(`/admin/users/${userId}`),
   assignGroup: (userId: number, groupId: number) => api.post(`/admin/users/${userId}/groups/${groupId}`),
   removeGroup: (userId: number, groupId: number) => api.delete(`/admin/users/${userId}/groups/${groupId}`),
+  getDeleted: () => api.get<User[]>('/admin/users/deleted'),
+  restore: (userId: number) => api.post(`/admin/users/${userId}/restore`),
 };
 import axios from 'axios';
 
@@ -95,6 +96,11 @@ export const animalsApi = {
     api.put<Animal>('/groups/' + groupId + '/animals/' + id, data),
   delete: (groupId: number, id: number) =>
     api.delete('/groups/' + groupId + '/animals/' + id),
+  uploadImage: (file: File) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return api.post<{ url: string }>('/animals/upload-image', formData);
+  },
 };
 
 // Updates API

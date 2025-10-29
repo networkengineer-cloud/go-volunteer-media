@@ -9,6 +9,8 @@ import AnimalForm from './pages/AnimalForm';
 import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
 import UsersPage from './pages/UsersPage';
+import ResetPassword from './pages/ResetPassword';
+import Settings from './pages/Settings';
 import './App.css';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -52,6 +54,14 @@ function App() {
             }
           />
           <Route
+            path="/reset-password"
+            element={
+              <PublicRoute>
+                <ResetPassword />
+              </PublicRoute>
+            }
+          />
+          <Route
             path="/dashboard"
             element={
               <PrivateRoute>
@@ -88,6 +98,14 @@ function App() {
             element={
               <PrivateRoute>
                 <UpdateForm />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <PrivateRoute>
+                <Settings />
               </PrivateRoute>
             }
           />

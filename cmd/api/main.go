@@ -9,14 +9,31 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin/binding"
+
+	"regexp"
+
+	"github.com/go-playground/validator/v10"
+
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/handlers"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 )
 
 func main() {
+	// Register custom username validator
+	v, ok := binding.Validator.Engine().(*validator.Validate)
+	if ok {
+		_ = v.RegisterValidation("usernamechars", func(fl validator.FieldLevel) bool {
+			username := fl.Field().String()
+			// Allow letters, numbers, underscore, dot, and dash
+			matched, _ := regexp.MatchString(`^[a-zA-Z0-9_.-]+$`, username)
+			return matched
+		})
+	}
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment variables")
@@ -45,17 +62,30 @@ func main() {
 		log.Fatal("Failed to run migrations:", err)
 	}
 
+	// Initialize email service
+	emailService := email.NewService()
+	if emailService.IsConfigured() {
+		log.Println("Email service configured and ready")
+	} else {
+		log.Println("Email service not configured - password reset and email notifications will be disabled")
+	}
+
 	// Set up Gin router
 	router := gin.Default()
 
 	// CORS middleware
 	router.Use(middleware.CORS())
 
+	// Serve uploaded images
+	router.Static("/uploads", "./public/uploads")
+
 	// Public routes
 	api := router.Group("/api")
 	{
 		api.POST("/login", handlers.Login(db))
 		api.POST("/register", handlers.Register(db))
+		api.POST("/request-password-reset", handlers.RequestPasswordReset(db, emailService))
+		api.POST("/reset-password", handlers.ResetPassword(db))
 	}
 
 	// Protected routes
@@ -64,9 +94,14 @@ func main() {
 	{
 		// User routes
 		protected.GET("/me", handlers.GetCurrentUser(db))
+		protected.GET("/email-preferences", handlers.GetEmailPreferences(db))
+		protected.PUT("/email-preferences", handlers.UpdateEmailPreferences(db))
 
 		// Group routes
 		protected.GET("/groups", handlers.GetGroups(db))
+
+		// Image upload (authenticated users only)
+		protected.POST("/animals/upload-image", handlers.UploadAnimalImage())
 
 		// Admin only routes
 		admin := protected.Group("/admin")
@@ -74,6 +109,11 @@ func main() {
 		{
 			admin.GET("/users", handlers.GetAllUsers(db))
 			admin.POST("/users", handlers.AdminCreateUser(db))
+			admin.DELETE("/users/:userId", handlers.AdminDeleteUser(db))
+			admin.GET("/users/deleted", handlers.GetDeletedUsers(db))
+			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))
+			admin.POST("/users/:userId/promote", handlers.PromoteUser(db))
+			admin.POST("/users/:userId/demote", handlers.DemoteUser(db))
 			admin.POST("/groups", handlers.CreateGroup(db))
 			admin.PUT("/groups/:id", handlers.UpdateGroup(db))
 			admin.DELETE("/groups/:id", handlers.DeleteGroup(db))

@@ -9,11 +9,12 @@ import (
 )
 
 // GetAllUsers returns all users (admin only)
+// GetAllUsers returns all non-deleted users (admin only)
 func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		var users []models.User
-		if err := db.WithContext(ctx).Preload("Groups").Unscoped().Find(&users).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").Find(&users).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
 			return
 		}
