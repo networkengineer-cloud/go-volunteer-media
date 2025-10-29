@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
@@ -93,10 +94,80 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Check if account is locked
+		if user.LockedUntil != nil && user.LockedUntil.After(time.Now()) {
+			remainingTime := time.Until(*user.LockedUntil)
+			minutes := int(remainingTime.Minutes())
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":         "Account is temporarily locked due to too many failed login attempts",
+				"locked_until":  user.LockedUntil,
+				"retry_in_mins": minutes + 1,
+			})
+			return
+		}
+
+		// If lock period has expired, reset failed attempts
+		if user.LockedUntil != nil && user.LockedUntil.Before(time.Now()) {
+			user.FailedLoginAttempts = 0
+			user.LockedUntil = nil
+			if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+				"failed_login_attempts": 0,
+				"locked_until":          nil,
+			}).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+				return
+			}
+		}
+
 		// Check password
 		if err := auth.CheckPassword(user.Password, req.Password); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			// Increment failed login attempts
+			user.FailedLoginAttempts++
+			
+			// Lock account if 5 or more failed attempts
+			if user.FailedLoginAttempts >= 5 {
+				lockUntil := time.Now().Add(30 * time.Minute)
+				user.LockedUntil = &lockUntil
+				
+				if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+					"failed_login_attempts": user.FailedLoginAttempts,
+					"locked_until":          lockUntil,
+				}).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+					return
+				}
+				
+				c.JSON(http.StatusForbidden, gin.H{
+					"error":         "Account has been locked due to too many failed login attempts. Please try again in 30 minutes or reset your password.",
+					"locked_until":  lockUntil,
+					"retry_in_mins": 30,
+				})
+				return
+			}
+			
+			// Update failed attempts count
+			if err := db.WithContext(ctx).Model(&user).Update("failed_login_attempts", user.FailedLoginAttempts).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+				return
+			}
+			
+			attemptsRemaining := 5 - user.FailedLoginAttempts
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":              "Invalid credentials",
+				"attempts_remaining": attemptsRemaining,
+			})
 			return
+		}
+
+		// Successful login - reset failed attempts
+		if user.FailedLoginAttempts > 0 || user.LockedUntil != nil {
+			if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+				"failed_login_attempts": 0,
+				"locked_until":          nil,
+			}).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+				return
+			}
 		}
 
 		// Generate token

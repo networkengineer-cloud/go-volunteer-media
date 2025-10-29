@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/handlers"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 )
@@ -61,6 +62,14 @@ func main() {
 		log.Fatal("Failed to run migrations:", err)
 	}
 
+	// Initialize email service
+	emailService := email.NewService()
+	if emailService.IsConfigured() {
+		log.Println("Email service configured and ready")
+	} else {
+		log.Println("Email service not configured - password reset and email notifications will be disabled")
+	}
+
 	// Set up Gin router
 	router := gin.Default()
 
@@ -75,6 +84,8 @@ func main() {
 	{
 		api.POST("/login", handlers.Login(db))
 		api.POST("/register", handlers.Register(db))
+		api.POST("/request-password-reset", handlers.RequestPasswordReset(db, emailService))
+		api.POST("/reset-password", handlers.ResetPassword(db))
 	}
 
 	// Protected routes
@@ -83,6 +94,8 @@ func main() {
 	{
 		// User routes
 		protected.GET("/me", handlers.GetCurrentUser(db))
+		protected.GET("/email-preferences", handlers.GetEmailPreferences(db))
+		protected.PUT("/email-preferences", handlers.UpdateEmailPreferences(db))
 
 		// Group routes
 		protected.GET("/groups", handlers.GetGroups(db))
