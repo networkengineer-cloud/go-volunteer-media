@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './Settings.css';
 
+const SUCCESS_MESSAGE_TIMEOUT = 3000; // milliseconds
+
 const Settings: React.FC = () => {
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -38,7 +40,7 @@ const Settings: React.FC = () => {
         email_notifications_enabled: emailNotificationsEnabled,
       });
       setSuccess('Preferences saved successfully!');
-      setTimeout(() => setSuccess(''), 3000);
+      setTimeout(() => setSuccess(''), SUCCESS_MESSAGE_TIMEOUT);
     } catch (err: any) {
       console.error('Failed to save preferences:', err);
       setError(err.response?.data?.error || 'Failed to save preferences');

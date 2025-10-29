@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import './Login.css';
 
+const SUCCESS_MESSAGE_TIMEOUT = 3000; // milliseconds
+
 const Login: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
@@ -32,9 +34,13 @@ const Login: React.FC = () => {
       // Enhanced error handling for account lockout
       const errorResponse = err.response?.data;
       if (errorResponse?.locked_until) {
-        setError(`${errorResponse.error}. You can try again in ${errorResponse.retry_in_mins} minutes or reset your password.`);
+        setError(
+          `${errorResponse.error}. You can try again in ${errorResponse.retry_in_mins} minutes or reset your password.`
+        );
       } else if (errorResponse?.attempts_remaining !== undefined) {
-        setError(`${errorResponse.error}. ${errorResponse.attempts_remaining} attempts remaining before account lockout.`);
+        setError(
+          `${errorResponse.error}. ${errorResponse.attempts_remaining} attempts remaining before account lockout.`
+        );
       } else {
         setError(errorResponse?.error || 'An error occurred');
       }
@@ -53,11 +59,11 @@ const Login: React.FC = () => {
       });
       setResetSuccess(response.data.message || 'If the email exists, a password reset link will be sent.');
       setResetEmail('');
-      // Close modal after 3 seconds
+      // Close modal after timeout
       setTimeout(() => {
         setShowForgotPassword(false);
         setResetSuccess('');
-      }, 3000);
+      }, SUCCESS_MESSAGE_TIMEOUT);
     } catch (err: any) {
       setResetError(err.response?.data?.error || 'Failed to send reset email');
     } finally {

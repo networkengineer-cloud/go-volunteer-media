@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import './Login.css';
 
+const REDIRECT_TIMEOUT = 2000; // milliseconds
+
 const ResetPassword: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [token, setToken] = useState('');
@@ -47,10 +49,10 @@ const ResetPassword: React.FC = () => {
 
       setSuccess(response.data.message || 'Password has been reset successfully!');
       
-      // Redirect to login after 2 seconds
+      // Redirect to login after timeout
       setTimeout(() => {
         navigate('/login');
-      }, 2000);
+      }, REDIRECT_TIMEOUT);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to reset password. Please try again.');
     } finally {
