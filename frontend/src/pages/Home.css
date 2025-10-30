@@ -16,7 +16,7 @@
 .hero-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, rgba(30, 58, 95, 0.7), rgba(0, 163, 173, 0.4));
+  background: linear-gradient(to bottom, rgba(30, 58, 95, 0.85), rgba(0, 163, 173, 0.7));
 }
 
 .hero-content {
@@ -35,15 +35,15 @@
   margin-bottom: 1.25rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.5), 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .hero p {
   font-size: 1.375rem;
   margin-bottom: 2.5rem;
   line-height: 1.6;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
-  opacity: 0.95;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.4), 0 2px 16px rgba(0, 0, 0, 0.2);
+  opacity: 0.98;
 }
 
 .hero-cta .btn {
