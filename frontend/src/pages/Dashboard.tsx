@@ -16,6 +16,27 @@ const Dashboard: React.FC = () => {
   const [sendEmail, setSendEmail] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Default group images based on group name
+  const getGroupImage = (groupName: string) => {
+    const images: { [key: string]: string } = {
+      dogs: '🐕',
+      cats: '🐈',
+      modsquad: '👥',
+      default: '📋',
+    };
+    return images[groupName.toLowerCase()] || images.default;
+  };
+
+  const getGroupGradient = (groupName: string) => {
+    const gradients: { [key: string]: string } = {
+      dogs: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      cats: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+      modsquad: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+      default: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    };
+    return gradients[groupName.toLowerCase()] || gradients.default;
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -182,8 +203,16 @@ const Dashboard: React.FC = () => {
         <div className="groups-grid">
           {groups.map((group) => (
             <Link key={group.id} to={`/groups/${group.id}`} className="group-card">
-              <h3>{group.name}</h3>
-              <p>{group.description}</p>
+              <div
+                className="group-card-image"
+                style={{ background: getGroupGradient(group.name) }}
+              >
+                <span className="group-emoji">{getGroupImage(group.name)}</span>
+              </div>
+              <div className="group-card-content">
+                <h3>{group.name}</h3>
+                <p>{group.description}</p>
+              </div>
             </Link>
           ))}
         </div>
