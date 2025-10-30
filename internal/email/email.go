@@ -60,7 +60,7 @@ func (s *Service) SendEmail(to, subject, body string) error {
 
 	// Connect to SMTP server with TLS
 	addr := fmt.Sprintf("%s:%s", s.SMTPHost, s.SMTPPort)
-	
+
 	// Try to send with TLS
 	tlsConfig := &tls.Config{
 		ServerName: s.SMTPHost,
@@ -168,10 +168,10 @@ func (s *Service) SendPasswordResetEmail(to, username, resetToken string) error 
 // SendAnnouncementEmail sends an announcement email
 func (s *Service) SendAnnouncementEmail(to, title, content string) error {
 	subject := fmt.Sprintf("Announcement: %s - Haws Volunteers", title)
-	
+
 	// Convert newlines to HTML line breaks
 	htmlContent := strings.ReplaceAll(content, "\n", "<br>")
-	
+
 	body := fmt.Sprintf(`
 <!DOCTYPE html>
 <html>

@@ -23,7 +23,7 @@ func GetGroups(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
-		
+
 		isAdmin, exists := c.Get("is_admin")
 		if !exists {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Admin context not found"})
