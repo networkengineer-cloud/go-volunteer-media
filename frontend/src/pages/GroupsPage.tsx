@@ -11,7 +11,7 @@ const GroupsPage: React.FC = () => {
   // Create/Edit modal state
   const [showModal, setShowModal] = React.useState(false);
   const [editingGroup, setEditingGroup] = React.useState<Group | null>(null);
-  const [modalData, setModalData] = React.useState({ name: '', description: '' });
+  const [modalData, setModalData] = React.useState({ name: '', description: '', image_url: '' });
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
 
@@ -37,7 +37,7 @@ const GroupsPage: React.FC = () => {
   // Open modal for creating a new group
   const openCreateModal = () => {
     setEditingGroup(null);
-    setModalData({ name: '', description: '' });
+    setModalData({ name: '', description: '', image_url: '' });
     setModalError(null);
     setShowModal(true);
   };
@@ -45,7 +45,7 @@ const GroupsPage: React.FC = () => {
   // Open modal for editing an existing group
   const openEditModal = (group: Group) => {
     setEditingGroup(group);
-    setModalData({ name: group.name, description: group.description });
+    setModalData({ name: group.name, description: group.description, image_url: group.image_url || '' });
     setModalError(null);
     setShowModal(true);
   };
@@ -54,7 +54,7 @@ const GroupsPage: React.FC = () => {
   const closeModal = () => {
     setShowModal(false);
     setEditingGroup(null);
-    setModalData({ name: '', description: '' });
+    setModalData({ name: '', description: '', image_url: '' });
     setModalError(null);
   };
 
@@ -73,10 +73,10 @@ const GroupsPage: React.FC = () => {
     try {
       if (editingGroup) {
         // Update existing group
-        await groupsApi.update(editingGroup.id, modalData.name, modalData.description);
+        await groupsApi.update(editingGroup.id, modalData.name, modalData.description, modalData.image_url);
       } else {
         // Create new group
-        await groupsApi.create(modalData.name, modalData.description);
+        await groupsApi.create(modalData.name, modalData.description, modalData.image_url);
       }
       fetchGroups();
       closeModal();
@@ -120,6 +120,7 @@ const GroupsPage: React.FC = () => {
         <table className="groups-table">
           <thead>
             <tr>
+              <th>Image</th>
               <th>Name</th>
               <th>Description</th>
               <th>Actions</th>
@@ -128,6 +129,13 @@ const GroupsPage: React.FC = () => {
           <tbody>
             {groups.map(group => (
               <tr key={group.id}>
+                <td className="group-image">
+                  {group.image_url ? (
+                    <img src={group.image_url} alt={group.name} className="group-thumbnail" />
+                  ) : (
+                    <div className="no-image">No image</div>
+                  )}
+                </td>
                 <td className="group-name">{group.name}</td>
                 <td className="group-description">{group.description || '—'}</td>
                 <td>
@@ -188,6 +196,47 @@ const GroupsPage: React.FC = () => {
                   placeholder="Enter group description (optional)"
                   rows={4}
                 />
+              </div>
+              <div className="form-group">
+                <label htmlFor="image_url">Image URL</label>
+                <input
+                  id="image_url"
+                  name="image_url"
+                  type="text"
+                  value={modalData.image_url}
+                  onChange={handleModalChange}
+                  placeholder="Paste an image URL or upload a file"
+                />
+                <label htmlFor="image_upload" className="upload-label">Or upload image</label>
+                <input
+                  id="image_upload"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.gif"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setModalLoading(true);
+                    try {
+                      const res = await groupsApi.uploadImage(file);
+                      setModalData({ ...modalData, image_url: res.data.url });
+                      alert('Image uploaded successfully!');
+                    } catch (err: any) {
+                      console.error('Upload error:', err);
+                      const errorMsg = err.response?.data?.error || err.message || 'Failed to upload image';
+                      alert('Failed to upload image: ' + errorMsg);
+                    } finally {
+                      setModalLoading(false);
+                      // Clear the file input
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                {modalData.image_url && (
+                  <div className="image-preview">
+                    <label>Preview:</label>
+                    <img src={modalData.image_url} alt="Group Preview" />
+                  </div>
+                )}
               </div>
               {modalError && <div className="groups-error">{modalError}</div>}
               <div className="modal-actions">
