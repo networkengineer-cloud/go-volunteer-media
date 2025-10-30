@@ -2,25 +2,42 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
-var jwtSecret []byte
+var (
+	jwtSecret     []byte
+	jwtSecretOnce sync.Once
+)
 
-func init() {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		log.Fatal("JWT_SECRET environment variable is required")
+// initJWTSecret initializes the JWT secret from environment variable
+func initJWTSecret() {
+	jwtSecretOnce.Do(func() {
+		secret := os.Getenv("JWT_SECRET")
+		if secret == "" {
+			log.Fatal("JWT_SECRET environment variable is required")
+		}
+		if len(secret) < 32 {
+			log.Fatal("JWT_SECRET must be at least 32 characters long for security")
+		}
+		jwtSecret = []byte(secret)
+	})
+}
+
+// getJWTSecret returns the JWT secret, initializing it if necessary
+func getJWTSecret() ([]byte, error) {
+	initJWTSecret()
+	if len(jwtSecret) == 0 {
+		return nil, fmt.Errorf("JWT secret not initialized")
 	}
-	if len(secret) < 32 {
-		log.Fatal("JWT_SECRET must be at least 32 characters long for security")
-	}
-	jwtSecret = []byte(secret)
+	return jwtSecret, nil
 }
 
 // Claims represents JWT claims
@@ -43,6 +60,11 @@ func CheckPassword(hashedPassword, password string) error {
 
 // GenerateToken generates a JWT token for a user
 func GenerateToken(userID uint, isAdmin bool) (string, error) {
+	secret, err := getJWTSecret()
+	if err != nil {
+		return "", err
+	}
+
 	claims := Claims{
 		UserID:  userID,
 		IsAdmin: isAdmin,
@@ -53,16 +75,21 @@ func GenerateToken(userID uint, isAdmin bool) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtSecret)
+	return token.SignedString(secret)
 }
 
 // ValidateToken validates a JWT token and returns the claims
 func ValidateToken(tokenString string) (*Claims, error) {
+	secret, err := getJWTSecret()
+	if err != nil {
+		return nil, err
+	}
+
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
 		}
-		return jwtSecret, nil
+		return secret, nil
 	})
 
 	if err != nil {
