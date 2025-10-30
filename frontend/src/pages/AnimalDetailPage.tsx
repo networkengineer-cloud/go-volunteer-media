@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { animalsApi, animalCommentsApi, animalsApi as imageUploadApi } from '../api/client';
-import type { Animal, AnimalComment } from '../api/client';
+import { animalsApi, animalCommentsApi, animalsApi as imageUploadApi, commentTagsApi } from '../api/client';
+import type { Animal, AnimalComment, CommentTag } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import './AnimalDetailPage.css';
 
@@ -11,6 +11,9 @@ const AnimalDetailPage: React.FC = () => {
   const { isAdmin } = useAuth();
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [comments, setComments] = useState<AnimalComment[]>([]);
+  const [availableTags, setAvailableTags] = useState<CommentTag[]>([]);
+  const [selectedTags, setSelectedTags] = useState<number[]>([]);
+  const [tagFilter, setTagFilter] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [commentImage, setCommentImage] = useState('');
@@ -21,21 +24,43 @@ const AnimalDetailPage: React.FC = () => {
   useEffect(() => {
     if (groupId && id) {
       loadAnimalData(Number(groupId), Number(id));
+      loadTags();
     }
   }, [groupId, id]);
 
+  useEffect(() => {
+    if (groupId && id) {
+      loadComments(Number(groupId), Number(id), tagFilter);
+    }
+  }, [tagFilter, groupId, id]);
+
+  const loadTags = async () => {
+    try {
+      const res = await commentTagsApi.getAll();
+      setAvailableTags(res.data);
+    } catch (error) {
+      console.error('Failed to load tags:', error);
+    }
+  };
+
   const loadAnimalData = async (gId: number, animalId: number) => {
     try {
-      const [animalRes, commentsRes] = await Promise.all([
-        animalsApi.getById(gId, animalId),
-        animalCommentsApi.getAll(gId, animalId),
-      ]);
+      const animalRes = await animalsApi.getById(gId, animalId);
       setAnimal(animalRes.data);
-      setComments(commentsRes.data);
+      await loadComments(gId, animalId, '');
     } catch (error) {
       console.error('Failed to load animal data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadComments = async (gId: number, animalId: number, filter: string) => {
+    try {
+      const commentsRes = await animalCommentsApi.getAll(gId, animalId, filter);
+      setComments(commentsRes.data);
+    } catch (error) {
+      console.error('Failed to load comments:', error);
     }
   };
 
@@ -70,11 +95,13 @@ const AnimalDetailPage: React.FC = () => {
         Number(groupId),
         Number(id),
         commentText,
-        commentImage
+        commentImage,
+        selectedTags.length > 0 ? selectedTags : undefined
       );
       setComments([newComment.data, ...comments]);
       setCommentText('');
       setCommentImage('');
+      setSelectedTags([]);
     } catch (error: any) {
       console.error('Failed to post comment:', error);
       alert('Failed to post comment: ' + (error.response?.data?.error || error.message));
@@ -130,7 +157,27 @@ const AnimalDetailPage: React.FC = () => {
         </div>
 
         <div className="comments-section">
-          <h2>Comments & Photos</h2>
+          <div className="comments-header">
+            <h2>Comments & Photos</h2>
+            <div className="tag-filters">
+              <button
+                className={tagFilter === '' ? 'tag-filter active' : 'tag-filter'}
+                onClick={() => setTagFilter('')}
+              >
+                All
+              </button>
+              {availableTags.map((tag) => (
+                <button
+                  key={tag.id}
+                  className={tagFilter === tag.name ? 'tag-filter active' : 'tag-filter'}
+                  style={{ borderColor: tag.color }}
+                  onClick={() => setTagFilter(tagFilter === tag.name ? '' : tag.name)}
+                >
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <form onSubmit={handleSubmitComment} className="comment-form">
             <textarea
@@ -152,6 +199,27 @@ const AnimalDetailPage: React.FC = () => {
                 </button>
               </div>
             )}
+            <div className="comment-tags-selection">
+              <span>Tags:</span>
+              {availableTags.map((tag) => (
+                <label key={tag.id} className="tag-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={selectedTags.includes(tag.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedTags([...selectedTags, tag.id]);
+                      } else {
+                        setSelectedTags(selectedTags.filter((t) => t !== tag.id));
+                      }
+                    }}
+                  />
+                  <span className="tag-label" style={{ backgroundColor: tag.color }}>
+                    {tag.name}
+                  </span>
+                </label>
+              ))}
+            </div>
             <div className="comment-form-actions">
               <input
                 ref={fileInputRef}
@@ -190,6 +258,15 @@ const AnimalDetailPage: React.FC = () => {
                       })}
                     </span>
                   </div>
+                  {comment.tags && comment.tags.length > 0 && (
+                    <div className="comment-tags">
+                      {comment.tags.map((tag) => (
+                        <span key={tag.id} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <p className="comment-content">{comment.content}</p>
                   {comment.image_url && (
                     <img

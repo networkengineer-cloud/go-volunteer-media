@@ -90,5 +90,17 @@ type AnimalComment struct {
 	UserID    uint           `gorm:"not null;index" json:"user_id"`
 	Content   string         `gorm:"not null" json:"content"`
 	ImageURL  string         `json:"image_url"`
+	Tags      []CommentTag   `gorm:"many2many:comment_tags;" json:"tags,omitempty"`
 	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+// CommentTag represents a tag that can be applied to comments
+type CommentTag struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	Name      string         `gorm:"uniqueIndex;not null" json:"name"`
+	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
+	IsSystem  bool           `gorm:"default:false" json:"is_system"` // True for behavior/medical tags
 }

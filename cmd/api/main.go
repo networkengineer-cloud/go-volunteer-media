@@ -103,6 +103,9 @@ func main() {
 		// Group routes
 		protected.GET("/groups", handlers.GetGroups(db))
 
+		// Comment tags (all authenticated users can view)
+		protected.GET("/comment-tags", handlers.GetCommentTags(db))
+
 		// Image upload (authenticated users only)
 		protected.POST("/animals/upload-image", handlers.UploadAnimalImage())
 
@@ -126,6 +129,10 @@ func main() {
 			// Announcement routes (admin only)
 			admin.POST("/announcements", handlers.CreateAnnouncement(db, emailService))
 			admin.DELETE("/announcements/:id", handlers.DeleteAnnouncement(db))
+
+			// Comment tag management (admin only)
+			admin.POST("/comment-tags", handlers.CreateCommentTag(db))
+			admin.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
 		}
 
 		// Group-specific routes

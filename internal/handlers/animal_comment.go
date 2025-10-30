@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -12,6 +13,7 @@ import (
 type AnimalCommentRequest struct {
 	Content  string `json:"content" binding:"required"`
 	ImageURL string `json:"image_url"`
+	TagIDs   []uint `json:"tag_ids"` // Array of tag IDs to attach
 }
 
 // GetAnimalComments returns all comments for an animal
@@ -35,8 +37,22 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Get filter parameter (comma-separated tag names)
+		tagFilter := c.Query("tags")
+		
+		query := db.Preload("User").Preload("Tags").Where("animal_id = ?", animalID)
+		
+		// Apply tag filter if provided
+		if tagFilter != "" {
+			tagNames := strings.Split(tagFilter, ",")
+			query = query.Joins("JOIN comment_tags ON comment_tags.animal_comment_id = animal_comments.id").
+				Joins("JOIN comment_tags AS ct ON ct.id = comment_tags.comment_tag_id").
+				Where("ct.name IN ?", tagNames).
+				Group("animal_comments.id")
+		}
+		
 		var comments []models.AnimalComment
-		if err := db.Preload("User").Where("animal_id = ?", animalID).Order("created_at DESC").Find(&comments).Error; err != nil {
+		if err := query.Order("created_at DESC").Find(&comments).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
 			return
 		}
@@ -90,8 +106,19 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Reload with user info
-		if err := db.Preload("User").First(&comment, comment.ID).Error; err != nil {
+		// Attach tags if provided
+		if len(req.TagIDs) > 0 {
+			var tags []models.CommentTag
+			if err := db.Where("id IN ?", req.TagIDs).Find(&tags).Error; err == nil {
+				if err := db.Model(&comment).Association("Tags").Append(&tags); err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to attach tags"})
+					return
+				}
+			}
+		}
+
+		// Reload with user info and tags
+		if err := db.Preload("User").Preload("Tags").First(&comment, comment.ID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load comment"})
 			return
 		}
