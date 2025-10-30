@@ -264,7 +264,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
         var req LoginRequest
         if err := c.ShouldBindJSON(&req); err != nil {
             logger.Error().Err(err).Msg("Invalid login request")
-            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
             return
         }
         
@@ -570,30 +570,67 @@ Reviewing new endpoint: `PUT /api/users/:id/profile`
 - Impact: Any authenticated user can modify other users' profiles
 
 ```go
-// VULNERABLE CODE
+// VULNERABLE CODE - DO NOT USE
 func UpdateProfile(db *gorm.DB) gin.HandlerFunc {
     return func(c *gin.Context) {
         userID := c.Param("id")
         var updates ProfileUpdate
-        // ... updates applied without checking if user owns profile
+        if err := c.ShouldBindJSON(&updates); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+            return
+        }
+        
+        // VULNERABILITY: No authorization check - any authenticated user
+        // can update any profile by changing the :id in the URL
+        var user models.User
+        if err := db.First(&user, userID).Error; err != nil {
+            c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+            return
+        }
+        
+        // Update applied without verifying ownership
+        db.Model(&user).Updates(updates)
+        c.JSON(http.StatusOK, gin.H{"message": "Profile updated"})
     }
 }
 
-// FIXED CODE
+// FIXED CODE - Proper authorization
 func UpdateProfile(db *gorm.DB) gin.HandlerFunc {
     return func(c *gin.Context) {
         requestedUserID := c.Param("id")
         currentUserID := c.GetUint("user_id") // from auth middleware
         
+        // Parse requested user ID
+        reqUID, err := strconv.ParseUint(requestedUserID, 10, 32)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+            return
+        }
+        
         // Users can only update their own profile (unless admin)
         isAdmin := c.GetBool("is_admin")
-        if requestedUserID != fmt.Sprint(currentUserID) && !isAdmin {
+        if uint(reqUID) != currentUserID && !isAdmin {
             c.JSON(http.StatusForbidden, gin.H{
                 "error": "Cannot update other users' profiles",
             })
             return
         }
-        // ... proceed with update
+        
+        // Now safe to proceed with update
+        var updates ProfileUpdate
+        if err := c.ShouldBindJSON(&updates); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+            return
+        }
+        
+        var user models.User
+        if err := db.First(&user, reqUID).Error; err != nil {
+            c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+            return
+        }
+        
+        db.Model(&user).Updates(updates)
+        c.JSON(http.StatusOK, gin.H{"message": "Profile updated"})
     }
 }
 ```
