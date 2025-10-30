@@ -11,6 +11,7 @@ import PhotoGallery from './pages/PhotoGallery';
 import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
 import UsersPage from './pages/UsersPage';
+import GroupsPage from './pages/GroupsPage';
 import ResetPassword from './pages/ResetPassword';
 import Settings from './pages/Settings';
 import './App.css';
@@ -132,6 +133,14 @@ function App() {
             element={
               <AdminRoute>
                 <UsersPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/groups"
+            element={
+              <AdminRoute>
+                <GroupsPage />
               </AdminRoute>
             }
           />
