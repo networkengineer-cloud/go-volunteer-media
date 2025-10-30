@@ -90,7 +90,7 @@ type AnimalComment struct {
 	UserID    uint           `gorm:"not null;index" json:"user_id"`
 	Content   string         `gorm:"not null" json:"content"`
 	ImageURL  string         `json:"image_url"`
-	Tags      []CommentTag   `gorm:"many2many:comment_tags;" json:"tags,omitempty"`
+	Tags      []CommentTag   `gorm:"many2many:animal_comment_tags;" json:"tags,omitempty"`
 	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
