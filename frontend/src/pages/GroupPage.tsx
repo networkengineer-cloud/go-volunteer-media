@@ -1,8 +1,8 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { groupsApi, animalsApi, updatesApi } from '../api/client';
 import type { Group, Animal, Update } from '../api/client';
+import './GroupPage.css';
 
 
 
