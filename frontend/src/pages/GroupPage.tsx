@@ -89,16 +89,18 @@ const GroupPage: React.FC = () => {
               {animals.map((animal) => (
                 <Link
                   key={animal.id}
-                  to={`/groups/${id}/animals/${animal.id}`}
+                  to={`/groups/${id}/animals/${animal.id}/view`}
                   className="animal-card"
                 >
                   {animal.image_url && (
                     <img
                       src={animal.image_url}
                       alt={animal.name}
+                      className="animal-card-image"
                     />
                   )}
                   <div className="animal-info">
+                    <h3>{animal.name}</h3>
                     <p className="species">{animal.species} {animal.breed && `- ${animal.breed}`}</p>
                     <p className="age">{animal.age} years old</p>
                     <span className={`status ${animal.status}`}>{animal.status}</span>

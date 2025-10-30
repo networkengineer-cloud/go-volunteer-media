@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import GroupPage from './pages/GroupPage';
 import AnimalForm from './pages/AnimalForm';
+import AnimalDetailPage from './pages/AnimalDetailPage';
 import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
 import UsersPage from './pages/UsersPage';
@@ -80,16 +81,24 @@ function App() {
           <Route
             path="/groups/:groupId/animals/new"
             element={
-              <PrivateRoute>
+              <AdminRoute>
                 <AnimalForm />
-              </PrivateRoute>
+              </AdminRoute>
             }
           />
           <Route
             path="/groups/:groupId/animals/:id"
             element={
-              <PrivateRoute>
+              <AdminRoute>
                 <AnimalForm />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/groups/:groupId/animals/:id/view"
+            element={
+              <PrivateRoute>
+                <AnimalDetailPage />
               </PrivateRoute>
             }
           />

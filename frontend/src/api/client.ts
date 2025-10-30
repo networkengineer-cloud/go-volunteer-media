@@ -73,6 +73,25 @@ export interface Announcement {
   user?: User;
 }
 
+export interface AnimalComment {
+  id: number;
+  animal_id: number;
+  user_id: number;
+  content: string;
+  image_url: string;
+  created_at: string;
+  tags?: CommentTag[];
+  user?: User;
+}
+
+export interface CommentTag {
+  id: number;
+  name: string;
+  color: string;
+  is_system: boolean;
+  created_at: string;
+}
+
 // Auth API
 export const authApi = {
   login: (username: string, password: string) =>
@@ -111,6 +130,28 @@ export const animalsApi = {
     formData.append('image', file);
     return api.post<{ url: string }>('/animals/upload-image', formData);
   },
+};
+
+// Animal Comments API
+export const animalCommentsApi = {
+  getAll: (groupId: number, animalId: number, tagFilter?: string) => {
+    const params = tagFilter ? { tags: tagFilter } : {};
+    return api.get<AnimalComment[]>('/groups/' + groupId + '/animals/' + animalId + '/comments', { params });
+  },
+  create: (groupId: number, animalId: number, content: string, image_url?: string, tag_ids?: number[]) =>
+    api.post<AnimalComment>('/groups/' + groupId + '/animals/' + animalId + '/comments', {
+      content,
+      image_url,
+      tag_ids,
+    }),
+};
+
+// Comment Tags API
+export const commentTagsApi = {
+  getAll: () => api.get<CommentTag[]>('/comment-tags'),
+  create: (name: string, color: string) =>
+    api.post<CommentTag>('/admin/comment-tags', { name, color }),
+  delete: (tagId: number) => api.delete('/admin/comment-tags/' + tagId),
 };
 
 // Updates API

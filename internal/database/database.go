@@ -75,6 +75,8 @@ func RunMigrations(db *gorm.DB) error {
 		&models.Animal{},
 		&models.Update{},
 		&models.Announcement{},
+		&models.CommentTag{},
+		&models.AnimalComment{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -84,6 +86,11 @@ func RunMigrations(db *gorm.DB) error {
 
 	// Create default groups if they don't exist
 	if err := createDefaultGroups(db); err != nil {
+		return err
+	}
+
+	// Create default comment tags if they don't exist
+	if err := createDefaultCommentTags(db); err != nil {
 		return err
 	}
 
@@ -106,6 +113,27 @@ func createDefaultGroups(db *gorm.DB) error {
 				return fmt.Errorf("failed to create default group %s: %w", group.Name, err)
 			}
 			log.Printf("Created default group: %s", group.Name)
+		}
+	}
+
+	return nil
+}
+
+// createDefaultCommentTags creates the default comment tags if they don't exist
+func createDefaultCommentTags(db *gorm.DB) error {
+	defaultTags := []models.CommentTag{
+		{Name: "behavior", Color: "#3b82f6", IsSystem: true},
+		{Name: "medical", Color: "#ef4444", IsSystem: true},
+	}
+
+	for _, tag := range defaultTags {
+		var existing models.CommentTag
+		result := db.Where("name = ?", tag.Name).First(&existing)
+		if result.Error == gorm.ErrRecordNotFound {
+			if err := db.Create(&tag).Error; err != nil {
+				return fmt.Errorf("failed to create default tag %s: %w", tag.Name, err)
+			}
+			log.Printf("Created default comment tag: %s", tag.Name)
 		}
 	}
 
