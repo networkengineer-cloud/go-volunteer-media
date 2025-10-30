@@ -441,6 +441,42 @@ database.DB.AutoMigrate(
 
 For production, consider explicit migration scripts.
 
+## Testing & Validation Strategy
+
+### Comprehensive Testing Approach
+
+The project uses a multi-layered testing strategy:
+
+1. **Unit Tests**: Go backend logic testing with `go test`
+2. **Integration Tests**: API endpoint testing
+3. **E2E Tests**: Full user flow validation with **Playwright**
+4. **Manual Testing**: UI/UX validation in development
+
+### When to Use Playwright
+
+**Always use Playwright to validate:**
+
+- ✅ New features before marking them complete
+- ✅ Authentication and authorization flows
+- ✅ Form submissions and data persistence
+- ✅ Navigation and routing
+- ✅ User interactions (clicks, inputs, selections)
+- ✅ Error handling and validation messages
+- ✅ Responsive design across viewports
+- ✅ Admin-only functionality access control
+- ✅ Image uploads and file handling
+- ✅ Email notification workflows (with mock)
+
+**Playwright Test Requirements:**
+
+Before completing any task:
+
+1. **Write at least one E2E test** that covers the happy path
+2. **Test error scenarios** (invalid inputs, unauthorized access)
+3. **Validate visual elements** appear correctly
+4. **Verify data persistence** across page reloads
+5. **Test on multiple viewports** if UI changes are involved
+
 ## Security Best Practices
 
 1. **Always use JWT middleware** for protected routes
@@ -537,6 +573,258 @@ npm run lint             # Lint code
 # GORM auto-migrates on startup
 ```
 
+### Testing & Validation
+
+**End-to-End Testing with Playwright:**
+
+The project uses Playwright for comprehensive end-to-end testing and validation:
+
+```bash
+# Install Playwright
+cd frontend
+npx playwright install
+
+# Run all Playwright tests
+npx playwright test
+
+# Run tests in UI mode (interactive)
+npx playwright test --ui
+
+# Run tests in headed mode (see browser)
+npx playwright test --headed
+
+# Run specific test file
+npx playwright test tests/auth.spec.ts
+
+# Generate test report
+npx playwright show-report
+```
+
+**Writing Playwright Tests:**
+
+Create tests in `frontend/tests/` or `frontend/e2e/`:
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('Authentication Flow', () => {
+  test('should login successfully with valid credentials', async ({ page }) => {
+    await page.goto('http://localhost:5173/login');
+    
+    await page.fill('input[name="username"]', 'testuser');
+    await page.fill('input[name="password"]', 'password123');
+    await page.click('button[type="submit"]');
+    
+    await expect(page).toHaveURL(/.*dashboard/);
+    await expect(page.locator('text=Welcome')).toBeVisible();
+  });
+
+  test('should show error with invalid credentials', async ({ page }) => {
+    await page.goto('http://localhost:5173/login');
+    
+    await page.fill('input[name="username"]', 'invalid');
+    await page.fill('input[name="password"]', 'wrong');
+    await page.click('button[type="submit"]');
+    
+    await expect(page.locator('text=Invalid credentials')).toBeVisible();
+  });
+});
+
+test.describe('Group Management', () => {
+  test.beforeEach(async ({ page }) => {
+    // Login before each test
+    await page.goto('http://localhost:5173/login');
+    await page.fill('input[name="username"]', 'testuser');
+    await page.fill('input[name="password"]', 'password123');
+    await page.click('button[type="submit"]');
+    await page.waitForURL(/.*dashboard/);
+  });
+
+  test('should display groups on dashboard', async ({ page }) => {
+    await expect(page.locator('.group-card')).toBeVisible();
+  });
+
+  test('should navigate to group details', async ({ page }) => {
+    await page.click('.group-card:first-child');
+    await expect(page).toHaveURL(/.*groups\/\d+/);
+    await expect(page.locator('.animals-section')).toBeVisible();
+  });
+});
+```
+
+**Playwright Configuration:**
+
+Create `frontend/playwright.config.ts`:
+
+```typescript
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './tests',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'html',
+  
+  use: {
+    baseURL: 'http://localhost:5173',
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+  },
+
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+  ],
+
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:5173',
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+**Test Coverage Areas:**
+
+Use Playwright to validate:
+
+1. **Authentication & Authorization**
+   - Login/logout flows
+   - Password reset workflow
+   - Account locking after failed attempts
+   - Session persistence
+   - Protected route access
+
+2. **User Management (Admin)**
+   - Creating new users
+   - Assigning users to groups
+   - Deactivating/restoring users
+   - Viewing deleted users
+   - Admin-only access validation
+
+3. **Group Management**
+   - Viewing groups on dashboard
+   - Navigating to group details
+   - Switching between tabs (animals/updates)
+   - Creating/editing groups (admin)
+
+4. **Animal Management**
+   - Adding new animals
+   - Editing animal details
+   - Uploading animal images
+   - Viewing animal cards
+   - Deleting animals
+
+5. **Announcements**
+   - Creating announcements (admin)
+   - Viewing announcements in groups
+   - Email notification opt-in/opt-out
+
+6. **Settings & Preferences**
+   - Updating email notification preferences
+   - Changing account settings
+   - Dark mode toggle
+
+7. **Responsive Design**
+   - Mobile viewport testing
+   - Tablet viewport testing
+   - Desktop viewport testing
+
+8. **Error Handling**
+   - Network error scenarios
+   - Invalid input validation
+   - 404 pages
+   - Permission denied scenarios
+
+**Best Practices for Playwright Tests:**
+
+1. **Use data-testid attributes** for reliable selectors:
+   ```typescript
+   await page.click('[data-testid="submit-button"]');
+   ```
+
+2. **Create reusable fixtures** for common setup:
+   ```typescript
+   export const test = base.extend({
+     authenticatedPage: async ({ page }, use) => {
+       await page.goto('/login');
+       await page.fill('[name="username"]', 'testuser');
+       await page.fill('[name="password"]', 'password123');
+       await page.click('[type="submit"]');
+       await page.waitForURL(/dashboard/);
+       await use(page);
+     },
+   });
+   ```
+
+3. **Use Page Object Model** for complex pages:
+   ```typescript
+   class LoginPage {
+     constructor(private page: Page) {}
+     
+     async goto() {
+       await this.page.goto('/login');
+     }
+     
+     async login(username: string, password: string) {
+       await this.page.fill('[name="username"]', username);
+       await this.page.fill('[name="password"]', password);
+       await this.page.click('[type="submit"]');
+     }
+     
+     async expectError(message: string) {
+       await expect(this.page.locator('.error')).toContainText(message);
+     }
+   }
+   ```
+
+4. **Mock API responses** when needed:
+   ```typescript
+   await page.route('**/api/v1/groups', async route => {
+     await route.fulfill({
+       status: 200,
+       body: JSON.stringify({ data: mockGroups }),
+     });
+   });
+   ```
+
+5. **Take screenshots** for debugging:
+   ```typescript
+   await page.screenshot({ path: 'screenshot.png', fullPage: true });
+   ```
+
+**Integration with CI/CD:**
+
+Add Playwright to your CI pipeline:
+
+```yaml
+# .github/workflows/test.yml
+- name: Install Playwright
+  run: npx playwright install --with-deps
+
+- name: Run Playwright tests
+  run: npx playwright test
+
+- name: Upload test results
+  if: always()
+  uses: actions/upload-artifact@v3
+  with:
+    name: playwright-report
+    path: playwright-report/
+```
+
 ## Project-Specific Features
 
 ### User Management
@@ -571,13 +859,37 @@ npm run lint             # Lint code
 1. **Read existing code** before making changes
 2. **Follow established patterns** in the codebase
 3. **Update both frontend and backend** for new features
-4. **Test authentication and authorization**
-5. **Handle errors gracefully** with user-friendly messages
-6. **Maintain type safety** in TypeScript
-7. **Use appropriate HTTP status codes**
-8. **Add comments** for complex logic
-9. **Consider mobile responsiveness** for UI changes
-10. **Validate inputs** on both client and server
+4. **Write Playwright tests** for new features and flows
+5. **Test authentication and authorization** with E2E tests
+6. **Validate visually** with Playwright across viewports
+7. **Handle errors gracefully** with user-friendly messages
+8. **Maintain type safety** in TypeScript
+9. **Use appropriate HTTP status codes**
+10. **Add comments** for complex logic
+11. **Run `npx playwright test`** before marking work complete
+12. **Validate inputs** on both client and server
+
+## Development Workflow
+
+### For New Features
+
+1. **Plan the feature** - Define requirements and user flows
+2. **Backend first** - Create models, handlers, and routes
+3. **Frontend next** - Build UI components and integrate API
+4. **Write Playwright tests** - Cover happy path and edge cases
+5. **Manual testing** - Verify UI/UX in browser
+6. **Run automated tests** - `npx playwright test`
+7. **Code review** - Review your changes before committing
+8. **Document** - Update README or API docs if needed
+
+### For Bug Fixes
+
+1. **Reproduce the bug** - Understand the issue
+2. **Write a failing test** - Playwright test that demonstrates the bug
+3. **Fix the bug** - Make the minimal change to fix it
+4. **Verify the test passes** - Run Playwright tests
+5. **Test related functionality** - Ensure nothing else broke
+6. **Commit with descriptive message** - Reference issue number if applicable
 
 ## Additional References
 
