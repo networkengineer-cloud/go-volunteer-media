@@ -73,6 +73,16 @@ export interface Announcement {
   user?: User;
 }
 
+export interface AnimalComment {
+  id: number;
+  animal_id: number;
+  user_id: number;
+  content: string;
+  image_url: string;
+  created_at: string;
+  user?: User;
+}
+
 // Auth API
 export const authApi = {
   login: (username: string, password: string) =>
@@ -111,6 +121,17 @@ export const animalsApi = {
     formData.append('image', file);
     return api.post<{ url: string }>('/animals/upload-image', formData);
   },
+};
+
+// Animal Comments API
+export const animalCommentsApi = {
+  getAll: (groupId: number, animalId: number) =>
+    api.get<AnimalComment[]>('/groups/' + groupId + '/animals/' + animalId + '/comments'),
+  create: (groupId: number, animalId: number, content: string, image_url?: string) =>
+    api.post<AnimalComment>('/groups/' + groupId + '/animals/' + animalId + '/comments', {
+      content,
+      image_url,
+    }),
 };
 
 // Updates API

@@ -133,16 +133,26 @@ func main() {
 		{
 			group.GET("", handlers.GetGroup(db))
 
-			// Animal routes (group members can access)
+			// Animal routes - viewing accessible to all group members
 			group.GET("/animals", handlers.GetAnimals(db))
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
-			group.POST("/animals", handlers.CreateAnimal(db))
-			group.PUT("/animals/:animalId", handlers.UpdateAnimal(db))
-			group.DELETE("/animals/:animalId", handlers.DeleteAnimal(db))
+			
+			// Animal comments - all group members can view and add comments
+			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
+			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
 
 			// Updates routes
 			group.GET("/updates", handlers.GetUpdates(db))
 			group.POST("/updates", handlers.CreateUpdate(db))
+		}
+
+		// Admin-only animal management routes
+		adminAnimals := protected.Group("/groups/:id/animals")
+		adminAnimals.Use(middleware.AdminRequired())
+		{
+			adminAnimals.POST("", handlers.CreateAnimal(db))
+			adminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db))
+			adminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
 		}
 	}
 

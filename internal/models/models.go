@@ -79,3 +79,16 @@ type Announcement struct {
 	SendEmail bool           `gorm:"default:false" json:"send_email"`
 	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
+
+// AnimalComment represents a comment on an animal (social media style)
+type AnimalComment struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `gorm:"index:idx_comment_animal_created" json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	AnimalID  uint           `gorm:"not null;index:idx_comment_animal_created" json:"animal_id"`
+	UserID    uint           `gorm:"not null;index" json:"user_id"`
+	Content   string         `gorm:"not null" json:"content"`
+	ImageURL  string         `json:"image_url"`
+	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
