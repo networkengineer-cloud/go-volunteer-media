@@ -43,3 +43,6 @@ frontend/.env.local
 # Uploaded files
 public/uploads/*
 !public/uploads/.gitkeep
+node_modules/
+package-lock.json
+package.json

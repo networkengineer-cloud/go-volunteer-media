@@ -78,13 +78,16 @@
 }
 
 .btn-primary {
+  display: inline-block;
   padding: 0.5rem 1rem;
   background: var(--brand);
   color: white;
   text-decoration: none;
   border-radius: 4px;
   font-weight: 500;
+  font-size: 0.875rem;
   transition: background 0.2s;
+  white-space: nowrap;
 }
 
 .btn-primary:hover {

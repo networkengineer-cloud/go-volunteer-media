@@ -86,20 +86,40 @@ const UsersPage: React.FC = () => {
   };
 
   const handleGroupToggle = async (user: User, group: Group, assigned: boolean) => {
+    const dogsGroup = allGroups.find(g => g.name.toLowerCase() === 'dogs');
+    const modSquadGroup = allGroups.find(g => g.name.toLowerCase() === 'modsquad');
+    
     try {
       if (assigned) {
+        // Removing a group
         await usersApi.removeGroup(user.id, group.id);
+        
+        // If removing Dogs, also remove ModSquad (since ModSquad is a sub-group of Dogs)
+        if (dogsGroup && modSquadGroup && group.id === dogsGroup.id) {
+          const hasModSquad = user.groups?.some(g => g.id === modSquadGroup.id);
+          if (hasModSquad) {
+            await usersApi.removeGroup(user.id, modSquadGroup.id);
+          }
+        }
       } else {
+        // Adding a group
         await usersApi.assignGroup(user.id, group.id);
+        
+        // If adding ModSquad, also add Dogs (since ModSquad is a sub-group of Dogs)
+        if (modSquadGroup && dogsGroup && group.id === modSquadGroup.id) {
+          const hasDogs = user.groups?.some(g => g.id === dogsGroup.id);
+          if (!hasDogs) {
+            await usersApi.assignGroup(user.id, dogsGroup.id);
+          }
+        }
       }
       fetchUsers();
-      // Refresh modal user
-      setGroupModalUser(prev => prev && prev.id === user.id ? {
-        ...prev,
-        groups: assigned
-          ? (prev.groups || []).filter(g => g.id !== group.id)
-          : [...(prev.groups || []), group],
-      } : prev);
+      // Refresh modal user after all operations
+      const userRes = await usersApi.getAll();
+      const updatedUser = userRes.data.find((u: User) => u.id === user.id);
+      if (updatedUser) {
+        setGroupModalUser(updatedUser);
+      }
     } catch (err: any) {
       setGroupModalError(err.response?.data?.error || 'Failed to update group');
     }
@@ -131,12 +151,33 @@ const UsersPage: React.FC = () => {
   };
 
   const handleCreateGroupToggle = (groupId: number) => {
-    setCreateData(d => ({
-      ...d,
-      groupIds: d.groupIds.includes(groupId)
-        ? d.groupIds.filter(id => id !== groupId)
-        : [...d.groupIds, groupId],
-    }));
+    const dogsGroup = allGroups.find(g => g.name.toLowerCase() === 'dogs');
+    const modSquadGroup = allGroups.find(g => g.name.toLowerCase() === 'modsquad');
+    
+    setCreateData(d => {
+      const isSelected = d.groupIds.includes(groupId);
+      let newGroupIds: number[];
+      
+      if (isSelected) {
+        // Deselecting a group
+        newGroupIds = d.groupIds.filter(id => id !== groupId);
+        
+        // If deselecting Dogs, also deselect ModSquad (since ModSquad is a sub-group of Dogs)
+        if (dogsGroup && modSquadGroup && groupId === dogsGroup.id && d.groupIds.includes(modSquadGroup.id)) {
+          newGroupIds = newGroupIds.filter(id => id !== modSquadGroup.id);
+        }
+      } else {
+        // Selecting a group
+        newGroupIds = [...d.groupIds, groupId];
+        
+        // If selecting ModSquad, also select Dogs (since ModSquad is a sub-group of Dogs)
+        if (modSquadGroup && dogsGroup && groupId === modSquadGroup.id && !d.groupIds.includes(dogsGroup.id)) {
+          newGroupIds.push(dogsGroup.id);
+        }
+      }
+      
+      return { ...d, groupIds: newGroupIds };
+    });
   };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
