@@ -63,6 +63,16 @@ export interface Update {
   user?: User;
 }
 
+export interface Announcement {
+  id: number;
+  user_id: number;
+  title: string;
+  content: string;
+  send_email: boolean;
+  created_at: string;
+  user?: User;
+}
+
 // Auth API
 export const authApi = {
   login: (username: string, password: string) =>
@@ -108,6 +118,14 @@ export const updatesApi = {
   getAll: (groupId: number) => api.get<Update[]>('/groups/' + groupId + '/updates'),
   create: (groupId: number, title: string, content: string, image_url?: string) =>
     api.post<Update>('/groups/' + groupId + '/updates', { title, content, image_url }),
+};
+
+// Announcements API
+export const announcementsApi = {
+  getAll: () => api.get<Announcement[]>('/announcements'),
+  create: (title: string, content: string, send_email: boolean) =>
+    api.post<Announcement>('/admin/announcements', { title, content, send_email }),
+  delete: (id: number) => api.delete('/admin/announcements/' + id),
 };
 
 export default api;

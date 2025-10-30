@@ -80,7 +80,7 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 		// Set token expiry to 1 hour from now
 		expiry := time.Now().Add(1 * time.Hour)
-		
+
 		// Update user with reset token and expiry
 		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
 			"reset_token":        hashedToken,
@@ -147,11 +147,11 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 
 		// Update password and clear reset token
 		if err := db.WithContext(ctx).Model(targetUser).Updates(map[string]interface{}{
-			"password":           hashedPassword,
-			"reset_token":        "",
-			"reset_token_expiry": nil,
+			"password":              hashedPassword,
+			"reset_token":           "",
+			"reset_token_expiry":    nil,
 			"failed_login_attempts": 0,
-			"locked_until":       nil,
+			"locked_until":          nil,
 		}).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset password"})
 			return

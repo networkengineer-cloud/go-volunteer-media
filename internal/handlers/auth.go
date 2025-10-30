@@ -123,12 +123,12 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		if err := auth.CheckPassword(user.Password, req.Password); err != nil {
 			// Increment failed login attempts
 			user.FailedLoginAttempts++
-			
+
 			// Lock account if 5 or more failed attempts
 			if user.FailedLoginAttempts >= 5 {
 				lockUntil := time.Now().Add(30 * time.Minute)
 				user.LockedUntil = &lockUntil
-				
+
 				if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
 					"failed_login_attempts": user.FailedLoginAttempts,
 					"locked_until":          lockUntil,
@@ -136,7 +136,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 					return
 				}
-				
+
 				c.JSON(http.StatusForbidden, gin.H{
 					"error":         "Account has been locked due to too many failed login attempts. Please try again in 30 minutes or reset your password.",
 					"locked_until":  lockUntil,
@@ -144,13 +144,13 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 				})
 				return
 			}
-			
+
 			// Update failed attempts count
 			if err := db.WithContext(ctx).Model(&user).Update("failed_login_attempts", user.FailedLoginAttempts).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 				return
 			}
-			
+
 			attemptsRemaining := 5 - user.FailedLoginAttempts
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error":              "Invalid credentials",
