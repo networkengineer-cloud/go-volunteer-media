@@ -170,8 +170,9 @@ func (s *Service) SendPasswordResetEmail(to, username, resetToken string) error 
 func (s *Service) SendAnnouncementEmail(to, title, content string) error {
 	subject := fmt.Sprintf("Announcement: %s - Haws Volunteers", title)
 
-	// Convert newlines to HTML line breaks
-	htmlContent := strings.ReplaceAll(content, "\n", "<br>")
+	// Escape HTML in title and convert newlines to HTML line breaks in content
+	escapedTitle := html.EscapeString(title)
+	htmlContent := strings.ReplaceAll(html.EscapeString(content), "\n", "<br>")
 
 	body := fmt.Sprintf(`
 <!DOCTYPE html>
