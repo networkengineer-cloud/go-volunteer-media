@@ -1,42 +1,45 @@
 .form-page {
   padding: 2rem;
-  max-width: 800px;
+  max-width: 900px;
   margin: 0 auto;
 }
 
 .form-container {
   background: white;
-  padding: 2rem;
+  padding: 2.5rem;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .form-container h1 {
   color: #333;
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
+  font-size: 1.75rem;
 }
 
 .form-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 0.5rem;
-  color: #555;
-  font-weight: 500;
+  margin-bottom: 0.75rem;
+  color: #333;
+  font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .form-group input,
 .form-group textarea,
 .form-group select {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0.875rem;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 1rem;
   box-sizing: border-box;
   font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-group input:focus,
@@ -49,23 +52,48 @@
 
 .form-group textarea {
   resize: vertical;
-  min-height: 100px;
+  min-height: 120px;
+  line-height: 1.5;
 }
 
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .form-actions {
   display: flex;
   gap: 1rem;
-  margin-top: 2rem;
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.btn-primary {
+  padding: 0.875rem 1.5rem;
+  background: var(--brand);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.btn-primary:hover {
+  background: var(--brand-600);
+}
+
+.btn-primary:disabled {
+  background: #cbd5e0;
+  cursor: not-allowed;
 }
 
 .btn-danger {
-  padding: 0.75rem 1.5rem;
+  padding: 0.875rem 1.5rem;
   background: #e53e3e;
   color: white;
   border: none;
@@ -73,6 +101,7 @@
   font-size: 1rem;
   cursor: pointer;
   font-weight: 600;
+  transition: background 0.2s;
 }
 
 .btn-danger:hover {
@@ -86,16 +115,16 @@
 
 .upload-label {
   display: block;
-  margin-top: 0.75rem;
-  margin-bottom: 0.5rem;
+  margin-top: 1rem;
+  margin-bottom: 0.75rem;
   color: #555;
   font-weight: 500;
   font-size: 0.95rem;
 }
 
 .image-preview {
-  margin-top: 1rem;
-  padding: 1rem;
+  margin-top: 1.5rem;
+  padding: 1.5rem;
   background: #f7fafc;
   border: 2px solid #e2e8f0;
   border-radius: 8px;
@@ -103,15 +132,15 @@
 
 .image-preview label {
   display: block;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
   color: #4a5568;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .image-preview img {
   width: 100%;
-  max-width: 400px;
+  max-width: 500px;
   height: auto;
   max-height: 400px;
   object-fit: contain;
