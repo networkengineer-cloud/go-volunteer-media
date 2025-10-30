@@ -1,27 +1,53 @@
 :root {
-  /* Brand */
-  --brand: #0e6c55;
-  --brand-600: #0c5c49;
+  /* HAWS Brand Colors - from hawspets.org */
+  --brand: #00A3AD; /* Primary teal/turquoise */
+  --brand-600: #008891; /* Darker teal */
   --brand-contrast: #ffffff;
-  --brand-rgb: 14, 108, 85; /* for rgba() usage */
+  --brand-rgb: 0, 163, 173; /* for rgba() usage */
 
-  /* Secondary/Accent (complementary to brand green) */
-  --accent: #f2b705; /* warm gold */
-  --accent-600: #d09e05;
+  /* Secondary/Accent */
+  --accent: #F2B705; /* Warm yellow/gold for CTAs */
+  --accent-600: #D09E05;
   --accent-contrast: #1f2937;
 
-  /* Danger */
-  --danger: #e53e3e;
-  --danger-600: #c53030;
-  --danger-contrast: #ffffff;
+  /* Tertiary - Purple accent */
+  --purple: #7B68A6; /* For badges, status indicators */
+  --purple-600: #6B5896;
+  --purple-contrast: #ffffff;
 
-  /* Neutrals */
-  --bg: #f5f8fa;
+  /* Navy/Dark Blue */
+  --navy: #1E3A5F; /* Headers, navigation, professional text */
+  --navy-600: #152B47;
+  --navy-contrast: #ffffff;
+
+  /* Semantic Colors */
+  --success: #10b981; /* Green */
+  --success-600: #059669;
+  --warning: #f59e0b; /* Amber */
+  --warning-600: #d97706;
+  --danger: #ef4444; /* Red */
+  --danger-600: #dc2626;
+  --info: #3b82f6; /* Blue */
+  --info-600: #2563eb;
+
+  /* Neutral Grays */
+  --bg: #f9fafb;
   --surface: #ffffff;
-  --neutral-900: #1f2937;
-  --neutral-700: #374151;
-  --neutral-600: #4b5563;
+  --neutral-50: #f9fafb;
+  --neutral-100: #f3f4f6;
   --neutral-200: #e5e7eb;
+  --neutral-300: #d1d5db;
+  --neutral-400: #9ca3af;
+  --neutral-500: #6b7280;
+  --neutral-600: #4b5563;
+  --neutral-700: #374151;
+  --neutral-800: #1f2937;
+  --neutral-900: #111827;
+
+  /* Text Colors */
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
 
   /* Links */
   --link: var(--brand);
@@ -29,33 +55,59 @@
 }
 
 [data-theme='dark'] {
-  /* Brand stays consistent in dark */
-  --brand: #0e6c55;
-  --brand-600: #0c5c49;
+  /* HAWS Brand Colors - consistent in dark mode */
+  --brand: #00B8C4; /* Slightly lighter teal for dark mode */
+  --brand-600: #00A3AD;
   --brand-contrast: #ffffff;
-  --brand-rgb: 14, 108, 85;
+  --brand-rgb: 0, 184, 196;
 
   /* Secondary/Accent (slightly softened in dark) */
-  --accent: #e6b50a;
-  --accent-600: #c59a08;
+  --accent: #F2B705;
+  --accent-600: #D09E05;
   --accent-contrast: #0b1114;
 
-  /* Danger */
+  /* Tertiary - Purple accent */
+  --purple: #8F7BB8; /* Lighter purple for dark mode */
+  --purple-600: #7B68A6;
+  --purple-contrast: #ffffff;
+
+  /* Navy/Dark Blue - lighter for dark mode */
+  --navy: #3B5A87;
+  --navy-600: #2A4566;
+  --navy-contrast: #ffffff;
+
+  /* Semantic Colors */
+  --success: #10b981;
+  --success-600: #059669;
+  --warning: #f59e0b;
+  --warning-600: #d97706;
   --danger: #ef4444;
   --danger-600: #dc2626;
-  --danger-contrast: #0b1114;
+  --info: #3b82f6;
+  --info-600: #2563eb;
 
-  /* Neutrals */
+  /* Neutral Grays */
   --bg: #0b1114;
-  --surface: #111827;
-  --neutral-900: #f3f4f6; /* base text */
-  --neutral-700: #e5e7eb;
-  --neutral-600: #d1d5db;
-  --neutral-200: #334155;
+  --surface: #1f2937;
+  --neutral-50: #1f2937;
+  --neutral-100: #374151;
+  --neutral-200: #4b5563;
+  --neutral-300: #6b7280;
+  --neutral-400: #9ca3af;
+  --neutral-500: #d1d5db;
+  --neutral-600: #e5e7eb;
+  --neutral-700: #f3f4f6;
+  --neutral-800: #f9fafb;
+  --neutral-900: #ffffff;
+
+  /* Text Colors */
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-tertiary: #9ca3af;
 
   /* Links */
-  --link: #7bd1bf; /* brand tint for dark */
-  --link-hover: #63b6a5;
+  --link: #00B8C4; /* brand tint for dark */
+  --link-hover: #00D4E0;
 }
 
 * {
@@ -72,8 +124,34 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg);
-  color: var(--neutral-900);
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.6;
 }
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--navy);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5em;
+}
+
+[data-theme='dark'] h1,
+[data-theme='dark'] h2,
+[data-theme='dark'] h3,
+[data-theme='dark'] h4,
+[data-theme='dark'] h5,
+[data-theme='dark'] h6 {
+  color: var(--text-primary);
+}
+
+h1 { font-size: 2.5rem; }
+h2 { font-size: 2rem; }
+h3 { font-size: 1.5rem; }
+h4 { font-size: 1.25rem; }
+h5 { font-size: 1.125rem; }
+h6 { font-size: 1rem; }
 
 a {
   color: var(--link);
