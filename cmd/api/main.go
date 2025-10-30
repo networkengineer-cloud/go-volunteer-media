@@ -168,7 +168,14 @@ func main() {
 
 	// Serve frontend in production
 	if os.Getenv("ENV") == "production" {
-		router.NoRoute(gin.WrapH(http.FileServer(gin.Dir("./frontend/dist", false))))
+		// Serve static files
+		router.StaticFile("/", "./frontend/dist/index.html")
+		router.Static("/assets", "./frontend/dist/assets")
+		
+		// Serve index.html for all non-API routes (SPA routing)
+		router.NoRoute(func(c *gin.Context) {
+			c.File("./frontend/dist/index.html")
+		})
 	}
 
 	port := os.Getenv("PORT")
