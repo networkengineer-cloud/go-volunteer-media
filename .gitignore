@@ -46,3 +46,8 @@ public/uploads/*
 node_modules/
 package-lock.json
 package.json
+
+# Test results
+test-results/
+playwright-report/
+playwright/.cache/
