@@ -168,14 +168,10 @@ func (s *Service) SendPasswordResetEmail(to, username, resetToken string) error 
 
 // SendAnnouncementEmail sends an announcement email
 func (s *Service) SendAnnouncementEmail(to, title, content string) error {
-	// HTML-escape the title and content to prevent injection
-	escapedTitle := html.EscapeString(title)
-	escapedContent := html.EscapeString(content)
+	subject := fmt.Sprintf("Announcement: %s - Haws Volunteers", title)
 
-	subject := fmt.Sprintf("Announcement: %s - Haws Volunteers", escapedTitle)
-
-	// Convert newlines to HTML line breaks after escaping
-	htmlContent := strings.ReplaceAll(escapedContent, "\n", "<br>")
+	// Convert newlines to HTML line breaks
+	htmlContent := strings.ReplaceAll(content, "\n", "<br>")
 
 	body := fmt.Sprintf(`
 <!DOCTYPE html>
