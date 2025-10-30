@@ -68,7 +68,7 @@ func Initialize() (*gorm.DB, error) {
 // RunMigrations runs all database migrations
 func RunMigrations(db *gorm.DB) error {
 	log.Println("Running database migrations...")
-	
+
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
@@ -80,7 +80,7 @@ func RunMigrations(db *gorm.DB) error {
 	}
 
 	log.Println("Migrations completed successfully")
-	
+
 	// Create default groups if they don't exist
 	if err := createDefaultGroups(db); err != nil {
 		return err

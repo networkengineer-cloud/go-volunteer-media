@@ -25,8 +25,8 @@ func init() {
 
 // Claims represents JWT claims
 type Claims struct {
-	UserID  uint   `json:"user_id"`
-	IsAdmin bool   `json:"is_admin"`
+	UserID  uint `json:"user_id"`
+	IsAdmin bool `json:"is_admin"`
 	jwt.RegisteredClaims
 }
 
