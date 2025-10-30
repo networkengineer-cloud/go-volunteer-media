@@ -151,7 +151,6 @@ const UsersPage: React.FC = () => {
   };
 
   const handleCreateGroupToggle = (groupId: number) => {
-    const group = allGroups.find(g => g.id === groupId);
     const dogsGroup = allGroups.find(g => g.name.toLowerCase() === 'dogs');
     const modSquadGroup = allGroups.find(g => g.name.toLowerCase() === 'modsquad');
     
