@@ -120,9 +120,12 @@ func main() {
 			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))
 			admin.POST("/users/:userId/promote", handlers.PromoteUser(db))
 			admin.POST("/users/:userId/demote", handlers.DemoteUser(db))
+			
+			// Group management (admin only)
 			admin.POST("/groups", handlers.CreateGroup(db))
 			admin.PUT("/groups/:id", handlers.UpdateGroup(db))
 			admin.DELETE("/groups/:id", handlers.DeleteGroup(db))
+			admin.POST("/groups/upload-image", handlers.UploadGroupImage())
 			admin.POST("/users/:userId/groups/:groupId", handlers.AddUserToGroup(db))
 			admin.DELETE("/users/:userId/groups/:groupId", handlers.RemoveUserFromGroup(db))
 

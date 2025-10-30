@@ -32,6 +32,7 @@ type Group struct {
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 	Name        string         `gorm:"uniqueIndex;not null" json:"name"`
 	Description string         `json:"description"`
+	ImageURL    string         `json:"image_url"`
 	Users       []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
 	Animals     []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
 	Updates     []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
