@@ -57,6 +57,9 @@
   font-weight: 500;
   transition: background-color 0.2s;
   white-space: nowrap;
+  flex-shrink: 0;
+  width: auto;
+  max-width: fit-content;
 }
 
 .btn-primary:hover {
