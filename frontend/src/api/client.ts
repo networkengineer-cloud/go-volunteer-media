@@ -116,7 +116,12 @@ export const groupsApi = {
 
 // Animals API
 export const animalsApi = {
-  getAll: (groupId: number) => api.get<Animal[]>('/groups/' + groupId + '/animals'),
+  getAll: (groupId: number, status?: string, name?: string) => {
+    const params: any = {};
+    if (status !== undefined) params.status = status;
+    if (name) params.name = name;
+    return api.get<Animal[]>('/groups/' + groupId + '/animals', { params });
+  },
   getById: (groupId: number, id: number) =>
     api.get<Animal>('/groups/' + groupId + '/animals/' + id),
   create: (groupId: number, data: Partial<Animal>) =>

@@ -14,18 +14,20 @@ const GroupPage: React.FC = () => {
   const [group, setGroup] = useState<Group | null>(null);
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [nameSearch, setNameSearch] = useState<string>('');
 
   useEffect(() => {
     if (id) {
       loadGroupData(Number(id));
     }
-  }, [id]);
+  }, [id, statusFilter, nameSearch]);
 
   const loadGroupData = async (groupId: number) => {
     try {
       const [groupRes, animalsRes] = await Promise.all([
         groupsApi.getById(groupId),
-        animalsApi.getAll(groupId),
+        animalsApi.getAll(groupId, statusFilter, nameSearch),
       ]);
       setGroup(groupRes.data);
       setAnimals(animalsRes.data);
@@ -61,8 +63,35 @@ const GroupPage: React.FC = () => {
             </Link>
           )}
         </div>
+        <div className="filters-section">
+          <div className="filter-group">
+            <label htmlFor="status-filter">Status:</label>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">Available (default)</option>
+              <option value="all">All Animals</option>
+              <option value="available">Available</option>
+              <option value="adopted">Adopted</option>
+              <option value="fostered">Fostered</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+          <div className="filter-group">
+            <label htmlFor="name-search">Search by name:</label>
+            <input
+              id="name-search"
+              type="text"
+              placeholder="Enter animal name..."
+              value={nameSearch}
+              onChange={(e) => setNameSearch(e.target.value)}
+            />
+          </div>
+        </div>
         {animals.length === 0 ? (
-          <p>No animals yet. Add one to get started!</p>
+          <p>No animals found matching the filters.</p>
         ) : (
           <div className="animals-grid">
             {animals.map((animal) => (

@@ -77,7 +77,7 @@ func checkGroupAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, grou
 	return len(user.Groups) > 0
 }
 
-// GetAnimals returns all animals in a group
+// GetAnimals returns all animals in a group with optional filtering
 func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupID := c.Param("id")
@@ -90,8 +90,25 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Build query with filters
+		query := db.Where("group_id = ?", groupID)
+
+		// Status filter (default to "available" if not specified)
+		status := c.Query("status")
+		if status == "" {
+			query = query.Where("status = ?", "available")
+		} else if status != "all" {
+			query = query.Where("status = ?", status)
+		}
+
+		// Name search filter
+		nameSearch := c.Query("name")
+		if nameSearch != "" {
+			query = query.Where("LOWER(name) LIKE ?", "%"+strings.ToLower(nameSearch)+"%")
+		}
+
 		var animals []models.Animal
-		if err := db.Where("group_id = ?", groupID).Find(&animals).Error; err != nil {
+		if err := query.Find(&animals).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
 			return
 		}
