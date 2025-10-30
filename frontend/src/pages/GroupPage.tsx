@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { groupsApi, animalsApi, updatesApi } from '../api/client';
 import type { Group, Animal, Update } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
 import './GroupPage.css';
 
 
@@ -9,6 +10,7 @@ import './GroupPage.css';
 
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const { isAdmin } = useAuth();
   const [group, setGroup] = useState<Group | null>(null);
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [updates, setUpdates] = useState<Update[]>([]);
@@ -74,9 +76,11 @@ const GroupPage: React.FC = () => {
         <div className="animals-section">
           <div className="section-header">
             <h2>Animals</h2>
-            <Link to={`/groups/${id}/animals/new`} className="btn-primary">
-              Add Animal
-            </Link>
+            {isAdmin && (
+              <Link to={`/groups/${id}/animals/new`} className="btn-primary">
+                Add Animal
+              </Link>
+            )}
           </div>
           {animals.length === 0 ? (
             <p>No animals yet. Add one to get started!</p>
