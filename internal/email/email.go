@@ -3,6 +3,7 @@ package email
 import (
 	"crypto/tls"
 	"fmt"
+	"html"
 	"net/smtp"
 	"os"
 	"strings"
@@ -199,7 +200,7 @@ func (s *Service) SendAnnouncementEmail(to, title, content string) error {
     </div>
 </body>
 </html>
-`, title, htmlContent)
+`, escapedTitle, htmlContent)
 
 	return s.SendEmail(to, subject, body)
 }

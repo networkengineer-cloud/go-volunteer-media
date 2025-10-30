@@ -66,3 +66,16 @@ type Update struct {
 	ImageURL  string         `json:"image_url"`
 	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
+
+// Announcement represents a site-wide announcement/update
+type Announcement struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `gorm:"index:idx_announcement_created" json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	UserID    uint           `gorm:"not null;index" json:"user_id"`
+	Title     string         `gorm:"not null" json:"title"`
+	Content   string         `gorm:"not null" json:"content"`
+	SendEmail bool           `gorm:"default:false" json:"send_email"`
+	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}

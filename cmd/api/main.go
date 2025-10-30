@@ -97,6 +97,9 @@ func main() {
 		protected.GET("/email-preferences", handlers.GetEmailPreferences(db))
 		protected.PUT("/email-preferences", handlers.UpdateEmailPreferences(db))
 
+		// Announcement routes (all authenticated users can view)
+		protected.GET("/announcements", handlers.GetAnnouncements(db))
+
 		// Group routes
 		protected.GET("/groups", handlers.GetGroups(db))
 
@@ -119,6 +122,10 @@ func main() {
 			admin.DELETE("/groups/:id", handlers.DeleteGroup(db))
 			admin.POST("/users/:userId/groups/:groupId", handlers.AddUserToGroup(db))
 			admin.DELETE("/users/:userId/groups/:groupId", handlers.RemoveUserFromGroup(db))
+
+			// Announcement routes (admin only)
+			admin.POST("/announcements", handlers.CreateAnnouncement(db, emailService))
+			admin.DELETE("/announcements/:id", handlers.DeleteAnnouncement(db))
 		}
 
 		// Group-specific routes
