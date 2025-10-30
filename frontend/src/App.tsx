@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import GroupPage from './pages/GroupPage';
 import AnimalForm from './pages/AnimalForm';
 import AnimalDetailPage from './pages/AnimalDetailPage';
+import PhotoGallery from './pages/PhotoGallery';
 import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
 import UsersPage from './pages/UsersPage';
@@ -99,6 +100,14 @@ function App() {
             element={
               <PrivateRoute>
                 <AnimalDetailPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/groups/:groupId/animals/:id/photos"
+            element={
+              <PrivateRoute>
+                <PhotoGallery />
               </PrivateRoute>
             }
           />

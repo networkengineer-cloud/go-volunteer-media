@@ -120,6 +120,22 @@
   margin: 0;
 }
 
+.btn-view-gallery {
+  padding: 0.6rem 1.2rem;
+  background: var(--brand);
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.btn-view-gallery:hover {
+  background: var(--brand-600);
+}
+
 .tag-filters {
   display: flex;
   gap: 0.5rem;

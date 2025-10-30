@@ -159,6 +159,11 @@ const AnimalDetailPage: React.FC = () => {
         <div className="comments-section">
           <div className="comments-header">
             <h2>Comments & Photos</h2>
+            {comments.filter(c => c.image_url).length > 0 && (
+              <Link to={`/groups/${groupId}/animals/${id}/photos`} className="btn-view-gallery">
+                📷 View All Photos ({comments.filter(c => c.image_url).length})
+              </Link>
+            )}
             <div className="tag-filters">
               <button
                 className={tagFilter === '' ? 'tag-filter active' : 'tag-filter'}
