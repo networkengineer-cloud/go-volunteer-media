@@ -125,6 +125,7 @@ const AnimalForm: React.FC = () => {
                 <option value="available">Available</option>
                 <option value="adopted">Adopted</option>
                 <option value="fostered">Fostered</option>
+                <option value="archived">Archived</option>
               </select>
             </div>
           </div>
