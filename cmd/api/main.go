@@ -168,7 +168,7 @@ func main() {
 
 	// Serve frontend in production
 	if os.Getenv("ENV") == "production" {
-		router.Static("/", "./frontend/dist")
+		router.NoRoute(gin.WrapH(http.FileServer(gin.Dir("./frontend/dist", false))))
 	}
 
 	port := os.Getenv("PORT")
