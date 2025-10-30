@@ -3,6 +3,7 @@ package email
 import (
 	"crypto/tls"
 	"fmt"
+	"html"
 	"net/smtp"
 	"os"
 	"strings"
@@ -167,10 +168,14 @@ func (s *Service) SendPasswordResetEmail(to, username, resetToken string) error 
 
 // SendAnnouncementEmail sends an announcement email
 func (s *Service) SendAnnouncementEmail(to, title, content string) error {
-	subject := fmt.Sprintf("Announcement: %s - Haws Volunteers", title)
+	// HTML-escape the title and content to prevent injection
+	escapedTitle := html.EscapeString(title)
+	escapedContent := html.EscapeString(content)
 
-	// Convert newlines to HTML line breaks
-	htmlContent := strings.ReplaceAll(content, "\n", "<br>")
+	subject := fmt.Sprintf("Announcement: %s - Haws Volunteers", escapedTitle)
+
+	// Convert newlines to HTML line breaks after escaping
+	htmlContent := strings.ReplaceAll(escapedContent, "\n", "<br>")
 
 	body := fmt.Sprintf(`
 <!DOCTYPE html>
@@ -199,7 +204,7 @@ func (s *Service) SendAnnouncementEmail(to, title, content string) error {
     </div>
 </body>
 </html>
-`, title, htmlContent)
+`, escapedTitle, htmlContent)
 
 	return s.SendEmail(to, subject, body)
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strconv"
@@ -67,7 +68,13 @@ func CreateAnnouncement(db *gorm.DB, emailService *email.Service) gin.HandlerFun
 
 		// Send emails if requested and email service is configured
 		if req.SendEmail && emailService.IsConfigured() {
-			go sendAnnouncementEmails(db, emailService, announcement.Title, announcement.Content)
+			// Use background context for async email sending
+			go func() {
+				bgCtx := context.Background()
+				if err := sendAnnouncementEmails(bgCtx, db, emailService, announcement.Title, announcement.Content); err != nil {
+					log.Printf("Error sending announcement emails: %v", err)
+				}
+			}()
 		}
 
 		c.JSON(http.StatusCreated, announcement)
@@ -94,18 +101,22 @@ func DeleteAnnouncement(db *gorm.DB) gin.HandlerFunc {
 }
 
 // sendAnnouncementEmails sends announcement emails to all users who have opted in
-func sendAnnouncementEmails(db *gorm.DB, emailService *email.Service, title, content string) {
+func sendAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService *email.Service, title, content string) error {
 	var users []models.User
-	if err := db.Where("email_notifications_enabled = ?", true).Find(&users).Error; err != nil {
+	if err := db.WithContext(ctx).Where("email_notifications_enabled = ?", true).Find(&users).Error; err != nil {
 		log.Printf("Failed to fetch users for email notifications: %v", err)
-		return
+		return err
 	}
 
 	log.Printf("Sending announcement emails to %d users", len(users))
+	successCount := 0
 	for _, user := range users {
 		if err := emailService.SendAnnouncementEmail(user.Email, title, content); err != nil {
 			log.Printf("Failed to send announcement email to %s: %v", user.Email, err)
+		} else {
+			successCount++
 		}
 	}
-	log.Printf("Finished sending announcement emails")
+	log.Printf("Successfully sent %d/%d announcement emails", successCount, len(users))
+	return nil
 }
