@@ -168,8 +168,10 @@ export const animalsApi = {
       responseType: 'blob' 
     });
   },
-  exportCommentsCSV: (groupId?: number) => {
-    const params = groupId ? { group_id: groupId } : {};
+  exportCommentsCSV: (groupId?: number, animalId?: number) => {
+    const params: any = {};
+    if (groupId) params.group_id = groupId;
+    if (animalId) params.animal_id = animalId;
     return api.get('/admin/animals/export-comments-csv', {
       params,
       responseType: 'blob'

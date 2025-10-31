@@ -75,6 +75,22 @@
   color: #22543d;
 }
 
+.status.foster {
+  background: #feebc8;
+  color: #7c2d12;
+}
+
+.status.bite_quarantine {
+  background: #fed7d7;
+  color: #742a2a;
+}
+
+.status.archived {
+  background: #e2e8f0;
+  color: #4a5568;
+}
+
+/* Legacy status names for backwards compatibility */
 .status.adopted {
   background: #bee3f8;
   color: #2c5282;
@@ -141,6 +157,23 @@
 .btn-toggle-form:hover {
   background: #e2e8f0;
   border-color: var(--brand);
+}
+
+.btn-export {
+  padding: 0.6rem 1.2rem;
+  background: #f59e0b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+  font-size: 0.95rem;
+}
+
+.btn-export:hover {
+  background: #d97706;
 }
 
 .btn-view-gallery {

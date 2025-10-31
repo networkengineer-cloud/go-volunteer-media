@@ -80,8 +80,8 @@ const GroupPage: React.FC = () => {
               <option value="">Available (default)</option>
               <option value="all">All Animals</option>
               <option value="available">Available</option>
-              <option value="adopted">Adopted</option>
-              <option value="fostered">Fostered</option>
+              <option value="foster">Foster</option>
+              <option value="bite_quarantine">Bite Quarantine</option>
               <option value="archived">Archived</option>
             </select>
           </div>

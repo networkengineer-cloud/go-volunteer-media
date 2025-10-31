@@ -147,11 +147,17 @@ func CreateGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Set default hero image if not provided
+		heroImageURL := req.HeroImageURL
+		if heroImageURL == "" {
+			heroImageURL = "/default-hero.svg"
+		}
+
 		group := models.Group{
 			Name:         req.Name,
 			Description:  req.Description,
 			ImageURL:     req.ImageURL,
-			HeroImageURL: req.HeroImageURL,
+			HeroImageURL: heroImageURL,
 		}
 
 		if err := db.Create(&group).Error; err != nil {

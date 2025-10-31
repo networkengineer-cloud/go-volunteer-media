@@ -99,8 +99,9 @@ func main() {
 	router.GET("/healthz", handlers.HealthCheck())
 	router.GET("/ready", handlers.ReadinessCheck(db))
 
-	// Serve uploaded images
+	// Serve uploaded images and default assets
 	router.Static("/uploads", "./public/uploads")
+	router.StaticFile("/default-hero.svg", "./public/default-hero.svg")
 
 	// API routes
 	api := router.Group("/api")
