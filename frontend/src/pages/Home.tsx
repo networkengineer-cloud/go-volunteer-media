@@ -4,7 +4,7 @@ import { settingsApi } from '../api/client';
 import './Home.css';
 
 const Home: React.FC = () => {
-  const [heroImage, setHeroImage] = useState<string>('https://images.unsplash.com/photo-1587300003388-59208cc962cb?q=80&w=1920&auto=format&fit=crop&ixlib=rb-4.0.3');
+  const [heroImage, setHeroImage] = useState<string>('');
 
   useEffect(() => {
     const loadSettings = async () => {

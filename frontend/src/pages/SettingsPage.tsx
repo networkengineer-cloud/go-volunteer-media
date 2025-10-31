@@ -3,7 +3,8 @@ import { settingsApi } from '../api/client';
 import './SettingsPage.css';
 
 const SettingsPage: React.FC = () => {
-  const [heroImageUrl, setHeroImageUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -15,7 +16,8 @@ const SettingsPage: React.FC = () => {
   const loadSettings = async () => {
     try {
       const response = await settingsApi.getAll();
-      setHeroImageUrl(response.data.hero_image_url || '');
+      const currentUrl = response.data.hero_image_url || '';
+      setPreviewUrl(currentUrl);
     } catch (error) {
       console.error('Failed to load settings:', error);
       setMessage('Failed to load settings');
@@ -24,18 +26,56 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setMessage('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage('Image size must be less than 5MB');
+      return;
+    }
+
+    setSelectedFile(file);
+    
+    // Create preview URL
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+    setMessage('');
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!selectedFile) {
+      setMessage('Please select an image to upload');
+      return;
+    }
+
     setSaving(true);
     setMessage('');
 
     try {
-      await settingsApi.update('hero_image_url', heroImageUrl);
-      setMessage('Settings saved successfully!');
+      // Upload the image
+      const uploadResponse = await settingsApi.uploadHeroImage(selectedFile);
+      const imageUrl = uploadResponse.data.url;
+
+      // Update the setting with the new URL
+      await settingsApi.update('hero_image_url', imageUrl);
+      
+      setPreviewUrl(imageUrl);
+      setSelectedFile(null);
+      setMessage('Hero image updated successfully!');
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Failed to save settings:', error);
-      setMessage('Failed to save settings');
+      setMessage('Failed to upload image');
     } finally {
       setSaving(false);
     }
@@ -53,24 +93,22 @@ const SettingsPage: React.FC = () => {
 
         <form onSubmit={handleSave} className="settings-form">
           <div className="form-group">
-            <label htmlFor="heroImageUrl">
-              Hero Image URL
+            <label htmlFor="heroImage">
+              Hero Image
               <span className="label-hint">The background image for the home page hero section</span>
             </label>
             <input
-              type="url"
-              id="heroImageUrl"
-              value={heroImageUrl}
-              onChange={(e) => setHeroImageUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              required
+              type="file"
+              id="heroImage"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleFileSelect}
             />
-            {heroImageUrl && (
+            {previewUrl && (
               <div className="image-preview">
                 <p className="preview-label">Preview:</p>
                 <div 
                   className="preview-hero"
-                  style={{ backgroundImage: `url('${heroImageUrl}')` }}
+                  style={{ backgroundImage: `url(${previewUrl})` }}
                 >
                   <div className="preview-overlay">
                     <h2>Help Pets. Help People.</h2>
@@ -79,8 +117,8 @@ const SettingsPage: React.FC = () => {
               </div>
             )}
             <p className="field-help">
-              Use a high-quality image (min 1920x660px). 
-              Try <a href="https://unsplash.com/s/photos/dog" target="_blank" rel="noopener noreferrer">Unsplash</a> for free stock photos.
+              Upload a high-quality image (recommended: 1920x660px or larger). 
+              Accepts JPG, PNG, or WebP files up to 5MB.
             </p>
           </div>
 
@@ -91,8 +129,8 @@ const SettingsPage: React.FC = () => {
           )}
 
           <div className="form-actions">
-            <button type="submit" className="btn-save" disabled={saving}>
-              {saving ? 'Saving...' : 'Save Settings'}
+            <button type="submit" className="btn-save" disabled={saving || !selectedFile}>
+              {saving ? 'Uploading...' : 'Upload & Save'}
             </button>
           </div>
         </form>

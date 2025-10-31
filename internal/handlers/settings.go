@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -67,5 +71,37 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, setting)
+	}
+}
+
+// UploadHeroImage handles hero image upload (admin only)
+func UploadHeroImage() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		file, err := c.FormFile("image")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No image file provided"})
+			return
+		}
+
+		// Validate file type
+		ext := strings.ToLower(filepath.Ext(file.Filename))
+		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Only JPG, PNG, and WebP images are allowed"})
+			return
+		}
+
+		// Generate unique filename
+		filename := fmt.Sprintf("hero-%s%s", uuid.New().String(), ext)
+		filepath := fmt.Sprintf("./public/uploads/%s", filename)
+
+		// Save file
+		if err := c.SaveUploadedFile(file, filepath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+			return
+		}
+
+		// Return the URL path
+		imageURL := fmt.Sprintf("/uploads/%s", filename)
+		c.JSON(http.StatusOK, gin.H{"url": imageURL})
 	}
 }

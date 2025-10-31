@@ -142,6 +142,7 @@ func main() {
 
 			// Site settings management (admin only)
 			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))
+			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage())
 		}
 
 		// Group-specific routes
