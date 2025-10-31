@@ -2,8 +2,13 @@ package handlers
 
 import (
 	"fmt"
+	"image"
+	"image/jpeg"
+	_ "image/gif"  // Register GIF format
+	_ "image/png"  // Register PNG format
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -11,11 +16,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/nfnt/resize"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
 
-// UploadAnimalImage handles secure animal image uploads
+// UploadAnimalImage handles secure animal image uploads with optimization
 func UploadAnimalImage() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		file, err := c.FormFile("image")
@@ -34,22 +40,71 @@ func UploadAnimalImage() gin.HandlerFunc {
 			return
 		}
 
-		// Generate unique filename
-		fname := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), uuid.New().String(), ext)
+		// Open the uploaded file
+		src, err := file.Open()
+		if err != nil {
+			log.Printf("Failed to open uploaded file: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process file"})
+			return
+		}
+		defer src.Close()
+
+		// Decode the image
+		img, format, err := image.Decode(src)
+		if err != nil {
+			log.Printf("Failed to decode image: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image file"})
+			return
+		}
+		log.Printf("Original image format: %s, dimensions: %dx%d", format, img.Bounds().Dx(), img.Bounds().Dy())
+
+		// Resize image if it's larger than 1200px on the longest side
+		maxDimension := uint(1200)
+		var resizedImg image.Image
+		
+		bounds := img.Bounds()
+		width := uint(bounds.Dx())
+		height := uint(bounds.Dy())
+		
+		if width > maxDimension || height > maxDimension {
+			if width > height {
+				// Landscape - resize based on width
+				resizedImg = resize.Resize(maxDimension, 0, img, resize.Lanczos3)
+			} else {
+				// Portrait or square - resize based on height
+				resizedImg = resize.Resize(0, maxDimension, img, resize.Lanczos3)
+			}
+			log.Printf("Resized image to: %dx%d", resizedImg.Bounds().Dx(), resizedImg.Bounds().Dy())
+		} else {
+			resizedImg = img
+			log.Printf("Image dimensions acceptable, no resizing needed")
+		}
+
+		// Generate unique filename (always save as .jpg for consistency)
+		fname := fmt.Sprintf("%d_%s.jpg", time.Now().UnixNano(), uuid.New().String())
 		uploadPath := filepath.Join("public", "uploads", fname)
 
-		log.Printf("Attempting to save file to: %s", uploadPath)
+		log.Printf("Attempting to save optimized file to: %s", uploadPath)
 
-		// Save file
-		if err := c.SaveUploadedFile(file, uploadPath); err != nil {
-			log.Printf("Failed to save file: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file: " + err.Error()})
+		// Create the output file
+		outFile, err := os.Create(uploadPath)
+		if err != nil {
+			log.Printf("Failed to create output file: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
+			return
+		}
+		defer outFile.Close()
+
+		// Encode as JPEG with quality 85 (good balance between quality and size)
+		if err := jpeg.Encode(outFile, resizedImg, &jpeg.Options{Quality: 85}); err != nil {
+			log.Printf("Failed to encode image: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
 			return
 		}
 
 		// Return public URL
 		url := "/uploads/" + fname
-		log.Printf("File uploaded successfully: %s", url)
+		log.Printf("File uploaded and optimized successfully: %s", url)
 		c.JSON(http.StatusOK, gin.H{"url": url})
 	}
 }
