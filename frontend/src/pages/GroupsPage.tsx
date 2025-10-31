@@ -1,7 +1,7 @@
 import React from 'react';
 import './GroupsPage.css';
-import type { Group } from '../api/client';
-import { groupsApi } from '../api/client';
+import type { Group, Animal } from '../api/client';
+import { groupsApi, animalsApi } from '../api/client';
 
 const GroupsPage: React.FC = () => {
   const [groups, setGroups] = React.useState<Group[]>([]);
@@ -11,9 +11,16 @@ const GroupsPage: React.FC = () => {
   // Create/Edit modal state
   const [showModal, setShowModal] = React.useState(false);
   const [editingGroup, setEditingGroup] = React.useState<Group | null>(null);
-  const [modalData, setModalData] = React.useState({ name: '', description: '', image_url: '' });
+  const [modalData, setModalData] = React.useState({ 
+    name: '', 
+    description: '', 
+    image_url: '', 
+    hero_image_url: '' 
+  });
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
+  const [availableAnimals, setAvailableAnimals] = React.useState<Animal[]>([]);
+  const [showAnimalSelector, setShowAnimalSelector] = React.useState(false);
 
   // Fetch groups
   const fetchGroups = React.useCallback(() => {
@@ -37,25 +44,41 @@ const GroupsPage: React.FC = () => {
   // Open modal for creating a new group
   const openCreateModal = () => {
     setEditingGroup(null);
-    setModalData({ name: '', description: '', image_url: '' });
+    setModalData({ name: '', description: '', image_url: '', hero_image_url: '' });
     setModalError(null);
     setShowModal(true);
   };
 
   // Open modal for editing an existing group
-  const openEditModal = (group: Group) => {
+  const openEditModal = async (group: Group) => {
     setEditingGroup(group);
-    setModalData({ name: group.name, description: group.description, image_url: group.image_url || '' });
+    setModalData({ 
+      name: group.name, 
+      description: group.description, 
+      image_url: group.image_url || '', 
+      hero_image_url: group.hero_image_url || '' 
+    });
     setModalError(null);
     setShowModal(true);
+    
+    // Fetch animals for this group to allow hero image selection
+    try {
+      const animalsRes = await animalsApi.getAll(group.id, 'all');
+      setAvailableAnimals(animalsRes.data.filter(a => a.image_url));
+    } catch (err) {
+      console.error('Failed to fetch animals:', err);
+      setAvailableAnimals([]);
+    }
   };
 
   // Close modal
   const closeModal = () => {
     setShowModal(false);
     setEditingGroup(null);
-    setModalData({ name: '', description: '', image_url: '' });
+    setModalData({ name: '', description: '', image_url: '', hero_image_url: '' });
     setModalError(null);
+    setAvailableAnimals([]);
+    setShowAnimalSelector(false);
   };
 
   // Handle form input changes
@@ -73,10 +96,21 @@ const GroupsPage: React.FC = () => {
     try {
       if (editingGroup) {
         // Update existing group
-        await groupsApi.update(editingGroup.id, modalData.name, modalData.description, modalData.image_url);
+        await groupsApi.update(
+          editingGroup.id, 
+          modalData.name, 
+          modalData.description, 
+          modalData.image_url, 
+          modalData.hero_image_url
+        );
       } else {
         // Create new group
-        await groupsApi.create(modalData.name, modalData.description, modalData.image_url);
+        await groupsApi.create(
+          modalData.name, 
+          modalData.description, 
+          modalData.image_url, 
+          modalData.hero_image_url
+        );
       }
       fetchGroups();
       closeModal();
@@ -198,16 +232,7 @@ const GroupsPage: React.FC = () => {
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="image_url">Image URL</label>
-                <input
-                  id="image_url"
-                  name="image_url"
-                  type="text"
-                  value={modalData.image_url}
-                  onChange={handleModalChange}
-                  placeholder="Paste an image URL or upload a file"
-                />
-                <label htmlFor="image_upload" className="upload-label">Or upload image</label>
+                <label htmlFor="image_upload">Group Card Image</label>
                 <input
                   id="image_upload"
                   type="file"
@@ -234,7 +259,73 @@ const GroupsPage: React.FC = () => {
                 {modalData.image_url && (
                   <div className="image-preview">
                     <label>Preview:</label>
-                    <img src={modalData.image_url} alt="Group Preview" />
+                    <img src={modalData.image_url} alt="Group Card Preview" />
+                  </div>
+                )}
+              </div>
+              <div className="form-group">
+                <label htmlFor="hero_image_upload">Hero Image (Group Page Banner)</label>
+                <input
+                  id="hero_image_upload"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.gif"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setModalLoading(true);
+                    try {
+                      const res = await groupsApi.uploadImage(file);
+                      setModalData({ ...modalData, hero_image_url: res.data.url });
+                      alert('Hero image uploaded successfully!');
+                    } catch (err: any) {
+                      console.error('Upload error:', err);
+                      const errorMsg = err.response?.data?.error || err.message || 'Failed to upload image';
+                      alert('Failed to upload hero image: ' + errorMsg);
+                    } finally {
+                      setModalLoading(false);
+                      // Clear the file input
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                {editingGroup && availableAnimals.length > 0 && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="group-action-btn secondary"
+                      onClick={() => setShowAnimalSelector(!showAnimalSelector)}
+                    >
+                      {showAnimalSelector ? 'Hide' : 'Select from Animal Images'}
+                    </button>
+                  </div>
+                )}
+                {showAnimalSelector && availableAnimals.length > 0 && (
+                  <div className="animal-selector">
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                      Click an animal image to use it as the hero image:
+                    </p>
+                    <div className="animal-images-grid">
+                      {availableAnimals.map((animal) => (
+                        <div
+                          key={animal.id}
+                          className="animal-image-option"
+                          onClick={() => {
+                            setModalData({ ...modalData, hero_image_url: animal.image_url });
+                            setShowAnimalSelector(false);
+                            alert(`Selected ${animal.name}'s image as hero image`);
+                          }}
+                        >
+                          <img src={animal.image_url} alt={animal.name} />
+                          <span>{animal.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {modalData.hero_image_url && (
+                  <div className="image-preview">
+                    <label>Preview:</label>
+                    <img src={modalData.hero_image_url} alt="Hero Image Preview" />
                   </div>
                 )}
               </div>

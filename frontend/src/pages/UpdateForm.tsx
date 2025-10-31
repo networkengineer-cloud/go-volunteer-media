@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { updatesApi } from '../api/client';
+import { updatesApi, animalsApi } from '../api/client';
 import './Form.css';
 
 const UpdateForm: React.FC = () => {
@@ -64,13 +64,36 @@ const UpdateForm: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="image_url">Image URL</label>
+            <label htmlFor="image_upload">Update Image</label>
             <input
-              id="image_url"
-              type="url"
-              value={formData.image_url}
-              onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+              id="image_upload"
+              type="file"
+              accept=".jpg,.jpeg,.png,.gif"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setLoading(true);
+                try {
+                  const res = await animalsApi.uploadImage(file);
+                  setFormData({ ...formData, image_url: res.data.url });
+                  alert('Image uploaded successfully!');
+                } catch (err: any) {
+                  console.error('Upload error:', err);
+                  const errorMsg = err.response?.data?.error || err.message || 'Failed to upload image';
+                  alert('Failed to upload image: ' + errorMsg);
+                } finally {
+                  setLoading(false);
+                  // Clear the file input
+                  if (e.target) e.target.value = '';
+                }
+              }}
             />
+            {formData.image_url && (
+              <div className="image-preview">
+                <label>Preview:</label>
+                <img src={formData.image_url} alt="Update Preview" />
+              </div>
+            )}
           </div>
 
           <div className="form-actions">
