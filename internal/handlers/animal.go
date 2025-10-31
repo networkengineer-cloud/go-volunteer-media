@@ -28,7 +28,7 @@ import (
 func UploadAnimalImage() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := middleware.GetLogger(c)
-		
+
 		file, err := c.FormFile("image")
 		if err != nil {
 			logger.Error("Failed to get form file", err)
