@@ -184,6 +184,44 @@ const AnimalDetailPage: React.FC = () => {
             </div>
           </div>
 
+          <div className="comments-list">
+            {comments.length === 0 ? (
+              <p className="no-comments">No comments yet. Be the first to share!</p>
+            ) : (
+              comments.map((comment) => (
+                <div key={comment.id} className="comment-card">
+                  <div className="comment-header">
+                    <span className="comment-author">{comment.user?.username}</span>
+                    <span className="comment-date">
+                      {new Date(comment.created_at).toLocaleDateString()} at{' '}
+                      {new Date(comment.created_at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                  {comment.tags && comment.tags.length > 0 && (
+                    <div className="comment-tags">
+                      {comment.tags.map((tag) => (
+                        <span key={tag.id} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="comment-content">{comment.content}</p>
+                  {comment.image_url && (
+                    <img
+                      src={comment.image_url}
+                      alt="Comment"
+                      className="comment-image"
+                    />
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
           <form onSubmit={handleSubmitComment} className="comment-form">
             <textarea
               placeholder="Share an update or comment about this animal..."
@@ -246,44 +284,6 @@ const AnimalDetailPage: React.FC = () => {
               </button>
             </div>
           </form>
-
-          <div className="comments-list">
-            {comments.length === 0 ? (
-              <p className="no-comments">No comments yet. Be the first to share!</p>
-            ) : (
-              comments.map((comment) => (
-                <div key={comment.id} className="comment-card">
-                  <div className="comment-header">
-                    <span className="comment-author">{comment.user?.username}</span>
-                    <span className="comment-date">
-                      {new Date(comment.created_at).toLocaleDateString()} at{' '}
-                      {new Date(comment.created_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                  </div>
-                  {comment.tags && comment.tags.length > 0 && (
-                    <div className="comment-tags">
-                      {comment.tags.map((tag) => (
-                        <span key={tag.id} className="tag-badge" style={{ backgroundColor: tag.color }}>
-                          {tag.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <p className="comment-content">{comment.content}</p>
-                  {comment.image_url && (
-                    <img
-                      src={comment.image_url}
-                      alt="Comment"
-                      className="comment-image"
-                    />
-                  )}
-                </div>
-              ))
-            )}
-          </div>
         </div>
       </div>
     </div>
