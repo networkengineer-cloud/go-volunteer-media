@@ -11,7 +11,7 @@ import PhotoGallery from './pages/PhotoGallery';
 import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
 import UsersPage from './pages/UsersPage';
-import SettingsPage from './pages/SettingsPage';
+import AdminSettingsPage from './pages/AdminSettingsPage';
 import GroupsPage from './pages/GroupsPage';
 import ResetPassword from './pages/ResetPassword';
 import Settings from './pages/Settings';
@@ -149,7 +149,7 @@ function App() {
             path="/admin/site-settings"
             element={
               <AdminRoute>
-                <SettingsPage />
+                <AdminSettingsPage />
               </AdminRoute>
             }
           />

@@ -77,10 +77,10 @@ const Navigation: React.FC = () => {
                 <>
                   <Link to="/admin/users" className="nav-admin-users">Users</Link>
                   <Link to="/admin/groups" className="nav-admin-groups">Groups</Link>
-                  <Link to="/admin/site-settings" className="nav-admin-settings">Site Settings</Link>
+                  <Link to="/admin/site-settings" className="nav-admin-settings">Admin</Link>
                 </>
               )}
-              <Link to="/settings" className="nav-settings">Settings</Link>
+              <Link to="/settings" className="nav-settings">My Settings</Link>
               <span className="nav-user">
                 {user?.username}
                 {user?.is_admin && <span className="admin-badge">Admin</span>}
