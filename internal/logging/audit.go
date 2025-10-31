@@ -46,14 +46,17 @@ const (
 
 // AuditLogger provides structured audit logging
 type AuditLogger struct {
-	logger *Logger
+	// logger field removed - we'll use defaultLogger directly to avoid nil issues
 }
 
 // NewAuditLogger creates a new audit logger
 func NewAuditLogger() *AuditLogger {
-	return &AuditLogger{
-		logger: defaultLogger,
-	}
+	return &AuditLogger{}
+}
+
+// getLogger returns the current default logger
+func (al *AuditLogger) getLogger() *Logger {
+	return defaultLogger
 }
 
 // Log logs an audit event
@@ -66,8 +69,8 @@ func (al *AuditLogger) Log(ctx context.Context, event AuditEvent, fields map[str
 	fields["audit_event"] = string(event)
 	fields["event_category"] = "audit"
 	
-	// Create logger with context and fields
-	logger := al.logger.WithContext(ctx).WithFields(fields)
+	// Create logger with context and fields using current defaultLogger
+	logger := al.getLogger().WithContext(ctx).WithFields(fields)
 	
 	// Log with appropriate message
 	message := fmt.Sprintf("Audit: %s", event)
