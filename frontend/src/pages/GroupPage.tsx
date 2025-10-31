@@ -115,7 +115,7 @@ const GroupPage: React.FC = () => {
                 )}
                 <div className="animal-info">
                   <h3>{animal.name}</h3>
-                  <p className="species">{animal.species} {animal.breed && `- ${animal.breed}`}</p>
+                  {animal.breed && <p className="breed">{animal.breed}</p>}
                   <p className="age">{animal.age} years old</p>
                   <span className={`status ${animal.status}`}>{animal.status}</span>
                 </div>
