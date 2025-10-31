@@ -95,6 +95,157 @@
   color: var(--danger);
 }
 
+/* Create form styles */
+.users-create-bar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.users-create-form {
+  background: var(--surface);
+  padding: 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--neutral-200);
+}
+
+[data-theme='dark'] .users-create-form {
+  border-color: var(--neutral-700);
+}
+
+.users-create-form > div {
+  margin-bottom: 1rem;
+}
+
+.users-create-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.users-create-form input[type="text"],
+.users-create-form input[type="email"],
+.users-create-form input[type="password"] {
+  width: 100%;
+  padding: 0.625rem;
+  border: 1px solid var(--neutral-300);
+  border-radius: 6px;
+  font-size: 1rem;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.users-create-form input[type="text"]:focus,
+.users-create-form input[type="email"]:focus,
+.users-create-form input[type="password"]:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0, 163, 173, 0.1);
+}
+
+.group-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+
+.group-list li {
+  padding: 0.5rem 0;
+}
+
+.group-list label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.users-success {
+  color: var(--success-600);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid var(--success);
+  padding: 0.875rem;
+  border-radius: 8px;
+  margin-top: 1rem;
+  font-weight: 500;
+}
+
+/* User action buttons */
+.user-action-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--brand);
+  background: transparent;
+  color: var(--brand);
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  min-height: 44px;
+}
+
+.user-action-btn:hover:not(:disabled) {
+  background: var(--brand);
+  color: white;
+}
+
+.user-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.user-action-btn.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.user-action-btn.danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: white;
+}
+
+.user-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Group modal */
+.group-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.group-modal {
+  background: var(--surface);
+  padding: 2rem;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.group-modal h2 {
+  color: var(--text-primary);
+  margin-bottom: 1.5rem;
+}
+
 /* Action buttons in table */
 .users-table button {
   padding: 0.5rem 1rem;

@@ -274,70 +274,138 @@ const UsersPage: React.FC = () => {
       ) : error ? (
         <div className="users-error">{error}</div>
       ) : (
-        <table className="users-table">
-          <thead>
-            <tr>
-              <th>Username</th>
-              <th>Email</th>
-              <th>Admin</th>
-              <th>Groups</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <>
+          {/* Desktop table view */}
+          <table className="users-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Admin</th>
+                <th>Groups</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(user => (
+                <tr key={user.id}>
+                  <td>{user.username}</td>
+                  <td>{user.email}</td>
+                  <td>{user.is_admin ? 'Yes' : 'No'}</td>
+                  <td>{user.groups?.map(g => g.name).join(', ') || '-'}</td>
+                  <td>{showDeleted ? 'Deleted' : 'Active'}</td>
+                  <td>
+                    <div className="user-actions">
+                      {showDeleted ? (
+                        <button
+                          className="user-action-btn"
+                          title="Restore user"
+                          onClick={() => handleRestore(user)}
+                        >
+                          Restore
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            className="user-action-btn"
+                            title={user.is_admin ? 'Demote from admin' : 'Promote to admin'}
+                            disabled={(user as any).deleted_at}
+                            onClick={() => handlePromoteDemote(user)}
+                          >
+                            {user.is_admin ? 'Demote' : 'Promote'}
+                          </button>
+                          <button
+                            className="user-action-btn"
+                            title="Assign/Remove Group"
+                            disabled={(user as any).deleted_at}
+                            onClick={() => openGroupModal(user)}
+                          >
+                            Groups
+                          </button>
+                          {/* Deactivate button removed; Delete now performs soft-delete/deactivation */}
+                          <button
+                            className="user-action-btn danger"
+                            title="Delete user"
+                            disabled={(user as any).deleted_at}
+                            onClick={() => handleDelete(user)}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Mobile card view */}
+          <div className="users-mobile-cards">
             {users.map(user => (
-              <tr key={user.id}>
-                <td>{user.username}</td>
-                <td>{user.email}</td>
-                <td>{user.is_admin ? 'Yes' : 'No'}</td>
-                <td>{user.groups?.map(g => g.name).join(', ') || '-'}</td>
-                <td>{showDeleted ? 'Deleted' : 'Active'}</td>
-                <td>
-                  <div className="user-actions">
-                    {showDeleted ? (
+              <div key={user.id} className="user-card">
+                <div className="user-card-header">
+                  <div className="user-card-title">
+                    <div className="user-card-name">{user.username}</div>
+                    <div className="user-card-email">{user.email}</div>
+                  </div>
+                  {user.is_admin && (
+                    <span className="role-badge admin">Admin</span>
+                  )}
+                </div>
+                <div className="user-card-info">
+                  <div className="user-card-info-row">
+                    <span className="user-card-info-label">Groups:</span>
+                    <span className="user-card-info-value">
+                      {user.groups?.map(g => g.name).join(', ') || '-'}
+                    </span>
+                  </div>
+                  <div className="user-card-info-row">
+                    <span className="user-card-info-label">Status:</span>
+                    <span className="user-card-info-value">
+                      {showDeleted ? 'Deleted' : 'Active'}
+                    </span>
+                  </div>
+                </div>
+                <div className="user-card-actions">
+                  {showDeleted ? (
+                    <button
+                      className="user-action-btn"
+                      onClick={() => handleRestore(user)}
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <>
                       <button
                         className="user-action-btn"
-                        title="Restore user"
-                        onClick={() => handleRestore(user)}
+                        disabled={(user as any).deleted_at}
+                        onClick={() => handlePromoteDemote(user)}
                       >
-                        Restore
+                        {user.is_admin ? 'Demote' : 'Promote'}
                       </button>
-                    ) : (
-                      <>
-                        <button
-                          className="user-action-btn"
-                          title={user.is_admin ? 'Demote from admin' : 'Promote to admin'}
-                          disabled={(user as any).deleted_at}
-                          onClick={() => handlePromoteDemote(user)}
-                        >
-                          {user.is_admin ? 'Demote' : 'Promote'}
-                        </button>
-                        <button
-                          className="user-action-btn"
-                          title="Assign/Remove Group"
-                          disabled={(user as any).deleted_at}
-                          onClick={() => openGroupModal(user)}
-                        >
-                          Groups
-                        </button>
-                        {/* Deactivate button removed; Delete now performs soft-delete/deactivation */}
-                        <button
-                          className="user-action-btn danger"
-                          title="Delete user"
-                          disabled={(user as any).deleted_at}
-                          onClick={() => handleDelete(user)}
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
+                      <button
+                        className="user-action-btn"
+                        disabled={(user as any).deleted_at}
+                        onClick={() => openGroupModal(user)}
+                      >
+                        Groups
+                      </button>
+                      <button
+                        className="user-action-btn danger"
+                        disabled={(user as any).deleted_at}
+                        onClick={() => handleDelete(user)}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        </>
       )}
       {/* Group assignment modal */}
       {groupModalUser && (
