@@ -5,6 +5,7 @@ import './Navigation.css';
 
 const Navigation: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   // Theme state and persistence
   const [theme, setTheme] = React.useState<'light' | 'dark'>(() => {
@@ -31,11 +32,13 @@ const Navigation: React.FC = () => {
   }, [theme]);
 
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  const toggleMobileMenu = () => setMobileMenuOpen(!mobileMenuOpen);
+  const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
     <nav className="navigation">
       <div className="nav-container">
-        <Link to={isAuthenticated ? '/dashboard' : '/'} className="nav-brand">
+        <Link to={isAuthenticated ? '/dashboard' : '/'} className="nav-brand" onClick={closeMobileMenu}>
           {/* HAWS logo placeholder - using paw icon */}
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="4" r="2"></circle>
@@ -45,9 +48,34 @@ const Navigation: React.FC = () => {
             <circle cx="7" cy="14" r="1.5"></circle>
             <path d="M8.5 17.5 A 4 4 0 0 0 15.5 17.5"></path>
           </svg>
-          HAWS Volunteer Portal
+          <span className="nav-brand-text">HAWS Volunteer Portal</span>
         </Link>
-        <div className="nav-right">
+        
+        {/* Mobile menu toggle */}
+        <button
+          type="button"
+          className="mobile-menu-toggle"
+          aria-label="Toggle navigation menu"
+          aria-expanded={mobileMenuOpen}
+          onClick={toggleMobileMenu}
+        >
+          {mobileMenuOpen ? (
+            // Close icon
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          ) : (
+            // Hamburger icon
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          )}
+        </button>
+
+        <div className={`nav-right ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
           <button
             type="button"
             className="theme-toggle"
@@ -70,23 +98,23 @@ const Navigation: React.FC = () => {
             )}
           </button>
           {!isAuthenticated ? (
-            <Link to="/login" className="nav-login">Login</Link>
+            <Link to="/login" className="nav-login" onClick={closeMobileMenu}>Login</Link>
           ) : (
             <>
               {user?.is_admin && (
                 <>
-                  <Link to="/admin/users" className="nav-admin-users">Users</Link>
-                  <Link to="/admin/groups" className="nav-admin-groups">Groups</Link>
-                  <Link to="/admin/animals" className="nav-admin-animals">Animals</Link>
-                  <Link to="/admin/site-settings" className="nav-admin-settings">Admin</Link>
+                  <Link to="/admin/users" className="nav-admin-users" onClick={closeMobileMenu}>Users</Link>
+                  <Link to="/admin/groups" className="nav-admin-groups" onClick={closeMobileMenu}>Groups</Link>
+                  <Link to="/admin/animals" className="nav-admin-animals" onClick={closeMobileMenu}>Animals</Link>
+                  <Link to="/admin/site-settings" className="nav-admin-settings" onClick={closeMobileMenu}>Admin</Link>
                 </>
               )}
-              <Link to="/settings" className="nav-settings">My Settings</Link>
+              <Link to="/settings" className="nav-settings" onClick={closeMobileMenu}>My Settings</Link>
               <span className="nav-user">
                 {user?.username}
                 {user?.is_admin && <span className="admin-badge">Admin</span>}
               </span>
-              <button onClick={logout} className="nav-logout">Logout</button>
+              <button onClick={() => { logout(); closeMobileMenu(); }} className="nav-logout">Logout</button>
             </>
           )}
         </div>

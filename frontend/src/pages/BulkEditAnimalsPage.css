@@ -381,4 +381,33 @@
   .action-controls button {
     width: 100%;
   }
+
+  /* Make table horizontally scrollable on mobile */
+  .animals-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .animals-table {
+    min-width: 600px;
+  }
+
+  .animals-table th,
+  .animals-table td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.875rem;
+  }
+
+  /* Improve button tap targets */
+  .btn-primary,
+  .btn-secondary {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+  }
+
+  /* Better touch targets for inline controls */
+  .inline-select {
+    min-height: 44px;
+    padding: 0.625rem 0.75rem;
+  }
 }

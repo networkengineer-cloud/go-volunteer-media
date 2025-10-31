@@ -127,6 +127,32 @@ body {
   color: var(--text-primary);
   font-size: 16px;
   line-height: 1.6;
+  /* Enable momentum scrolling on iOS */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Ensure minimum touch target size for interactive elements */
+button,
+a,
+input[type="button"],
+input[type="submit"],
+input[type="checkbox"],
+input[type="radio"],
+select {
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+}
+
+/* Exception for inline elements that don't need full touch target */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input[type="url"],
+textarea {
+  min-height: 44px;
+  min-width: auto;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -171,4 +197,25 @@ a:focus-visible {
 
 #root {
   min-height: 100vh;
+}
+
+/* Mobile typography adjustments */
+@media (max-width: 768px) {
+  body {
+    font-size: 16px; /* Prevent zoom on input focus on iOS */
+  }
+
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.75rem; }
+  h3 { font-size: 1.375rem; }
+  h4 { font-size: 1.125rem; }
+  h5 { font-size: 1rem; }
+  h6 { font-size: 0.875rem; }
+}
+
+/* Tablet typography adjustments */
+@media (max-width: 1024px) and (min-width: 769px) {
+  h1 { font-size: 2.25rem; }
+  h2 { font-size: 1.875rem; }
+  h3 { font-size: 1.5rem; }
 }
