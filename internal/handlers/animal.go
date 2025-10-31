@@ -733,23 +733,21 @@ func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Load animal details for each comment
-		animalIDs := make([]uint, 0, len(comments))
-		for _, comment := range comments {
-			animalIDs = append(animalIDs, comment.AnimalID)
-		}
+	// Load animal details for each comment
+	animalIDs := make([]uint, 0, len(comments))
+	for _, comment := range comments {
+		animalIDs = append(animalIDs, comment.AnimalID)
+	}
 
-		// Get all animals in one query
-		var animals []models.Animal
-		if len(animalIDs) > 0 {
-			if err := db.Preload("Group").Where("id IN ?", animalIDs).Find(&animals).Error; err != nil {
-				logger.Error("Failed to fetch animals", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animal details"})
-				return
-			}
+	// Get all animals in one query
+	var animals []models.Animal
+	if len(animalIDs) > 0 {
+		if err := db.Where("id IN ?", animalIDs).Find(&animals).Error; err != nil {
+			logger.Error("Failed to fetch animals", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animal details"})
+			return
 		}
-
-		// Create animal lookup map
+	}		// Create animal lookup map
 		animalMap := make(map[uint]models.Animal)
 		for _, animal := range animals {
 			animalMap[animal.ID] = animal
