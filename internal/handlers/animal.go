@@ -3,9 +3,9 @@ package handlers
 import (
 	"fmt"
 	"image"
+	_ "image/gif" // Register GIF format
 	"image/jpeg"
-	_ "image/gif"  // Register GIF format
-	_ "image/png"  // Register PNG format
+	_ "image/png" // Register PNG format
 	"log"
 	"net/http"
 	"os"
@@ -16,8 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/nfnt/resize"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/nfnt/resize"
 	"gorm.io/gorm"
 )
 
@@ -61,11 +61,11 @@ func UploadAnimalImage() gin.HandlerFunc {
 		// Resize image if it's larger than 1200px on the longest side
 		maxDimension := uint(1200)
 		var resizedImg image.Image
-		
+
 		bounds := img.Bounds()
 		width := uint(bounds.Dx())
 		height := uint(bounds.Dy())
-		
+
 		if width > maxDimension || height > maxDimension {
 			if width > height {
 				// Landscape - resize based on width
