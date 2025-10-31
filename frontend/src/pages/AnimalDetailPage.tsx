@@ -19,6 +19,7 @@ const AnimalDetailPage: React.FC = () => {
   const [commentImage, setCommentImage] = useState('');
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showCommentForm, setShowCommentForm] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -159,29 +160,103 @@ const AnimalDetailPage: React.FC = () => {
         <div className="comments-section">
           <div className="comments-header">
             <h2>Comments & Photos</h2>
-            {comments.filter(c => c.image_url).length > 0 && (
-              <Link to={`/groups/${groupId}/animals/${id}/photos`} className="btn-view-gallery">
-                📷 View All Photos ({comments.filter(c => c.image_url).length})
-              </Link>
-            )}
-            <div className="tag-filters">
+            <div className="comments-header-actions">
               <button
-                className={tagFilter === '' ? 'tag-filter active' : 'tag-filter'}
-                onClick={() => setTagFilter('')}
+                onClick={() => setShowCommentForm(!showCommentForm)}
+                className="btn-toggle-form"
               >
-                All
+                {showCommentForm ? '− Hide Comment Form' : '+ Add Comment'}
               </button>
-              {availableTags.map((tag) => (
-                <button
-                  key={tag.id}
-                  className={tagFilter === tag.name ? 'tag-filter active' : 'tag-filter'}
-                  style={{ borderColor: tag.color }}
-                  onClick={() => setTagFilter(tagFilter === tag.name ? '' : tag.name)}
-                >
-                  {tag.name}
-                </button>
-              ))}
+              {comments.filter(c => c.image_url).length > 0 && (
+                <Link to={`/groups/${groupId}/animals/${id}/photos`} className="btn-view-gallery">
+                  📷 View All Photos ({comments.filter(c => c.image_url).length})
+                </Link>
+              )}
             </div>
+          </div>
+
+          {showCommentForm && (
+            <form onSubmit={handleSubmitComment} className="comment-form">
+              <textarea
+                placeholder="Share an update or comment about this animal..."
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                rows={3}
+                disabled={submitting}
+              />
+              {commentImage && (
+                <div className="comment-image-preview">
+                  <img src={commentImage} alt="Preview" />
+                  <button
+                    type="button"
+                    onClick={() => setCommentImage('')}
+                    className="remove-image"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              <div className="comment-tags-selection">
+                <span>Tags:</span>
+                {availableTags.map((tag) => (
+                  <label key={tag.id} className="tag-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={selectedTags.includes(tag.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedTags([...selectedTags, tag.id]);
+                        } else {
+                          setSelectedTags(selectedTags.filter((t) => t !== tag.id));
+                        }
+                      }}
+                    />
+                    <span className="tag-label" style={{ backgroundColor: tag.color }}>
+                      {tag.name}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div className="comment-form-actions">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.gif"
+                  onChange={handleImageUpload}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="btn-upload"
+                  disabled={uploading || submitting}
+                >
+                  {uploading ? 'Uploading...' : '📷 Add Photo'}
+                </button>
+                <button type="submit" className="btn-post" disabled={submitting || (!commentText.trim() && !commentImage)}>
+                  {submitting ? 'Posting...' : 'Post'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="tag-filters">
+            <button
+              className={tagFilter === '' ? 'tag-filter active' : 'tag-filter'}
+              onClick={() => setTagFilter('')}
+            >
+              All
+            </button>
+            {availableTags.map((tag) => (
+              <button
+                key={tag.id}
+                className={tagFilter === tag.name ? 'tag-filter active' : 'tag-filter'}
+                style={{ borderColor: tag.color }}
+                onClick={() => setTagFilter(tagFilter === tag.name ? '' : tag.name)}
+              >
+                {tag.name}
+              </button>
+            ))}
           </div>
 
           <div className="comments-list">
@@ -221,69 +296,6 @@ const AnimalDetailPage: React.FC = () => {
               ))
             )}
           </div>
-
-          <form onSubmit={handleSubmitComment} className="comment-form">
-            <textarea
-              placeholder="Share an update or comment about this animal..."
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              rows={3}
-              disabled={submitting}
-            />
-            {commentImage && (
-              <div className="comment-image-preview">
-                <img src={commentImage} alt="Preview" />
-                <button
-                  type="button"
-                  onClick={() => setCommentImage('')}
-                  className="remove-image"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-            <div className="comment-tags-selection">
-              <span>Tags:</span>
-              {availableTags.map((tag) => (
-                <label key={tag.id} className="tag-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedTags.includes(tag.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedTags([...selectedTags, tag.id]);
-                      } else {
-                        setSelectedTags(selectedTags.filter((t) => t !== tag.id));
-                      }
-                    }}
-                  />
-                  <span className="tag-label" style={{ backgroundColor: tag.color }}>
-                    {tag.name}
-                  </span>
-                </label>
-              ))}
-            </div>
-            <div className="comment-form-actions">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".jpg,.jpeg,.png,.gif"
-                onChange={handleImageUpload}
-                style={{ display: 'none' }}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="btn-upload"
-                disabled={uploading || submitting}
-              >
-                {uploading ? 'Uploading...' : '📷 Add Photo'}
-              </button>
-              <button type="submit" className="btn-post" disabled={submitting || (!commentText.trim() && !commentImage)}>
-                {submitting ? 'Posting...' : 'Post'}
-              </button>
-            </div>
-          </form>
         </div>
       </div>
     </div>
