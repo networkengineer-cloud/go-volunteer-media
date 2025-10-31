@@ -45,9 +45,9 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 		// Apply tag filter if provided
 		if tagFilter != "" {
 			tagNames := strings.Split(tagFilter, ",")
-			query = query.Joins("JOIN comment_tags ON comment_tags.animal_comment_id = animal_comments.id").
-				Joins("JOIN comment_tags AS ct ON ct.id = comment_tags.comment_tag_id").
-				Where("ct.name IN ?", tagNames).
+			query = query.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
+				Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
+				Where("comment_tags.name IN ?", tagNames).
 				Group("animal_comments.id")
 		}
 
