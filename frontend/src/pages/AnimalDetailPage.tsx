@@ -228,25 +228,45 @@ const AnimalDetailPage: React.FC = () => {
                 </div>
               )}
               <div className="comment-tags-selection">
-                <span>Tags:</span>
-                {availableTags.map((tag) => (
-                  <label key={tag.id} className="tag-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedTags.includes(tag.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedTags([...selectedTags, tag.id]);
-                        } else {
-                          setSelectedTags(selectedTags.filter((t) => t !== tag.id));
-                        }
-                      }}
-                    />
-                    <span className="tag-label" style={{ backgroundColor: tag.color }}>
+                <label htmlFor="tag-select" className="tag-select-label">Tags (optional):</label>
+                <select
+                  id="tag-select"
+                  multiple
+                  size={3}
+                  value={selectedTags.map(String)}
+                  onChange={(e) => {
+                    const options = Array.from(e.target.selectedOptions);
+                    setSelectedTags(options.map(opt => Number(opt.value)));
+                  }}
+                  className="tag-multi-select"
+                >
+                  {availableTags.map((tag) => (
+                    <option key={tag.id} value={tag.id}>
                       {tag.name}
-                    </span>
-                  </label>
-                ))}
+                    </option>
+                  ))}
+                </select>
+                <span className="tag-select-hint">Hold Ctrl/Cmd to select multiple tags</span>
+                {selectedTags.length > 0 && (
+                  <div className="selected-tags-preview">
+                    {selectedTags.map(tagId => {
+                      const tag = availableTags.find(t => t.id === tagId);
+                      return tag ? (
+                        <span key={tagId} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                          {tag.name}
+                          <button
+                            type="button"
+                            className="remove-tag"
+                            onClick={() => setSelectedTags(selectedTags.filter(t => t !== tagId))}
+                            aria-label={`Remove ${tag.name}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                )}
               </div>
               <div className="comment-form-actions">
                 <input
@@ -276,7 +296,7 @@ const AnimalDetailPage: React.FC = () => {
               className={tagFilter === '' ? 'tag-filter active' : 'tag-filter'}
               onClick={() => setTagFilter('')}
             >
-              All
+              All {tagFilter === '' && `(${comments.length})`}
             </button>
             {availableTags.map((tag) => (
               <button
