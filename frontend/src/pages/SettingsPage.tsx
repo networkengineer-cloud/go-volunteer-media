@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { settingsApi } from '../api/client';
 import './SettingsPage.css';
+import '../pages/Home.css'; // Import Home.css to reuse hero styles
 
 const SettingsPage: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -107,11 +108,12 @@ const SettingsPage: React.FC = () => {
               <div className="image-preview">
                 <p className="preview-label">Preview:</p>
                 <div 
-                  className="preview-hero"
+                  className="hero preview-hero"
                   style={{ backgroundImage: `url(${previewUrl})` }}
                 >
-                  <div className="preview-overlay">
-                    <h2>Help Pets. Help People.</h2>
+                  <div className="hero-overlay" />
+                  <div className="hero-content">
+                    <h1>Help Pets. Help People.</h1>
                   </div>
                 </div>
               </div>
