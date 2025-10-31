@@ -23,7 +23,7 @@ func HealthCheck() gin.HandlerFunc {
 func ReadinessCheck(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		
+
 		// Check database connectivity
 		sqlDB, err := db.DB()
 		if err != nil {
@@ -33,7 +33,7 @@ func ReadinessCheck(db *gorm.DB) gin.HandlerFunc {
 			})
 			return
 		}
-		
+
 		// Ping database with context timeout
 		if err := sqlDB.PingContext(ctx); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
@@ -42,7 +42,7 @@ func ReadinessCheck(db *gorm.DB) gin.HandlerFunc {
 			})
 			return
 		}
-		
+
 		c.JSON(http.StatusOK, gin.H{
 			"status":   "ready",
 			"time":     time.Now().UTC().Format(time.RFC3339),

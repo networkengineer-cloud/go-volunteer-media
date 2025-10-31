@@ -12,18 +12,18 @@ func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if request ID already exists in headers
 		requestID := c.GetHeader(RequestIDKey)
-		
+
 		// Generate new UUID if not provided
 		if requestID == "" {
 			requestID = uuid.New().String()
 		}
-		
+
 		// Set request ID in context for use in handlers
 		c.Set("request_id", requestID)
-		
+
 		// Add request ID to response headers
 		c.Header(RequestIDKey, requestID)
-		
+
 		c.Next()
 	}
 }

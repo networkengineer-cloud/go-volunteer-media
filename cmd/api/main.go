@@ -27,7 +27,7 @@ func main() {
 	// Initialize logging from environment variables
 	logging.InitFromEnv()
 	logger := logging.GetDefaultLogger()
-	
+
 	// Register custom username validator
 	v, ok := binding.Validator.Engine().(*validator.Validate)
 	if ok {
@@ -78,7 +78,7 @@ func main() {
 	// Disable Gin's default logger since we're using our own
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	
+
 	// Add recovery middleware
 	router.Use(gin.Recovery())
 
@@ -87,7 +87,7 @@ func main() {
 
 	// Request ID middleware for tracing
 	router.Use(middleware.RequestID())
-	
+
 	// Structured logging middleware
 	router.Use(middleware.LoggingMiddleware())
 
@@ -173,6 +173,8 @@ func main() {
 			admin.POST("/animals/bulk-update", handlers.BulkUpdateAnimals(db))
 			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db))
 			admin.GET("/animals/export-csv", handlers.ExportAnimalsCSV(db))
+			admin.GET("/animals/export-comments-csv", handlers.ExportAnimalCommentsCSV(db))
+			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db))
 		}
 
 		// Group-specific routes

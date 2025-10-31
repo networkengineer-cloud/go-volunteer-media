@@ -10,10 +10,10 @@ import (
 
 // RateLimiter implements a simple token bucket rate limiter
 type RateLimiter struct {
-	mu       sync.RWMutex
-	buckets  map[string]*bucket
-	rate     int           // requests per window
-	window   time.Duration // time window
+	mu              sync.RWMutex
+	buckets         map[string]*bucket
+	rate            int           // requests per window
+	window          time.Duration // time window
 	cleanupInterval time.Duration
 }
 
@@ -28,15 +28,15 @@ type bucket struct {
 // window: time window duration (e.g., time.Minute)
 func NewRateLimiter(rate int, window time.Duration) *RateLimiter {
 	rl := &RateLimiter{
-		buckets: make(map[string]*bucket),
-		rate:    rate,
-		window:  window,
+		buckets:         make(map[string]*bucket),
+		rate:            rate,
+		window:          window,
 		cleanupInterval: window * 10, // Clean up old buckets periodically
 	}
-	
+
 	// Start cleanup goroutine
 	go rl.cleanup()
-	
+
 	return rl
 }
 
@@ -44,7 +44,7 @@ func NewRateLimiter(rate int, window time.Duration) *RateLimiter {
 func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(rl.cleanupInterval)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		rl.mu.Lock()
 		now := time.Now()
@@ -64,7 +64,7 @@ func (rl *RateLimiter) Allow(key string) bool {
 	rl.mu.RLock()
 	b, exists := rl.buckets[key]
 	rl.mu.RUnlock()
-	
+
 	if !exists {
 		rl.mu.Lock()
 		b = &bucket{
@@ -74,35 +74,35 @@ func (rl *RateLimiter) Allow(key string) bool {
 		rl.buckets[key] = b
 		rl.mu.Unlock()
 	}
-	
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	now := time.Now()
 	elapsed := now.Sub(b.lastRefill)
-	
+
 	// Refill tokens based on elapsed time
 	if elapsed >= rl.window {
 		b.tokens = rl.rate
 		b.lastRefill = now
 	}
-	
+
 	if b.tokens > 0 {
 		b.tokens--
 		return true
 	}
-	
+
 	return false
 }
 
 // RateLimit returns a middleware that rate limits requests based on IP address
 func RateLimit(rate int, window time.Duration) gin.HandlerFunc {
 	limiter := NewRateLimiter(rate, window)
-	
+
 	return func(c *gin.Context) {
 		// Use client IP as the key
 		clientIP := c.ClientIP()
-		
+
 		if !limiter.Allow(clientIP) {
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"error": "Too many requests. Please try again later.",
@@ -110,7 +110,7 @@ func RateLimit(rate int, window time.Duration) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		c.Next()
 	}
 }
@@ -118,7 +118,7 @@ func RateLimit(rate int, window time.Duration) gin.HandlerFunc {
 // RateLimitByUser returns a middleware that rate limits requests based on authenticated user ID
 func RateLimitByUser(rate int, window time.Duration) gin.HandlerFunc {
 	limiter := NewRateLimiter(rate, window)
-	
+
 	return func(c *gin.Context) {
 		// Get user ID from context (set by AuthRequired middleware)
 		userID, exists := c.Get("user_id")
@@ -143,7 +143,7 @@ func RateLimitByUser(rate int, window time.Duration) gin.HandlerFunc {
 				return
 			}
 		}
-		
+
 		c.Next()
 	}
 }

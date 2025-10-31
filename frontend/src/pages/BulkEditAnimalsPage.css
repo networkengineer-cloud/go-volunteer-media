@@ -161,6 +161,38 @@
   color: #fef3c7;
 }
 
+.inline-select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  min-width: 120px;
+}
+
+.inline-select:hover:not(:disabled) {
+  border-color: var(--brand);
+}
+
+.inline-select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px rgba(14, 108, 85, 0.1);
+}
+
+.inline-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.animals-table tbody tr.updating {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .btn-primary {
   background: var(--brand);
   color: white;
