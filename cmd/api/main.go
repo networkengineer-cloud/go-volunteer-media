@@ -73,8 +73,19 @@ func main() {
 	// Set up Gin router
 	router := gin.Default()
 
+	// Security headers middleware (add before CORS)
+	router.Use(middleware.SecurityHeaders())
+
+	// Request ID middleware for tracing
+	router.Use(middleware.RequestID())
+
 	// CORS middleware
 	router.Use(middleware.CORS())
+
+	// Health check endpoints (public, no auth required)
+	router.GET("/health", handlers.HealthCheck())
+	router.GET("/healthz", handlers.HealthCheck())
+	router.GET("/ready", handlers.ReadinessCheck(db))
 
 	// Serve uploaded images
 	router.Static("/uploads", "./public/uploads")
@@ -82,11 +93,12 @@ func main() {
 	// API routes
 	api := router.Group("/api")
 
-	// Public routes
-	api.POST("/login", handlers.Login(db))
-	api.POST("/register", handlers.Register(db))
-	api.POST("/request-password-reset", handlers.RequestPasswordReset(db, emailService))
-	api.POST("/reset-password", handlers.ResetPassword(db))
+	// Public routes (with rate limiting for auth endpoints)
+	authLimiter := middleware.RateLimit(5, 1*time.Minute) // 5 requests per minute
+	api.POST("/login", authLimiter, handlers.Login(db))
+	api.POST("/register", authLimiter, handlers.Register(db))
+	api.POST("/request-password-reset", authLimiter, handlers.RequestPasswordReset(db, emailService))
+	api.POST("/reset-password", authLimiter, handlers.ResetPassword(db))
 
 	// Site settings (public read)
 	api.GET("/settings", handlers.GetSiteSettings(db))

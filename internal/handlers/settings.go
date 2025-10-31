@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 	"gorm.io/gorm"
 )
 
@@ -83,12 +84,14 @@ func UploadHeroImage() gin.HandlerFunc {
 			return
 		}
 
-		// Validate file type
-		ext := strings.ToLower(filepath.Ext(file.Filename))
-		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Only JPG, PNG, and WebP images are allowed"})
+		// Validate file upload (size, type, content) - use smaller limit for hero images
+		if err := upload.ValidateImageUpload(file, upload.MaxHeroImageSize); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file: " + err.Error()})
 			return
 		}
+
+		// Get validated extension
+		ext := strings.ToLower(filepath.Ext(file.Filename))
 
 		// Generate unique filename
 		filename := fmt.Sprintf("hero-%s%s", uuid.New().String(), ext)
