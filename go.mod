@@ -1,6 +1,6 @@
 module github.com/networkengineer-cloud/go-volunteer-media
 
-go 1.24.7
+go 1.24.9
 
 require (
 	github.com/gin-gonic/gin v1.11.0
