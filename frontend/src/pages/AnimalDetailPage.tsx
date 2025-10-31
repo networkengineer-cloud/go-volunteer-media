@@ -13,7 +13,7 @@ const AnimalDetailPage: React.FC = () => {
   const [comments, setComments] = useState<AnimalComment[]>([]);
   const [availableTags, setAvailableTags] = useState<CommentTag[]>([]);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
-  const [tagFilter, setTagFilter] = useState<string>('');
+  const [filterTags, setFilterTags] = useState<string[]>([]); // Tags selected for filtering
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [commentImage, setCommentImage] = useState('');
@@ -31,9 +31,10 @@ const AnimalDetailPage: React.FC = () => {
 
   useEffect(() => {
     if (groupId && id) {
-      loadComments(Number(groupId), Number(id), tagFilter);
+      const tagFilterString = filterTags.join(',');
+      loadComments(Number(groupId), Number(id), tagFilterString);
     }
-  }, [tagFilter, groupId, id]);
+  }, [filterTags, groupId, id]);
 
   const loadTags = async () => {
     try {
@@ -117,16 +118,19 @@ const AnimalDetailPage: React.FC = () => {
 
   const handleExportComments = async () => {
     try {
+      const tagFilterString = filterTags.length > 0 ? filterTags.join(',') : undefined;
       const response = await animalsApi.exportCommentsCSV(
         Number(groupId),
-        Number(id)
+        Number(id),
+        tagFilterString
       );
       
       // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${animal?.name || 'animal'}-comments.csv`);
+      const filterSuffix = filterTags.length > 0 ? `-filtered-${filterTags.join('-')}` : '';
+      link.setAttribute('download', `${animal?.name || 'animal'}-comments${filterSuffix}.csv`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -293,21 +297,41 @@ const AnimalDetailPage: React.FC = () => {
 
           <div className="tag-filters">
             <button
-              className={tagFilter === '' ? 'tag-filter active' : 'tag-filter'}
-              onClick={() => setTagFilter('')}
+              className={filterTags.length === 0 ? 'tag-filter active' : 'tag-filter'}
+              onClick={() => setFilterTags([])}
             >
-              All {tagFilter === '' && `(${comments.length})`}
+              All {filterTags.length === 0 && `(${comments.length})`}
             </button>
-            {availableTags.map((tag) => (
-              <button
-                key={tag.id}
-                className={tagFilter === tag.name ? 'tag-filter active' : 'tag-filter'}
-                style={{ borderColor: tag.color }}
-                onClick={() => setTagFilter(tagFilter === tag.name ? '' : tag.name)}
-              >
-                {tag.name}
-              </button>
-            ))}
+            {availableTags.map((tag) => {
+              const isActive = filterTags.includes(tag.name);
+              return (
+                <button
+                  key={tag.id}
+                  className={isActive ? 'tag-filter active' : 'tag-filter'}
+                  style={{ 
+                    borderColor: tag.color,
+                    backgroundColor: isActive ? tag.color : 'transparent',
+                    color: isActive ? 'white' : 'inherit'
+                  }}
+                  onClick={() => {
+                    if (isActive) {
+                      // Remove tag from filter
+                      setFilterTags(filterTags.filter(t => t !== tag.name));
+                    } else {
+                      // Add tag to filter
+                      setFilterTags([...filterTags, tag.name]);
+                    }
+                  }}
+                >
+                  {tag.name}
+                </button>
+              );
+            })}
+            {filterTags.length > 0 && (
+              <span className="filter-hint">
+                Showing comments with: {filterTags.join(' OR ')}
+              </span>
+            )}
           </div>
 
           <div className="comments-list">

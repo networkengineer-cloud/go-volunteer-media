@@ -37,21 +37,26 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get filter parameter (comma-separated tag names)
-		tagFilter := c.Query("tags")
+	// Get filter parameter (comma-separated tag names)
+	tagFilter := c.Query("tags")
 
-		query := db.Preload("User").Preload("Tags").Where("animal_id = ?", animalID)
+	query := db.Preload("User").Preload("Tags").Where("animal_id = ?", animalID)
 
-		// Apply tag filter if provided
-		if tagFilter != "" {
-			tagNames := strings.Split(tagFilter, ",")
-			query = query.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
-				Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
-				Where("comment_tags.name IN ?", tagNames).
-				Group("animal_comments.id")
+	// Apply tag filter if provided (multiple tags = OR logic)
+	if tagFilter != "" {
+		tagNames := strings.Split(tagFilter, ",")
+		// Trim whitespace from tag names
+		for i, name := range tagNames {
+			tagNames[i] = strings.TrimSpace(name)
 		}
+		
+		query = query.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
+			Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
+			Where("comment_tags.name IN ?", tagNames).
+			Group("animal_comments.id")
+	}
 
-		var comments []models.AnimalComment
+	var comments []models.AnimalComment
 		if err := query.Order("created_at DESC").Find(&comments).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
 			return

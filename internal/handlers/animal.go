@@ -713,6 +713,7 @@ func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 		logger := middleware.GetLogger(c)
 		groupID := c.Query("group_id")
 		animalID := c.Query("animal_id")
+		tagFilter := c.Query("tags") // Comma-separated tag names
 
 		// Build query to get comments with related data
 		query := db.Preload("User").Preload("Tags")
@@ -724,6 +725,21 @@ func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 			// If only group_id filter is provided, join with animals to filter by group
 			query = query.Joins("JOIN animals ON animals.id = animal_comments.animal_id").
 				Where("animals.group_id = ?", groupID)
+		}
+
+		// Apply tag filter if provided (multiple tags = OR logic)
+		if tagFilter != "" {
+			tagNames := strings.Split(tagFilter, ",")
+			// Trim whitespace from tag names
+			for i, name := range tagNames {
+				tagNames[i] = strings.TrimSpace(name)
+			}
+			
+			// Join with tag tables to filter by tags
+			query = query.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
+				Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
+				Where("comment_tags.name IN ?", tagNames).
+				Group("animal_comments.id")
 		}
 
 		var comments []models.AnimalComment
@@ -777,6 +793,7 @@ func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 			"comment_count": len(comments),
 			"group_id":      groupID,
 			"animal_id":     animalID,
+			"tag_filter":    tagFilter,
 		}).Info("Exporting animal comments to CSV")
 
 		// Set response headers for CSV download
