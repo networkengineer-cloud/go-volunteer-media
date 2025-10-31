@@ -108,7 +108,7 @@ func createDefaultGroups(db *gorm.DB) error {
 	defaultGroups := []models.Group{
 		{Name: "dogs", Description: "Dog volunteers group"},
 		{Name: "cats", Description: "Cat volunteers group"},
-		{Name: "modsquad", Description: "Mod Squad volunteers group"},
+		{Name: "modsquad", Description: "Behavior modification volunteers group"},
 	}
 
 	for _, group := range defaultGroups {

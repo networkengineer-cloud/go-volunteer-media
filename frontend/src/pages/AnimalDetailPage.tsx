@@ -164,7 +164,7 @@ const AnimalDetailPage: React.FC = () => {
             <div className="animal-details">
               <h1>{animal.name}</h1>
               <p className="animal-meta">
-                {animal.species} {animal.breed && `• ${animal.breed}`} • {animal.age} years old
+                {animal.breed && `${animal.breed} • `}{animal.age} years old
               </p>
               <span className={`status ${animal.status}`}>{animal.status}</span>
               {animal.description && (
