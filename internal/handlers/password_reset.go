@@ -3,13 +3,14 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -48,7 +49,8 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 		// Check if email service is configured
 		if !emailService.IsConfigured() {
-			log.Println("Password reset requested but email service is not configured")
+			logger := middleware.GetLogger(c)
+			logger.Warn("Password reset requested but email service is not configured")
 			// Return success anyway to prevent email enumeration
 			c.JSON(http.StatusOK, gin.H{"message": "If the email exists, a password reset link will be sent"})
 			return
@@ -65,7 +67,8 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 		// Generate secure reset token
 		token, err := generateSecureToken()
 		if err != nil {
-			log.Printf("Failed to generate reset token: %v", err)
+			logger := middleware.GetLogger(c)
+			logger.Error("Failed to generate reset token", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate reset token"})
 			return
 		}
@@ -73,7 +76,8 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 		// Hash the token before storing
 		hashedToken, err := auth.HashPassword(token)
 		if err != nil {
-			log.Printf("Failed to hash reset token: %v", err)
+			logger := middleware.GetLogger(c)
+			logger.Error("Failed to hash reset token", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process reset token"})
 			return
 		}
@@ -86,15 +90,20 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			"reset_token":        hashedToken,
 			"reset_token_expiry": expiry,
 		}).Error; err != nil {
-			log.Printf("Failed to update user with reset token: %v", err)
+			logger := middleware.GetLogger(c)
+			logger.Error("Failed to update user with reset token", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process reset request"})
 			return
 		}
 
 		// Send password reset email (use unhashed token in email)
 		if err := emailService.SendPasswordResetEmail(user.Email, user.Username, token); err != nil {
-			log.Printf("Failed to send password reset email: %v", err)
+			logger := middleware.GetLogger(c)
+			logger.Error("Failed to send password reset email", err)
 			// Still return success to prevent email enumeration
+		} else {
+			// Log successful password reset request (audit log already exists via LogPasswordResetRequest)
+			logging.LogPasswordResetRequest(ctx, req.Email, c.ClientIP())
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "If the email exists, a password reset link will be sent"})

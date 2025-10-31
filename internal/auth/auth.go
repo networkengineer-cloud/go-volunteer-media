@@ -3,12 +3,12 @@ package auth
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -22,10 +22,10 @@ func initJWTSecret() {
 	jwtSecretOnce.Do(func() {
 		secret := os.Getenv("JWT_SECRET")
 		if secret == "" {
-			log.Fatal("JWT_SECRET environment variable is required")
+			logging.Fatal("JWT_SECRET environment variable is required", nil)
 		}
 		if len(secret) < 32 {
-			log.Fatal("JWT_SECRET must be at least 32 characters long for security")
+			logging.Fatal("JWT_SECRET must be at least 32 characters long for security", nil)
 		}
 		jwtSecret = []byte(secret)
 	})
