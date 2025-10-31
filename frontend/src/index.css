@@ -1,9 +1,9 @@
 :root {
-  /* HAWS Brand Colors - matching hawspets.org green theme */
-  --brand: #4CAF50; /* HAWS Green */
-  --brand-600: #45a049; /* Darker green for hover states */
+  /* HAWS Brand Colors - matching hawspets.org official green */
+  --brand: #006b54; /* HAWS official green */
+  --brand-600: #005443; /* Darker shade for hover states */
   --brand-contrast: #ffffff;
-  --brand-rgb: 76, 175, 80; /* for rgba() usage */
+  --brand-rgb: 0, 107, 84; /* for rgba() usage */
 
   /* Secondary/Accent */
   --accent: #F2B705; /* Warm yellow/gold for CTAs */
@@ -55,11 +55,11 @@
 }
 
 [data-theme='dark'] {
-  /* HAWS Brand Colors - slightly brighter green for dark mode visibility */
-  --brand: #66BB6A; /* Lighter green for dark mode */
-  --brand-600: #4CAF50;
+  /* HAWS Brand Colors - lighter shade for dark mode visibility */
+  --brand: #00a87e; /* Lighter green for dark mode */
+  --brand-600: #006b54; /* HAWS official green */
   --brand-contrast: #ffffff;
-  --brand-rgb: 102, 187, 106;
+  --brand-rgb: 0, 168, 126;
 
   /* Secondary/Accent (slightly softened in dark) */
   --accent: #F2B705;
