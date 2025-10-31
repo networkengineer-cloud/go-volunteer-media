@@ -1,0 +1,6 @@
+group_id,name,species,breed,age,description,status,image_url
+1,Buddy,Dog,Golden Retriever,4,Very friendly and loves to play,available,
+1,Charlie,Dog,Beagle,2,Energetic and curious,available,
+1,Daisy,Dog,Poodle,3,Well-trained and calm,fostered,
+2,Mittens,Cat,Siamese,5,Independent but affectionate,available,
+2,Luna,Cat,Maine Coon,1,Playful kitten,available,

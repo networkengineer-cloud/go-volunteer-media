@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"encoding/csv"
 	"fmt"
 	"image"
 	_ "image/gif" // Register GIF format
 	"image/jpeg"
 	_ "image/png" // Register PNG format
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,7 +28,7 @@ import (
 func UploadAnimalImage() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := middleware.GetLogger(c)
-		
+
 		file, err := c.FormFile("image")
 		if err != nil {
 			logger.Error("Failed to get form file", err)
@@ -318,5 +320,317 @@ func DeleteAnimal(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Animal deleted successfully"})
+	}
+}
+
+// BulkUpdateAnimalsRequest represents the bulk update request
+type BulkUpdateAnimalsRequest struct {
+	AnimalIDs []uint  `json:"animal_ids" binding:"required"`
+	GroupID   *uint   `json:"group_id,omitempty"`
+	Status    *string `json:"status,omitempty"`
+}
+
+// BulkUpdateAnimals updates multiple animals at once (admin only)
+func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		logger := middleware.GetLogger(c)
+
+		var req BulkUpdateAnimalsRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if len(req.AnimalIDs) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No animal IDs provided"})
+			return
+		}
+
+		// Build update map
+		updates := make(map[string]interface{})
+		if req.GroupID != nil {
+			updates["group_id"] = *req.GroupID
+		}
+		if req.Status != nil {
+			updates["status"] = *req.Status
+		}
+
+		if len(updates) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No updates provided"})
+			return
+		}
+
+		// Perform bulk update
+		if err := db.Model(&models.Animal{}).Where("id IN ?", req.AnimalIDs).Updates(updates).Error; err != nil {
+			logger.Error("Failed to bulk update animals", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animals"})
+			return
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"count":    len(req.AnimalIDs),
+			"group_id": req.GroupID,
+			"status":   req.Status,
+		}).Info("Bulk updated animals")
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("Successfully updated %d animals", len(req.AnimalIDs)),
+			"count":   len(req.AnimalIDs),
+		})
+	}
+}
+
+// ExportAnimalsCSV exports animals to CSV format
+func ExportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		logger := middleware.GetLogger(c)
+		groupID := c.Query("group_id")
+
+		query := db.Model(&models.Animal{})
+		if groupID != "" {
+			query = query.Where("group_id = ?", groupID)
+		}
+
+		var animals []models.Animal
+		if err := query.Find(&animals).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
+			return
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"count":    len(animals),
+			"group_id": groupID,
+		}).Info("Exporting animals to CSV")
+
+		// Set response headers for CSV download
+		c.Header("Content-Type", "text/csv")
+		c.Header("Content-Disposition", "attachment; filename=animals.csv")
+
+		writer := csv.NewWriter(c.Writer)
+		defer writer.Flush()
+
+		// Write CSV header
+		if err := writer.Write([]string{"id", "group_id", "name", "species", "breed", "age", "description", "status", "image_url"}); err != nil {
+			logger.Error("Failed to write CSV header", err)
+			return
+		}
+
+		// Write animal data
+		for _, animal := range animals {
+			record := []string{
+				strconv.FormatUint(uint64(animal.ID), 10),
+				strconv.FormatUint(uint64(animal.GroupID), 10),
+				animal.Name,
+				animal.Species,
+				animal.Breed,
+				strconv.Itoa(animal.Age),
+				animal.Description,
+				animal.Status,
+				animal.ImageURL,
+			}
+			if err := writer.Write(record); err != nil {
+				logger.Error("Failed to write CSV record", err)
+				return
+			}
+		}
+	}
+}
+
+// ImportAnimalsCSV imports animals from CSV file
+func ImportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		logger := middleware.GetLogger(c)
+
+		file, err := c.FormFile("file")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+			return
+		}
+
+		logger.WithField("filename", file.Filename).Info("Processing CSV import")
+
+		// Validate file extension
+		if !strings.HasSuffix(strings.ToLower(file.Filename), ".csv") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "File must be a CSV"})
+			return
+		}
+
+		// Open the file
+		src, err := file.Open()
+		if err != nil {
+			logger.Error("Failed to open uploaded file", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process file"})
+			return
+		}
+		defer src.Close()
+
+		// Parse CSV
+		reader := csv.NewReader(src)
+
+		// Read header
+		header, err := reader.Read()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read CSV header"})
+			return
+		}
+
+		// Validate header has minimum required fields
+		if len(header) < 2 { // At minimum: group_id, name
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid CSV format. Expected headers: group_id, name, species, breed, age, description, status, image_url"})
+			return
+		}
+
+		// Create header index map
+		headerMap := make(map[string]int)
+		for i, h := range header {
+			headerMap[strings.TrimSpace(strings.ToLower(h))] = i
+		}
+
+		// Validate required headers
+		if _, ok := headerMap["group_id"]; !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required column: group_id"})
+			return
+		}
+		if _, ok := headerMap["name"]; !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required column: name"})
+			return
+		}
+
+		var animals []models.Animal
+		var errors []string
+		lineNum := 1
+
+		// Read data rows
+		for {
+			record, err := reader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("Line %d: Failed to read row", lineNum))
+				lineNum++
+				continue
+			}
+			lineNum++
+
+			// Parse group_id
+			groupIDStr := strings.TrimSpace(record[headerMap["group_id"]])
+			groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("Line %d: Invalid group_id '%s'", lineNum, groupIDStr))
+				continue
+			}
+
+			// Parse name (required)
+			name := strings.TrimSpace(record[headerMap["name"]])
+			if name == "" {
+				errors = append(errors, fmt.Sprintf("Line %d: Name is required", lineNum))
+				continue
+			}
+
+			animal := models.Animal{
+				GroupID: uint(groupID),
+				Name:    name,
+			}
+
+			// Parse optional fields
+			if idx, ok := headerMap["species"]; ok && idx < len(record) {
+				animal.Species = strings.TrimSpace(record[idx])
+			}
+			if idx, ok := headerMap["breed"]; ok && idx < len(record) {
+				animal.Breed = strings.TrimSpace(record[idx])
+			}
+			if idx, ok := headerMap["age"]; ok && idx < len(record) {
+				ageStr := strings.TrimSpace(record[idx])
+				if ageStr != "" {
+					age, err := strconv.Atoi(ageStr)
+					if err == nil {
+						animal.Age = age
+					}
+				}
+			}
+			if idx, ok := headerMap["description"]; ok && idx < len(record) {
+				animal.Description = strings.TrimSpace(record[idx])
+			}
+			if idx, ok := headerMap["status"]; ok && idx < len(record) {
+				status := strings.TrimSpace(record[idx])
+				if status != "" {
+					animal.Status = status
+				} else {
+					animal.Status = "available"
+				}
+			} else {
+				animal.Status = "available"
+			}
+			if idx, ok := headerMap["image_url"]; ok && idx < len(record) {
+				animal.ImageURL = strings.TrimSpace(record[idx])
+			}
+
+			animals = append(animals, animal)
+		}
+
+		if len(animals) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "No valid animals to import",
+				"errors": errors,
+			})
+			return
+		}
+
+		// Insert animals in batch
+		if err := db.Create(&animals).Error; err != nil {
+			logger.Error("Failed to import animals", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to import animals"})
+			return
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"count":    len(animals),
+			"warnings": len(errors),
+		}).Info("Successfully imported animals from CSV")
+
+		response := gin.H{
+			"message": fmt.Sprintf("Successfully imported %d animals", len(animals)),
+			"count":   len(animals),
+		}
+		if len(errors) > 0 {
+			response["warnings"] = errors
+		}
+
+		c.JSON(http.StatusOK, response)
+	}
+}
+
+// GetAllAnimals returns all animals (admin only, for bulk edit page)
+func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Build query with filters
+		query := db.Model(&models.Animal{})
+
+		// Status filter
+		status := c.Query("status")
+		if status != "" && status != "all" {
+			query = query.Where("status = ?", status)
+		}
+
+		// Group filter
+		groupID := c.Query("group_id")
+		if groupID != "" {
+			query = query.Where("group_id = ?", groupID)
+		}
+
+		// Name search filter
+		nameSearch := c.Query("name")
+		if nameSearch != "" {
+			query = query.Where("LOWER(name) LIKE ?", "%"+strings.ToLower(nameSearch)+"%")
+		}
+
+		var animals []models.Animal
+		if err := query.Order("group_id, name").Find(&animals).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
+			return
+		}
+
+		c.JSON(http.StatusOK, animals)
 	}
 }

@@ -7,6 +7,7 @@ Social Media app for volunteers to get updates, share photos and experiences wit
 - **User Authentication**: Secure login and registration with JWT tokens
 - **Group Management**: Organize volunteers into groups (dogs, cats, modsquad, etc.)
 - **Animal CRUD**: Create, read, update, and delete animal profiles within groups
+- **Bulk Animal Management**: Bulk edit, CSV import/export for efficient animal management
 - **Updates Feed**: Share experiences and photos with group members
 - **Admin Controls**: Admin users can create groups and manage user memberships
 - **Secure Deployment**: Docker-based deployment with non-root user
