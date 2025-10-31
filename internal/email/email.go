@@ -64,7 +64,8 @@ func (s *Service) SendEmail(to, subject, body string) error {
 
 	// Try to send with TLS
 	tlsConfig := &tls.Config{
-		ServerName: s.SMTPHost,
+		ServerName:         s.SMTPHost,
+		InsecureSkipVerify: false, // Always verify certificates in production
 	}
 
 	conn, err := tls.Dial("tcp", addr, tlsConfig)

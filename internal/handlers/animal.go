@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 	"github.com/nfnt/resize"
 	"gorm.io/gorm"
 )
@@ -27,16 +28,14 @@ func UploadAnimalImage() gin.HandlerFunc {
 		file, err := c.FormFile("image")
 		if err != nil {
 			log.Printf("Failed to get form file: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded: " + err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
 			return
 		}
 
-		// Only allow jpg, jpeg, png, gif
-		ext := strings.ToLower(filepath.Ext(file.Filename))
-		allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true}
-		if !allowed[ext] {
-			log.Printf("Invalid file type: %s", ext)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file type"})
+		// Validate file upload (size, type, content)
+		if err := upload.ValidateImageUpload(file, upload.MaxImageSize); err != nil {
+			log.Printf("File validation failed: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file: " + err.Error()})
 			return
 		}
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -63,6 +64,9 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Audit log: user registration
+		logging.LogRegistration(ctx, user.ID, user.Username, user.Email, c.ClientIP())
+
 		// Generate token
 		token, err := auth.GenerateToken(user.ID, user.IsAdmin)
 		if err != nil {
@@ -90,6 +94,8 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		// Find user
 		var user models.User
 		if err := db.WithContext(ctx).Preload("Groups").Where("username = ?", req.Username).First(&user).Error; err != nil {
+			// Audit log: failed login attempt (user not found)
+			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "user_not_found")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 			return
 		}
@@ -98,6 +104,8 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		if user.LockedUntil != nil && user.LockedUntil.After(time.Now()) {
 			remainingTime := time.Until(*user.LockedUntil)
 			minutes := int(remainingTime.Minutes())
+			// Audit log: attempt to access locked account
+			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "account_locked")
 			c.JSON(http.StatusForbidden, gin.H{
 				"error":         "Account is temporarily locked due to too many failed login attempts",
 				"locked_until":  user.LockedUntil,
@@ -137,6 +145,9 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 					return
 				}
 
+				// Audit log: account locked
+				logging.LogAccountLocked(ctx, user.ID, user.Username, c.ClientIP(), user.FailedLoginAttempts)
+
 				c.JSON(http.StatusForbidden, gin.H{
 					"error":         "Account has been locked due to too many failed login attempts. Please try again in 30 minutes or reset your password.",
 					"locked_until":  lockUntil,
@@ -150,6 +161,9 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 				return
 			}
+
+			// Audit log: failed login attempt
+			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "invalid_password")
 
 			attemptsRemaining := 5 - user.FailedLoginAttempts
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -169,6 +183,9 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 				return
 			}
 		}
+
+		// Audit log: successful login
+		logging.LogAuthSuccess(ctx, user.ID, user.Username, c.ClientIP())
 
 		// Generate token
 		token, err := auth.GenerateToken(user.ID, user.IsAdmin)

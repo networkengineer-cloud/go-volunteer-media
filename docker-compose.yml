@@ -2,12 +2,13 @@ version: '3.8'
 
 services:
   # Development Database
+  # WARNING: Change default password before deploying to production!
   postgres_dev:
     image: postgres:15-alpine
     container_name: volunteer_media_db_dev
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: postgres  # CHANGE THIS IN PRODUCTION
       POSTGRES_DB: volunteer_media_dev
     ports:
       - "5432:5432"
@@ -59,6 +60,20 @@ services:
       postgres_dev:
         condition: service_healthy
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   postgres_dev_data:
