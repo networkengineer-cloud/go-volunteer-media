@@ -10,25 +10,25 @@ type AuditEvent string
 
 const (
 	// Authentication events
-	AuditEventLoginSuccess        AuditEvent = "login_success"
-	AuditEventLoginFailure        AuditEvent = "login_failure"
-	AuditEventAccountLocked       AuditEvent = "account_locked"
+	AuditEventLoginSuccess         AuditEvent = "login_success"
+	AuditEventLoginFailure         AuditEvent = "login_failure"
+	AuditEventAccountLocked        AuditEvent = "account_locked"
 	AuditEventPasswordResetRequest AuditEvent = "password_reset_request"
 	AuditEventPasswordResetSuccess AuditEvent = "password_reset_success"
-	AuditEventRegistration        AuditEvent = "user_registration"
-	
+	AuditEventRegistration         AuditEvent = "user_registration"
+
 	// Admin events
-	AuditEventUserCreated         AuditEvent = "user_created"
-	AuditEventUserDeleted         AuditEvent = "user_deleted"
-	AuditEventUserRestored        AuditEvent = "user_restored"
-	AuditEventUserPromoted        AuditEvent = "user_promoted"
-	AuditEventUserDemoted         AuditEvent = "user_demoted"
-	AuditEventGroupCreated        AuditEvent = "group_created"
-	AuditEventGroupUpdated        AuditEvent = "group_updated"
-	AuditEventGroupDeleted        AuditEvent = "group_deleted"
-	AuditEventUserAddedToGroup    AuditEvent = "user_added_to_group"
+	AuditEventUserCreated          AuditEvent = "user_created"
+	AuditEventUserDeleted          AuditEvent = "user_deleted"
+	AuditEventUserRestored         AuditEvent = "user_restored"
+	AuditEventUserPromoted         AuditEvent = "user_promoted"
+	AuditEventUserDemoted          AuditEvent = "user_demoted"
+	AuditEventGroupCreated         AuditEvent = "group_created"
+	AuditEventGroupUpdated         AuditEvent = "group_updated"
+	AuditEventGroupDeleted         AuditEvent = "group_deleted"
+	AuditEventUserAddedToGroup     AuditEvent = "user_added_to_group"
 	AuditEventUserRemovedFromGroup AuditEvent = "user_removed_from_group"
-	
+
 	// Data events
 	AuditEventAnimalCreated       AuditEvent = "animal_created"
 	AuditEventAnimalUpdated       AuditEvent = "animal_updated"
@@ -36,12 +36,12 @@ const (
 	AuditEventAnnouncementCreated AuditEvent = "announcement_created"
 	AuditEventAnnouncementDeleted AuditEvent = "announcement_deleted"
 	AuditEventImageUploaded       AuditEvent = "image_uploaded"
-	
+
 	// Security events
-	AuditEventRateLimitExceeded   AuditEvent = "rate_limit_exceeded"
-	AuditEventUnauthorizedAccess  AuditEvent = "unauthorized_access"
-	AuditEventInvalidToken        AuditEvent = "invalid_token"
-	AuditEventFileUploadRejected  AuditEvent = "file_upload_rejected"
+	AuditEventRateLimitExceeded  AuditEvent = "rate_limit_exceeded"
+	AuditEventUnauthorizedAccess AuditEvent = "unauthorized_access"
+	AuditEventInvalidToken       AuditEvent = "invalid_token"
+	AuditEventFileUploadRejected AuditEvent = "file_upload_rejected"
 )
 
 // AuditLogger provides structured audit logging
@@ -64,14 +64,14 @@ func (al *AuditLogger) Log(ctx context.Context, event AuditEvent, fields map[str
 	if fields == nil {
 		fields = make(map[string]interface{})
 	}
-	
+
 	// Add audit event type
 	fields["audit_event"] = string(event)
 	fields["event_category"] = "audit"
-	
+
 	// Create logger with context and fields using current defaultLogger
 	logger := al.getLogger().WithContext(ctx).WithFields(fields)
-	
+
 	// Log with appropriate message
 	message := fmt.Sprintf("Audit: %s", event)
 	logger.Info(message)
@@ -98,9 +98,9 @@ func (al *AuditLogger) LogAuthFailure(ctx context.Context, username, ip, reason 
 // LogAccountLocked logs account lockout event
 func (al *AuditLogger) LogAccountLocked(ctx context.Context, userID uint, username, ip string, attempts int) {
 	al.Log(ctx, AuditEventAccountLocked, map[string]interface{}{
-		"user_id":        userID,
-		"username":       username,
-		"ip":             ip,
+		"user_id":         userID,
+		"username":        username,
+		"ip":              ip,
 		"failed_attempts": attempts,
 	})
 }

@@ -14,7 +14,6 @@ import { test, expect } from '@playwright/test';
 
 // Test configuration
 const BASE_URL = 'http://localhost:5173';
-const API_URL = 'http://localhost:8080/api';
 
 // Test credentials
 const ADMIN_USER = {
@@ -251,7 +250,7 @@ test.describe('Authentication - Logout', () => {
           loggedOut = true;
           break;
         }
-      } catch (e) {
+      } catch {
         // Try next selector
         continue;
       }
@@ -279,13 +278,13 @@ test.describe('Authentication - Logout', () => {
 test.describe('Authentication - API Integration', () => {
   test('should receive valid JWT token on successful login', async ({ page }) => {
     // Intercept API calls
-    let loginResponse: any = null;
+    let loginResponse: Record<string, unknown> | null = null;
     
     page.on('response', async response => {
       if (response.url().includes('/api/login') && response.status() === 200) {
         try {
-          loginResponse = await response.json();
-        } catch (e) {
+          loginResponse = await response.json() as Record<string, unknown>;
+        } catch {
           // Response might not be JSON
         }
       }
@@ -318,7 +317,7 @@ test.describe('Authentication - API Integration', () => {
     await page.waitForURL(/\/(dashboard|groups)/i, { timeout: 10000 });
     
     // Intercept API requests to verify Authorization header
-    const requests: any[] = [];
+    const requests: Array<{ url: string; headers: Record<string, string> }> = [];
     page.on('request', request => {
       if (request.url().includes('/api/')) {
         requests.push({
@@ -372,14 +371,7 @@ test.describe('Authentication - Edge Cases', () => {
     
     await page.waitForTimeout(2000);
     
-    // Should show some kind of error
-    const bodyText = await page.textContent('body');
-    const hasErrorIndicator = 
-      bodyText?.includes('error') ||
-      bodyText?.includes('failed') ||
-      bodyText?.includes('try again');
-    
-    // At minimum, should not crash and should stay on login page
+    // Should show some kind of error - at minimum, should not crash
     expect(page.url()).toContain('/login');
     
     console.log('✅ Network error handled gracefully');
