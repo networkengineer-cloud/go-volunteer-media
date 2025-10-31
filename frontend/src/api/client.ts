@@ -39,6 +39,7 @@ export interface Group {
   name: string;
   description: string;
   image_url: string;
+  hero_image_url: string;
 }
 
 export interface Animal {
@@ -108,10 +109,10 @@ export const authApi = {
 export const groupsApi = {
   getAll: () => api.get<Group[]>('/groups'),
   getById: (id: number) => api.get<Group>('/groups/' + id),
-  create: (name: string, description: string, image_url?: string) =>
-    api.post<Group>('/admin/groups', { name, description, image_url }),
-  update: (id: number, name: string, description: string, image_url?: string) =>
-    api.put<Group>('/admin/groups/' + id, { name, description, image_url }),
+  create: (name: string, description: string, image_url?: string, hero_image_url?: string) =>
+    api.post<Group>('/admin/groups', { name, description, image_url, hero_image_url }),
+  update: (id: number, name: string, description: string, image_url?: string, hero_image_url?: string) =>
+    api.put<Group>('/admin/groups/' + id, { name, description, image_url, hero_image_url }),
   delete: (id: number) => api.delete('/admin/groups/' + id),
   uploadImage: (file: File) => {
     const formData = new FormData();

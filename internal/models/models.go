@@ -26,16 +26,17 @@ type User struct {
 
 // Group represents a volunteer group (dogs, cats, modsquad, etc.)
 type Group struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
-	Name        string         `gorm:"uniqueIndex;not null" json:"name"`
-	Description string         `json:"description"`
-	ImageURL    string         `json:"image_url"`
-	Users       []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
-	Animals     []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
-	Updates     []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
+	ID           uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
+	Name         string         `gorm:"uniqueIndex;not null" json:"name"`
+	Description  string         `json:"description"`
+	ImageURL     string         `json:"image_url"`
+	HeroImageURL string         `json:"hero_image_url"`
+	Users        []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
+	Animals      []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
+	Updates      []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
 }
 
 // Animal represents an animal in a group

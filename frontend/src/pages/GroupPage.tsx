@@ -48,6 +48,12 @@ const GroupPage: React.FC = () => {
 
   return (
     <div className="group-page">
+      {group.hero_image_url && (
+        <div 
+          className="group-hero-image" 
+          style={{ backgroundImage: `url(${group.hero_image_url})` }}
+        />
+      )}
       <div className="group-header">
         <Link to="/" className="back-link">← Back to Dashboard</Link>
         <h1>{group.name}</h1>

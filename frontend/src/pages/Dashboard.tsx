@@ -16,17 +16,7 @@ const Dashboard: React.FC = () => {
   const [sendEmail, setSendEmail] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Default group images based on group name
-  const getGroupImage = (groupName: string) => {
-    const images: { [key: string]: string } = {
-      dogs: '🐕',
-      cats: '🐈',
-      modsquad: '👥',
-      default: '📋',
-    };
-    return images[groupName.toLowerCase()] || images.default;
-  };
-
+  // Default group gradient (fallback when no image is provided)
   const getGroupGradient = (groupName: string) => {
     const gradients: { [key: string]: string } = {
       dogs: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -205,9 +195,13 @@ const Dashboard: React.FC = () => {
             <Link key={group.id} to={`/groups/${group.id}`} className="group-card">
               <div
                 className="group-card-image"
-                style={{ background: getGroupGradient(group.name) }}
+                style={
+                  group.image_url
+                    ? { backgroundImage: `url(${group.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                    : { background: getGroupGradient(group.name) }
+                }
               >
-                <span className="group-emoji">{getGroupImage(group.name)}</span>
+                {!group.image_url && <span className="group-emoji">📋</span>}
               </div>
               <div className="group-card-content">
                 <h3>{group.name}</h3>
