@@ -1,7 +1,7 @@
 import React from 'react';
 import './GroupsPage.css';
-import type { Group } from '../api/client';
-import { groupsApi } from '../api/client';
+import type { Group, Animal } from '../api/client';
+import { groupsApi, animalsApi } from '../api/client';
 
 const GroupsPage: React.FC = () => {
   const [groups, setGroups] = React.useState<Group[]>([]);
@@ -19,6 +19,8 @@ const GroupsPage: React.FC = () => {
   });
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
+  const [availableAnimals, setAvailableAnimals] = React.useState<Animal[]>([]);
+  const [showAnimalSelector, setShowAnimalSelector] = React.useState(false);
 
   // Fetch groups
   const fetchGroups = React.useCallback(() => {
@@ -48,7 +50,7 @@ const GroupsPage: React.FC = () => {
   };
 
   // Open modal for editing an existing group
-  const openEditModal = (group: Group) => {
+  const openEditModal = async (group: Group) => {
     setEditingGroup(group);
     setModalData({ 
       name: group.name, 
@@ -58,6 +60,15 @@ const GroupsPage: React.FC = () => {
     });
     setModalError(null);
     setShowModal(true);
+    
+    // Fetch animals for this group to allow hero image selection
+    try {
+      const animalsRes = await animalsApi.getAll(group.id, 'all');
+      setAvailableAnimals(animalsRes.data.filter(a => a.image_url));
+    } catch (err) {
+      console.error('Failed to fetch animals:', err);
+      setAvailableAnimals([]);
+    }
   };
 
   // Close modal
@@ -66,6 +77,8 @@ const GroupsPage: React.FC = () => {
     setEditingGroup(null);
     setModalData({ name: '', description: '', image_url: '', hero_image_url: '' });
     setModalError(null);
+    setAvailableAnimals([]);
+    setShowAnimalSelector(false);
   };
 
   // Handle form input changes
@@ -275,6 +288,40 @@ const GroupsPage: React.FC = () => {
                     }
                   }}
                 />
+                {editingGroup && availableAnimals.length > 0 && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="group-action-btn secondary"
+                      onClick={() => setShowAnimalSelector(!showAnimalSelector)}
+                    >
+                      {showAnimalSelector ? 'Hide' : 'Select from Animal Images'}
+                    </button>
+                  </div>
+                )}
+                {showAnimalSelector && availableAnimals.length > 0 && (
+                  <div className="animal-selector">
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                      Click an animal image to use it as the hero image:
+                    </p>
+                    <div className="animal-images-grid">
+                      {availableAnimals.map((animal) => (
+                        <div
+                          key={animal.id}
+                          className="animal-image-option"
+                          onClick={() => {
+                            setModalData({ ...modalData, hero_image_url: animal.image_url });
+                            setShowAnimalSelector(false);
+                            alert(`Selected ${animal.name}'s image as hero image`);
+                          }}
+                        >
+                          <img src={animal.image_url} alt={animal.name} />
+                          <span>{animal.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {modalData.hero_image_url && (
                   <div className="image-preview">
                     <label>Preview:</label>

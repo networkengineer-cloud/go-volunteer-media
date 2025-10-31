@@ -131,15 +131,7 @@ const AnimalForm: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="image_url">Image URL</label>
-            <input
-              id="image_url"
-              type="text"
-              value={formData.image_url}
-              onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-              placeholder="Paste an image URL or upload a file"
-            />
-            <label htmlFor="image_upload" className="upload-label">Or upload image</label>
+            <label htmlFor="image_upload">Animal Image</label>
             <input
               id="image_upload"
               type="file"
