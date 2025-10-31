@@ -6,8 +6,7 @@
 .hero {
   position: relative;
   min-height: clamp(400px, 60vh, 660px);
-  /* Royalty-free stock image (Unsplash license) */
-  background-image: url('https://images.unsplash.com/photo-1518806118471-f28b20a1d79d?q=80&w=1920&auto=format&fit=crop');
+  /* Background image set dynamically via inline style */
   background-size: cover;
   background-position: center;
   background-color: var(--navy); /* fallback color */

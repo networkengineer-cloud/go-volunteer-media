@@ -11,6 +11,7 @@ import PhotoGallery from './pages/PhotoGallery';
 import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
 import UsersPage from './pages/UsersPage';
+import SettingsPage from './pages/SettingsPage';
 import GroupsPage from './pages/GroupsPage';
 import ResetPassword from './pages/ResetPassword';
 import Settings from './pages/Settings';
@@ -141,6 +142,14 @@ function App() {
             element={
               <AdminRoute>
                 <GroupsPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/site-settings"
+            element={
+              <AdminRoute>
+                <SettingsPage />
               </AdminRoute>
             }
           />

@@ -105,3 +105,12 @@ type CommentTag struct {
 	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
 	IsSystem  bool           `gorm:"default:false" json:"is_system"` // True for behavior/medical tags
 }
+
+// SiteSetting represents configurable site settings
+type SiteSetting struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Key       string    `gorm:"uniqueIndex;not null" json:"key"`
+	Value     string    `gorm:"type:text" json:"value"`
+}

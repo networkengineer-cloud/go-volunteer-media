@@ -180,4 +180,10 @@ export const announcementsApi = {
   delete: (id: number) => api.delete('/admin/announcements/' + id),
 };
 
+// Site Settings API
+export const settingsApi = {
+  getAll: () => api.get<Record<string, string>>('/settings'),
+  update: (key: string, value: string) => api.put('/admin/settings/' + key, { value }),
+};
+
 export default api;

@@ -1,11 +1,29 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { settingsApi } from '../api/client';
 import './Home.css';
 
 const Home: React.FC = () => {
+  const [heroImage, setHeroImage] = useState<string>('https://images.unsplash.com/photo-1518806118471-f28b20a1d79d?q=80&w=1920&auto=format&fit=crop');
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const response = await settingsApi.getAll();
+        if (response.data.hero_image_url) {
+          setHeroImage(response.data.hero_image_url);
+        }
+      } catch (error) {
+        console.error('Failed to load site settings:', error);
+        // Keep default image on error
+      }
+    };
+    loadSettings();
+  }, []);
+
   return (
     <main className="home">
-      <section className="hero">
+      <section className="hero" style={{ backgroundImage: `url('${heroImage}')` }}>
         <div className="hero-overlay" />
         <div className="hero-content">
           <h1>Help Pets. Help People.</h1>

@@ -79,14 +79,17 @@ func main() {
 	// Serve uploaded images
 	router.Static("/uploads", "./public/uploads")
 
-	// Public routes
+	// API routes
 	api := router.Group("/api")
-	{
-		api.POST("/login", handlers.Login(db))
-		api.POST("/register", handlers.Register(db))
-		api.POST("/request-password-reset", handlers.RequestPasswordReset(db, emailService))
-		api.POST("/reset-password", handlers.ResetPassword(db))
-	}
+	
+	// Public routes
+	api.POST("/login", handlers.Login(db))
+	api.POST("/register", handlers.Register(db))
+	api.POST("/request-password-reset", handlers.RequestPasswordReset(db, emailService))
+	api.POST("/reset-password", handlers.ResetPassword(db))
+
+	// Site settings (public read)
+	api.GET("/settings", handlers.GetSiteSettings(db))
 
 	// Protected routes
 	protected := api.Group("/")
@@ -136,6 +139,9 @@ func main() {
 			// Comment tag management (admin only)
 			admin.POST("/comment-tags", handlers.CreateCommentTag(db))
 			admin.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
+
+			// Site settings management (admin only)
+			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))
 		}
 
 		// Group-specific routes
