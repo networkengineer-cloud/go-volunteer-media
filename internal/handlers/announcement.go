@@ -116,9 +116,8 @@ func sendAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService *emai
 	successCount := 0
 	for _, user := range users {
 		if err := emailService.SendAnnouncementEmail(user.Email, title, content); err != nil {
-			logger.WithFields(map[string]interface{}{
-				"email": user.Email,
-			}).Error("Failed to send announcement email", err)
+			// Don't log email addresses to prevent PII leakage - just log the error
+			logger.Error("Failed to send announcement email to user", err)
 		} else {
 			successCount++
 		}
