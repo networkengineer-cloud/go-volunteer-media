@@ -10,8 +10,12 @@ const Home: React.FC = () => {
     const loadSettings = async () => {
       try {
         const response = await settingsApi.getAll();
-        if (response.data.hero_image_url) {
+        console.log('Settings response:', response.data);
+        if (response.data && response.data.hero_image_url) {
+          console.log('Setting hero image to:', response.data.hero_image_url);
           setHeroImage(response.data.hero_image_url);
+        } else {
+          console.log('No hero_image_url in response, using default');
         }
       } catch (error) {
         console.error('Failed to load site settings:', error);
@@ -21,9 +25,11 @@ const Home: React.FC = () => {
     loadSettings();
   }, []);
 
+  console.log('Current heroImage:', heroImage);
+
   return (
     <main className="home">
-      <section className="hero" style={{ backgroundImage: `url('${heroImage}')` }}>
+      <section className="hero" style={{ backgroundImage: `url(${heroImage})` }}>
         <div className="hero-overlay" />
         <div className="hero-content">
           <h1>Help Pets. Help People.</h1>
