@@ -27,9 +27,16 @@ const Home: React.FC = () => {
 
   console.log('Current heroImage:', heroImage);
 
+  const heroStyle: React.CSSProperties = {
+    backgroundImage: `url(${heroImage})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat'
+  };
+
   return (
     <main className="home">
-      <section className="hero" style={{ backgroundImage: `url(${heroImage})` }}>
+      <section className="hero" style={heroStyle}>
         <div className="hero-overlay" />
         <div className="hero-content">
           <h1>Help Pets. Help People.</h1>

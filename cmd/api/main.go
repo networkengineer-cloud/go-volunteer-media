@@ -81,7 +81,7 @@ func main() {
 
 	// API routes
 	api := router.Group("/api")
-	
+
 	// Public routes
 	api.POST("/login", handlers.Login(db))
 	api.POST("/register", handlers.Register(db))
@@ -123,7 +123,7 @@ func main() {
 			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))
 			admin.POST("/users/:userId/promote", handlers.PromoteUser(db))
 			admin.POST("/users/:userId/demote", handlers.DemoteUser(db))
-			
+
 			// Group management (admin only)
 			admin.POST("/groups", handlers.CreateGroup(db))
 			admin.PUT("/groups/:id", handlers.UpdateGroup(db))
@@ -152,7 +152,7 @@ func main() {
 			// Animal routes - viewing accessible to all group members
 			group.GET("/animals", handlers.GetAnimals(db))
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
-			
+
 			// Animal comments - all group members can view and add comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
 			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
@@ -177,7 +177,7 @@ func main() {
 		// Serve static files
 		router.StaticFile("/", "./frontend/dist/index.html")
 		router.Static("/assets", "./frontend/dist/assets")
-		
+
 		// Serve index.html for all non-API routes (SPA routing)
 		router.NoRoute(func(c *gin.Context) {
 			c.File("./frontend/dist/index.html")

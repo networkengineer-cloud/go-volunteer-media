@@ -31,11 +31,11 @@ func GetSiteSettings(db *gorm.DB) gin.HandlerFunc {
 func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := c.Param("key")
-		
+
 		var req struct {
 			Value string `json:"value" binding:"required"`
 		}
-		
+
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -43,7 +43,7 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 
 		var setting models.SiteSetting
 		result := db.Where("key = ?", key).First(&setting)
-		
+
 		if result.Error == gorm.ErrRecordNotFound {
 			// Create new setting if it doesn't exist
 			setting = models.SiteSetting{
