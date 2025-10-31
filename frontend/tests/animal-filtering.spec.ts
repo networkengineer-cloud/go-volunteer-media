@@ -7,7 +7,7 @@ test.describe('Animal Filtering and Search Feature', () => {
       await expect(page.locator('body')).toBeVisible();
       
       console.log('Animal filtering test - Component includes:');
-      console.log('- Status filter dropdown with options: Available (default), All, Available, Adopted, Fostered, Archived');
+      console.log('- Status filter dropdown with options: Available (default), All, Available, Foster, Bite Quarantine, Archived');
       console.log('- Name search input field');
       console.log('- Default view shows only available animals');
       console.log('- Filter updates trigger API call with query parameters');
@@ -17,7 +17,7 @@ test.describe('Animal Filtering and Search Feature', () => {
       await page.goto('http://localhost:5173');
       
       console.log('AnimalForm includes archived status option:');
-      console.log('- Status dropdown includes: Available, Adopted, Fostered, Archived');
+      console.log('- Status dropdown includes: Available, Foster, Bite Quarantine, Archived');
       console.log('- Default status is "available"');
     });
   });
@@ -28,15 +28,15 @@ test.describe('Animal Filtering and Search Feature', () => {
       // 1. Default query returns only available animals
       // 2. status=all returns all animals
       // 3. status=archived returns only archived animals
-      // 4. status=adopted returns only adopted animals
-      // 5. status=fostered returns only fostered animals
+      // 4. status=foster returns only foster animals
+      // 5. status=bite_quarantine returns only bite quarantine animals
       
       console.log('Backend filtering tests would verify:');
       console.log('- GET /groups/:id/animals (no params) -> only available animals');
       console.log('- GET /groups/:id/animals?status=all -> all animals');
       console.log('- GET /groups/:id/animals?status=archived -> archived animals');
-      console.log('- GET /groups/:id/animals?status=adopted -> adopted animals');
-      console.log('- GET /groups/:id/animals?status=fostered -> fostered animals');
+      console.log('- GET /groups/:id/animals?status=foster -> foster animals');
+      console.log('- GET /groups/:id/animals?status=bite_quarantine -> bite quarantine animals');
     });
 
     test('GetAnimals should support name search', async ({ page }) => {
@@ -58,7 +58,7 @@ test.describe('Animal Filtering and Search Feature', () => {
       // 2. Multiple filters are ANDed together
       
       console.log('Backend combined filter tests would verify:');
-      console.log('- GET /groups/:id/animals?status=adopted&name=Max');
+      console.log('- GET /groups/:id/animals?status=foster&name=Max');
       console.log('- Filters are combined with AND logic');
     });
   });
