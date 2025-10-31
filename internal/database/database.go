@@ -2,9 +2,9 @@ package database
 
 import (
 	"fmt"
-	"log"
 	"os"
 
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -61,13 +61,13 @@ func Initialize() (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	log.Println("Database connection established")
+	logging.Info("Database connection established")
 	return db, nil
 }
 
 // RunMigrations runs all database migrations
 func RunMigrations(db *gorm.DB) error {
-	log.Println("Running database migrations...")
+	logging.Info("Running database migrations...")
 
 	err := db.AutoMigrate(
 		&models.User{},
@@ -83,7 +83,7 @@ func RunMigrations(db *gorm.DB) error {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	log.Println("Migrations completed successfully")
+	logging.Info("Migrations completed successfully")
 
 	// Create default groups if they don't exist
 	if err := createDefaultGroups(db); err != nil {
@@ -118,7 +118,7 @@ func createDefaultGroups(db *gorm.DB) error {
 			if err := db.Create(&group).Error; err != nil {
 				return fmt.Errorf("failed to create default group %s: %w", group.Name, err)
 			}
-			log.Printf("Created default group: %s", group.Name)
+			logging.WithField("group_name", group.Name).Info("Created default group")
 		}
 	}
 
@@ -139,7 +139,7 @@ func createDefaultCommentTags(db *gorm.DB) error {
 			if err := db.Create(&tag).Error; err != nil {
 				return fmt.Errorf("failed to create default tag %s: %w", tag.Name, err)
 			}
-			log.Printf("Created default comment tag: %s", tag.Name)
+			logging.WithField("tag_name", tag.Name).Info("Created default comment tag")
 		}
 	}
 
@@ -162,7 +162,7 @@ func createDefaultSiteSettings(db *gorm.DB) error {
 			if err := db.Create(&setting).Error; err != nil {
 				return fmt.Errorf("failed to create default setting %s: %w", setting.Key, err)
 			}
-			log.Printf("Created default site setting: %s", setting.Key)
+			logging.WithField("setting_key", setting.Key).Info("Created default site setting")
 		}
 	}
 

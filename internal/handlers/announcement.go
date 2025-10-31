@@ -2,12 +2,13 @@ package handlers
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -63,7 +64,8 @@ func CreateAnnouncement(db *gorm.DB, emailService *email.Service) gin.HandlerFun
 
 		// Load the user information for the response
 		if err := db.WithContext(ctx).Preload("User").First(&announcement, announcement.ID).Error; err != nil {
-			log.Printf("Failed to load announcement user: %v", err)
+			logger := middleware.GetLogger(c)
+			logger.Error("Failed to load announcement user", err)
 		}
 
 		// Send emails if requested and email service is configured
@@ -72,7 +74,7 @@ func CreateAnnouncement(db *gorm.DB, emailService *email.Service) gin.HandlerFun
 			go func() {
 				bgCtx := context.Background()
 				if err := sendAnnouncementEmails(bgCtx, db, emailService, announcement.Title, announcement.Content); err != nil {
-					log.Printf("Error sending announcement emails: %v", err)
+					logging.WithContext(bgCtx).Error("Error sending announcement emails", err)
 				}
 			}()
 		}
@@ -102,21 +104,28 @@ func DeleteAnnouncement(db *gorm.DB) gin.HandlerFunc {
 
 // sendAnnouncementEmails sends announcement emails to all users who have opted in
 func sendAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService *email.Service, title, content string) error {
+	logger := logging.WithContext(ctx)
+	
 	var users []models.User
 	if err := db.WithContext(ctx).Where("email_notifications_enabled = ?", true).Find(&users).Error; err != nil {
-		log.Printf("Failed to fetch users for email notifications: %v", err)
+		logger.Error("Failed to fetch users for email notifications", err)
 		return err
 	}
 
-	log.Printf("Sending announcement emails to %d users", len(users))
+	logger.WithField("user_count", len(users)).Info("Sending announcement emails to users")
 	successCount := 0
 	for _, user := range users {
 		if err := emailService.SendAnnouncementEmail(user.Email, title, content); err != nil {
-			log.Printf("Failed to send announcement email to %s: %v", user.Email, err)
+			logger.WithFields(map[string]interface{}{
+				"email": user.Email,
+			}).Error("Failed to send announcement email", err)
 		} else {
 			successCount++
 		}
 	}
-	log.Printf("Successfully sent %d/%d announcement emails", successCount, len(users))
+	logger.WithFields(map[string]interface{}{
+		"success_count": successCount,
+		"total_count":   len(users),
+	}).Info("Announcement email sending completed")
 	return nil
 }

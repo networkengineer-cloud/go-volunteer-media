@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 	"gorm.io/gorm"
@@ -26,16 +26,18 @@ type GroupRequest struct {
 // UploadGroupImage handles secure group image uploads (admin only)
 func UploadGroupImage() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		logger := middleware.GetLogger(c)
+		
 		file, err := c.FormFile("image")
 		if err != nil {
-			log.Printf("Failed to get form file: %v", err)
+			logger.Error("Failed to get form file", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
 			return
 		}
 
 		// Validate file upload (size, type, content)
 		if err := upload.ValidateImageUpload(file, upload.MaxImageSize); err != nil {
-			log.Printf("File validation failed: %v", err)
+			logger.Error("File validation failed", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file: " + err.Error()})
 			return
 		}
@@ -47,18 +49,18 @@ func UploadGroupImage() gin.HandlerFunc {
 		fname := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), uuid.New().String(), ext)
 		uploadPath := filepath.Join("public", "uploads", fname)
 
-		log.Printf("Attempting to save file to: %s", uploadPath)
+		logger.WithField("path", uploadPath).Debug("Saving group image")
 
 		// Save file
 		if err := c.SaveUploadedFile(file, uploadPath); err != nil {
-			log.Printf("Failed to save file: %v", err)
+			logger.Error("Failed to save file", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file: " + err.Error()})
 			return
 		}
 
 		// Return public URL
 		url := "/uploads/" + fname
-		log.Printf("File uploaded successfully: %s", url)
+		logger.WithField("url", url).Info("Group image uploaded successfully")
 		c.JSON(http.StatusOK, gin.H{"url": url})
 	}
 }
