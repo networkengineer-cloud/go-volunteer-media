@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,10 +19,15 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/handlers"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 )
 
 func main() {
+	// Initialize logging from environment variables
+	logging.InitFromEnv()
+	logger := logging.GetDefaultLogger()
+	
 	// Register custom username validator
 	v, ok := binding.Validator.Engine().(*validator.Validate)
 	if ok {
@@ -36,48 +40,56 @@ func main() {
 	}
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system environment variables")
+		logger.Info("No .env file found, using system environment variables")
 	}
 
 	// Initialize database
 	db, err := database.Initialize()
 	if err != nil {
-		log.Fatal("Failed to initialize database:", err)
+		logger.Fatal("Failed to initialize database", err)
 	}
 
 	// Get underlying SQL database for proper connection management
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatal("Failed to get database instance:", err)
+		logger.Fatal("Failed to get database instance", err)
 	}
 	defer func() {
 		if err := sqlDB.Close(); err != nil {
-			log.Printf("Error closing database: %v", err)
+			logger.Error("Error closing database", err)
 		}
-		log.Println("Database connection closed")
+		logger.Info("Database connection closed")
 	}()
 
 	// Run migrations
 	if err := database.RunMigrations(db); err != nil {
-		log.Fatal("Failed to run migrations:", err)
+		logger.Fatal("Failed to run migrations", err)
 	}
 
 	// Initialize email service
 	emailService := email.NewService()
 	if emailService.IsConfigured() {
-		log.Println("Email service configured and ready")
+		logger.Info("Email service configured and ready")
 	} else {
-		log.Println("Email service not configured - password reset and email notifications will be disabled")
+		logger.Info("Email service not configured - password reset and email notifications will be disabled")
 	}
 
 	// Set up Gin router
-	router := gin.Default()
+	// Disable Gin's default logger since we're using our own
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	
+	// Add recovery middleware
+	router.Use(gin.Recovery())
 
 	// Security headers middleware (add before CORS)
 	router.Use(middleware.SecurityHeaders())
 
 	// Request ID middleware for tracing
 	router.Use(middleware.RequestID())
+	
+	// Structured logging middleware
+	router.Use(middleware.LoggingMiddleware())
 
 	// CORS middleware
 	router.Use(middleware.CORS())
@@ -213,9 +225,12 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		log.Printf("Server starting on port %s...", port)
+		logger.WithFields(map[string]interface{}{
+			"port": port,
+			"env":  os.Getenv("ENV"),
+		}).Info("Server starting")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal("Failed to start server:", err)
+			logger.Fatal("Failed to start server", err)
 		}
 	}()
 
@@ -223,15 +238,15 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	logger.Info("Shutting down server...")
 
 	// Graceful shutdown with 5 second timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("Server forced to shutdown:", err)
+		logger.Fatal("Server forced to shutdown", err)
 	}
 
-	log.Println("Server exited gracefully")
+	logger.Info("Server exited gracefully")
 }
