@@ -77,6 +77,7 @@ const Navigation: React.FC = () => {
                 <>
                   <Link to="/admin/users" className="nav-admin-users">Users</Link>
                   <Link to="/admin/groups" className="nav-admin-groups">Groups</Link>
+                  <Link to="/admin/animals" className="nav-admin-animals">Animals</Link>
                   <Link to="/admin/site-settings" className="nav-admin-settings">Admin</Link>
                 </>
               )}

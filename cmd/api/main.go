@@ -167,6 +167,12 @@ func main() {
 			// Site settings management (admin only)
 			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))
 			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage())
+
+			// Bulk animal management (admin only)
+			admin.GET("/animals", handlers.GetAllAnimals(db))
+			admin.POST("/animals/bulk-update", handlers.BulkUpdateAnimals(db))
+			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db))
+			admin.GET("/animals/export-csv", handlers.ExportAnimalsCSV(db))
 		}
 
 		// Group-specific routes

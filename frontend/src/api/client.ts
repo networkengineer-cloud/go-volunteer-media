@@ -142,6 +142,32 @@ export const animalsApi = {
     formData.append('image', file);
     return api.post<{ url: string }>('/animals/upload-image', formData);
   },
+  // Admin bulk operations
+  getAllForAdmin: (status?: string, groupId?: number, name?: string) => {
+    const params: any = {};
+    if (status !== undefined) params.status = status;
+    if (groupId !== undefined) params.group_id = groupId;
+    if (name) params.name = name;
+    return api.get<Animal[]>('/admin/animals', { params });
+  },
+  bulkUpdate: (animalIds: number[], groupId?: number, status?: string) => {
+    const data: any = { animal_ids: animalIds };
+    if (groupId !== undefined) data.group_id = groupId;
+    if (status !== undefined) data.status = status;
+    return api.post<{ message: string; count: number }>('/admin/animals/bulk-update', data);
+  },
+  importCSV: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<{ message: string; count: number; warnings?: string[] }>('/admin/animals/import-csv', formData);
+  },
+  exportCSV: (groupId?: number) => {
+    const params = groupId ? { group_id: groupId } : {};
+    return api.get('/admin/animals/export-csv', { 
+      params,
+      responseType: 'blob' 
+    });
+  },
 };
 
 // Animal Comments API
