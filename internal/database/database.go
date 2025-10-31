@@ -151,7 +151,7 @@ func createDefaultSiteSettings(db *gorm.DB) error {
 	defaultSettings := []models.SiteSetting{
 		{
 			Key:   "hero_image_url",
-			Value: "https://images.unsplash.com/photo-1518806118471-f28b20a1d79d?q=80&w=1920&auto=format&fit=crop",
+			Value: "https://images.unsplash.com/photo-1587300003388-59208cc962cb?q=80&w=1920&auto=format&fit=crop&ixlib=rb-4.0.3",
 		},
 	}
 
