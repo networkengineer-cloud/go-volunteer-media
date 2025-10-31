@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { settingsApi } from '../../api/client';
-import '../SettingsPage.css';
-import '../Home.css'; // Import Home.css to reuse hero styles
+import '../../pages/SettingsPage.css';
+import '../../pages/Home.css'; // Import Home.css to reuse hero styles
 
 const SiteSettingsTab: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
