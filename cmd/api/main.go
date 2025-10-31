@@ -173,6 +173,8 @@ func main() {
 			admin.POST("/animals/bulk-update", handlers.BulkUpdateAnimals(db))
 			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db))
 			admin.GET("/animals/export-csv", handlers.ExportAnimalsCSV(db))
+			admin.GET("/animals/export-comments-csv", handlers.ExportAnimalCommentsCSV(db))
+			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db))
 		}
 
 		// Group-specific routes

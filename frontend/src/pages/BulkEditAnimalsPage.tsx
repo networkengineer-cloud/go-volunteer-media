@@ -17,6 +17,7 @@ const BulkEditAnimalsPage: React.FC = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<{ message: string; warnings?: string[] } | null>(null);
+  const [updatingAnimal, setUpdatingAnimal] = useState<number | null>(null);
 
   useEffect(() => {
     loadData();
@@ -59,6 +60,38 @@ const BulkEditAnimalsPage: React.FC = () => {
       newSelection.add(id);
     }
     setSelectedAnimalIds(newSelection);
+  };
+
+  const handleIndividualStatusChange = async (animalId: number, newStatus: string) => {
+    setUpdatingAnimal(animalId);
+    try {
+      await animalsApi.updateAnimal(animalId, { status: newStatus });
+      // Update local state
+      setAnimals(animals.map(a => 
+        a.id === animalId ? { ...a, status: newStatus } : a
+      ));
+    } catch (error: any) {
+      console.error('Failed to update status:', error);
+      alert(error.response?.data?.error || 'Failed to update status');
+    } finally {
+      setUpdatingAnimal(null);
+    }
+  };
+
+  const handleIndividualGroupChange = async (animalId: number, newGroupId: number) => {
+    setUpdatingAnimal(animalId);
+    try {
+      await animalsApi.updateAnimal(animalId, { group_id: newGroupId });
+      // Update local state
+      setAnimals(animals.map(a => 
+        a.id === animalId ? { ...a, group_id: newGroupId } : a
+      ));
+    } catch (error: any) {
+      console.error('Failed to update group:', error);
+      alert(error.response?.data?.error || 'Failed to update group');
+    } finally {
+      setUpdatingAnimal(null);
+    }
   };
 
   const handleBulkUpdate = async () => {
@@ -121,6 +154,27 @@ const BulkEditAnimalsPage: React.FC = () => {
     }
   };
 
+  const handleExportCommentsCSV = async () => {
+    try {
+      const response = await animalsApi.exportCommentsCSV(
+        filterGroup ? parseInt(filterGroup) : undefined
+      );
+      
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'animal-comments.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export comments CSV:', error);
+      alert('Failed to export comments CSV');
+    }
+  };
+
   const handleImportCSV = async () => {
     if (!importFile) {
       alert('Please select a CSV file');
@@ -138,18 +192,16 @@ const BulkEditAnimalsPage: React.FC = () => {
     }
   };
 
-  const getGroupName = (groupId: number) => {
-    const group = groups.find((g) => g.id === groupId);
-    return group ? group.name : `Group ${groupId}`;
-  };
-
   return (
     <div className="bulk-edit-page">
       <div className="page-header">
         <h1>Bulk Edit Animals</h1>
         <div className="header-actions">
+          <button onClick={handleExportCommentsCSV} className="btn-secondary">
+            Export Comments
+          </button>
           <button onClick={handleExportCSV} className="btn-secondary">
-            Export CSV
+            Export Animals
           </button>
           <button onClick={() => setShowImportModal(true)} className="btn-primary">
             Import CSV
@@ -260,7 +312,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                 </tr>
               ) : (
                 animals.map((animal) => (
-                  <tr key={animal.id}>
+                  <tr key={animal.id} className={updatingAnimal === animal.id ? 'updating' : ''}>
                     <td>
                       <input
                         type="checkbox"
@@ -274,11 +326,31 @@ const BulkEditAnimalsPage: React.FC = () => {
                     <td>{animal.breed || '-'}</td>
                     <td>{animal.age || '-'}</td>
                     <td>
-                      <span className={`status-badge status-${animal.status}`}>
-                        {animal.status}
-                      </span>
+                      <select
+                        value={animal.status}
+                        onChange={(e) => handleIndividualStatusChange(animal.id, e.target.value)}
+                        disabled={updatingAnimal === animal.id}
+                        className="inline-select"
+                      >
+                        <option value="available">Available</option>
+                        <option value="adopted">Adopted</option>
+                        <option value="fostered">Fostered</option>
+                      </select>
                     </td>
-                    <td>{getGroupName(animal.group_id)}</td>
+                    <td>
+                      <select
+                        value={animal.group_id}
+                        onChange={(e) => handleIndividualGroupChange(animal.id, parseInt(e.target.value))}
+                        disabled={updatingAnimal === animal.id}
+                        className="inline-select"
+                      >
+                        {groups.map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                   </tr>
                 ))
               )}

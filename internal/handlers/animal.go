@@ -127,6 +127,7 @@ type AnimalRequest struct {
 	Description string `json:"description"`
 	ImageURL    string `json:"image_url,omitempty"`
 	Status      string `json:"status"`
+	GroupID     uint   `json:"group_id,omitempty"`
 }
 
 // checkGroupAccess verifies if the user has access to a specific group
@@ -299,6 +300,78 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, animal)
 	}
 }
+
+// UpdateAnimalAdmin updates an existing animal by ID (admin only, no group check needed)
+func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		logger := middleware.GetLogger(c)
+		animalID := c.Param("animalId")
+
+		var req AnimalRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		var animal models.Animal
+		if err := db.First(&animal, animalID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
+			return
+		}
+
+		// Build update map with only provided fields
+		updates := make(map[string]interface{})
+		if req.Name != "" {
+			updates["name"] = req.Name
+		}
+		if req.Species != "" {
+			updates["species"] = req.Species
+		}
+		if req.Breed != "" {
+			updates["breed"] = req.Breed
+		}
+		if req.Age > 0 {
+			updates["age"] = req.Age
+		}
+		if req.Description != "" {
+			updates["description"] = req.Description
+		}
+		if req.ImageURL != "" {
+			updates["image_url"] = req.ImageURL
+		}
+		if req.Status != "" {
+			updates["status"] = req.Status
+		}
+		if req.GroupID != 0 {
+			updates["group_id"] = req.GroupID
+		}
+
+		if len(updates) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No updates provided"})
+			return
+		}
+
+		if err := db.Model(&animal).Updates(updates).Error; err != nil {
+			logger.Error("Failed to update animal", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal"})
+			return
+		}
+
+		// Reload animal to get updated data
+		if err := db.First(&animal, animalID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload animal"})
+			return
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"animal_id": animal.ID,
+			"updates":   updates,
+		}).Info("Updated animal")
+
+		c.JSON(http.StatusOK, animal)
+	}
+}
+
 
 // DeleteAnimal deletes an animal
 func DeleteAnimal(db *gorm.DB) gin.HandlerFunc {
@@ -632,5 +705,147 @@ func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, animals)
+	}
+}
+
+// ExportAnimalCommentsCSV exports all animal comments with animal details to CSV format (admin only)
+func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		logger := middleware.GetLogger(c)
+		groupID := c.Query("group_id")
+
+		// Build query to get comments with related data
+		query := db.Preload("User").Preload("Tags")
+		
+		// If group_id filter is provided, join with animals to filter by group
+		if groupID != "" {
+			query = query.Joins("JOIN animals ON animals.id = animal_comments.animal_id").
+				Where("animals.group_id = ?", groupID)
+		}
+
+		var comments []models.AnimalComment
+		if err := query.Order("animal_comments.created_at DESC").Find(&comments).Error; err != nil {
+			logger.Error("Failed to fetch comments", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
+			return
+		}
+
+		// Load animal details for each comment
+		animalIDs := make([]uint, 0, len(comments))
+		for _, comment := range comments {
+			animalIDs = append(animalIDs, comment.AnimalID)
+		}
+
+		// Get all animals in one query
+		var animals []models.Animal
+		if len(animalIDs) > 0 {
+			if err := db.Preload("Group").Where("id IN ?", animalIDs).Find(&animals).Error; err != nil {
+				logger.Error("Failed to fetch animals", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animal details"})
+				return
+			}
+		}
+
+		// Create animal lookup map
+		animalMap := make(map[uint]models.Animal)
+		for _, animal := range animals {
+			animalMap[animal.ID] = animal
+		}
+
+		// Get group details for animals
+		groupIDs := make([]uint, 0)
+		for _, animal := range animals {
+			groupIDs = append(groupIDs, animal.GroupID)
+		}
+		
+		var groups []models.Group
+		if len(groupIDs) > 0 {
+			if err := db.Where("id IN ?", groupIDs).Find(&groups).Error; err != nil {
+				logger.Error("Failed to fetch groups", err)
+				// Continue without group names
+			}
+		}
+
+		// Create group lookup map
+		groupMap := make(map[uint]string)
+		for _, group := range groups {
+			groupMap[group.ID] = group.Name
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"comment_count": len(comments),
+			"group_id":      groupID,
+		}).Info("Exporting animal comments to CSV")
+
+		// Set response headers for CSV download
+		c.Header("Content-Type", "text/csv")
+		c.Header("Content-Disposition", "attachment; filename=animal-comments.csv")
+
+		writer := csv.NewWriter(c.Writer)
+		defer writer.Flush()
+
+		// Write CSV header
+		header := []string{
+			"comment_id",
+			"animal_id",
+			"animal_name",
+			"animal_species",
+			"animal_breed",
+			"animal_status",
+			"group_id",
+			"group_name",
+			"comment_content",
+			"comment_author",
+			"comment_tags",
+			"created_at",
+			"updated_at",
+		}
+		if err := writer.Write(header); err != nil {
+			logger.Error("Failed to write CSV header", err)
+			return
+		}
+
+		// Write comment data
+		for _, comment := range comments {
+			animal, ok := animalMap[comment.AnimalID]
+			if !ok {
+				// Skip if animal not found
+				continue
+			}
+
+			groupName := groupMap[animal.GroupID]
+			
+			// Collect tag names
+			tagNames := make([]string, 0, len(comment.Tags))
+			for _, tag := range comment.Tags {
+				tagNames = append(tagNames, tag.Name)
+			}
+			tagsStr := strings.Join(tagNames, "; ")
+
+			authorName := ""
+			if comment.User.Username != "" {
+				authorName = comment.User.Username
+			}
+
+			record := []string{
+				strconv.FormatUint(uint64(comment.ID), 10),
+				strconv.FormatUint(uint64(animal.ID), 10),
+				animal.Name,
+				animal.Species,
+				animal.Breed,
+				animal.Status,
+				strconv.FormatUint(uint64(animal.GroupID), 10),
+				groupName,
+				comment.Content,
+				authorName,
+				tagsStr,
+				comment.CreatedAt.Format(time.RFC3339),
+				comment.UpdatedAt.Format(time.RFC3339),
+			}
+			if err := writer.Write(record); err != nil {
+				logger.Error("Failed to write CSV record", err)
+				return
+			}
+		}
 	}
 }
