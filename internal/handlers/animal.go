@@ -372,7 +372,6 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-
 // DeleteAnimal deletes an animal
 func DeleteAnimal(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -716,7 +715,7 @@ func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 
 		// Build query to get comments with related data
 		query := db.Preload("User").Preload("Tags")
-		
+
 		// If group_id filter is provided, join with animals to filter by group
 		if groupID != "" {
 			query = query.Joins("JOIN animals ON animals.id = animal_comments.animal_id").
@@ -757,7 +756,7 @@ func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 		for _, animal := range animals {
 			groupIDs = append(groupIDs, animal.GroupID)
 		}
-		
+
 		var groups []models.Group
 		if len(groupIDs) > 0 {
 			if err := db.Where("id IN ?", groupIDs).Find(&groups).Error; err != nil {
@@ -814,7 +813,7 @@ func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			groupName := groupMap[animal.GroupID]
-			
+
 			// Collect tag names
 			tagNames := make([]string, 0, len(comment.Tags))
 			for _, tag := range comment.Tags {

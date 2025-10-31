@@ -39,9 +39,9 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 
 		// Get filter parameter (comma-separated tag names)
 		tagFilter := c.Query("tags")
-		
+
 		query := db.Preload("User").Preload("Tags").Where("animal_id = ?", animalID)
-		
+
 		// Apply tag filter if provided
 		if tagFilter != "" {
 			tagNames := strings.Split(tagFilter, ",")
@@ -50,7 +50,7 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 				Where("ct.name IN ?", tagNames).
 				Group("animal_comments.id")
 		}
-		
+
 		var comments []models.AnimalComment
 		if err := query.Order("created_at DESC").Find(&comments).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})

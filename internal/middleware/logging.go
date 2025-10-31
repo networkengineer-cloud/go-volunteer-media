@@ -14,10 +14,10 @@ func LoggingMiddleware() gin.HandlerFunc {
 		start := time.Now()
 		path := c.Request.URL.Path
 		query := c.Request.URL.RawQuery
-		
+
 		// Get request ID from context
 		requestID, _ := c.Get("request_id")
-		
+
 		// Create logger with request context
 		logger := logging.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -27,40 +27,40 @@ func LoggingMiddleware() gin.HandlerFunc {
 			"ip":         c.ClientIP(),
 			"user_agent": c.Request.UserAgent(),
 		})
-		
+
 		// Add logger to context for use in handlers
 		c.Set("logger", logger)
-		
+
 		// Process request
 		c.Next()
-		
+
 		// Calculate latency
 		latency := time.Since(start)
-		
+
 		// Get status code and error if any
 		status := c.Writer.Status()
-		
+
 		// Log the request with appropriate level
 		logFields := map[string]interface{}{
-			"request_id":   requestID,
-			"method":       c.Request.Method,
-			"path":         path,
-			"query":        query,
-			"status":       status,
-			"latency_ms":   latency.Milliseconds(),
-			"ip":           c.ClientIP(),
-			"user_agent":   c.Request.UserAgent(),
-			"bytes_in":     c.Request.ContentLength,
-			"bytes_out":    c.Writer.Size(),
+			"request_id": requestID,
+			"method":     c.Request.Method,
+			"path":       path,
+			"query":      query,
+			"status":     status,
+			"latency_ms": latency.Milliseconds(),
+			"ip":         c.ClientIP(),
+			"user_agent": c.Request.UserAgent(),
+			"bytes_in":   c.Request.ContentLength,
+			"bytes_out":  c.Writer.Size(),
 		}
-		
+
 		// Add user ID if authenticated
 		if userID, exists := c.Get("user_id"); exists {
 			logFields["user_id"] = userID
 		}
-		
+
 		requestLogger := logging.WithFields(logFields)
-		
+
 		// Log with appropriate level based on status code
 		if status >= 500 {
 			requestLogger.Error("Request failed with server error", nil)

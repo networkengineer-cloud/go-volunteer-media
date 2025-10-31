@@ -105,7 +105,7 @@ func DeleteAnnouncement(db *gorm.DB) gin.HandlerFunc {
 // sendAnnouncementEmails sends announcement emails to all users who have opted in
 func sendAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService *email.Service, title, content string) error {
 	logger := logging.WithContext(ctx)
-	
+
 	var users []models.User
 	if err := db.WithContext(ctx).Where("email_notifications_enabled = ?", true).Find(&users).Error; err != nil {
 		logger.Error("Failed to fetch users for email notifications", err)
