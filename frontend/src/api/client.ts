@@ -180,4 +180,19 @@ export const announcementsApi = {
   delete: (id: number) => api.delete('/admin/announcements/' + id),
 };
 
+// Site Settings API
+export const settingsApi = {
+  getAll: () => api.get<Record<string, string>>('/settings'),
+  update: (key: string, value: string) => api.put('/admin/settings/' + key, { value }),
+  uploadHeroImage: (file: File) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return api.post<{ url: string }>('/admin/settings/upload-hero-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+};
+
 export default api;

@@ -77,6 +77,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.Announcement{},
 		&models.CommentTag{},
 		&models.AnimalComment{},
+		&models.SiteSetting{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -94,6 +95,11 @@ func RunMigrations(db *gorm.DB) error {
 		return err
 	}
 
+	// Create default site settings if they don't exist
+	if err := createDefaultSiteSettings(db); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -102,7 +108,7 @@ func createDefaultGroups(db *gorm.DB) error {
 	defaultGroups := []models.Group{
 		{Name: "dogs", Description: "Dog volunteers group"},
 		{Name: "cats", Description: "Cat volunteers group"},
-		{Name: "modsquad", Description: "Moderators group"},
+		{Name: "modsquad", Description: "Mod Squad volunteers group"},
 	}
 
 	for _, group := range defaultGroups {
@@ -134,6 +140,29 @@ func createDefaultCommentTags(db *gorm.DB) error {
 				return fmt.Errorf("failed to create default tag %s: %w", tag.Name, err)
 			}
 			log.Printf("Created default comment tag: %s", tag.Name)
+		}
+	}
+
+	return nil
+}
+
+// createDefaultSiteSettings creates the default site settings if they don't exist
+func createDefaultSiteSettings(db *gorm.DB) error {
+	defaultSettings := []models.SiteSetting{
+		{
+			Key:   "hero_image_url",
+			Value: "", // Empty by default - admin should upload an image
+		},
+	}
+
+	for _, setting := range defaultSettings {
+		var existing models.SiteSetting
+		result := db.Where("key = ?", setting.Key).First(&existing)
+		if result.Error == gorm.ErrRecordNotFound {
+			if err := db.Create(&setting).Error; err != nil {
+				return fmt.Errorf("failed to create default setting %s: %w", setting.Key, err)
+			}
+			log.Printf("Created default site setting: %s", setting.Key)
 		}
 	}
 

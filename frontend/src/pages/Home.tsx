@@ -1,11 +1,42 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { settingsApi } from '../api/client';
 import './Home.css';
 
 const Home: React.FC = () => {
+  const [heroImage, setHeroImage] = useState<string>('');
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const response = await settingsApi.getAll();
+        console.log('Settings response:', response.data);
+        if (response.data && response.data.hero_image_url) {
+          console.log('Setting hero image to:', response.data.hero_image_url);
+          setHeroImage(response.data.hero_image_url);
+        } else {
+          console.log('No hero_image_url in response, using default');
+        }
+      } catch (error) {
+        console.error('Failed to load site settings:', error);
+        // Keep default image on error
+      }
+    };
+    loadSettings();
+  }, []);
+
+  console.log('Current heroImage:', heroImage);
+
+  const heroStyle: React.CSSProperties = {
+    backgroundImage: `url(${heroImage})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat'
+  };
+
   return (
     <main className="home">
-      <section className="hero">
+      <section className="hero" style={heroStyle}>
         <div className="hero-overlay" />
         <div className="hero-content">
           <h1>Help Pets. Help People.</h1>

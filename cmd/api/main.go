@@ -79,14 +79,17 @@ func main() {
 	// Serve uploaded images
 	router.Static("/uploads", "./public/uploads")
 
-	// Public routes
+	// API routes
 	api := router.Group("/api")
-	{
-		api.POST("/login", handlers.Login(db))
-		api.POST("/register", handlers.Register(db))
-		api.POST("/request-password-reset", handlers.RequestPasswordReset(db, emailService))
-		api.POST("/reset-password", handlers.ResetPassword(db))
-	}
+
+	// Public routes
+	api.POST("/login", handlers.Login(db))
+	api.POST("/register", handlers.Register(db))
+	api.POST("/request-password-reset", handlers.RequestPasswordReset(db, emailService))
+	api.POST("/reset-password", handlers.ResetPassword(db))
+
+	// Site settings (public read)
+	api.GET("/settings", handlers.GetSiteSettings(db))
 
 	// Protected routes
 	protected := api.Group("/")
@@ -120,7 +123,7 @@ func main() {
 			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))
 			admin.POST("/users/:userId/promote", handlers.PromoteUser(db))
 			admin.POST("/users/:userId/demote", handlers.DemoteUser(db))
-			
+
 			// Group management (admin only)
 			admin.POST("/groups", handlers.CreateGroup(db))
 			admin.PUT("/groups/:id", handlers.UpdateGroup(db))
@@ -136,6 +139,10 @@ func main() {
 			// Comment tag management (admin only)
 			admin.POST("/comment-tags", handlers.CreateCommentTag(db))
 			admin.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
+
+			// Site settings management (admin only)
+			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))
+			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage())
 		}
 
 		// Group-specific routes
@@ -146,7 +153,7 @@ func main() {
 			// Animal routes - viewing accessible to all group members
 			group.GET("/animals", handlers.GetAnimals(db))
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
-			
+
 			// Animal comments - all group members can view and add comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
 			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
@@ -171,7 +178,7 @@ func main() {
 		// Serve static files
 		router.StaticFile("/", "./frontend/dist/index.html")
 		router.Static("/assets", "./frontend/dist/assets")
-		
+
 		// Serve index.html for all non-API routes (SPA routing)
 		router.NoRoute(func(c *gin.Context) {
 			c.File("./frontend/dist/index.html")
