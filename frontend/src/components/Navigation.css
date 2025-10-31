@@ -27,8 +27,9 @@
 }
 
 .nav-brand:hover {
-  color: var(--brand);
+  color: #ffffff;
   text-decoration: none;
+  opacity: 0.9;
 }
 
 .nav-right {
@@ -47,8 +48,8 @@
 }
 
 .nav-right a:hover {
-  color: var(--brand);
-  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
   text-decoration: none;
 }
 
@@ -120,9 +121,9 @@
 }
 
 .theme-toggle:hover {
-  border-color: var(--brand);
-  background: rgba(var(--brand-rgb), 0.15);
-  color: var(--brand);
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
 }
 
 .theme-toggle:focus-visible {
