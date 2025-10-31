@@ -123,8 +123,8 @@ const AnimalForm: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
               >
                 <option value="available">Available</option>
-                <option value="adopted">Adopted</option>
-                <option value="fostered">Fostered</option>
+                <option value="foster">Foster</option>
+                <option value="bite_quarantine">Bite Quarantine</option>
                 <option value="archived">Archived</option>
               </select>
             </div>

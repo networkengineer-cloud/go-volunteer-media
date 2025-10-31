@@ -52,7 +52,7 @@ type Animal struct {
 	Age         int            `json:"age"`
 	Description string         `json:"description"`
 	ImageURL    string         `json:"image_url"`
-	Status      string         `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, adopted, fostered
+	Status      string         `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, foster, bite_quarantine, archived
 }
 
 // Update represents a post/update in a group

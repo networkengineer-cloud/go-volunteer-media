@@ -115,6 +115,28 @@ const AnimalDetailPage: React.FC = () => {
     navigate(`/groups/${groupId}/animals/${id}`);
   };
 
+  const handleExportComments = async () => {
+    try {
+      const response = await animalsApi.exportCommentsCSV(
+        Number(groupId),
+        Number(id)
+      );
+      
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${animal?.name || 'animal'}-comments.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export comments CSV:', error);
+      alert('Failed to export comments CSV');
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
@@ -161,6 +183,15 @@ const AnimalDetailPage: React.FC = () => {
           <div className="comments-header">
             <h2>Comments & Photos</h2>
             <div className="comments-header-actions">
+              {isAdmin && (
+                <button
+                  onClick={handleExportComments}
+                  className="btn-export"
+                  title="Export comments to CSV"
+                >
+                  📥 Export Comments
+                </button>
+              )}
               <button
                 onClick={() => setShowCommentForm(!showCommentForm)}
                 className="btn-toggle-form"

@@ -712,12 +712,16 @@ func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := middleware.GetLogger(c)
 		groupID := c.Query("group_id")
+		animalID := c.Query("animal_id")
 
 		// Build query to get comments with related data
 		query := db.Preload("User").Preload("Tags")
 
-		// If group_id filter is provided, join with animals to filter by group
-		if groupID != "" {
+		// If animal_id filter is provided, filter by specific animal
+		if animalID != "" {
+			query = query.Where("animal_comments.animal_id = ?", animalID)
+		} else if groupID != "" {
+			// If only group_id filter is provided, join with animals to filter by group
 			query = query.Joins("JOIN animals ON animals.id = animal_comments.animal_id").
 				Where("animals.group_id = ?", groupID)
 		}
@@ -774,6 +778,7 @@ func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 		logger.WithFields(map[string]interface{}{
 			"comment_count": len(comments),
 			"group_id":      groupID,
+			"animal_id":     animalID,
 		}).Info("Exporting animal comments to CSV")
 
 		// Set response headers for CSV download
