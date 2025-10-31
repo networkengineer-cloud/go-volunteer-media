@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,40 @@ var (
 	jwtSecretOnce sync.Once
 )
 
+// checkSecretEntropy performs basic entropy checks on the JWT secret
+func checkSecretEntropy(secret string) error {
+	// Check for common weak patterns
+	if strings.Repeat("1", 32) == secret[:32] {
+		return errors.New("JWT_SECRET appears to be all the same character - insufficient entropy")
+	}
+	
+	// Check if it's sequential or repeated characters
+	hasVariety := false
+	charMap := make(map[rune]int)
+	for _, char := range secret {
+		charMap[char]++
+		if len(charMap) > 10 {
+			hasVariety = true
+			break
+		}
+	}
+	
+	if !hasVariety && len(secret) >= 32 {
+		return errors.New("JWT_SECRET has insufficient character variety - use a cryptographically random secret")
+	}
+	
+	// Warn if it looks like a default value
+	lowerSecret := strings.ToLower(secret)
+	if strings.Contains(lowerSecret, "change") || 
+	   strings.Contains(lowerSecret, "example") || 
+	   strings.Contains(lowerSecret, "test") ||
+	   strings.Contains(lowerSecret, "default") {
+		return errors.New("JWT_SECRET appears to be a default/example value - use a secure random secret")
+	}
+	
+	return nil
+}
+
 // initJWTSecret initializes the JWT secret from environment variable
 func initJWTSecret() {
 	jwtSecretOnce.Do(func() {
@@ -27,7 +62,14 @@ func initJWTSecret() {
 		if len(secret) < 32 {
 			logging.Fatal("JWT_SECRET must be at least 32 characters long for security", nil)
 		}
+		
+		// Check secret entropy and quality
+		if err := checkSecretEntropy(secret); err != nil {
+			logging.Fatal(fmt.Sprintf("JWT_SECRET validation failed: %s. Generate a secure secret with: openssl rand -base64 32", err.Error()), nil)
+		}
+		
 		jwtSecret = []byte(secret)
+		logging.Info("JWT secret validated successfully")
 	})
 }
 

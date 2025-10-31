@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -134,7 +135,7 @@ func RateLimitByUser(rate int, window time.Duration) gin.HandlerFunc {
 			}
 		} else {
 			// Use user ID as the key
-			key := string(rune(userID.(uint)))
+			key := fmt.Sprintf("user_%d", userID.(uint))
 			if !limiter.Allow(key) {
 				c.JSON(http.StatusTooManyRequests, gin.H{
 					"error": "Too many requests. Please try again later.",
