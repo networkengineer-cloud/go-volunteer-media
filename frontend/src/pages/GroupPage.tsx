@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { groupsApi, animalsApi } from '../api/client';
 import type { Group, Animal } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import EmptyState from '../components/EmptyState';
+import SkeletonLoader from '../components/SkeletonLoader';
+import ErrorState from '../components/ErrorState';
 import './GroupPage.css';
 
 
@@ -11,9 +14,11 @@ import './GroupPage.css';
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { isAdmin } = useAuth();
+  const navigate = useNavigate();
   const [group, setGroup] = useState<Group | null>(null);
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [nameSearch, setNameSearch] = useState<string>('');
 
@@ -25,25 +30,52 @@ const GroupPage: React.FC = () => {
 
   const loadGroupData = async (groupId: number) => {
     try {
+      setError('');
       const [groupRes, animalsRes] = await Promise.all([
         groupsApi.getById(groupId),
         animalsApi.getAll(groupId, statusFilter, nameSearch),
       ]);
       setGroup(groupRes.data);
       setAnimals(animalsRes.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load group data:', error);
+      setError(error.response?.data?.error || 'Failed to load group information. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   if (loading) {
-    return <div className="loading">Loading...</div>;
+    return (
+      <div className="group-page">
+        <SkeletonLoader variant="rectangular" height="300px" />
+        <div className="group-header">
+          <SkeletonLoader variant="text" width="150px" />
+          <SkeletonLoader variant="text" width="60%" height="2rem" />
+          <SkeletonLoader variant="text" width="80%" />
+        </div>
+        <div className="skeleton-grid">
+          <SkeletonLoader variant="card" count={6} />
+        </div>
+      </div>
+    );
   }
 
-  if (!group) {
-    return <div className="error">Group not found</div>;
+  if (error || !group) {
+    return (
+      <div className="group-page">
+        <ErrorState
+          title={error ? 'Unable to Load Group' : 'Group Not Found'}
+          message={error || 'The group you\'re looking for doesn\'t exist or you don\'t have permission to view it.'}
+          onRetry={error ? () => {
+            setLoading(true);
+            loadGroupData(Number(id));
+          } : undefined}
+          onGoBack={() => navigate('/dashboard')}
+          goBackLabel="Back to Dashboard"
+        />
+      </div>
+    );
   }
 
   return (
@@ -97,7 +129,48 @@ const GroupPage: React.FC = () => {
           </div>
         </div>
         {animals.length === 0 ? (
-          <p>No animals found matching the filters.</p>
+          <EmptyState
+            icon={
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+            title={statusFilter || nameSearch ? 'No animals match your filters' : `No animals in ${group.name} yet`}
+            description={
+              statusFilter || nameSearch
+                ? 'Try adjusting your search or filter to see more results.'
+                : isAdmin
+                  ? `Get started by adding your first animal to ${group.name}. Animals added here will be visible to all group members.`
+                  : `This group doesn't have any animals yet. An admin will need to add animals before volunteers can share updates.`
+            }
+            primaryAction={
+              (statusFilter || nameSearch)
+                ? {
+                    label: 'Clear Filters',
+                    onClick: () => {
+                      setStatusFilter('');
+                      setNameSearch('');
+                    },
+                  }
+                : isAdmin
+                  ? {
+                      label: 'Add First Animal',
+                      onClick: () => navigate(`/groups/${id}/animals/new`),
+                    }
+                  : undefined
+            }
+            secondaryAction={
+              (statusFilter || nameSearch)
+                ? {
+                    label: 'View All Animals',
+                    onClick: () => {
+                      setStatusFilter('');
+                      setNameSearch('');
+                    },
+                  }
+                : undefined
+            }
+          />
         ) : (
           <div className="animals-grid">
             {animals.map((animal) => (
