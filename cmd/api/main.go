@@ -124,6 +124,8 @@ func main() {
 		protected.GET("/me", handlers.GetCurrentUser(db))
 		protected.GET("/email-preferences", handlers.GetEmailPreferences(db))
 		protected.PUT("/email-preferences", handlers.UpdateEmailPreferences(db))
+		protected.PUT("/default-group", handlers.SetDefaultGroup(db))
+		protected.GET("/default-group", handlers.GetDefaultGroup(db))
 
 		// Announcement routes (all authenticated users can view)
 		protected.GET("/announcements", handlers.GetAnnouncements(db))
@@ -190,6 +192,9 @@ func main() {
 			// Animal comments - all group members can view and add comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
 			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
+			
+			// Latest comments across the group
+			group.GET("/latest-comments", handlers.GetGroupLatestComments(db))
 
 			// Updates routes
 			group.GET("/updates", handlers.GetUpdates(db))

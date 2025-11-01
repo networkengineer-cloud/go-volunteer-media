@@ -131,3 +131,83 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusCreated, comment)
 	}
 }
+
+// GetGroupLatestComments returns the latest comments across all animals in a group
+func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		groupID := c.Param("id")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check group access
+		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		// Get limit parameter (default 20, max 100)
+		limit := 20
+		if limitParam := c.Query("limit"); limitParam != "" {
+			if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+				if limit > 100 {
+					limit = 100
+				}
+			}
+		}
+
+		// Get animals in this group first
+		var animals []models.Animal
+		if err := db.WithContext(ctx).Where("group_id = ?", groupID).Find(&animals).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
+			return
+		}
+
+		// Get animal IDs
+		var animalIDs []uint
+		animalMap := make(map[uint]models.Animal)
+		for _, animal := range animals {
+			animalIDs = append(animalIDs, animal.ID)
+			animalMap[animal.ID] = animal
+		}
+
+		if len(animalIDs) == 0 {
+			c.JSON(http.StatusOK, []interface{}{})
+			return
+		}
+
+		// Get latest comments from these animals
+		var comments []models.AnimalComment
+		err := db.WithContext(ctx).
+			Where("animal_id IN ?", animalIDs).
+			Preload("User").
+			Preload("Tags").
+			Order("created_at DESC").
+			Limit(limit).
+			Find(&comments).Error
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
+			return
+		}
+
+		// Build response with animal information
+		type CommentWithAnimal struct {
+			models.AnimalComment
+			Animal models.Animal `json:"animal"`
+		}
+
+		var results []CommentWithAnimal
+		for _, comment := range comments {
+			if animal, ok := animalMap[comment.AnimalID]; ok {
+				results = append(results, CommentWithAnimal{
+					AnimalComment: comment,
+					Animal:        animal,
+				})
+			}
+		}
+
+		c.JSON(http.StatusOK, results)
+	}
+}

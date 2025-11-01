@@ -21,3 +21,95 @@ func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, users)
 	}
 }
+
+type SetDefaultGroupRequest struct {
+	GroupID uint `json:"group_id" binding:"required"`
+}
+
+// SetDefaultGroup sets the user's default group
+func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		var req SetDefaultGroupRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Verify user has access to the group
+		var user models.User
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// Check if user belongs to the group (unless admin)
+		isAdmin, _ := c.Get("is_admin")
+		hasAccess := isAdmin.(bool)
+		if !hasAccess {
+			for _, group := range user.Groups {
+				if group.ID == req.GroupID {
+					hasAccess = true
+					break
+				}
+			}
+		}
+
+		if !hasAccess {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You do not have access to this group"})
+			return
+		}
+
+		// Verify group exists
+		var group models.Group
+		if err := db.WithContext(ctx).First(&group, req.GroupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+
+		// Update user's default group
+		if err := db.WithContext(ctx).Model(&user).Update("default_group_id", req.GroupID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update default group"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Default group updated successfully", "default_group_id": req.GroupID})
+	}
+}
+
+// GetDefaultGroup returns the user's default group details
+func GetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		var user models.User
+		if err := db.WithContext(ctx).First(&user, userID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		if user.DefaultGroupID == nil {
+			c.JSON(http.StatusOK, gin.H{"default_group_id": nil})
+			return
+		}
+
+		var group models.Group
+		if err := db.WithContext(ctx).First(&group, *user.DefaultGroupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Default group not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, group)
+	}
+}
