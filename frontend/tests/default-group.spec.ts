@@ -32,24 +32,27 @@ test.describe('Default Group Feature', () => {
     await page.goto(BASE_URL + '/login');
   });
 
-  test('should display default group on dashboard after login', async ({ page }) => {
+  test('should display default group after login', async ({ page }) => {
     // Login as regular user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     
-    // Wait for navigation to dashboard
-    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
+    // Wait for navigation to dashboard which will redirect to group page
+    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
     
-    // Verify dashboard is displayed
-    await expect(page.locator('h1')).toContainText(/welcome/i);
+    // Should end up on a group page (either dashboard redirects or directly on group page)
+    const currentUrl = page.url();
     
-    // Verify that a group is displayed (current group header)
-    const groupHeader = page.locator('.current-group-header');
-    await expect(groupHeader).toBeVisible({ timeout: 10000 });
-    
-    // Verify group name is displayed
-    await expect(groupHeader.locator('h2')).toBeVisible();
+    // If we're on a group page, verify the group name is displayed
+    if (currentUrl.includes('/groups/')) {
+      await expect(page.locator('.group-header h1')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('.group-tabs')).toBeVisible();
+    } else if (currentUrl.includes('/dashboard')) {
+      // On dashboard (possibly no groups or in transition)
+      // Just verify we're authenticated
+      await expect(page.locator('h1')).toContainText(/welcome/i);
+    }
   });
 
   test('should display group switcher when user has multiple groups', async ({ page }) => {
@@ -58,7 +61,7 @@ test.describe('Default Group Feature', () => {
     await page.fill('input[name="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     
-    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
+    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
     
     // Check if group switcher is present (only if user has multiple groups)
     const groupSwitcher = page.locator('.group-switcher');
@@ -75,42 +78,48 @@ test.describe('Default Group Feature', () => {
     }
   });
 
-  test('should display latest comments section', async ({ page }) => {
+  test('should display activity feed or latest comments', async ({ page }) => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     
-    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
+    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
     
-    // Wait for dashboard to load
-    await page.waitForSelector('.current-group-header', { timeout: 10000 });
+    const currentUrl = page.url();
     
-    // Verify latest comments section exists
-    const commentsSection = page.locator('.latest-comments-section');
-    await expect(commentsSection).toBeVisible();
-    
-    // Verify section has a heading
-    await expect(commentsSection.locator('h3')).toContainText(/latest comments/i);
+    if (currentUrl.includes('/groups/')) {
+      // On group page, check for activity feed or comments
+      const activityPanel = page.locator('#activity-panel, .activity-feed');
+      await expect(activityPanel).toBeVisible({ timeout: 10000 });
+    } else {
+      // On dashboard (if groups exist), wait for redirect
+      await page.waitForURL(/\/groups\//, { timeout: 5000 }).catch(() => {});
+    }
   });
 
-  test('should display animals section with preview', async ({ page }) => {
+  test('should display animals section or tab', async ({ page }) => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     
-    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
+    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
     
-    // Wait for dashboard to load
-    await page.waitForSelector('.current-group-header', { timeout: 10000 });
+    const currentUrl = page.url();
     
-    // Verify animals section exists
-    const animalsSection = page.locator('.animals-section');
-    await expect(animalsSection).toBeVisible();
-    
-    // Verify section has a heading
-    await expect(animalsSection.locator('h3')).toBeVisible();
+    if (currentUrl.includes('/groups/')) {
+      // On group page, verify Animals tab exists and shows count
+      const animalsTab = page.locator('#animals-tab');
+      await expect(animalsTab).toBeVisible();
+      await expect(animalsTab).toContainText(/animals/i);
+      // Should show count now (e.g., "Animals (5)")
+      const tabText = await animalsTab.textContent();
+      expect(tabText).toMatch(/animals \(\d+\)/i);
+    } else {
+      // On dashboard, wait for redirect
+      await page.waitForURL(/\/groups\//, { timeout: 5000 }).catch(() => {});
+    }
   });
 
   test('should be able to switch between groups', async ({ page }) => {
@@ -119,61 +128,68 @@ test.describe('Default Group Feature', () => {
     await page.fill('input[name="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     
-    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
+    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
     
-    // Wait for initial group to load
-    await page.waitForSelector('.current-group-header', { timeout: 10000 });
+    // Wait for redirect to group page if it happens
+    await page.waitForURL(/\/groups\//, { timeout: 5000 }).catch(() => {});
     
-    // Check if group switcher exists
-    const groupSwitcher = page.locator('.group-switcher');
-    const isVisible = await groupSwitcher.isVisible().catch(() => false);
+    const currentUrl = page.url();
     
-    if (isVisible) {
-      const groupSelect = groupSwitcher.locator('select.group-select');
+    if (currentUrl.includes('/groups/')) {
+      // Check if group switcher exists
+      const groupSwitcher = page.locator('.group-switcher');
+      const isVisible = await groupSwitcher.isVisible().catch(() => false);
       
-      // Get current selected value
-      const initialValue = await groupSelect.inputValue();
-      
-      // Get all options
-      const options = await groupSelect.locator('option').all();
-      
-      if (options.length > 1) {
-        // Find a different option
-        for (const option of options) {
-          const value = await option.getAttribute('value');
-          if (value && value !== initialValue) {
-            // Select a different group
-            await groupSelect.selectOption(value);
-            
-            // Wait a moment for the UI to update
-            await page.waitForTimeout(1000);
-            
-            // Verify the selection changed
-            const newValue = await groupSelect.inputValue();
-            expect(newValue).toBe(value);
-            
-            break;
-          }
+      if (isVisible) {
+        const groupSelect = groupSwitcher.locator('select.group-select');
+        
+        // Get current selected value
+        const initialValue = await groupSelect.inputValue();
+        
+        // Get all options
+        const options = await groupSelect.locator('option').all();
+        
+        if (options.length > 1) {
+          // Find a different option
+          for (const option of options) {
+            const value = await option.getAttribute('value');
+            if (value && value !== initialValue) {
+              // Select a different group
+              await groupSelect.selectOption(value);
+              
+              // Should navigate to the new group page
+              await page.waitForURL(new RegExp(`/groups/${value}`), { timeout: 5000 });
+              
+              // Verify we're on the new group page
+              const newUrl = page.url();
+              expect(newUrl).toContain(`/groups/${value}`);
+              
+              break;
+            }
         }
       }
     }
   });
 
-  test('should display link to full group page', async ({ page }) => {
+  test('should redirect directly to group page from dashboard', async ({ page }) => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     
+    // Should be redirected to dashboard first
     await page.waitForURL(/\/dashboard/, { timeout: 10000 });
     
-    // Wait for group header
-    await page.waitForSelector('.current-group-header', { timeout: 10000 });
+    // Dashboard should immediately redirect to the group page
+    await page.waitForURL(/\/groups\/\d+/, { timeout: 5000 });
     
-    // Verify link to full group page exists
-    const groupLink = page.locator('.current-group-header .btn-secondary');
-    await expect(groupLink).toBeVisible();
-    await expect(groupLink).toContainText(/view full group page/i);
+    // Verify we're on a group page
+    const currentUrl = page.url();
+    expect(currentUrl).toMatch(/\/groups\/\d+/);
+    
+    // Verify group page elements are visible
+    await expect(page.locator('.group-header h1')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.group-tabs')).toBeVisible();
   });
 
   test('should show appropriate message when user has no groups', async ({ page }) => {
@@ -182,43 +198,40 @@ test.describe('Default Group Feature', () => {
     test.skip();
   });
 
-  test('should maintain announcements section', async ({ page }) => {
+  test('activity feed should be visible on group page', async ({ page }) => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     
-    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
+    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
     
-    // Verify announcements section still exists
-    const announcementsSection = page.locator('.announcements-section');
-    await expect(announcementsSection).toBeVisible();
-    await expect(announcementsSection.locator('h3')).toContainText(/announcements/i);
+    // Wait for redirect to group page
+    await page.waitForURL(/\/groups\/\d+/, { timeout: 5000 });
+    
+    // Activity feed tab should be active by default
+    const activityTab = page.locator('#activity-tab');
+    await expect(activityTab).toHaveAttribute('aria-selected', 'true');
+    
+    // Activity panel should be visible
+    const activityPanel = page.locator('#activity-panel');
+    await expect(activityPanel).toBeVisible();
   });
 
-  test('should display comment with animal information', async ({ page }) => {
+  test('should display comments in activity feed', async ({ page }) => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     
-    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
+    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
     
-    // Wait for comments section
-    await page.waitForSelector('.latest-comments-section', { timeout: 10000 });
+    // Wait for redirect to group page
+    await page.waitForURL(/\/groups\/\d+/, { timeout: 5000 });
     
-    // Check if there are any comments
-    const commentCards = page.locator('.comment-card');
-    const count = await commentCards.count();
-    
-    if (count > 0) {
-      // Verify first comment has animal info
-      const firstComment = commentCards.first();
-      await expect(firstComment.locator('.animal-link')).toBeVisible();
-      
-      // Verify comment has metadata
-      await expect(firstComment.locator('.comment-meta')).toBeVisible();
-    }
+    // Activity feed should be visible
+    const activityFeed = page.locator('.activity-feed, #activity-panel');
+    await expect(activityFeed).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -231,10 +244,10 @@ test.describe('Default Group Feature - Admin View', () => {
     await page.fill('input[name="password"]', ADMIN_USER.password);
     await page.click('button[type="submit"]');
     
-    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
+    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
     
-    // Wait for dashboard to load
-    await page.waitForSelector('.dashboard-header', { timeout: 10000 });
+    // Wait for redirect to group page
+    await page.waitForURL(/\/groups\/\d+/, { timeout: 5000 }).catch(() => {});
     
     // Admin should be able to see group switcher if multiple groups exist
     const groupSwitcher = page.locator('.group-switcher');

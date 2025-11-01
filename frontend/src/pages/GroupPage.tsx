@@ -16,7 +16,7 @@ type FilterType = 'all' | 'comments' | 'announcements';
 
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { isAdmin, user } = useAuth();
+  const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [group, setGroup] = useState<Group | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
