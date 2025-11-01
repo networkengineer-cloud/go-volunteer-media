@@ -12,9 +12,7 @@ import './Login.css';
 const SUCCESS_MESSAGE_TIMEOUT = 3000; // milliseconds
 
 const Login: React.FC = () => {
-  const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -27,16 +25,14 @@ const Login: React.FC = () => {
   // Form validation states
   const [touched, setTouched] = useState({
     username: false,
-    email: false,
     password: false,
   });
   const [errors, setErrors] = useState({
     username: '',
-    email: '',
     password: '',
   });
   
-  const { login, register } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -47,13 +43,6 @@ const Login: React.FC = () => {
     return '';
   };
 
-  const validateEmail = (value: string): string => {
-    if (!value) return 'Email is required';
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(value)) return 'Please enter a valid email address';
-    return '';
-  };
-
   const validatePassword = (value: string): string => {
     if (!value) return 'Password is required';
     if (value.length < 8) return 'Password must be at least 8 characters';
@@ -61,14 +50,12 @@ const Login: React.FC = () => {
   };
 
   // Handle field blur for validation
-  const handleBlur = (field: 'username' | 'email' | 'password') => {
+  const handleBlur = (field: 'username' | 'password') => {
     setTouched({ ...touched, [field]: true });
     
     let error = '';
     if (field === 'username') {
       error = validateUsername(username);
-    } else if (field === 'email') {
-      error = validateEmail(email);
     } else if (field === 'password') {
       error = validatePassword(password);
     }
@@ -81,13 +68,6 @@ const Login: React.FC = () => {
     setUsername(value);
     if (touched.username) {
       setErrors({ ...errors, username: validateUsername(value) });
-    }
-  };
-
-  const handleEmailChange = (value: string) => {
-    setEmail(value);
-    if (touched.email) {
-      setErrors({ ...errors, email: validateEmail(value) });
     }
   };
 
@@ -105,18 +85,15 @@ const Login: React.FC = () => {
 
     // Validate all fields
     const usernameError = validateUsername(username);
-    const emailError = !isLogin ? validateEmail(email) : '';
     const passwordError = validatePassword(password);
 
-    if (usernameError || emailError || passwordError) {
+    if (usernameError || passwordError) {
       setErrors({
         username: usernameError,
-        email: emailError,
         password: passwordError,
       });
       setTouched({
         username: true,
-        email: !isLogin,
         password: true,
       });
       setIsSubmitting(false);
@@ -124,13 +101,8 @@ const Login: React.FC = () => {
     }
 
     try {
-      if (isLogin) {
-        await login(username, password);
-        toast.showSuccess('Successfully logged in!');
-      } else {
-        await register(username, email, password);
-        toast.showSuccess('Account created successfully!');
-      }
+      await login(username, password);
+      toast.showSuccess('Successfully logged in!');
       navigate('/');
     } catch (err: any) {
       // Enhanced error handling for account lockout
@@ -158,10 +130,9 @@ const Login: React.FC = () => {
     setResetSuccess('');
     setIsSubmittingReset(true);
 
-    // Validate email
-    const emailError = validateEmail(resetEmail);
-    if (emailError) {
-      setResetError(emailError);
+    // Simple email validation
+    if (!resetEmail || !resetEmail.includes('@')) {
+      setResetError('Please enter a valid email address');
       setIsSubmittingReset(false);
       return;
     }
@@ -188,18 +159,11 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleModeSwitch = () => {
-    setIsLogin(!isLogin);
-    setError('');
-    setErrors({ username: '', email: '', password: '' });
-    setTouched({ username: false, email: false, password: false });
-  };
-
   return (
     <div className="login-container">
       <div className="login-card">
         <h1>Haws Volunteers</h1>
-        <h2>{isLogin ? 'Login' : 'Register'}</h2>
+        <h2>Login</h2>
         <form onSubmit={handleSubmit}>
           <FormField
             label="Username"
@@ -215,22 +179,6 @@ const Login: React.FC = () => {
             helperText="Minimum 3 characters"
           />
           
-          {!isLogin && (
-            <FormField
-              label="Email"
-              id="email"
-              type="email"
-              value={email}
-              onChange={handleEmailChange}
-              onBlur={() => handleBlur('email')}
-              error={touched.email ? errors.email : ''}
-              success={touched.email && !errors.email && !!email}
-              required
-              autoComplete="email"
-              placeholder="your-email@example.com"
-            />
-          )}
-          
           <PasswordField
             label="Password"
             id="password"
@@ -239,8 +187,7 @@ const Login: React.FC = () => {
             onBlur={() => handleBlur('password')}
             error={touched.password ? errors.password : ''}
             required
-            autoComplete={isLogin ? 'current-password' : 'new-password'}
-            showStrengthIndicator={!isLogin}
+            autoComplete="current-password"
             helperText="Minimum 8 characters"
           />
           
@@ -254,28 +201,21 @@ const Login: React.FC = () => {
             loading={isSubmitting}
             disabled={isSubmitting}
           >
-            {isLogin ? 'Login' : 'Register'}
+            Login
           </Button>
         </form>
         
-        {isLogin && (
-          <button
-            onClick={() => setShowForgotPassword(true)}
-            className="forgot-password-link"
-            type="button"
-          >
-            Forgot Password?
-          </button>
-        )}
-        
-        <Button
-          onClick={handleModeSwitch}
-          variant="secondary"
-          size="medium"
-          fullWidth
+        <button
+          onClick={() => setShowForgotPassword(true)}
+          className="forgot-password-link"
+          type="button"
         >
-          {isLogin ? 'Need an account? Register' : 'Have an account? Login'}
-        </Button>
+          Forgot Password?
+        </button>
+        
+        <div className="login-notice">
+          <p>This is an invite-only system. Contact an administrator to create an account.</p>
+        </div>
       </div>
 
       {/* Forgot Password Modal */}

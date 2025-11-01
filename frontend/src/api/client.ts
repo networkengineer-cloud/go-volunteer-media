@@ -53,6 +53,11 @@ export interface Animal {
   description: string;
   image_url: string;
   status: string;
+  arrival_date?: string;
+  foster_start_date?: string;
+  quarantine_start_date?: string;
+  archived_date?: string;
+  last_status_change?: string;
 }
 
 export interface Update {

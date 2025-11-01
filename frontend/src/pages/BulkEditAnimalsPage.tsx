@@ -4,6 +4,23 @@ import type { Animal, Group } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import './BulkEditAnimalsPage.css';
 
+// Helper function to calculate days since a date
+const calculateDaysSince = (dateString?: string): number => {
+  if (!dateString) return 0;
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffTime = Math.abs(now.getTime() - date.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+};
+
+// Helper function to format a date
+const formatDate = (dateString?: string): string => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 const BulkEditAnimalsPage: React.FC = () => {
   const toast = useToast();
   const [animals, setAnimals] = useState<Animal[]>([]);
@@ -317,12 +334,15 @@ const BulkEditAnimalsPage: React.FC = () => {
                 <th>Age</th>
                 <th>Status</th>
                 <th>Group</th>
+                <th>Arrival Date</th>
+                <th>Length of Stay (days)</th>
+                <th>Current Status (days)</th>
               </tr>
             </thead>
             <tbody>
               {animals.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="no-data">
+                  <td colSpan={11} className="no-data">
                     No animals found
                   </td>
                 </tr>
@@ -368,6 +388,9 @@ const BulkEditAnimalsPage: React.FC = () => {
                         ))}
                       </select>
                     </td>
+                    <td>{formatDate(animal.arrival_date)}</td>
+                    <td>{calculateDaysSince(animal.arrival_date)}</td>
+                    <td>{calculateDaysSince(animal.last_status_change)}</td>
                   </tr>
                 ))
               )}

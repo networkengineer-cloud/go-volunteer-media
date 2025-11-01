@@ -232,19 +232,32 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		now := time.Now()
 		animal := models.Animal{
-			GroupID:     uint(gid),
-			Name:        req.Name,
-			Species:     req.Species,
-			Breed:       req.Breed,
-			Age:         req.Age,
-			Description: req.Description,
-			ImageURL:    req.ImageURL,
-			Status:      req.Status,
+			GroupID:          uint(gid),
+			Name:             req.Name,
+			Species:          req.Species,
+			Breed:            req.Breed,
+			Age:              req.Age,
+			Description:      req.Description,
+			ImageURL:         req.ImageURL,
+			Status:           req.Status,
+			ArrivalDate:      &now,
+			LastStatusChange: &now,
 		}
 
 		if animal.Status == "" {
 			animal.Status = "available"
+		}
+
+		// Set status-specific dates based on initial status
+		switch animal.Status {
+		case "foster":
+			animal.FosterStartDate = &now
+		case "bite_quarantine":
+			animal.QuarantineStartDate = &now
+		case "archived":
+			animal.ArchivedDate = &now
 		}
 
 		if err := db.Create(&animal).Error; err != nil {
@@ -282,15 +295,41 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Track status changes
+		oldStatus := animal.Status
+		newStatus := req.Status
+		if newStatus != "" && newStatus != oldStatus {
+			now := time.Now()
+			animal.LastStatusChange = &now
+
+			// Update status-specific dates
+			switch newStatus {
+			case "available":
+				// When moving back to available, clear specific status dates
+				animal.FosterStartDate = nil
+				animal.QuarantineStartDate = nil
+				animal.ArchivedDate = nil
+			case "foster":
+				animal.FosterStartDate = &now
+				animal.QuarantineStartDate = nil
+				animal.ArchivedDate = nil
+			case "bite_quarantine":
+				animal.QuarantineStartDate = &now
+				animal.FosterStartDate = nil
+				animal.ArchivedDate = nil
+			case "archived":
+				animal.ArchivedDate = &now
+			}
+			animal.Status = newStatus
+		}
+
+		// Update other fields
 		animal.Name = req.Name
 		animal.Species = req.Species
 		animal.Breed = req.Breed
 		animal.Age = req.Age
 		animal.Description = req.Description
 		animal.ImageURL = req.ImageURL
-		if req.Status != "" {
-			animal.Status = req.Status
-		}
 
 		if err := db.Save(&animal).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal"})
@@ -339,8 +378,29 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 		if req.ImageURL != "" {
 			updates["image_url"] = req.ImageURL
 		}
-		if req.Status != "" {
+		if req.Status != "" && req.Status != animal.Status {
+			// Track status change
+			now := time.Now()
 			updates["status"] = req.Status
+			updates["last_status_change"] = now
+
+			// Update status-specific dates
+			switch req.Status {
+			case "available":
+				updates["foster_start_date"] = nil
+				updates["quarantine_start_date"] = nil
+				updates["archived_date"] = nil
+			case "foster":
+				updates["foster_start_date"] = now
+				updates["quarantine_start_date"] = nil
+				updates["archived_date"] = nil
+			case "bite_quarantine":
+				updates["quarantine_start_date"] = now
+				updates["foster_start_date"] = nil
+				updates["archived_date"] = nil
+			case "archived":
+				updates["archived_date"] = now
+			}
 		}
 		if req.GroupID != 0 {
 			updates["group_id"] = req.GroupID

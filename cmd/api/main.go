@@ -109,7 +109,8 @@ func main() {
 	// Public routes (with rate limiting for auth endpoints)
 	authLimiter := middleware.RateLimit(5, 1*time.Minute) // 5 requests per minute
 	api.POST("/login", authLimiter, handlers.Login(db))
-	api.POST("/register", authLimiter, handlers.Register(db))
+	// Registration disabled - invite-only system. Admins can create users via /api/admin/users
+	// api.POST("/register", authLimiter, handlers.Register(db))
 	api.POST("/request-password-reset", authLimiter, handlers.RequestPasswordReset(db, emailService))
 	api.POST("/reset-password", authLimiter, handlers.ResetPassword(db))
 

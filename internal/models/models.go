@@ -42,18 +42,39 @@ type Group struct {
 
 // Animal represents an animal in a group
 type Animal struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
-	GroupID     uint           `gorm:"not null;index:idx_animal_group_status" json:"group_id"`
-	Name        string         `gorm:"not null" json:"name"`
-	Species     string         `json:"species"`
-	Breed       string         `json:"breed"`
-	Age         int            `json:"age"`
-	Description string         `json:"description"`
-	ImageURL    string         `json:"image_url"`
-	Status      string         `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, foster, bite_quarantine, archived
+	ID                  uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt           time.Time      `json:"created_at"`
+	UpdatedAt           time.Time      `json:"updated_at"`
+	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`
+	GroupID             uint           `gorm:"not null;index:idx_animal_group_status" json:"group_id"`
+	Name                string         `gorm:"not null" json:"name"`
+	Species             string         `json:"species"`
+	Breed               string         `json:"breed"`
+	Age                 int            `json:"age"`
+	Description         string         `json:"description"`
+	ImageURL            string         `json:"image_url"`
+	Status              string         `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, foster, bite_quarantine, archived
+	ArrivalDate         *time.Time     `json:"arrival_date"`                                                     // When animal first became available
+	FosterStartDate     *time.Time     `json:"foster_start_date"`                                                // When animal went to foster
+	QuarantineStartDate *time.Time     `json:"quarantine_start_date"`                                            // When bite quarantine started
+	ArchivedDate        *time.Time     `json:"archived_date"`                                                    // When animal was archived
+	LastStatusChange    *time.Time     `json:"last_status_change"`                                               // Timestamp of last status change
+}
+
+// LengthOfStay returns the number of days since the animal's arrival date
+func (a *Animal) LengthOfStay() int {
+	if a.ArrivalDate == nil {
+		return 0
+	}
+	return int(time.Since(*a.ArrivalDate).Hours() / 24)
+}
+
+// CurrentStatusDuration returns the number of days since the last status change
+func (a *Animal) CurrentStatusDuration() int {
+	if a.LastStatusChange == nil {
+		return 0
+	}
+	return int(time.Since(*a.LastStatusChange).Hours() / 24)
 }
 
 // Update represents a post/update in a group
