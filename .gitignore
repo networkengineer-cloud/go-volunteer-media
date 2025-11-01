@@ -8,6 +8,7 @@
 *.so
 *.dylib
 /api
+/seed-cmd
 
 # Test binary, built with `go test -c`
 *.test

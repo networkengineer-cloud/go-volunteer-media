@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import './GroupsPage.css';
 import type { Group, Animal } from '../api/client';
 import { groupsApi, animalsApi } from '../api/client';
@@ -172,10 +173,25 @@ const GroupsPage: React.FC = () => {
                     <div className="no-image">No image</div>
                   )}
                 </td>
-                <td className="group-name">{group.name}</td>
+                <td className="group-name">
+                  <Link 
+                    to={`/groups/${group.id}`}
+                    className="group-name-link"
+                    title={`View ${group.name} page`}
+                  >
+                    {group.name}
+                  </Link>
+                </td>
                 <td className="group-description">{group.description || '—'}</td>
                 <td>
                   <div className="group-actions">
+                    <Link
+                      to={`/groups/${group.id}`}
+                      className="group-action-btn view"
+                      title="View group page"
+                    >
+                      View Group
+                    </Link>
                     <button
                       className="group-action-btn"
                       title="Edit group"

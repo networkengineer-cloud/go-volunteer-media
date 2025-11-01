@@ -73,6 +73,14 @@ db-shell: ## Connect to PostgreSQL shell
 migrate: ## Run database migrations (automatically runs with dev-backend)
 	@echo "Migrations run automatically when starting the backend"
 
+seed: ## Populate database with demo data
+	@echo "Seeding database with demo data..."
+	go run cmd/seed/main.go
+
+seed-force: ## Force seed database (even if data exists)
+	@echo "Force seeding database with demo data..."
+	go run cmd/seed/main.go --force
+
 lint: ## Run linter
 	@echo "Running golangci-lint..."
 	golangci-lint run

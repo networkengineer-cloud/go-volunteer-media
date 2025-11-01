@@ -103,7 +103,7 @@ const Login: React.FC = () => {
     try {
       await login(username, password);
       toast.showSuccess('Successfully logged in!');
-      navigate('/');
+      navigate('/dashboard');
     } catch (err: any) {
       // Enhanced error handling for account lockout
       const errorResponse = err.response?.data;
