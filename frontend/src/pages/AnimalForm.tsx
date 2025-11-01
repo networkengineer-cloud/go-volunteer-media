@@ -1,12 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { animalsApi } from '../api/client';
+import { useToast } from '../contexts/ToastContext';
+import FormField from '../components/FormField';
+import Button from '../components/Button';
+import Modal from '../components/Modal';
 import './Form.css';
 
 const AnimalForm: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     species: '',
@@ -16,6 +23,8 @@ const AnimalForm: React.FC = () => {
     image_url: '',
     status: 'available',
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (id && groupId) {
@@ -29,38 +38,129 @@ const AnimalForm: React.FC = () => {
       setFormData(response.data);
     } catch (error) {
       console.error('Failed to load animal:', error);
+      toast.showError('Failed to load animal details');
+    }
+  };
+
+  const validateField = (name: string, value: string | number) => {
+    switch (name) {
+      case 'name':
+        if (!value || (typeof value === 'string' && value.trim().length === 0)) {
+          return 'Animal name is required';
+        }
+        if (typeof value === 'string' && value.length < 2) {
+          return 'Name must be at least 2 characters';
+        }
+        return '';
+      case 'age':
+        if (typeof value === 'number' && value < 0) {
+          return 'Age cannot be negative';
+        }
+        if (typeof value === 'number' && value > 30) {
+          return 'Please enter a realistic age';
+        }
+        return '';
+      default:
+        return '';
+    }
+  };
+
+  const handleBlur = (field: string) => {
+    setTouched({ ...touched, [field]: true });
+    const error = validateField(field, formData[field as keyof typeof formData]);
+    setErrors({ ...errors, [field]: error });
+  };
+
+  const handleFieldChange = (field: string, value: string | number) => {
+    setFormData({ ...formData, [field]: value });
+    if (touched[field]) {
+      const error = validateField(field, value);
+      setErrors({ ...errors, [field]: error });
+    }
+  };
+
+  const isFormValid = () => {
+    return formData.name.trim().length >= 2 && 
+           !errors.name && 
+           !errors.age;
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.showError('Please select an image file (JPG, PNG, or GIF)');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const res = await animalsApi.uploadImage(file);
+      setFormData({ ...formData, image_url: res.data.url });
+      toast.showSuccess('Image uploaded successfully!');
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
+      toast.showError(errorMsg);
+    } finally {
+      setUploading(false);
+      // Clear the file input
+      e.target.value = '';
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate all fields
+    const nameError = validateField('name', formData.name);
+    const ageError = validateField('age', formData.age);
+    
+    if (nameError || ageError) {
+      setErrors({ name: nameError, age: ageError });
+      setTouched({ name: true, age: true });
+      toast.showError('Please fix the errors in the form');
+      return;
+    }
+
     setLoading(true);
     try {
       if (id && groupId) {
         await animalsApi.update(parseInt(groupId), parseInt(id), formData);
+        toast.showSuccess('Animal updated successfully!');
       } else if (groupId) {
         await animalsApi.create(parseInt(groupId), formData);
+        toast.showSuccess('Animal added successfully!');
       }
       navigate(`/groups/${groupId}`);
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to save animal');
+      const errorMsg = error.response?.data?.error || 'Failed to save animal. Please try again.';
+      toast.showError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this animal?')) {
-      return;
-    }
     try {
       if (id && groupId) {
         await animalsApi.delete(parseInt(groupId), parseInt(id));
+        toast.showSuccess('Animal deleted successfully');
         navigate(`/groups/${groupId}`);
       }
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to delete animal');
+      const errorMsg = error.response?.data?.error || 'Failed to delete animal. Please try again.';
+      toast.showError(errorMsg);
     }
+    setShowDeleteModal(false);
   };
 
   return (
@@ -71,90 +171,96 @@ const AnimalForm: React.FC = () => {
         </Link>
         <h1>{id ? 'Edit Animal' : 'Add New Animal'}</h1>
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="name">Name *</label>
-            <input
-              id="name"
+          <FormField
+            label="Name"
+            id="name"
+            type="text"
+            value={formData.name}
+            onChange={(value) => handleFieldChange('name', value)}
+            onBlur={() => handleBlur('name')}
+            error={touched.name ? errors.name : ''}
+            success={touched.name && !errors.name && formData.name.length >= 2}
+            required
+            helperText="The animal's name as it will appear to volunteers"
+            autoComplete="off"
+            minLength={2}
+          />
+
+          <div className="form-row">
+            <FormField
+              label="Species"
+              id="species"
               type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              required
+              value={formData.species}
+              onChange={(value) => handleFieldChange('species', value)}
+              helperText="e.g., Dog, Cat, Rabbit"
+              autoComplete="off"
+            />
+
+            <FormField
+              label="Breed"
+              id="breed"
+              type="text"
+              value={formData.breed}
+              onChange={(value) => handleFieldChange('breed', value)}
+              helperText="e.g., Labrador, Tabby, Mixed"
+              autoComplete="off"
             />
           </div>
 
           <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="species">Species</label>
-              <input
-                id="species"
-                type="text"
-                value={formData.species}
-                onChange={(e) => setFormData({ ...formData, species: e.target.value })}
-              />
-            </div>
+            <FormField
+              label="Age (years)"
+              id="age"
+              type="number"
+              value={formData.age}
+              onChange={(value) => handleFieldChange('age', parseInt(value) || 0)}
+              onBlur={() => handleBlur('age')}
+              error={touched.age ? errors.age : ''}
+              success={touched.age && !errors.age && formData.age >= 0}
+              helperText="Approximate age in years"
+            />
 
-            <div className="form-group">
-              <label htmlFor="breed">Breed</label>
-              <input
-                id="breed"
-                type="text"
-                value={formData.breed}
-                onChange={(e) => setFormData({ ...formData, breed: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="age">Age (years)</label>
-              <input
-                id="age"
-                type="number"
-                value={formData.age}
-                onChange={(e) => setFormData({ ...formData, age: parseInt(e.target.value) })}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="status">Status</label>
+            <div className="form-field">
+              <label htmlFor="status" className="form-field__label">
+                Status
+              </label>
               <select
                 id="status"
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="form-field__input"
               >
                 <option value="available">Available</option>
                 <option value="foster">Foster</option>
                 <option value="bite_quarantine">Bite Quarantine</option>
                 <option value="archived">Archived</option>
               </select>
+              <p className="form-field__helper">Current status of the animal</p>
             </div>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="image_upload">Animal Image</label>
+          <div className="form-field">
+            <label htmlFor="image_upload" className="form-field__label">
+              Animal Image
+            </label>
             <input
               id="image_upload"
               type="file"
-              accept=".jpg,.jpeg,.png,.gif"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setLoading(true);
-                try {
-                  const res = await animalsApi.uploadImage(file);
-                  setFormData({ ...formData, image_url: res.data.url });
-                  alert('Image uploaded successfully!');
-                } catch (err: any) {
-                  console.error('Upload error:', err);
-                  const errorMsg = err.response?.data?.error || err.message || 'Failed to upload image';
-                  alert('Failed to upload image: ' + errorMsg);
-                } finally {
-                  setLoading(false);
-                  // Clear the file input
-                  e.target.value = '';
-                }
-              }}
+              accept="image/jpeg,image/png,image/gif"
+              onChange={handleImageUpload}
+              className="form-field__input"
+              disabled={uploading}
+              aria-label="Upload animal image"
             />
+            <p className="form-field__helper">
+              Upload a photo (JPG, PNG, or GIF, max 10MB)
+            </p>
+            {uploading && (
+              <p className="form-field__helper" style={{ color: 'var(--color-primary)' }}>
+                Uploading image...
+              </p>
+            )}
             {formData.image_url && (
               <div className="image-preview">
                 <label>Preview:</label>
@@ -163,28 +269,65 @@ const AnimalForm: React.FC = () => {
             )}
           </div>
 
-          <div className="form-group">
-            <label htmlFor="description">Description</label>
-            <textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={4}
-            />
-          </div>
+          <FormField
+            label="Description"
+            id="description"
+            type="textarea"
+            value={formData.description}
+            onChange={(value) => setFormData({ ...formData, description: value })}
+            rows={4}
+            helperText="Optional details about the animal's personality, care needs, or history"
+            maxLength={1000}
+          />
 
           <div className="form-actions">
-            <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Saving...' : 'Save Animal'}
-            </button>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={loading}
+              disabled={!isFormValid() || uploading}
+              fullWidth={false}
+            >
+              {id ? 'Update Animal' : 'Add Animal'}
+            </Button>
             {id && (
-              <button type="button" onClick={handleDelete} className="btn-danger">
+              <Button
+                type="button"
+                onClick={() => setShowDeleteModal(true)}
+                variant="danger"
+                disabled={loading}
+              >
                 Delete
-              </button>
+              </Button>
             )}
           </div>
         </form>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        title="Delete Animal"
+        size="small"
+      >
+        <p>Are you sure you want to delete <strong>{formData.name}</strong>?</p>
+        <p>This action cannot be undone. All comments and photos associated with this animal will also be deleted.</p>
+        <div className="modal__actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+          <Button
+            variant="secondary"
+            onClick={() => setShowDeleteModal(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleDelete}
+          >
+            Delete Animal
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 };
