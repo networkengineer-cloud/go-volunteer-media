@@ -29,10 +29,15 @@ func SeedData(db *gorm.DB, force bool) error {
 		return fmt.Errorf("failed to seed users: %w", err)
 	}
 
-	// Get groups
+	// Get groups and update with images
 	var groups []models.Group
 	if err := db.Find(&groups).Error; err != nil {
 		return fmt.Errorf("failed to fetch groups: %w", err)
+	}
+
+	// Update ModSquad group with Unsplash images
+	if err := updateGroupImages(db, groups); err != nil {
+		return fmt.Errorf("failed to update group images: %w", err)
 	}
 
 	// Assign users to groups
@@ -59,6 +64,11 @@ func SeedData(db *gorm.DB, force bool) error {
 	// Seed announcements
 	if err := seedAnnouncements(db, users); err != nil {
 		return fmt.Errorf("failed to seed announcements: %w", err)
+	}
+
+	// Update site settings with hero image
+	if err := updateSiteSettings(db); err != nil {
+		return fmt.Errorf("failed to update site settings: %w", err)
 	}
 
 	logging.Info("Database seeding completed successfully")
@@ -119,6 +129,33 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 	}
 
 	return users, nil
+}
+
+// updateGroupImages updates groups with Unsplash images for icons and hero banners
+func updateGroupImages(db *gorm.DB, groups []models.Group) error {
+	for i := range groups {
+		switch groups[i].Name {
+		case "modsquad":
+			// ModSquad group images - professional dog training/behavioral focus
+			groups[i].ImageURL = "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&q=80"      // Dog icon
+			groups[i].HeroImageURL = "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=1920&q=80" // Hero banner
+		case "dogs":
+			// Dogs group images - general dog group
+			groups[i].ImageURL = "https://images.unsplash.com/photo-1537151608828-ea2b11777ee8?w=400&q=80"      // Happy dogs icon
+			groups[i].HeroImageURL = "https://images.unsplash.com/photo-1537151608828-ea2b11777ee8?w=1920&q=80" // Happy dogs banner
+		case "cats":
+			// Cats group images - general cat group
+			groups[i].ImageURL = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400&q=80"      // Cat icon
+			groups[i].HeroImageURL = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=1920&q=80" // Cat banner
+		}
+
+		if err := db.Save(&groups[i]).Error; err != nil {
+			return fmt.Errorf("failed to update group %s images: %w", groups[i].Name, err)
+		}
+		logging.WithField("group_name", groups[i].Name).Info("Updated group with Unsplash images")
+	}
+
+	return nil
 }
 
 // assignUsersToGroups assigns demo users to ModSquad group (primary focus)
@@ -516,6 +553,22 @@ func seedAnnouncements(db *gorm.DB, users []models.User) error {
 			return err
 		}
 		logging.WithField("title", announcements[i].Title).Info("Created ModSquad demo announcement")
+	}
+
+	return nil
+}
+
+// updateSiteSettings updates site-wide settings with Unsplash hero image
+func updateSiteSettings(db *gorm.DB) error {
+	// Update hero image for home page
+	var heroSetting models.SiteSetting
+	if err := db.Where("key = ?", "hero_image_url").First(&heroSetting).Error; err == nil {
+		// Beautiful hero image of happy dogs for the home page
+		heroSetting.Value = "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=1920&q=80"
+		if err := db.Save(&heroSetting).Error; err != nil {
+			return fmt.Errorf("failed to update hero_image_url setting: %w", err)
+		}
+		logging.Info("Updated site-wide hero image with Unsplash image")
 	}
 
 	return nil
