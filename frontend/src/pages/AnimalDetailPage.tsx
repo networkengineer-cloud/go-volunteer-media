@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { animalsApi, animalCommentsApi, animalsApi as imageUploadApi, commentTagsApi } from '../api/client';
 import type { Animal, AnimalComment, CommentTag } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
@@ -12,6 +13,7 @@ const AnimalDetailPage: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
+  const toast = useToast();
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [comments, setComments] = useState<AnimalComment[]>([]);
   const [availableTags, setAvailableTags] = useState<CommentTag[]>([]);
@@ -76,13 +78,27 @@ const AnimalDetailPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.showError('Please select an image file (JPG, PNG, or GIF)');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+      return;
+    }
+
     setUploading(true);
     try {
       const res = await imageUploadApi.uploadImage(file);
       setCommentImage(res.data.url);
+      toast.showSuccess('Image uploaded successfully!');
     } catch (error: any) {
       console.error('Upload error:', error);
-      alert('Failed to upload image: ' + (error.response?.data?.error || error.message));
+      const errorMsg = error.response?.data?.error || 'Failed to upload image. Please try again.';
+      toast.showError(errorMsg);
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -94,6 +110,7 @@ const AnimalDetailPage: React.FC = () => {
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim() && !commentImage) {
+      toast.showWarning('Please enter a comment or upload an image');
       return;
     }
 
@@ -110,9 +127,11 @@ const AnimalDetailPage: React.FC = () => {
       setCommentText('');
       setCommentImage('');
       setSelectedTags([]);
+      toast.showSuccess('Comment posted successfully!');
     } catch (error: any) {
       console.error('Failed to post comment:', error);
-      alert('Failed to post comment: ' + (error.response?.data?.error || error.message));
+      const errorMsg = error.response?.data?.error || 'Failed to post comment. Please try again.';
+      toast.showError(errorMsg);
     } finally {
       setSubmitting(false);
     }
@@ -141,9 +160,10 @@ const AnimalDetailPage: React.FC = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      toast.showSuccess('Comments exported successfully!');
     } catch (error) {
       console.error('Failed to export comments CSV:', error);
-      alert('Failed to export comments CSV');
+      toast.showError('Failed to export comments. Please try again.');
     }
   };
 
