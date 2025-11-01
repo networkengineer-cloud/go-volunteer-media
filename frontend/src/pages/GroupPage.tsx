@@ -324,6 +324,19 @@ const GroupPage: React.FC = () => {
                       {animal.breed && <p className="breed">{animal.breed}</p>}
                       <p className="age">{animal.age} years old</p>
                       <span className={`status ${animal.status}`}>{animal.status}</span>
+                      {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
+                        <p className="quarantine-end-date">
+                          Ends: {(() => {
+                            const startDate = new Date(animal.quarantine_start_date);
+                            let endDate = new Date(startDate);
+                            endDate.setDate(endDate.getDate() + 10);
+                            while (endDate.getDay() === 0 || endDate.getDay() === 6) {
+                              endDate.setDate(endDate.getDate() + 1);
+                            }
+                            return endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                          })()}
+                        </p>
+                      )}
                     </div>
                   </Link>
                 ))}

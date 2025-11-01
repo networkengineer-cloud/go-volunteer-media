@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { animalsApi } from '../api/client';
+import { animalsApi, announcementsApi } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import FormField from '../components/FormField';
 import Button from '../components/Button';
@@ -14,6 +14,10 @@ const AnimalForm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showQuarantineModal, setShowQuarantineModal] = useState(false);
+  const [quarantineContext, setQuarantineContext] = useState('');
+  const [quarantineDate, setQuarantineDate] = useState('');
+  const [originalStatus, setOriginalStatus] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     species: '',
@@ -41,6 +45,7 @@ const AnimalForm: React.FC = () => {
         ...animal,
         quarantine_start_date: animal.quarantine_start_date || '',
       });
+      setOriginalStatus(animal.status);
     } catch (error) {
       console.error('Failed to load animal:', error);
       toast.showError('Failed to load animal details');
@@ -136,6 +141,19 @@ const AnimalForm: React.FC = () => {
       return;
     }
 
+    // Check if status changed to bite_quarantine
+    if (formData.status === 'bite_quarantine' && originalStatus !== 'bite_quarantine') {
+      // Show modal to get context and date
+      setQuarantineDate(formData.quarantine_start_date || new Date().toISOString().split('T')[0]);
+      setShowQuarantineModal(true);
+      return;
+    }
+
+    // If not changing to quarantine, proceed with normal save
+    await saveAnimal();
+  };
+
+  const saveAnimal = async () => {
     setLoading(true);
     try {
       if (id && groupId) {
@@ -152,6 +170,62 @@ const AnimalForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleQuarantineSubmit = async () => {
+    if (!quarantineContext.trim()) {
+      toast.showError('Please provide context about the bite incident');
+      return;
+    }
+
+    // Update formData with the quarantine date
+    const updatedFormData = {
+      ...formData,
+      quarantine_start_date: quarantineDate,
+    };
+
+    setLoading(true);
+    try {
+      // Save the animal first
+      if (id && groupId) {
+        await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
+      } else if (groupId) {
+        await animalsApi.create(parseInt(groupId), updatedFormData);
+      }
+
+      // Create announcement with behavior tag context
+      const endDate = calculateQuarantineEndDate(quarantineDate);
+      const announcementTitle = `🚨 Bite Quarantine: ${formData.name}`;
+      const announcementContent = `${formData.name} has been placed in bite quarantine.\n\n` +
+        `Quarantine Start: ${new Date(quarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
+        `Quarantine End: ${endDate}\n\n` +
+        `Details:\n${quarantineContext}\n\n` +
+        `#behavior`;
+
+      await announcementsApi.create(announcementTitle, announcementContent, true);
+
+      toast.showSuccess('Animal updated and announcement created successfully!');
+      setShowQuarantineModal(false);
+      navigate(`/groups/${groupId}`);
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || 'Failed to save animal. Please try again.';
+      toast.showError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateQuarantineEndDate = (startDateString: string): string => {
+    const startDate = new Date(startDateString);
+    let endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 10);
+    
+    // Adjust for weekends
+    while (endDate.getDay() === 0 || endDate.getDay() === 6) {
+      endDate.setDate(endDate.getDate() + 1);
+    }
+    
+    return endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
   const handleDelete = async () => {
@@ -342,6 +416,87 @@ const AnimalForm: React.FC = () => {
             onClick={handleDelete}
           >
             Delete Animal
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Bite Quarantine Context Modal */}
+      <Modal
+        isOpen={showQuarantineModal}
+        onClose={() => {
+          setShowQuarantineModal(false);
+          setQuarantineContext('');
+        }}
+        title="🚨 Bite Quarantine Information"
+        size="medium"
+      >
+        <p style={{ marginBottom: '1rem' }}>
+          Please provide details about the bite incident. This information will be posted as an announcement with the #behavior tag.
+        </p>
+        
+        <div style={{ marginBottom: '1rem' }}>
+          <label htmlFor="quarantine-date" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+            Bite Date:
+          </label>
+          <input
+            id="quarantine-date"
+            type="date"
+            value={quarantineDate}
+            onChange={(e) => setQuarantineDate(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              border: '1px solid var(--neutral-300)',
+              borderRadius: '4px',
+              fontSize: '1rem'
+            }}
+          />
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            Quarantine will end: {calculateQuarantineEndDate(quarantineDate)}
+          </p>
+        </div>
+
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label htmlFor="quarantine-context" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+            Incident Details: *
+          </label>
+          <textarea
+            id="quarantine-context"
+            value={quarantineContext}
+            onChange={(e) => setQuarantineContext(e.target.value)}
+            placeholder="Describe what happened, who was involved, any injuries, and any other relevant details..."
+            rows={6}
+            required
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid var(--neutral-300)',
+              borderRadius: '4px',
+              fontSize: '1rem',
+              fontFamily: 'inherit',
+              resize: 'vertical'
+            }}
+          />
+        </div>
+
+        <div className="modal__actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowQuarantineModal(false);
+              setQuarantineContext('');
+            }}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleQuarantineSubmit}
+            loading={loading}
+            disabled={loading || !quarantineContext.trim()}
+          >
+            Save & Post Announcement
           </Button>
         </div>
       </Modal>

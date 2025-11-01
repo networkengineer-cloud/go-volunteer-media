@@ -428,6 +428,33 @@
   border: 1px solid var(--neutral-400);
 }
 
+.status.bite_quarantine {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger-600);
+  border: 1px solid var(--danger);
+}
+
+.status.foster {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--warning-600);
+  border: 1px solid var(--warning);
+}
+
+.quarantine-end-date {
+  font-size: 0.8125rem;
+  color: var(--danger-600);
+  font-weight: 600;
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(239, 68, 68, 0.05);
+  border-radius: 4px;
+  border-left: 3px solid var(--danger);
+}
+
+[data-theme='dark'] .quarantine-end-date {
+  background: rgba(239, 68, 68, 0.15);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .group-page {

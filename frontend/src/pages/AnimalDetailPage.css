@@ -513,3 +513,33 @@
     max-width: 100%;
   }
 }
+
+/* Quarantine Info Styles */
+.quarantine-info {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 2px solid var(--danger);
+  border-radius: 8px;
+}
+
+.quarantine-notice {
+  color: var(--danger);
+  font-size: 1rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.quarantine-dates {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  margin: 0.25rem 0;
+}
+
+[data-theme='dark'] .quarantine-info {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+}
+
+[data-theme='dark'] .quarantine-dates {
+  color: var(--text-secondary);
+}
