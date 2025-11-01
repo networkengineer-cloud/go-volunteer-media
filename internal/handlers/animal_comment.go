@@ -131,3 +131,54 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusCreated, comment)
 	}
 }
+
+// GetGroupLatestComments returns the latest comments across all animals in a group
+func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		groupID := c.Param("id")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check group access
+		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		// Get limit parameter (default 20, max 100)
+		limit := 20
+		if limitParam := c.Query("limit"); limitParam != "" {
+			if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+				if limit > 100 {
+					limit = 100
+				}
+			}
+		}
+
+		// Query to get latest comments from animals in this group
+		// We need to join with animals table to filter by group_id
+		type CommentWithAnimal struct {
+			models.AnimalComment
+			Animal models.Animal `json:"animal"`
+		}
+
+		var results []CommentWithAnimal
+		err := db.Table("animal_comments").
+			Select("animal_comments.*, animals.*").
+			Joins("JOIN animals ON animals.id = animal_comments.animal_id").
+			Where("animals.group_id = ? AND animals.deleted_at IS NULL AND animal_comments.deleted_at IS NULL", groupID).
+			Preload("User").
+			Preload("Tags").
+			Order("animal_comments.created_at DESC").
+			Limit(limit).
+			Scan(&results).Error
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
+			return
+		}
+
+		c.JSON(http.StatusOK, results)
+	}
+}

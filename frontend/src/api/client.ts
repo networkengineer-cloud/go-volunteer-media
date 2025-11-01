@@ -31,6 +31,7 @@ export interface User {
   username: string;
   email: string;
   is_admin: boolean;
+  default_group_id?: number;
   groups?: Group[];
 }
 
@@ -86,6 +87,10 @@ export interface AnimalComment {
   user?: User;
 }
 
+export interface CommentWithAnimal extends AnimalComment {
+  animal: Animal;
+}
+
 export interface CommentTag {
   id: number;
   name: string;
@@ -103,12 +108,20 @@ export const authApi = {
     api.post<{ token: string; user: User }>('/register', { username, email, password }),
   
   getCurrentUser: () => api.get<User>('/me'),
+  
+  setDefaultGroup: (groupId: number) => api.put('/default-group', { group_id: groupId }),
+  
+  getDefaultGroup: () => api.get<Group>('/default-group'),
 };
 
 // Groups API
 export const groupsApi = {
   getAll: () => api.get<Group[]>('/groups'),
   getById: (id: number) => api.get<Group>('/groups/' + id),
+  getLatestComments: (id: number, limit?: number) => {
+    const params = limit ? { limit } : {};
+    return api.get<CommentWithAnimal[]>('/groups/' + id + '/latest-comments', { params });
+  },
   create: (name: string, description: string, image_url?: string, hero_image_url?: string) =>
     api.post<Group>('/admin/groups', { name, description, image_url, hero_image_url }),
   update: (id: number, name: string, description: string, image_url?: string, hero_image_url?: string) =>
