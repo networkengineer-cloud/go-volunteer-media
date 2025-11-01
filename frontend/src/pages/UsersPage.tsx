@@ -15,6 +15,13 @@ const UsersPage: React.FC = () => {
   const [groupModalLoading, setGroupModalLoading] = React.useState(false);
   const [groupModalError, setGroupModalError] = React.useState<string | null>(null);
 
+  // Password reset modal state
+  const [resetPasswordUser, setResetPasswordUser] = React.useState<User | null>(null);
+  const [newPassword, setNewPassword] = React.useState('');
+  const [resetPasswordLoading, setResetPasswordLoading] = React.useState(false);
+  const [resetPasswordError, setResetPasswordError] = React.useState<string | null>(null);
+  const [resetPasswordSuccess, setResetPasswordSuccess] = React.useState<string | null>(null);
+
   // Fetch users (active or deleted)
   const fetchUsers = React.useCallback(() => {
     setLoading(true);
@@ -128,6 +135,42 @@ const UsersPage: React.FC = () => {
   const closeGroupModal = () => {
     setGroupModalUser(null);
     setGroupModalError(null);
+  };
+
+  // Password reset modal functions
+  const openPasswordResetModal = (user: User) => {
+    setResetPasswordUser(user);
+    setNewPassword('');
+    setResetPasswordError(null);
+    setResetPasswordSuccess(null);
+  };
+
+  const closePasswordResetModal = () => {
+    setResetPasswordUser(null);
+    setNewPassword('');
+    setResetPasswordError(null);
+    setResetPasswordSuccess(null);
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPasswordUser) return;
+    
+    setResetPasswordLoading(true);
+    setResetPasswordError(null);
+    setResetPasswordSuccess(null);
+    
+    try {
+      await usersApi.resetPassword(resetPasswordUser.id, newPassword);
+      setResetPasswordSuccess('Password reset successfully');
+      setTimeout(() => {
+        closePasswordResetModal();
+      }, 1500);
+    } catch (err: any) {
+      setResetPasswordError(err.response?.data?.error || 'Failed to reset password');
+    } finally {
+      setResetPasswordLoading(false);
+    }
   };
 
   // Admin user creation form state
@@ -323,6 +366,14 @@ const UsersPage: React.FC = () => {
                           >
                             Groups
                           </button>
+                          <button
+                            className="user-action-btn"
+                            title="Reset password"
+                            disabled={(user as any).deleted_at}
+                            onClick={() => openPasswordResetModal(user)}
+                          >
+                            Reset Password
+                          </button>
                           {/* Deactivate button removed; Delete now performs soft-delete/deactivation */}
                           <button
                             className="user-action-btn danger"
@@ -393,6 +444,13 @@ const UsersPage: React.FC = () => {
                         Groups
                       </button>
                       <button
+                        className="user-action-btn"
+                        disabled={(user as any).deleted_at}
+                        onClick={() => openPasswordResetModal(user)}
+                      >
+                        Reset Password
+                      </button>
+                      <button
                         className="user-action-btn danger"
                         disabled={(user as any).deleted_at}
                         onClick={() => handleDelete(user)}
@@ -436,6 +494,49 @@ const UsersPage: React.FC = () => {
               </ul>
             )}
             <button className="user-action-btn" onClick={closeGroupModal} style={{marginTop: '1rem'}}>Close</button>
+          </div>
+        </div>
+      )}
+      {/* Password reset modal */}
+      {resetPasswordUser && (
+        <div className="group-modal-backdrop" onClick={closePasswordResetModal}>
+          <div className="group-modal" onClick={e => e.stopPropagation()}>
+            <h2>Reset Password for {resetPasswordUser.username}</h2>
+            <form onSubmit={handlePasswordReset}>
+              <div style={{marginBottom: '1rem'}}>
+                <label>
+                  New Password
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    maxLength={72}
+                    autoComplete="new-password"
+                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
+                  />
+                </label>
+              </div>
+              {resetPasswordError && <div className="users-error">{resetPasswordError}</div>}
+              {resetPasswordSuccess && <div className="users-success">{resetPasswordSuccess}</div>}
+              <div style={{display: 'flex', gap: '0.5rem', marginTop: '1rem'}}>
+                <button
+                  type="submit"
+                  className="user-action-btn"
+                  disabled={resetPasswordLoading || !newPassword}
+                >
+                  {resetPasswordLoading ? 'Resetting…' : 'Reset Password'}
+                </button>
+                <button
+                  type="button"
+                  className="user-action-btn"
+                  onClick={closePasswordResetModal}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

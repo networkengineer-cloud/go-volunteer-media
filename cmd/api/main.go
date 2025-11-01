@@ -151,6 +151,7 @@ func main() {
 			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))
 			admin.POST("/users/:userId/promote", handlers.PromoteUser(db))
 			admin.POST("/users/:userId/demote", handlers.DemoteUser(db))
+			admin.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
 
 			// Group management (admin only)
 			admin.POST("/groups", handlers.CreateGroup(db))

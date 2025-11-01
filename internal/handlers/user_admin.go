@@ -114,6 +114,10 @@ type AdminCreateUserRequest struct {
 	GroupIDs []uint `json:"group_ids"`
 }
 
+type AdminResetPasswordRequest struct {
+	NewPassword string `json:"new_password" binding:"required,min=8,max=72"`
+}
+
 // AdminCreateUser allows an admin to create a new user
 func AdminCreateUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -166,5 +170,47 @@ func AdminCreateUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusCreated, user)
+	}
+}
+
+// AdminResetUserPassword allows an admin to reset a user's password
+func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		userId := c.Param("userId")
+		
+		var req AdminResetPasswordRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Find the user
+		var user models.User
+		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// Hash the new password
+		hashedPassword, err := auth.HashPassword(req.NewPassword)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+			return
+		}
+
+		// Update password and clear any lockouts or reset tokens
+		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+			"password":              hashedPassword,
+			"reset_token":           "",
+			"reset_token_expiry":    nil,
+			"failed_login_attempts": 0,
+			"locked_until":          nil,
+		}).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset password"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
 	}
 }

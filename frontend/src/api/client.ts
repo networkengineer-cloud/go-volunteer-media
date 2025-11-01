@@ -10,6 +10,7 @@ export const usersApi = {
   removeGroup: (userId: number, groupId: number) => api.delete(`/admin/users/${userId}/groups/${groupId}`),
   getDeleted: () => api.get<User[]>('/admin/users/deleted'),
   restore: (userId: number) => api.post(`/admin/users/${userId}/restore`),
+  resetPassword: (userId: number, newPassword: string) => api.post(`/admin/users/${userId}/reset-password`, { new_password: newPassword }),
 };
 import axios from 'axios';
 
