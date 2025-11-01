@@ -36,9 +36,14 @@ const Navigation: React.FC = () => {
   const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
-    <nav className="navigation">
-      <div className="nav-container">
-        <Link to={isAuthenticated ? '/dashboard' : '/'} className="nav-brand" onClick={closeMobileMenu}>
+    <>
+      {/* Skip link for accessibility */}
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+      <nav className="navigation" role="navigation" aria-label="Main navigation">
+        <div className="nav-container">
+          <Link to={isAuthenticated ? '/dashboard' : '/'} className="nav-brand" onClick={closeMobileMenu}>
           {/* HAWS logo placeholder - using paw icon */}
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="4" r="2"></circle>
@@ -110,16 +115,17 @@ const Navigation: React.FC = () => {
                 </>
               )}
               <Link to="/settings" className="nav-settings" onClick={closeMobileMenu}>My Settings</Link>
-              <span className="nav-user">
+              <span className="nav-user" aria-label={`Logged in as ${user?.username}${user?.is_admin ? ', Admin' : ''}`}>
                 {user?.username}
-                {user?.is_admin && <span className="admin-badge">Admin</span>}
+                {user?.is_admin && <span className="admin-badge" role="status">Admin</span>}
               </span>
-              <button onClick={() => { logout(); closeMobileMenu(); }} className="nav-logout">Logout</button>
+              <button onClick={() => { logout(); closeMobileMenu(); }} className="nav-logout" aria-label="Logout">Logout</button>
             </>
           )}
         </div>
       </div>
-    </nav>
+      </nav>
+    </>
   );
 };
 

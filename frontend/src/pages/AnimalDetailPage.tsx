@@ -3,6 +3,9 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { animalsApi, animalCommentsApi, animalsApi as imageUploadApi, commentTagsApi } from '../api/client';
 import type { Animal, AnimalComment, CommentTag } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import EmptyState from '../components/EmptyState';
+import SkeletonLoader from '../components/SkeletonLoader';
+import ErrorState from '../components/ErrorState';
 import './AnimalDetailPage.css';
 
 const AnimalDetailPage: React.FC = () => {
@@ -20,6 +23,7 @@ const AnimalDetailPage: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showCommentForm, setShowCommentForm] = useState(true);
+  const [error, setError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -47,11 +51,13 @@ const AnimalDetailPage: React.FC = () => {
 
   const loadAnimalData = async (gId: number, animalId: number) => {
     try {
+      setError('');
       const animalRes = await animalsApi.getById(gId, animalId);
       setAnimal(animalRes.data);
       await loadComments(gId, animalId, '');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load animal data:', error);
+      setError(error.response?.data?.error || 'Failed to load animal information. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -142,11 +148,48 @@ const AnimalDetailPage: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading...</div>;
+    return (
+      <div className="animal-detail-page">
+        <div className="animal-detail-container">
+          <SkeletonLoader variant="text" width="150px" />
+          <div className="animal-header">
+            <div className="animal-main-info">
+              <SkeletonLoader variant="rectangular" height="400px" />
+              <div className="animal-details">
+                <SkeletonLoader variant="text" width="60%" height="2rem" />
+                <SkeletonLoader variant="text" width="40%" />
+                <SkeletonLoader variant="text" width="80%" />
+              </div>
+            </div>
+          </div>
+          <div className="comments-section">
+            <SkeletonLoader variant="text" width="200px" height="1.5rem" />
+            <div className="skeleton-list">
+              <SkeletonLoader variant="comment" count={3} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  if (!animal) {
-    return <div className="error">Animal not found</div>;
+  if (error || !animal) {
+    return (
+      <div className="animal-detail-page">
+        <div className="animal-detail-container">
+          <ErrorState
+            title={error ? 'Unable to Load Animal' : 'Animal Not Found'}
+            message={error || 'The animal you\'re looking for doesn\'t exist or you don\'t have permission to view it.'}
+            onRetry={error ? () => {
+              setLoading(true);
+              loadAnimalData(Number(groupId), Number(id));
+            } : undefined}
+            onGoBack={() => navigate(`/groups/${groupId}`)}
+            goBackLabel="Back to Group"
+          />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -336,7 +379,21 @@ const AnimalDetailPage: React.FC = () => {
 
           <div className="comments-list">
             {comments.length === 0 ? (
-              <p className="no-comments">No comments yet. Be the first to share!</p>
+              <EmptyState
+                icon={
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    <line x1="9" y1="10" x2="15" y2="10" />
+                    <line x1="9" y1="14" x2="13" y2="14" />
+                  </svg>
+                }
+                title={`No updates yet for ${animal.name}`}
+                description={`${animal.name} is waiting for their first comment! Share how your session went, upload a photo, or leave care notes for other volunteers.`}
+                primaryAction={{
+                  label: 'Add First Comment',
+                  onClick: () => setShowCommentForm(true)
+                }}
+              />
             ) : (
               comments.map((comment) => (
                 <div key={comment.id} className="comment-card">
