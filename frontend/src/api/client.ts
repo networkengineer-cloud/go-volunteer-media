@@ -99,6 +99,28 @@ export interface CommentTag {
   created_at: string;
 }
 
+export interface ActivityItem {
+  id: number;
+  type: 'comment' | 'announcement';
+  created_at: string;
+  user_id: number;
+  user?: User;
+  content: string;
+  title?: string;
+  image_url?: string;
+  animal_id?: number;
+  animal?: Animal;
+  tags?: CommentTag[];
+}
+
+export interface ActivityFeedResponse {
+  items: ActivityItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 // Auth API
 export const authApi = {
   login: (username: string, password: string) =>
@@ -121,6 +143,13 @@ export const groupsApi = {
   getLatestComments: (id: number, limit?: number) => {
     const params = limit ? { limit } : {};
     return api.get<CommentWithAnimal[]>('/groups/' + id + '/latest-comments', { params });
+  },
+  getActivityFeed: (id: number, options?: { limit?: number; offset?: number; type?: 'all' | 'comments' | 'announcements' }) => {
+    const params: any = {};
+    if (options?.limit) params.limit = options.limit;
+    if (options?.offset) params.offset = options.offset;
+    if (options?.type && options.type !== 'all') params.type = options.type;
+    return api.get<ActivityFeedResponse>('/groups/' + id + '/activity-feed', { params });
   },
   create: (name: string, description: string, image_url?: string, hero_image_url?: string) =>
     api.post<Group>('/admin/groups', { name, description, image_url, hero_image_url }),
