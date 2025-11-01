@@ -24,17 +24,17 @@ After running `make seed`, you can login with these credentials:
 
 ### Admin User
 - **Username**: `admin`
-- **Password**: `demo123`
+- **Password**: `demo1234`
 - **Access**: All groups, full admin privileges
 
 ### Regular Users
 
 | Username | Password | Groups | Description |
 |----------|----------|--------|-------------|
-| sarah_volunteer | demo123 | dogs, modsquad | Active volunteer |
-| mike_foster | demo123 | dogs | Dog foster volunteer |
-| emma_cats | demo123 | cats | Cat volunteer |
-| jake_modsquad | demo123 | modsquad | Behavior modification specialist |
+| sarah_volunteer | demo1234 | dogs, modsquad | Active volunteer |
+| mike_foster | demo1234 | dogs | Dog foster volunteer |
+| emma_cats | demo1234 | cats | Cat volunteer |
+| jake_modsquad | demo1234 | modsquad | Behavior modification specialist |
 
 ## Command Options
 

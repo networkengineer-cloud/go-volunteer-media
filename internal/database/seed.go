@@ -67,8 +67,8 @@ func SeedData(db *gorm.DB, force bool) error {
 
 // seedUsers creates demo users
 func seedUsers(db *gorm.DB) ([]models.User, error) {
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("demo123"), bcrypt.DefaultCost)
+	// Hash password (minimum 8 characters for frontend validation)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("demo1234"), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}

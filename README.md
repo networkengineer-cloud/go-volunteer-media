@@ -64,7 +64,7 @@ Social Media app for volunteers to get updates, share photos and experiences wit
    This creates demo users, animals, and content. See [SEED_DATA.md](SEED_DATA.md) for details.
    
    Demo credentials:
-   - Username: `admin` / Password: `demo123`
+   - Username: `admin` / Password: `demo1234`
    - See [SEED_DATA.md](SEED_DATA.md) for all demo users
 
 5. **Run the backend**
@@ -216,7 +216,7 @@ This will start:
 
 1. Seed the database: `make seed`
 2. Login at http://localhost:5173/login with demo credentials:
-   - Admin: `admin` / `demo123`
+   - Admin: `admin` / `demo1234`
    - Or any other demo user (see [SEED_DATA.md](SEED_DATA.md))
 3. Explore the pre-populated groups, animals, and content
 
@@ -235,7 +235,7 @@ This will start:
 #### With Demo Data
 The seed command creates an admin user automatically:
 - Username: `admin`
-- Password: `demo123`
+- Password: `demo1234`
 
 #### Without Demo Data
 To make a user an admin, update the database directly:
