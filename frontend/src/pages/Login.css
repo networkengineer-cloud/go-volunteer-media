@@ -104,6 +104,27 @@
   color: var(--brand-600);
 }
 
+.login-notice {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: rgba(0, 163, 173, 0.1);
+  border: 1px solid rgba(0, 163, 173, 0.2);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.login-notice p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+[data-theme='dark'] .login-notice {
+  background: rgba(0, 163, 173, 0.15);
+  border-color: rgba(0, 163, 173, 0.3);
+}
+
 .modal-description {
   margin: 0 0 var(--space-lg, 1.5rem);
   font-size: var(--text-sm, 0.875rem);

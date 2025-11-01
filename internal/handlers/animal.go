@@ -120,14 +120,15 @@ func UploadAnimalImage() gin.HandlerFunc {
 }
 
 type AnimalRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Species     string `json:"species"`
-	Breed       string `json:"breed"`
-	Age         int    `json:"age"`
-	Description string `json:"description"`
-	ImageURL    string `json:"image_url,omitempty"`
-	Status      string `json:"status"`
-	GroupID     uint   `json:"group_id,omitempty"`
+	Name                string     `json:"name" binding:"required"`
+	Species             string     `json:"species"`
+	Breed               string     `json:"breed"`
+	Age                 int        `json:"age"`
+	Description         string     `json:"description"`
+	ImageURL            string     `json:"image_url,omitempty"`
+	Status              string     `json:"status"`
+	GroupID             uint       `json:"group_id,omitempty"`
+	QuarantineStartDate *time.Time `json:"quarantine_start_date,omitempty"`
 }
 
 // checkGroupAccess verifies if the user has access to a specific group
@@ -232,19 +233,37 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		now := time.Now()
 		animal := models.Animal{
-			GroupID:     uint(gid),
-			Name:        req.Name,
-			Species:     req.Species,
-			Breed:       req.Breed,
-			Age:         req.Age,
-			Description: req.Description,
-			ImageURL:    req.ImageURL,
-			Status:      req.Status,
+			GroupID:          uint(gid),
+			Name:             req.Name,
+			Species:          req.Species,
+			Breed:            req.Breed,
+			Age:              req.Age,
+			Description:      req.Description,
+			ImageURL:         req.ImageURL,
+			Status:           req.Status,
+			ArrivalDate:      &now,
+			LastStatusChange: &now,
 		}
 
 		if animal.Status == "" {
 			animal.Status = "available"
+		}
+
+		// Set status-specific dates based on initial status
+		switch animal.Status {
+		case "foster":
+			animal.FosterStartDate = &now
+		case "bite_quarantine":
+			// Use provided quarantine start date if available, otherwise use current time
+			if req.QuarantineStartDate != nil {
+				animal.QuarantineStartDate = req.QuarantineStartDate
+			} else {
+				animal.QuarantineStartDate = &now
+			}
+		case "archived":
+			animal.ArchivedDate = &now
 		}
 
 		if err := db.Create(&animal).Error; err != nil {
@@ -282,15 +301,51 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Track status changes
+		oldStatus := animal.Status
+		newStatus := req.Status
+		if newStatus != "" && newStatus != oldStatus {
+			now := time.Now()
+			animal.LastStatusChange = &now
+
+			// Update status-specific dates
+			switch newStatus {
+			case "available":
+				// When moving back to available, clear specific status dates
+				animal.FosterStartDate = nil
+				animal.QuarantineStartDate = nil
+				animal.ArchivedDate = nil
+			case "foster":
+				animal.FosterStartDate = &now
+				animal.QuarantineStartDate = nil
+				animal.ArchivedDate = nil
+			case "bite_quarantine":
+				// Use provided quarantine start date if available, otherwise use current time
+				if req.QuarantineStartDate != nil {
+					animal.QuarantineStartDate = req.QuarantineStartDate
+				} else {
+					animal.QuarantineStartDate = &now
+				}
+				animal.FosterStartDate = nil
+				animal.ArchivedDate = nil
+			case "archived":
+				animal.ArchivedDate = &now
+			}
+			animal.Status = newStatus
+		}
+
+		// Update quarantine start date if provided and animal is in quarantine status
+		if req.QuarantineStartDate != nil && animal.Status == "bite_quarantine" {
+			animal.QuarantineStartDate = req.QuarantineStartDate
+		}
+
+		// Update other fields
 		animal.Name = req.Name
 		animal.Species = req.Species
 		animal.Breed = req.Breed
 		animal.Age = req.Age
 		animal.Description = req.Description
 		animal.ImageURL = req.ImageURL
-		if req.Status != "" {
-			animal.Status = req.Status
-		}
 
 		if err := db.Save(&animal).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal"})
@@ -339,11 +394,41 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 		if req.ImageURL != "" {
 			updates["image_url"] = req.ImageURL
 		}
-		if req.Status != "" {
+		if req.Status != "" && req.Status != animal.Status {
+			// Track status change
+			now := time.Now()
 			updates["status"] = req.Status
+			updates["last_status_change"] = now
+
+			// Update status-specific dates
+			switch req.Status {
+			case "available":
+				updates["foster_start_date"] = nil
+				updates["quarantine_start_date"] = nil
+				updates["archived_date"] = nil
+			case "foster":
+				updates["foster_start_date"] = now
+				updates["quarantine_start_date"] = nil
+				updates["archived_date"] = nil
+			case "bite_quarantine":
+				// Use provided quarantine start date if available, otherwise use current time
+				if req.QuarantineStartDate != nil {
+					updates["quarantine_start_date"] = *req.QuarantineStartDate
+				} else {
+					updates["quarantine_start_date"] = now
+				}
+				updates["foster_start_date"] = nil
+				updates["archived_date"] = nil
+			case "archived":
+				updates["archived_date"] = now
+			}
 		}
 		if req.GroupID != 0 {
 			updates["group_id"] = req.GroupID
+		}
+		// Update quarantine start date if provided and status is quarantine
+		if req.QuarantineStartDate != nil && (req.Status == "bite_quarantine" || animal.Status == "bite_quarantine") {
+			updates["quarantine_start_date"] = *req.QuarantineStartDate
 		}
 
 		if len(updates) == 0 {

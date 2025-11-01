@@ -9,6 +9,23 @@ import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import './AnimalDetailPage.css';
 
+// Helper function to calculate quarantine end date (10 days, cannot end on weekend)
+const calculateQuarantineEndDate = (startDateString?: string): string => {
+  if (!startDateString) return '-';
+  
+  const startDate = new Date(startDateString);
+  // Add 10 days
+  let endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 10);
+  
+  // If end date is Saturday (6) or Sunday (0), move to Monday
+  while (endDate.getDay() === 0 || endDate.getDay() === 6) {
+    endDate.setDate(endDate.getDate() + 1);
+  }
+  
+  return endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+};
+
 const AnimalDetailPage: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
@@ -234,6 +251,19 @@ const AnimalDetailPage: React.FC = () => {
                 {animal.breed && `${animal.breed} • `}{animal.age} years old
               </p>
               <span className={`status ${animal.status}`}>{animal.status}</span>
+              {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
+                <div className="quarantine-info">
+                  <p className="quarantine-notice">
+                    <strong>⚠️ Bite Quarantine</strong>
+                  </p>
+                  <p className="quarantine-dates">
+                    Start: {new Date(animal.quarantine_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </p>
+                  <p className="quarantine-dates">
+                    End: {calculateQuarantineEndDate(animal.quarantine_start_date)}
+                  </p>
+                </div>
+              )}
               {animal.description && (
                 <p className="animal-description">{animal.description}</p>
               )}
