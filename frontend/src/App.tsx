@@ -41,7 +41,8 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <Navigation />
-        <Routes>
+        <main id="main-content" role="main">
+          <Routes>
           <Route
             path="/"
             element={
@@ -163,6 +164,7 @@ function App() {
             }
           />
         </Routes>
+        </main>
       </AuthProvider>
     </BrowserRouter>
   );

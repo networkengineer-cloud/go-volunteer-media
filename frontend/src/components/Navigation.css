@@ -1,3 +1,23 @@
+/* Skip link for accessibility */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--brand);
+  color: var(--brand-contrast);
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  font-weight: 600;
+  z-index: var(--z-tooltip, 1070);
+  border-radius: 0 0 var(--radius-md) 0;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
 .navigation {
   background: var(--brand);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);

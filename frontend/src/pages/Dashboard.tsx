@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { groupsApi, announcementsApi, authApi, animalsApi } from '../api/client';
 import type { Group, Announcement, CommentWithAnimal, Animal } from '../api/client';
+import EmptyState from '../components/EmptyState';
+import SkeletonLoader from '../components/SkeletonLoader';
 import './Dashboard.css';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [groups, setGroups] = useState<Group[]>([]);
   const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -137,15 +140,44 @@ const Dashboard: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading...</div>;
-  }
-
-  // If no groups, show message
-  if (groups.length === 0) {
     return (
       <div className="dashboard">
-        <h1>Welcome, {user?.username}!</h1>
-        <p>You haven't been assigned to any groups yet. Contact an admin to get started!</p>
+        <div className="dashboard-header">
+          <SkeletonLoader variant="text" width="40%" height="2rem" />
+        </div>
+        <div className="skeleton-list">
+          <SkeletonLoader variant="comment" count={5} />
+        </div>
+      </div>
+    );
+  }
+
+  // If no groups, show empty state
+  if (groups.length === 0) {
+    const welcomeIcon = (
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    );
+
+    return (
+      <div className="dashboard">
+        <EmptyState
+          icon={welcomeIcon}
+          title={`Welcome to HAWS, ${user?.username}!`}
+          description="You haven't been assigned to any volunteer groups yet. Contact an admin to get access to dog, cat, or other volunteer groups where you can share updates and connect with animals."
+          primaryAction={user?.is_admin ? {
+            label: 'Create a Group',
+            onClick: () => navigate('/admin/groups')
+          } : undefined}
+          secondaryAction={{
+            label: 'Learn More',
+            onClick: () => window.open('https://hawspets.org/volunteer', '_blank')
+          }}
+        />
       </div>
     );
   }
@@ -195,7 +227,19 @@ const Dashboard: React.FC = () => {
           <div className="latest-comments-section">
             <h3>Latest Comments</h3>
             {latestComments.length === 0 ? (
-              <p className="no-comments">No comments yet in this group.</p>
+              <EmptyState
+                icon={
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                }
+                title="No comments yet"
+                description={`Be the first to share an update in the ${currentGroup.name} group! Comment on an animal to share your experiences, photos, or care notes.`}
+                primaryAction={{
+                  label: 'View Animals',
+                  onClick: () => navigate(`/groups/${currentGroup.id}`)
+                }}
+              />
             ) : (
               <div className="comments-list">
                 {latestComments.map((comment) => (
@@ -261,7 +305,24 @@ const Dashboard: React.FC = () => {
               </Link>
             </div>
             {animals.length === 0 ? (
-              <p>No animals in this group yet.</p>
+              <EmptyState
+                icon={
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="8" r="4" />
+                    <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+                    <path d="M12 12c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3z" />
+                  </svg>
+                }
+                title={`No animals in ${currentGroup.name} yet`}
+                description={user?.is_admin ? 
+                  "Get started by adding your first animal to this group. Animals added here will be visible to all group members." :
+                  "This group doesn't have any animals yet. An admin will need to add animals before volunteers can share updates."
+                }
+                primaryAction={user?.is_admin ? {
+                  label: 'Add First Animal',
+                  onClick: () => navigate(`/groups/${currentGroup.id}/animals/new`)
+                } : undefined}
+              />
             ) : (
               <div className="animals-grid">
                 {animals.slice(0, 6).map((animal) => (
@@ -343,7 +404,24 @@ const Dashboard: React.FC = () => {
         )}
 
         {announcements.length === 0 ? (
-          <p className="no-announcements">No announcements yet.</p>
+          <EmptyState
+            icon={
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            }
+            title="No announcements yet"
+            description={user?.is_admin ?
+              "Create the first announcement to keep volunteers informed about important updates, events, or reminders." :
+              "No announcements from the shelter at this time. Check back here for important updates from the admin team."
+            }
+            primaryAction={user?.is_admin ? {
+              label: 'Create Announcement',
+              onClick: () => setShowAnnouncementForm(true)
+            } : undefined}
+          />
         ) : (
           <div className="announcements-list">
             {announcements.map((announcement) => (
