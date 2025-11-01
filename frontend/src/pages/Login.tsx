@@ -6,6 +6,7 @@ import axios from 'axios';
 import FormField from '../components/FormField';
 import PasswordField from '../components/PasswordField';
 import Button from '../components/Button';
+import Modal from '../components/Modal';
 import './Login.css';
 
 const SUCCESS_MESSAGE_TIMEOUT = 3000; // milliseconds
@@ -278,51 +279,62 @@ const Login: React.FC = () => {
       </div>
 
       {/* Forgot Password Modal */}
-      {showForgotPassword && (
-        <div className="modal-overlay" onClick={() => setShowForgotPassword(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>Reset Password</h2>
-            <p>Enter your email address and we'll send you a link to reset your password.</p>
-            <form onSubmit={handleForgotPassword}>
-              <FormField
-                label="Email"
-                id="reset-email"
-                type="email"
-                value={resetEmail}
-                onChange={setResetEmail}
-                error={resetError}
-                required
-                placeholder="your-email@example.com"
-                autoComplete="email"
-              />
-              {resetSuccess && <div className="success" role="status">{resetSuccess}</div>}
-              <div className="modal-actions">
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setShowForgotPassword(false);
-                    setResetError('');
-                    setResetSuccess('');
-                    setResetEmail('');
-                  }}
-                  variant="secondary"
-                  disabled={isSubmittingReset}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  loading={isSubmittingReset}
-                  disabled={isSubmittingReset}
-                >
-                  Send Reset Link
-                </Button>
-              </div>
-            </form>
+      <Modal
+        isOpen={showForgotPassword}
+        onClose={() => {
+          setShowForgotPassword(false);
+          setResetError('');
+          setResetSuccess('');
+          setResetEmail('');
+        }}
+        title="Reset Password"
+        size="small"
+      >
+        <p className="modal-description">
+          Enter your email address and we'll send you a link to reset your password.
+        </p>
+        <form onSubmit={handleForgotPassword}>
+          <FormField
+            label="Email"
+            id="reset-email"
+            type="email"
+            value={resetEmail}
+            onChange={setResetEmail}
+            error={resetError}
+            required
+            placeholder="your-email@example.com"
+            autoComplete="email"
+          />
+          {resetSuccess && (
+            <div className="success" role="status">
+              {resetSuccess}
+            </div>
+          )}
+          <div className="modal__actions">
+            <Button
+              type="button"
+              onClick={() => {
+                setShowForgotPassword(false);
+                setResetError('');
+                setResetSuccess('');
+                setResetEmail('');
+              }}
+              variant="secondary"
+              disabled={isSubmittingReset}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={isSubmittingReset}
+              disabled={isSubmittingReset}
+            >
+              Send Reset Link
+            </Button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
     </div>
   );
 };
