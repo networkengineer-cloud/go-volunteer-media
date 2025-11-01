@@ -77,6 +77,24 @@ func (a *Animal) CurrentStatusDuration() int {
 	return int(time.Since(*a.LastStatusChange).Hours() / 24)
 }
 
+// QuarantineEndDate calculates when the 10-day bite quarantine ends
+// The quarantine cannot end on Saturday or Sunday, so it adjusts forward to Monday
+func (a *Animal) QuarantineEndDate() *time.Time {
+	if a.QuarantineStartDate == nil {
+		return nil
+	}
+	
+	// Calculate 10 days from start date
+	endDate := a.QuarantineStartDate.AddDate(0, 0, 10)
+	
+	// Check if end date falls on weekend and adjust to next Monday
+	for endDate.Weekday() == time.Saturday || endDate.Weekday() == time.Sunday {
+		endDate = endDate.AddDate(0, 0, 1)
+	}
+	
+	return &endDate
+}
+
 // Update represents a post/update in a group
 type Update struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`

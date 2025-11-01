@@ -120,14 +120,15 @@ func UploadAnimalImage() gin.HandlerFunc {
 }
 
 type AnimalRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Species     string `json:"species"`
-	Breed       string `json:"breed"`
-	Age         int    `json:"age"`
-	Description string `json:"description"`
-	ImageURL    string `json:"image_url,omitempty"`
-	Status      string `json:"status"`
-	GroupID     uint   `json:"group_id,omitempty"`
+	Name                string     `json:"name" binding:"required"`
+	Species             string     `json:"species"`
+	Breed               string     `json:"breed"`
+	Age                 int        `json:"age"`
+	Description         string     `json:"description"`
+	ImageURL            string     `json:"image_url,omitempty"`
+	Status              string     `json:"status"`
+	GroupID             uint       `json:"group_id,omitempty"`
+	QuarantineStartDate *time.Time `json:"quarantine_start_date,omitempty"`
 }
 
 // checkGroupAccess verifies if the user has access to a specific group
@@ -255,7 +256,12 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 		case "foster":
 			animal.FosterStartDate = &now
 		case "bite_quarantine":
-			animal.QuarantineStartDate = &now
+			// Use provided quarantine start date if available, otherwise use current time
+			if req.QuarantineStartDate != nil {
+				animal.QuarantineStartDate = req.QuarantineStartDate
+			} else {
+				animal.QuarantineStartDate = &now
+			}
 		case "archived":
 			animal.ArchivedDate = &now
 		}
@@ -314,13 +320,23 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.QuarantineStartDate = nil
 				animal.ArchivedDate = nil
 			case "bite_quarantine":
-				animal.QuarantineStartDate = &now
+				// Use provided quarantine start date if available, otherwise use current time
+				if req.QuarantineStartDate != nil {
+					animal.QuarantineStartDate = req.QuarantineStartDate
+				} else {
+					animal.QuarantineStartDate = &now
+				}
 				animal.FosterStartDate = nil
 				animal.ArchivedDate = nil
 			case "archived":
 				animal.ArchivedDate = &now
 			}
 			animal.Status = newStatus
+		}
+
+		// Update quarantine start date if provided and animal is in quarantine status
+		if req.QuarantineStartDate != nil && animal.Status == "bite_quarantine" {
+			animal.QuarantineStartDate = req.QuarantineStartDate
 		}
 
 		// Update other fields
@@ -395,7 +411,12 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				updates["quarantine_start_date"] = nil
 				updates["archived_date"] = nil
 			case "bite_quarantine":
-				updates["quarantine_start_date"] = now
+				// Use provided quarantine start date if available, otherwise use current time
+				if req.QuarantineStartDate != nil {
+					updates["quarantine_start_date"] = *req.QuarantineStartDate
+				} else {
+					updates["quarantine_start_date"] = now
+				}
 				updates["foster_start_date"] = nil
 				updates["archived_date"] = nil
 			case "archived":
@@ -404,6 +425,10 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 		}
 		if req.GroupID != 0 {
 			updates["group_id"] = req.GroupID
+		}
+		// Update quarantine start date if provided and status is quarantine
+		if req.QuarantineStartDate != nil && (req.Status == "bite_quarantine" || animal.Status == "bite_quarantine") {
+			updates["quarantine_start_date"] = *req.QuarantineStartDate
 		}
 
 		if len(updates) == 0 {

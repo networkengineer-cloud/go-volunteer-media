@@ -21,6 +21,23 @@ const formatDate = (dateString?: string): string => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+// Helper function to calculate quarantine end date (10 days, cannot end on weekend)
+const calculateQuarantineEndDate = (startDateString?: string): string => {
+  if (!startDateString) return '-';
+  
+  const startDate = new Date(startDateString);
+  // Add 10 days
+  let endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 10);
+  
+  // If end date is Saturday (6) or Sunday (0), move to Monday
+  while (endDate.getDay() === 0 || endDate.getDay() === 6) {
+    endDate.setDate(endDate.getDate() + 1);
+  }
+  
+  return endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 const BulkEditAnimalsPage: React.FC = () => {
   const toast = useToast();
   const [animals, setAnimals] = useState<Animal[]>([]);
@@ -337,12 +354,13 @@ const BulkEditAnimalsPage: React.FC = () => {
                 <th>Arrival Date</th>
                 <th>Length of Stay (days)</th>
                 <th>Current Status (days)</th>
+                <th>Quarantine End Date</th>
               </tr>
             </thead>
             <tbody>
               {animals.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="no-data">
+                  <td colSpan={12} className="no-data">
                     No animals found
                   </td>
                 </tr>
@@ -391,6 +409,12 @@ const BulkEditAnimalsPage: React.FC = () => {
                     <td>{formatDate(animal.arrival_date)}</td>
                     <td>{calculateDaysSince(animal.arrival_date)}</td>
                     <td>{calculateDaysSince(animal.last_status_change)}</td>
+                    <td>
+                      {animal.status === 'bite_quarantine' 
+                        ? calculateQuarantineEndDate(animal.quarantine_start_date)
+                        : '-'
+                      }
+                    </td>
                   </tr>
                 ))
               )}

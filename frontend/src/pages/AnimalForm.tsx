@@ -22,6 +22,7 @@ const AnimalForm: React.FC = () => {
     description: '',
     image_url: '',
     status: 'available',
+    quarantine_start_date: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -35,7 +36,11 @@ const AnimalForm: React.FC = () => {
   const loadAnimal = async (gId: number, animalId: number) => {
     try {
       const response = await animalsApi.getById(gId, animalId);
-      setFormData(response.data);
+      const animal = response.data;
+      setFormData({
+        ...animal,
+        quarantine_start_date: animal.quarantine_start_date || '',
+      });
     } catch (error) {
       console.error('Failed to load animal:', error);
       toast.showError('Failed to load animal details');
@@ -239,6 +244,18 @@ const AnimalForm: React.FC = () => {
               <p className="form-field__helper">Current status of the animal</p>
             </div>
           </div>
+
+          {formData.status === 'bite_quarantine' && (
+            <FormField
+              label="Quarantine Start Date"
+              id="quarantine_start_date"
+              type="date"
+              value={formData.quarantine_start_date ? formData.quarantine_start_date.split('T')[0] : ''}
+              onChange={(value) => setFormData({ ...formData, quarantine_start_date: value })}
+              helperText="Date the bite occurred (defaults to status change date). Quarantine is 10 days and cannot end on weekends."
+              autoComplete="off"
+            />
+          )}
 
           <div className="form-field">
             <label htmlFor="image_upload" className="form-field__label">

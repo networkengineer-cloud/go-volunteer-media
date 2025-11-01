@@ -4,7 +4,7 @@ import './FormField.css';
 interface FormFieldProps {
   label: string;
   id: string;
-  type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url' | 'textarea';
+  type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url' | 'textarea' | 'date';
   value: string | number;
   onChange: (value: string) => void;
   onBlur?: () => void;
