@@ -127,6 +127,28 @@ export interface ActivityFeedResponse {
   hasMore: boolean;
 }
 
+export interface GroupStatistics {
+  group_id: number;
+  user_count: number;
+  animal_count: number;
+  last_activity?: string;
+}
+
+export interface UserStatistics {
+  user_id: number;
+  comment_count: number;
+  last_active?: string;
+  animals_interacted_with: number;
+}
+
+export interface CommentTagStatistics {
+  tag_id: number;
+  usage_count: number;
+  last_used?: string;
+  most_tagged_animal_id?: number;
+  most_tagged_animal_name?: string;
+}
+
 // Auth API
 export const authApi = {
   login: (username: string, password: string) =>
@@ -281,6 +303,13 @@ export const settingsApi = {
       },
     });
   },
+};
+
+// Statistics API (admin only)
+export const statisticsApi = {
+  getGroupStatistics: () => api.get<GroupStatistics[]>('/admin/statistics/groups'),
+  getUserStatistics: () => api.get<UserStatistics[]>('/admin/statistics/users'),
+  getCommentTagStatistics: () => api.get<CommentTagStatistics[]>('/admin/statistics/comment-tags'),
 };
 
 export default api;

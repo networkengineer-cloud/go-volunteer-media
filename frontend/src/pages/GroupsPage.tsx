@@ -1,8 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import './GroupsPage.css';
-import type { Group, Animal } from '../api/client';
-import { groupsApi, animalsApi } from '../api/client';
+import type { Group, Animal, GroupStatistics } from '../api/client';
+import { groupsApi, animalsApi, statisticsApi } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 
 const GroupsPage: React.FC = () => {
@@ -10,6 +10,7 @@ const GroupsPage: React.FC = () => {
   const [groups, setGroups] = React.useState<Group[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [statistics, setStatistics] = React.useState<Record<number, GroupStatistics>>({});
 
   // Create/Edit modal state
   const [showModal, setShowModal] = React.useState(false);
@@ -25,13 +26,25 @@ const GroupsPage: React.FC = () => {
   const [availableAnimals, setAvailableAnimals] = React.useState<Animal[]>([]);
   const [showAnimalSelector, setShowAnimalSelector] = React.useState(false);
 
-  // Fetch groups
+  // Fetch groups and statistics
   const fetchGroups = React.useCallback(() => {
     setLoading(true);
     setError(null);
-    groupsApi.getAll()
-      .then(res => {
-        setGroups(res.data);
+    
+    Promise.all([
+      groupsApi.getAll(),
+      statisticsApi.getGroupStatistics()
+    ])
+      .then(([groupsRes, statsRes]) => {
+        setGroups(groupsRes.data);
+        
+        // Create a map of group_id to statistics
+        const statsMap: Record<number, GroupStatistics> = {};
+        statsRes.data.forEach(stat => {
+          statsMap[stat.group_id] = stat;
+        });
+        setStatistics(statsMap);
+        
         setLoading(false);
       })
       .catch(err => {
@@ -160,56 +173,99 @@ const GroupsPage: React.FC = () => {
               <th>Image</th>
               <th>Name</th>
               <th>Description</th>
+              <th>Members</th>
+              <th>Animals</th>
+              <th>Last Activity</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {groups.map(group => (
-              <tr key={group.id}>
-                <td className="group-image">
-                  {group.image_url ? (
-                    <img src={group.image_url} alt={group.name} className="group-thumbnail" />
-                  ) : (
-                    <div className="no-image">No image</div>
-                  )}
-                </td>
-                <td className="group-name">
-                  <Link 
-                    to={`/groups/${group.id}`}
-                    className="group-name-link"
-                    title={`View ${group.name} page`}
-                  >
-                    {group.name}
-                  </Link>
-                </td>
-                <td className="group-description">{group.description || '—'}</td>
-                <td>
-                  <div className="group-actions">
-                    <Link
+            {groups.map(group => {
+              const stats = statistics[group.id];
+              return (
+                <tr key={group.id}>
+                  <td className="group-image">
+                    {group.image_url ? (
+                      <img src={group.image_url} alt={group.name} className="group-thumbnail" />
+                    ) : (
+                      <div className="no-image">No image</div>
+                    )}
+                  </td>
+                  <td className="group-name">
+                    <Link 
                       to={`/groups/${group.id}`}
-                      className="group-action-btn view"
-                      title="View group page"
+                      className="group-name-link"
+                      title={`View ${group.name} page`}
                     >
-                      View Group
+                      {group.name}
                     </Link>
-                    <button
-                      className="group-action-btn"
-                      title="Edit group"
-                      onClick={() => openEditModal(group)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="group-action-btn danger"
-                      title="Delete group"
-                      onClick={() => handleDelete(group)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="group-description">{group.description || '—'}</td>
+                  <td className="group-stat">
+                    {stats ? (
+                      <span className="stat-badge" title={`${stats.user_count} member${stats.user_count !== 1 ? 's' : ''}`}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="9" cy="7" r="4"></circle>
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                        {stats.user_count}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td className="group-stat">
+                    {stats ? (
+                      <span className="stat-badge" title={`${stats.animal_count} animal${stats.animal_count !== 1 ? 's' : ''}`}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="11" cy="4" r="2"></circle>
+                          <circle cx="18" cy="8" r="2"></circle>
+                          <circle cx="20" cy="16" r="2"></circle>
+                          <circle cx="4" cy="16" r="2"></circle>
+                          <circle cx="4" cy="8" r="2"></circle>
+                          <path d="M10.5 6.5 A 6 6 0 0 1 13.5 13.5 L 10.5 6.5 Z"></path>
+                        </svg>
+                        {stats.animal_count}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td className="group-stat">
+                    {stats?.last_activity ? (
+                      <span className="last-activity" title={new Date(stats.last_activity).toLocaleString()}>
+                        {formatRelativeTime(stats.last_activity)}
+                      </span>
+                    ) : (
+                      <span className="no-activity">No activity</span>
+                    )}
+                  </td>
+                  <td>
+                    <div className="group-actions">
+                      <Link
+                        to={`/groups/${group.id}`}
+                        className="group-action-btn view"
+                        title="View group page"
+                      >
+                        View Group
+                      </Link>
+                      <button
+                        className="group-action-btn"
+                        title="Edit group"
+                        onClick={() => openEditModal(group)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="group-action-btn danger"
+                        title="Delete group"
+                        onClick={() => handleDelete(group)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -398,5 +454,21 @@ const GroupsPage: React.FC = () => {
     </div>
   );
 };
+
+// Helper function to format relative time
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
 
 export default GroupsPage;
