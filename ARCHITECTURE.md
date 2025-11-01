@@ -810,6 +810,151 @@ graph LR
 
 ---
 
+## Deployment Architecture
+
+### Azure Infrastructure (Terraform)
+
+```mermaid
+graph TB
+    subgraph "GitHub"
+        Repo[Repository]
+        Actions[GitHub Actions]
+        GHCR[GitHub Container Registry]
+    end
+    
+    subgraph "HCP Terraform"
+        Workspace[Workspace<br/>State Management]
+        Plans[Plan/Apply Runs]
+        Variables[Encrypted Variables]
+    end
+    
+    subgraph "Azure AD"
+        AppReg[App Registration<br/>OIDC Federation]
+        RBAC[Role Assignments]
+    end
+    
+    subgraph "Azure Resources"
+        ContainerApp[Container Apps<br/>Application Host]
+        PostgreSQL[PostgreSQL Flexible Server<br/>Database]
+        BlobStorage[Blob Storage<br/>Image Uploads]
+        KeyVault[Key Vault<br/>Secrets]
+        AppInsights[Application Insights<br/>Monitoring]
+    end
+    
+    subgraph "External Services"
+        SendGrid[SendGrid<br/>Email Delivery]
+    end
+    
+    Repo -->|Push| Actions
+    Actions -->|Build| GHCR
+    Actions -->|Trigger| Workspace
+    Workspace -->|OIDC Auth| AppReg
+    AppReg -->|Permission| RBAC
+    Workspace -->|Plan/Apply| ContainerApp
+    Workspace -->|Plan/Apply| PostgreSQL
+    Workspace -->|Plan/Apply| BlobStorage
+    Workspace -->|Plan/Apply| KeyVault
+    Workspace -->|Plan/Apply| AppInsights
+    
+    ContainerApp -->|Pull Image| GHCR
+    ContainerApp -->|Read Secrets| KeyVault
+    ContainerApp -->|Connect| PostgreSQL
+    ContainerApp -->|Store Files| BlobStorage
+    ContainerApp -->|Logs/Metrics| AppInsights
+    ContainerApp -->|Send Email| SendGrid
+```
+
+### Deployment Components
+
+| Component | Purpose | Cost |
+|-----------|---------|------|
+| **HCP Terraform** | State management, collaboration, CI/CD orchestration | Free (up to 500 resources) |
+| **Azure Container Apps** | Serverless container hosting with auto-scaling | ~$5-8/month |
+| **PostgreSQL Flexible Server** | Managed database with backups | ~$10/month (B1ms) |
+| **Azure Blob Storage** | Image file storage | ~$1-2/month |
+| **Key Vault** | Secure secrets management | Free (first 10k operations) |
+| **Application Insights** | Monitoring and diagnostics | Free tier (<5GB) |
+| **SendGrid** | Email delivery service | Free (100 emails/day) |
+| **GitHub Container Registry** | Container image hosting | Free (public repos) |
+| **Total Estimated Cost** | | **~$16-20/month** |
+
+### Federated Credentials (OIDC)
+
+The infrastructure uses federated credentials for passwordless authentication:
+
+1. **HCP Terraform → Azure**:
+   - No client secrets stored
+   - OIDC tokens from HCP Terraform
+   - Azure AD validates identity
+   - Short-lived access tokens
+
+2. **GitHub Actions → Azure**:
+   - OIDC authentication from GitHub
+   - No long-lived credentials
+   - Separate federated credential for CI/CD
+
+3. **Container Apps → Azure Services**:
+   - Managed Identity for inter-service auth
+   - No connection strings in code
+   - Azure AD authentication
+
+### CI/CD Pipeline
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant GH as GitHub
+    participant TF as HCP Terraform
+    participant Azure as Azure Resources
+    
+    Dev->>GH: Push to main branch
+    GH->>GH: Run security scans (tfsec, Checkov)
+    GH->>TF: Trigger Terraform run
+    TF->>Azure: Request OIDC token
+    Azure->>TF: Issue short-lived token
+    TF->>TF: Execute terraform plan
+    TF->>Azure: Apply infrastructure changes
+    Azure->>Azure: Update resources
+    TF->>GH: Report deployment status
+    GH->>Dev: Notify completion
+```
+
+### Deployment Workflow
+
+1. **Development**:
+   - Code changes pushed to feature branch
+   - PR triggers terraform plan
+   - Plan output commented on PR
+   
+2. **Review**:
+   - Team reviews changes in PR
+   - HCP Terraform shows plan in UI
+   - Cost estimation available
+   
+3. **Deployment**:
+   - Merge to main branch
+   - HCP Terraform applies changes automatically
+   - Resources updated in Azure
+   - Application redeployed
+
+4. **Monitoring**:
+   - Application Insights collects metrics
+   - Logs aggregated for troubleshooting
+   - Alerts configured for issues
+
+### Security Features
+
+- **No Secrets in Git**: All sensitive values in HCP Terraform or Azure Key Vault
+- **OIDC Authentication**: Federated credentials eliminate long-lived secrets
+- **State Encryption**: Terraform state encrypted at rest in HCP
+- **Network Security**: Private endpoints for database, VNet isolation
+- **HTTPS Only**: TLS 1.2+ enforced on all services
+- **Audit Logging**: All operations logged in Azure AD and HCP Terraform
+- **RBAC**: Role-based access control on all resources
+- **Security Scanning**: tfsec and Checkov in CI/CD pipeline
+
+---
+
 ## Future Enhancements
 
 1. **WebSocket Support** - Real-time notifications and updates

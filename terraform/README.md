@@ -1,16 +1,17 @@
 # Go Volunteer Media - Terraform Infrastructure
 
-This directory contains the Terraform infrastructure as code (IaC) for deploying the Go Volunteer Media application to Azure.
+This directory contains the Terraform infrastructure as code (IaC) for deploying the Go Volunteer Media application to Azure using **HCP Terraform** (formerly Terraform Cloud) for state management.
 
 ## Architecture
 
 - **Azure Container Apps**: Serverless container hosting with auto-scaling
 - **PostgreSQL Flexible Server**: Managed database (Burstable B1ms tier)
 - **Azure Blob Storage**: Image upload storage
-- **SendGrid**: Email service (SMTP)
+- **SendGrid**: Email service (SMTP - free tier)
 - **GitHub Container Registry**: Container image storage (free)
 - **Application Insights**: Monitoring and observability
 - **Key Vault**: Secrets management
+- **HCP Terraform**: Remote state management and collaboration (free tier)
 
 ## Prerequisites
 
@@ -18,7 +19,8 @@ This directory contains the Terraform infrastructure as code (IaC) for deploying
 2. **Terraform**: Version 1.5.0 or later
 3. **Azure Subscription**: Active subscription with appropriate permissions
 4. **GitHub Account**: For GitHub Container Registry (GHCR)
-5. **SendGrid Account**: Free tier from Azure Marketplace
+5. **SendGrid Account**: Free tier (100 emails/day)
+6. **HCP Terraform Account**: Sign up at https://app.terraform.io (free tier)
 
 ## Project Structure
 
@@ -45,127 +47,193 @@ terraform/
 
 ## Initial Setup
 
-### 1. Login to Azure
+### 1. Create HCP Terraform Account
+
+1. Sign up at https://app.terraform.io
+2. Create a new organization (e.g., `volunteer-media`)
+3. Create a new workspace:
+   - Name: `volunteer-media-prod`
+   - Execution Mode: **Remote** (recommended) or **Local**
+   - VCS Integration: Connect to your GitHub repository (optional)
+
+### 2. Configure Federated Credentials for Azure
+
+**In Azure Portal:**
+
+1. **Register an App in Azure AD (Microsoft Entra ID)**:
+   ```bash
+   az ad app create --display-name "Terraform-HCP-OIDC"
+   ```
+
+2. **Create a Service Principal**:
+   ```bash
+   APP_ID=$(az ad app list --display-name "Terraform-HCP-OIDC" --query "[0].appId" -o tsv)
+   az ad sp create --id $APP_ID
+   ```
+
+3. **Assign Contributor Role**:
+   ```bash
+   SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+   SP_ID=$(az ad sp list --display-name "Terraform-HCP-OIDC" --query "[0].id" -o tsv)
+   
+   az role assignment create \
+     --role "Contributor" \
+     --assignee-object-id $SP_ID \
+     --scope "/subscriptions/$SUBSCRIPTION_ID"
+   ```
+
+4. **Configure Federated Credential for HCP Terraform**:
+   ```bash
+   az ad app federated-credential create \
+     --id $APP_ID \
+     --parameters '{
+       "name": "terraform-cloud-oidc",
+       "issuer": "https://app.terraform.io",
+       "subject": "organization:YOUR_ORG_NAME:project:*:workspace:*:run_phase:*",
+       "description": "HCP Terraform OIDC",
+       "audiences": ["api://AzureADTokenExchange"]
+     }'
+   ```
+
+**In HCP Terraform Workspace:**
+
+1. Go to workspace → Variables
+2. Add **Environment Variables**:
+   - `ARM_CLIENT_ID`: Your Azure App (client) ID
+   - `ARM_SUBSCRIPTION_ID`: Your Azure subscription ID
+   - `ARM_TENANT_ID`: Your Azure tenant ID
+   - `ARM_USE_OIDC`: `true`
+
+3. Add **Terraform Variables** (mark as sensitive):
+   - `sendgrid_api_key`: Your SendGrid API key
+   - `jwt_secret`: Generate with `openssl rand -base64 32`
+   - `owner_email`: Admin email address
+   - `container_image`: Your GHCR image URL
+
+### 3. Configure GitHub Actions Integration
+
+Add these secrets to your GitHub repository:
+
+1. **HCP Terraform Token**:
+   - Go to HCP Terraform → User Settings → Tokens
+   - Create API token
+   - Add to GitHub as `TF_API_TOKEN`
+
+2. **Azure OIDC Credentials** (for GitHub Actions):
+   ```bash
+   # Get values
+   echo "AZURE_CLIENT_ID: $APP_ID"
+   echo "AZURE_TENANT_ID: $(az account show --query tenantId -o tsv)"
+   echo "AZURE_SUBSCRIPTION_ID: $SUBSCRIPTION_ID"
+   ```
+   
+   Add to GitHub Secrets:
+   - `AZURE_CLIENT_ID`
+   - `AZURE_TENANT_ID`
+   - `AZURE_SUBSCRIPTION_ID`
+
+3. **Application Secrets**:
+   - `SENDGRID_API_KEY`: From SendGrid portal
+   - `JWT_SECRET`: Generate with `openssl rand -base64 32`
+   - `OWNER_EMAIL`: Admin email
+   - `CONTAINER_IMAGE`: Your GHCR image URL
+
+### 4. Configure SendGrid (Free Tier)
 
 ```bash
-az login
-az account set --subscription "Your-Subscription-ID"
+# Sign up at https://signup.sendgrid.com
+# Free tier: 100 emails/day (forever free)
+
+# After signup:
+# 1. Verify sender identity (email or domain)
+# 2. Create API key: Settings → API Keys → Create API Key
+# 3. Add API key to HCP Terraform workspace variables
 ```
 
-### 2. Create Storage Account for Terraform State
+### 5. Update Backend Configuration
 
-```bash
-# Set variables
-RESOURCE_GROUP="rg-terraform-state"
-STORAGE_ACCOUNT="sttfstate$(openssl rand -hex 4)"
-CONTAINER_NAME="tfstate"
-LOCATION="eastus"
+Edit `terraform/environments/prod/backend.tf` and update the organization name:
 
-# Create resource group
-az group create --name $RESOURCE_GROUP --location $LOCATION
-
-# Create storage account
-az storage account create \
-  --resource-group $RESOURCE_GROUP \
-  --name $STORAGE_ACCOUNT \
-  --sku Standard_LRS \
-  --encryption-services blob
-
-# Create container
-az storage container create \
-  --name $CONTAINER_NAME \
-  --account-name $STORAGE_ACCOUNT
-
-echo "Storage Account: $STORAGE_ACCOUNT"
+```hcl
+cloud {
+  organization = "your-org-name"  # Replace with your HCP Terraform org
+  
+  workspaces {
+    name = "volunteer-media-prod"
+  }
+}
 ```
 
-### 3. Configure Backend
-
-Update `environments/prod/backend.tf` with your storage account name.
-
-### 4. Create SendGrid Account
-
-```bash
-# Option 1: Via Azure Portal
-# 1. Go to Azure Portal
-# 2. Create Resource → Search "SendGrid"
-# 3. Select Free tier (25k emails/month)
-# 4. Complete setup
-
-# Option 2: Via Azure CLI (after account setup)
-# Get API key from SendGrid portal: https://app.sendgrid.com
-```
-
-### 5. Initialize Terraform
+### 6. Initialize Terraform
 
 ```bash
 cd terraform/environments/prod
+
+# Login to HCP Terraform
+terraform login
+
+# Initialize
 terraform init
 ```
 
 ## Deployment
 
-### Development Environment
+### Via HCP Terraform (Recommended)
 
-```bash
-cd terraform/environments/dev
-terraform init
-terraform plan -out=tfplan
-terraform apply tfplan
-```
+HCP Terraform provides a web UI for managing runs:
 
-### Production Environment
+1. **Automatic Runs** (with VCS integration):
+   - Push to main branch
+   - HCP Terraform automatically triggers plan
+   - Review plan in UI
+   - Approve to apply
+
+2. **Manual Runs**:
+   - Go to workspace in HCP Terraform UI
+   - Click "Actions" → "Start new run"
+   - Review plan
+   - Confirm and apply
+
+### Via CLI
 
 ```bash
 cd terraform/environments/prod
-terraform init
-terraform plan -out=tfplan
-terraform apply tfplan
+
+# Plan
+terraform plan
+
+# Apply
+terraform apply
 ```
+
+### Via GitHub Actions (CI/CD)
+
+The workflow automatically runs on:
+- **Pull Requests**: Runs `terraform plan` and comments on PR
+- **Push to main**: Runs `terraform apply` automatically
 
 ## Configuration
 
 ### Required Variables
 
-Create a `terraform.tfvars` file in the environment directory:
+Variables are configured in the HCP Terraform workspace UI (no `terraform.tfvars` file needed):
 
-```hcl
-# terraform/environments/prod/terraform.tfvars
-project_name = "volunteer-media"
-environment  = "prod"
-location     = "eastus"
-
-# Container configuration
-container_image = "ghcr.io/networkengineer-cloud/go-volunteer-media:latest"
-container_registry_server = "ghcr.io"
-container_registry_username = "networkengineer-cloud"
-# container_registry_password - set via environment variable
-
-# Database configuration
-db_admin_username = "vmadmin"
-# db_admin_password - set via environment variable
-
-# SendGrid configuration
-sendgrid_api_key = "SG.xxx"  # Get from SendGrid portal
-smtp_from_email  = "noreply@yourvolunteerorg.com"
-
-# GitHub OAuth (for container registry)
-github_token = "ghp_xxx"  # Set via environment variable
-
-# Admin email for alerts
-admin_email = "admin@yourvolunteerorg.com"
-
-# Cost optimization
-monthly_budget = 25
+**Terraform Variables** (in HCP Terraform workspace):
+```
+location = "eastus2"
+environment = "prod"
+sendgrid_api_key = "SG.xxx"  # Mark as sensitive
+jwt_secret = "your-secret"   # Mark as sensitive
+owner_email = "admin@example.com"
+container_image = "ghcr.io/your-org/app:latest"
 ```
 
-### Sensitive Variables via Environment Variables
-
-```bash
-export TF_VAR_db_admin_password="YourSecurePassword123!"
-export TF_VAR_container_registry_password="ghp_your_github_token"
-export TF_VAR_github_token="ghp_your_github_token"
-export TF_VAR_jwt_secret="your-super-secure-jwt-secret-min-32-chars"
+**Environment Variables** (in HCP Terraform workspace):
+```
+ARM_CLIENT_ID = "azure-app-id"
+ARM_SUBSCRIPTION_ID = "azure-subscription-id"
+ARM_TENANT_ID = "azure-tenant-id"
+ARM_USE_OIDC = "true"
 ```
 
 ## Outputs
@@ -185,18 +253,46 @@ After successful deployment, Terraform will output:
 - PostgreSQL Flexible Server: $10/month (B1ms)
 - Azure Blob Storage: $1-2/month
 - Application Insights: Free tier (<5GB)
-- SendGrid: Free tier (25k emails/month)
+- SendGrid: **Free tier** (100 emails/day forever)
+- HCP Terraform: **Free tier** (up to 500 resources)
 - **Total: ~$16-20/month**
+
+## Benefits of HCP Terraform
+
+1. **Remote State Management**: Secure, encrypted state storage
+2. **State Locking**: Automatic state locking prevents conflicts
+3. **Collaboration**: Team access with RBAC
+4. **Run History**: Full audit trail of all changes
+5. **Cost Estimation**: Preview costs before applying
+6. **VCS Integration**: Automatic runs from GitHub
+7. **Web UI**: Visual workspace management
+8. **Free Tier**: Up to 500 resources under management
+9. **Federated Credentials**: No long-lived secrets needed
 
 ## Security Best Practices
 
-1. **Never commit sensitive values** - Use environment variables or Azure Key Vault
-2. **Use managed identities** - Avoid storing credentials
-3. **Enable encryption** - All data encrypted at rest and in transit
-4. **Network isolation** - Private endpoints for database
-5. **RBAC** - Least privilege access
-6. **Monitoring** - Application Insights for all resources
-7. **Backup** - Automated database backups enabled
+1. **Federated Credentials (OIDC)**: 
+   - No client secrets stored
+   - Short-lived tokens only
+   - Azure AD authenticates via OIDC
+   
+2. **HCP Terraform Security**:
+   - Encrypted state storage
+   - Sensitive variables marked and encrypted
+   - Audit logs for all operations
+   - Team-based access control
+
+3. **Azure Security**:
+   - Managed identities where possible
+   - All data encrypted at rest and in transit
+   - Private endpoints for database
+   - Network isolation with VNets
+   - RBAC with least privilege
+
+4. **GitHub Actions Security**:
+   - OIDC for Azure authentication
+   - No long-lived credentials in secrets
+   - HCP Terraform token rotation supported
 
 ## Monitoring
 

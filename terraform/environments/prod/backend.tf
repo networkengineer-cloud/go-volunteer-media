@@ -1,5 +1,5 @@
 # Backend configuration for Terraform state storage
-# Store state in Azure Storage Account with state locking enabled
+# Store state in HCP Terraform with federated credentials
 # This file configures remote state management for the production environment
 
 terraform {
@@ -16,18 +16,19 @@ terraform {
     }
   }
   
-  # Backend configuration for remote state
-  # Create the storage account and container before running terraform init
-  backend "azurerm" {
-    resource_group_name  = "rg-terraform-state"
-    storage_account_name = "sttfstatevolunteer"  # Must be globally unique
-    container_name       = "tfstate"
-    key                  = "volunteer-media/prod/terraform.tfstate"
-    use_oidc            = true  # Use OIDC authentication for GitHub Actions
+  # HCP Terraform backend configuration
+  # Sign up at https://app.terraform.io and create an organization
+  cloud {
+    organization = "volunteer-media"  # Replace with your HCP Terraform organization name
+    
+    workspaces {
+      name = "volunteer-media-prod"
+    }
   }
 }
 
 # Configure the Azure Provider
+# Uses federated credentials (OIDC) for authentication
 provider "azurerm" {
   features {
     key_vault {
@@ -40,6 +41,7 @@ provider "azurerm" {
     }
   }
   
-  # Automatically uses OIDC when running in GitHub Actions
+  # Use OIDC authentication - no client secrets needed
+  # Configured automatically when running in GitHub Actions or HCP Terraform
   use_oidc = true
 }
