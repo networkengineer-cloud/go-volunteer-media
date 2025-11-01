@@ -50,6 +50,36 @@
   color: var(--text-primary, #1f2937);
 }
 
+.group-name-link {
+  color: var(--brand, #0e6c55);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid transparent;
+  padding-bottom: 2px;
+}
+
+.group-name-link:hover {
+  color: var(--brand-600, #0a5443);
+  border-bottom-color: var(--brand-600, #0a5443);
+}
+
+.group-name-link:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+[data-theme="dark"] .group-name-link {
+  color: var(--teal, #14b8a6);
+}
+
+[data-theme="dark"] .group-name-link:hover {
+  color: var(--teal-400, #2dd4bf);
+  border-bottom-color: var(--teal-400, #2dd4bf);
+}
+
 .groups-table .group-description {
   color: var(--text-secondary, #6b7280);
   max-width: 400px;
@@ -100,11 +130,24 @@
   font-size: 0.875rem;
   font-weight: 500;
   transition: all 0.2s;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
 }
 
 .group-action-btn:hover {
   background: var(--brand-600, #0a5443);
   border-color: var(--brand-600, #0a5443);
+}
+
+.group-action-btn.view {
+  background: transparent;
+  color: var(--brand, #0e6c55);
+}
+
+.group-action-btn.view:hover {
+  background: var(--brand, #0e6c55);
+  color: white;
 }
 
 .group-action-btn.secondary {

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import './UsersPage.css';
 import type { User, Group } from '../api/client';
 import { usersApi, groupsApi } from '../api/client';
@@ -293,7 +294,22 @@ const UsersPage: React.FC = () => {
                   <td>{user.username}</td>
                   <td>{user.email}</td>
                   <td>{user.is_admin ? 'Yes' : 'No'}</td>
-                  <td>{user.groups?.map(g => g.name).join(', ') || '-'}</td>
+                  <td>
+                    {user.groups && user.groups.length > 0 ? (
+                      user.groups.map((g, index) => (
+                        <React.Fragment key={g.id}>
+                          <Link 
+                            to={`/groups/${g.id}`}
+                            className="group-link"
+                            title={`View ${g.name} group`}
+                          >
+                            {g.name}
+                          </Link>
+                          {index < user.groups!.length - 1 && ', '}
+                        </React.Fragment>
+                      ))
+                    ) : '-'}
+                  </td>
                   <td>{showDeleted ? 'Deleted' : 'Active'}</td>
                   <td>
                     <div className="user-actions">
@@ -358,7 +374,20 @@ const UsersPage: React.FC = () => {
                   <div className="user-card-info-row">
                     <span className="user-card-info-label">Groups:</span>
                     <span className="user-card-info-value">
-                      {user.groups?.map(g => g.name).join(', ') || '-'}
+                      {user.groups && user.groups.length > 0 ? (
+                        user.groups.map((g, index) => (
+                          <React.Fragment key={g.id}>
+                            <Link 
+                              to={`/groups/${g.id}`}
+                              className="group-link"
+                              title={`View ${g.name} group`}
+                            >
+                              {g.name}
+                            </Link>
+                            {index < user.groups!.length - 1 && ', '}
+                          </React.Fragment>
+                        ))
+                      ) : '-'}
                     </span>
                   </div>
                   <div className="user-card-info-row">

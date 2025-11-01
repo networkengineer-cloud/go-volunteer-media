@@ -39,7 +39,12 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ item, groupId, onImageClick
             {item.user?.username?.charAt(0).toUpperCase() || '?'}
           </div>
           <div className="activity-item__meta">
-            <span className="activity-item__username">{item.user?.username || 'Unknown'}</span>
+            <span 
+              className="activity-item__username" 
+              title={`Posted by ${item.user?.username || 'Unknown'}`}
+            >
+              {item.user?.username || 'Unknown'}
+            </span>
             <time className="activity-item__timestamp" dateTime={item.created_at}>
               {formatDate(item.created_at)}
             </time>
