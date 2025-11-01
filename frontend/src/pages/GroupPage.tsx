@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { groupsApi, animalsApi } from '../api/client';
+import { groupsApi, animalsApi, authApi } from '../api/client';
 import type { Group, Animal } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import ActivityFeed from '../components/ActivityFeed';
@@ -16,9 +16,10 @@ type FilterType = 'all' | 'comments' | 'announcements';
 
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const navigate = useNavigate();
   const [group, setGroup] = useState<Group | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -32,14 +33,19 @@ const GroupPage: React.FC = () => {
   useEffect(() => {
     if (id) {
       loadGroupData(Number(id));
+      // Load animals immediately to show count in tab
+      loadAnimals(Number(id));
     }
+    // Load all groups for the switcher
+    loadAllGroups();
   }, [id]);
 
   useEffect(() => {
-    if (id && viewMode === 'animals') {
+    // Reload animals when filters change
+    if (id) {
       loadAnimals(Number(id));
     }
-  }, [id, viewMode, statusFilter, nameSearch]);
+  }, [id, statusFilter, nameSearch]);
 
   const loadGroupData = async (groupId: number) => {
     try {
@@ -55,12 +61,34 @@ const GroupPage: React.FC = () => {
     }
   };
 
+  const loadAllGroups = async () => {
+    try {
+      const groupsRes = await groupsApi.getAll();
+      setGroups(groupsRes.data);
+    } catch (error) {
+      console.error('Failed to load groups:', error);
+    }
+  };
+
   const loadAnimals = async (groupId: number) => {
     try {
       const animalsRes = await animalsApi.getAll(groupId, statusFilter, nameSearch);
       setAnimals(animalsRes.data);
     } catch (error) {
       console.error('Failed to load animals:', error);
+    }
+  };
+
+  const handleGroupSwitch = async (newGroupId: number) => {
+    if (newGroupId !== Number(id)) {
+      // Update default group preference
+      try {
+        await authApi.setDefaultGroup(newGroupId);
+      } catch (error) {
+        console.error('Failed to set default group:', error);
+      }
+      // Navigate to the new group
+      navigate(`/groups/${newGroupId}`);
     }
   };
 
@@ -118,14 +146,35 @@ const GroupPage: React.FC = () => {
       {/* Group Header */}
       <div className="group-header">
         <nav aria-label="Breadcrumb">
-          <Link to="/" className="back-link">
+          <Link to="/dashboard" className="back-link">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
             <span>Back to Dashboard</span>
           </Link>
         </nav>
-        <h1>{group.name}</h1>
+        <div className="group-header-title">
+          <h1>{group.name}</h1>
+          {/* Group Switcher */}
+          {groups.length > 1 && (
+            <div className="group-switcher">
+              <label htmlFor="group-select" className="sr-only">Switch group:</label>
+              <select
+                id="group-select"
+                value={id}
+                onChange={(e) => handleGroupSwitch(Number(e.target.value))}
+                className="group-select"
+                aria-label="Switch to a different group"
+              >
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
         <p className="group-description">{group.description}</p>
       </div>
 
