@@ -1,0 +1,47 @@
+# Backend configuration for Terraform state storage
+# Store state in HCP Terraform with federated credentials
+# This file configures remote state management for the production environment
+
+terraform {
+  required_version = ">= 1.5.0"
+  
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.80"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
+  }
+  
+  # HCP Terraform backend configuration
+  # Sign up at https://app.terraform.io and create an organization
+  cloud {
+    organization = "volunteer-media"  # Replace with your HCP Terraform organization name
+    
+    workspaces {
+      name = "volunteer-media-prod"
+    }
+  }
+}
+
+# Configure the Azure Provider
+# Uses federated credentials (OIDC) for authentication
+provider "azurerm" {
+  features {
+    key_vault {
+      purge_soft_delete_on_destroy = false
+      recover_soft_deleted_key_vaults = true
+    }
+    
+    resource_group {
+      prevent_deletion_if_contains_resources = true
+    }
+  }
+  
+  # Use OIDC authentication - no client secrets needed
+  # Configured automatically when running in GitHub Actions or HCP Terraform
+  use_oidc = true
+}

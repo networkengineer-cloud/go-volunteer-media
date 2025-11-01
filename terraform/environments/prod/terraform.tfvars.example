@@ -1,0 +1,68 @@
+# Example terraform.tfvars file for production environment
+# Copy this file to terraform.tfvars and fill in your actual values
+# DO NOT commit terraform.tfvars to version control!
+
+# Project Configuration
+project_name = "volunteer-media"
+environment  = "prod"
+location     = "eastus"  # or westus, centralus, etc.
+
+# Owner Information
+owner_email = "admin@example.com"          # Replace with your email
+cost_center = "volunteer-operations"
+
+# Additional tags (optional)
+additional_tags = {
+  Department = "IT"
+  Contact    = "admin@example.com"
+}
+
+# Container Configuration
+container_image                      = "ghcr.io/yourusername/volunteer-media:latest"  # Replace with your image
+container_registry_url               = "ghcr.io"
+github_container_registry_username   = ""  # Optional: Leave empty for public images
+github_container_registry_password   = ""  # Optional: GitHub PAT for private images
+
+# Container Resources
+container_cpu    = 0.5   # 0.25, 0.5, 0.75, 1.0, etc.
+container_memory = "1Gi" # 0.5Gi, 1Gi, 1.5Gi, 2Gi, etc.
+
+# Scaling Configuration
+min_replicas = 1  # Set to 0 to scale to zero when idle (saves cost)
+max_replicas = 3  # Maximum number of instances
+
+# Database Configuration
+db_admin_username           = "pgadmin"
+db_sku_name                 = "B_Standard_B1ms"  # Burstable tier for low cost
+db_storage_mb               = 32768              # 32 GB
+db_backup_retention_days    = 7                  # Minimum is 7 days
+db_high_availability_enabled = false             # Set true for production HA
+
+# Storage Configuration
+storage_account_tier     = "Standard"
+storage_replication_type = "LRS"  # LRS for low cost, GRS for geo-redundancy
+
+# SendGrid Configuration
+# Get your API key from: https://app.sendgrid.com/settings/api_keys
+sendgrid_api_key    = "SG.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+sendgrid_from_email = "noreply@yourdomain.com"  # Must be verified in SendGrid
+
+# Application Configuration
+# Generate a strong JWT secret: openssl rand -base64 32
+jwt_secret = "your-jwt-secret-here-replace-with-strong-random-string"
+
+# CORS Configuration
+allowed_origins = [
+  "https://yourdomain.com",
+  "https://www.yourdomain.com"
+]
+
+# Monitoring Configuration
+log_retention_days = 30  # 30-730 days
+
+# Cost Management
+monthly_budget_amount = 50  # Alert when spending exceeds this amount (USD)
+budget_alert_emails = [
+  "admin@example.com",
+  "billing@example.com"
+]
