@@ -2,8 +2,10 @@ import React from 'react';
 import './GroupsPage.css';
 import type { Group, Animal } from '../api/client';
 import { groupsApi, animalsApi } from '../api/client';
+import { useToast } from '../contexts/ToastContext';
 
 const GroupsPage: React.FC = () => {
+  const toast = useToast();
   const [groups, setGroups] = React.useState<Group[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -240,15 +242,28 @@ const GroupsPage: React.FC = () => {
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+                    
+                    // Validate file type
+                    if (!file.type.startsWith('image/')) {
+                      toast.showError('Please select an image file (JPG, PNG, or GIF)');
+                      return;
+                    }
+                    
+                    // Validate file size (max 10MB)
+                    if (file.size > 10 * 1024 * 1024) {
+                      toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+                      return;
+                    }
+                    
                     setModalLoading(true);
                     try {
                       const res = await groupsApi.uploadImage(file);
                       setModalData({ ...modalData, image_url: res.data.url });
-                      alert('Image uploaded successfully!');
+                      toast.showSuccess('Image uploaded successfully!');
                     } catch (err: any) {
                       console.error('Upload error:', err);
-                      const errorMsg = err.response?.data?.error || err.message || 'Failed to upload image';
-                      alert('Failed to upload image: ' + errorMsg);
+                      const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
+                      toast.showError(errorMsg);
                     } finally {
                       setModalLoading(false);
                       // Clear the file input
@@ -272,15 +287,28 @@ const GroupsPage: React.FC = () => {
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+                    
+                    // Validate file type
+                    if (!file.type.startsWith('image/')) {
+                      toast.showError('Please select an image file (JPG, PNG, or GIF)');
+                      return;
+                    }
+                    
+                    // Validate file size (max 10MB)
+                    if (file.size > 10 * 1024 * 1024) {
+                      toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+                      return;
+                    }
+                    
                     setModalLoading(true);
                     try {
                       const res = await groupsApi.uploadImage(file);
                       setModalData({ ...modalData, hero_image_url: res.data.url });
-                      alert('Hero image uploaded successfully!');
+                      toast.showSuccess('Hero image uploaded successfully!');
                     } catch (err: any) {
                       console.error('Upload error:', err);
-                      const errorMsg = err.response?.data?.error || err.message || 'Failed to upload image';
-                      alert('Failed to upload hero image: ' + errorMsg);
+                      const errorMsg = err.response?.data?.error || 'Failed to upload hero image. Please try again.';
+                      toast.showError(errorMsg);
                     } finally {
                       setModalLoading(false);
                       // Clear the file input
@@ -312,7 +340,7 @@ const GroupsPage: React.FC = () => {
                           onClick={() => {
                             setModalData({ ...modalData, hero_image_url: animal.image_url });
                             setShowAnimalSelector(false);
-                            alert(`Selected ${animal.name}'s image as hero image`);
+                            toast.showSuccess(`Selected ${animal.name}'s image as hero image`);
                           }}
                         >
                           <img src={animal.image_url} alt={animal.name} />

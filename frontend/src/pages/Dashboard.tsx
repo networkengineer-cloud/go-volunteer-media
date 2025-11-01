@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { groupsApi, announcementsApi, authApi, animalsApi } from '../api/client';
 import type { Group, Announcement, CommentWithAnimal, Animal } from '../api/client';
 import EmptyState from '../components/EmptyState';
@@ -10,6 +11,7 @@ import './Dashboard.css';
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [groups, setGroups] = useState<Group[]>([]);
   const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -98,7 +100,10 @@ const Dashboard: React.FC = () => {
 
   const handleCreateAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!announcementTitle.trim() || !announcementContent.trim()) return;
+    if (!announcementTitle.trim() || !announcementContent.trim()) {
+      toast.showWarning('Please enter both title and content');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -108,9 +113,11 @@ const Dashboard: React.FC = () => {
       setSendEmail(false);
       setShowAnnouncementForm(false);
       await loadData();
-    } catch (error) {
+      toast.showSuccess('Announcement created successfully!');
+    } catch (error: any) {
       console.error('Failed to create announcement:', error);
-      alert('Failed to create announcement');
+      const errorMsg = error.response?.data?.error || 'Failed to create announcement. Please try again.';
+      toast.showError(errorMsg);
     } finally {
       setSubmitting(false);
     }
@@ -122,9 +129,11 @@ const Dashboard: React.FC = () => {
     try {
       await announcementsApi.delete(id);
       await loadData();
-    } catch (error) {
+      toast.showSuccess('Announcement deleted successfully');
+    } catch (error: any) {
       console.error('Failed to delete announcement:', error);
-      alert('Failed to delete announcement');
+      const errorMsg = error.response?.data?.error || 'Failed to delete announcement. Please try again.';
+      toast.showError(errorMsg);
     }
   };
 
