@@ -63,8 +63,9 @@ db-start: ## Start PostgreSQL database
 	@echo "Starting PostgreSQL..."
 	docker compose up -d postgres_dev
 
-db-stop: ## Stop PostgreSQL database
-	docker compose stop postgres_dev
+db-stop: ## Stop PostgreSQL database and remove volumes
+	@echo "Stopping PostgreSQL and removing volumes..."
+	docker compose down -v
 
 db-shell: ## Connect to PostgreSQL shell
 	docker exec -it volunteer_media_db_dev psql -U postgres -d volunteer_media_dev
