@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
 import Navigation from './components/Navigation';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -40,9 +41,10 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Navigation />
-        <main id="main-content" role="main">
-          <Routes>
+        <ToastProvider>
+          <Navigation />
+          <main id="main-content" role="main">
+            <Routes>
           <Route
             path="/"
             element={
@@ -165,6 +167,7 @@ function App() {
           />
         </Routes>
         </main>
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   );

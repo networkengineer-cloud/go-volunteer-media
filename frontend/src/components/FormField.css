@@ -1,0 +1,144 @@
+.form-field {
+  margin-bottom: var(--space-lg, 1.5rem);
+  width: 100%;
+}
+
+.form-field__label {
+  display: block;
+  font-size: var(--text-sm, 0.875rem);
+  font-weight: var(--font-medium, 500);
+  color: var(--text-primary);
+  margin-bottom: var(--space-sm, 0.5rem);
+  line-height: var(--leading-tight, 1.25);
+}
+
+.form-field__required {
+  color: var(--danger, #ef4444);
+  margin-left: 0.25rem;
+  font-weight: var(--font-semibold, 600);
+}
+
+.form-field__input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.form-field__input,
+.form-field__textarea {
+  width: 100%;
+  padding: 0.625rem 1rem;
+  font-size: var(--text-base, 1rem);
+  line-height: var(--leading-normal, 1.5);
+  color: var(--text-primary);
+  background: var(--input-bg, #ffffff);
+  border: 1px solid var(--input-border, #d1d5db);
+  border-radius: var(--radius-md, 0.375rem);
+  transition: var(--transition-base, 200ms ease-in-out);
+  transition-property: border-color, box-shadow, background-color;
+}
+
+[data-theme='dark'] .form-field__input,
+[data-theme='dark'] .form-field__textarea {
+  background: var(--input-bg-dark, #1f2937);
+  border-color: var(--input-border-dark, #374151);
+  color: var(--text-primary-dark, #f9fafb);
+}
+
+.form-field__input:focus,
+.form-field__textarea:focus {
+  outline: none;
+  border-color: var(--brand, #0e6c55);
+  box-shadow: 0 0 0 3px rgba(14, 108, 85, 0.1);
+}
+
+.form-field__input:disabled,
+.form-field__textarea:disabled {
+  background: var(--gray-100, #f3f4f6);
+  color: var(--gray-500, #6b7280);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+[data-theme='dark'] .form-field__input:disabled,
+[data-theme='dark'] .form-field__textarea:disabled {
+  background: var(--gray-800, #1f2937);
+  color: var(--gray-400, #9ca3af);
+}
+
+/* Success state */
+.form-field--success .form-field__input {
+  border-color: var(--success, #10b981);
+  padding-right: 2.5rem;
+}
+
+.form-field--success .form-field__input:focus {
+  border-color: var(--success, #10b981);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.form-field__success-icon {
+  position: absolute;
+  right: 0.75rem;
+  display: flex;
+  align-items: center;
+  color: var(--success, #10b981);
+  pointer-events: none;
+}
+
+/* Error state */
+.form-field--error .form-field__input,
+.form-field--error .form-field__textarea {
+  border-color: var(--danger, #ef4444);
+}
+
+.form-field--error .form-field__input:focus,
+.form-field--error .form-field__textarea:focus {
+  border-color: var(--danger, #ef4444);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.form-field__error {
+  margin-top: var(--space-sm, 0.5rem);
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--danger, #ef4444);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  line-height: var(--leading-normal, 1.5);
+}
+
+.form-field__error svg {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+/* Helper text */
+.form-field__helper {
+  margin-top: var(--space-sm, 0.5rem);
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--text-secondary, #6b7280);
+  line-height: var(--leading-normal, 1.5);
+}
+
+[data-theme='dark'] .form-field__helper {
+  color: var(--text-secondary-dark, #9ca3af);
+}
+
+/* Textarea specific styles */
+.form-field__textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .form-field {
+    margin-bottom: var(--space-md, 1rem);
+  }
+
+  .form-field__input,
+  .form-field__textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+}
