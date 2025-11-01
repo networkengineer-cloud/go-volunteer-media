@@ -57,13 +57,23 @@ Social Media app for volunteers to get updates, share photos and experiences wit
    docker-compose up -d postgres_dev
    ```
 
-4. **Run the backend**
+4. **Seed the database with demo data** (Optional but recommended for demos)
+   ```bash
+   make seed
+   ```
+   This creates demo users, animals, and content. See [SEED_DATA.md](SEED_DATA.md) for details.
+   
+   Demo credentials:
+   - Username: `admin` / Password: `demo123`
+   - See [SEED_DATA.md](SEED_DATA.md) for all demo users
+
+5. **Run the backend**
    ```bash
    go run cmd/api/main.go
    ```
    The API will be available at http://localhost:8080
 
-5. **Run the frontend** (in a separate terminal)
+6. **Run the frontend** (in a separate terminal)
    ```bash
    cd frontend
    npm install
@@ -202,6 +212,16 @@ This will start:
 
 ### Testing the Application
 
+#### With Demo Data (Recommended)
+
+1. Seed the database: `make seed`
+2. Login at http://localhost:5173/login with demo credentials:
+   - Admin: `admin` / `demo123`
+   - Or any other demo user (see [SEED_DATA.md](SEED_DATA.md))
+3. Explore the pre-populated groups, animals, and content
+
+#### Without Demo Data
+
 1. Register a new user at http://localhost:5173/login
 2. Login with your credentials
 3. As a new user, you won't see any groups (contact admin to be added)
@@ -212,6 +232,12 @@ This will start:
 
 ### Making the First Admin
 
+#### With Demo Data
+The seed command creates an admin user automatically:
+- Username: `admin`
+- Password: `demo123`
+
+#### Without Demo Data
 To make a user an admin, update the database directly:
 ```sql
 UPDATE users SET is_admin = true WHERE username = 'your-username';
