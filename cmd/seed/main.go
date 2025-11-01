@@ -56,13 +56,17 @@ func main() {
 	}
 
 	fmt.Println("\n✅ Database seeding completed successfully!")
-	fmt.Println("\nDemo credentials:")
-	fmt.Println("  Username: admin")
-	fmt.Println("  Password: demo1234")
-	fmt.Println("\nOther demo users:")
-	fmt.Println("  - sarah_volunteer / demo1234")
-	fmt.Println("  - mike_foster / demo1234")
-	fmt.Println("  - emma_cats / demo1234")
-	fmt.Println("  - jake_modsquad / demo1234")
-	fmt.Println("\nYou can now start the application and login with these credentials.")
+	// Output demo credentials
+	fmt.Println("\n=================================")
+	fmt.Println("Database seeded successfully!")
+	fmt.Println("=================================")
+	fmt.Println("\nDemo Accounts (all passwords: demo1234):")
+	fmt.Println("  Admin:              admin")
+	fmt.Println("  ModSquad Volunteer: sarah_modsquad")
+	fmt.Println("  ModSquad Volunteer: mike_modsquad")
+	fmt.Println("  ModSquad Volunteer: jake_modsquad")
+	fmt.Println("  ModSquad Volunteer: lisa_modsquad")
+	fmt.Println("\nAll volunteers have access to the ModSquad group.")
+	fmt.Println("ModSquad now has 10 dogs with Unsplash images!")
+	fmt.Println("=================================\n")
 }
