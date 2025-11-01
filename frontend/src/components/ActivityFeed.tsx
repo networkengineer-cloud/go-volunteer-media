@@ -49,9 +49,10 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ groupId, filterType = 'all'
       setHasMore(response.data.hasMore);
       setOffset(currentOffset + response.data.items.length);
       setError('');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to load activity feed:', error);
-      setError(error.response?.data?.error || 'Failed to load activity feed. Please try again.');
+      const err = error as { response?: { data?: { error?: string } } };
+      setError(err.response?.data?.error || 'Failed to load activity feed. Please try again.');
     } finally {
       setLoading(false);
       setLoadingMore(false);

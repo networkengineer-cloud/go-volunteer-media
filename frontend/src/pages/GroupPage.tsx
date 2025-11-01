@@ -46,9 +46,10 @@ const GroupPage: React.FC = () => {
       setError('');
       const groupRes = await groupsApi.getById(groupId);
       setGroup(groupRes.data);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to load group data:', error);
-      setError(error.response?.data?.error || 'Failed to load group information. Please try again.');
+      const err = error as { response?: { data?: { error?: string } } };
+      setError(err.response?.data?.error || 'Failed to load group information. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -58,7 +59,7 @@ const GroupPage: React.FC = () => {
     try {
       const animalsRes = await animalsApi.getAll(groupId, statusFilter, nameSearch);
       setAnimals(animalsRes.data);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to load animals:', error);
     }
   };

@@ -39,9 +39,10 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
       const res = await groupsApi.uploadImage(file);
       setImageUrl(res.data.url);
       toast.showSuccess('Image uploaded successfully!');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Upload error:', error);
-      const errorMsg = error.response?.data?.error || 'Failed to upload image. Please try again.';
+      const err = error as { response?: { data?: { error?: string } } };
+      const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setUploading(false);
@@ -74,9 +75,10 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
       if (onSuccess) {
         onSuccess();
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to post announcement:', error);
-      const errorMsg = error.response?.data?.error || 'Failed to post announcement. Please try again.';
+      const err = error as { response?: { data?: { error?: string } } };
+      const errorMsg = err.response?.data?.error || 'Failed to post announcement. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setSubmitting(false);
