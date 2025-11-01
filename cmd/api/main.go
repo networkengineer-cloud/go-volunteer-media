@@ -196,6 +196,9 @@ func main() {
 			// Latest comments across the group
 			group.GET("/latest-comments", handlers.GetGroupLatestComments(db))
 
+			// Activity feed - unified view of announcements and comments
+			group.GET("/activity-feed", handlers.GetGroupActivityFeed(db))
+
 			// Updates routes
 			group.GET("/updates", handlers.GetUpdates(db))
 			group.POST("/updates", handlers.CreateUpdate(db))
