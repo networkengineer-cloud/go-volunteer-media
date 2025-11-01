@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { animalsApi, animalCommentsApi, animalsApi as imageUploadApi, commentTagsApi } from '../api/client';
-import type { Animal, AnimalComment, CommentTag } from '../api/client';
+import { animalsApi, animalCommentsApi, animalsApi as imageUploadApi, commentTagsApi, groupsApi } from '../api/client';
+import type { Animal, AnimalComment, CommentTag, Group } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import EmptyState from '../components/EmptyState';
@@ -32,6 +32,7 @@ const AnimalDetailPage: React.FC = () => {
   const { isAdmin } = useAuth();
   const toast = useToast();
   const [animal, setAnimal] = useState<Animal | null>(null);
+  const [group, setGroup] = useState<Group | null>(null);
   const [comments, setComments] = useState<AnimalComment[]>([]);
   const [availableTags, setAvailableTags] = useState<CommentTag[]>([]);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
@@ -48,6 +49,7 @@ const AnimalDetailPage: React.FC = () => {
   useEffect(() => {
     if (groupId && id) {
       loadAnimalData(Number(groupId), Number(id));
+      loadGroupData(Number(groupId));
       loadTags();
     }
   }, [groupId, id]);
@@ -65,6 +67,15 @@ const AnimalDetailPage: React.FC = () => {
       setAvailableTags(res.data);
     } catch (error) {
       console.error('Failed to load tags:', error);
+    }
+  };
+
+  const loadGroupData = async (gId: number) => {
+    try {
+      const groupRes = await groupsApi.getById(gId);
+      setGroup(groupRes.data);
+    } catch (error) {
+      console.error('Failed to load group data:', error);
     }
   };
 
@@ -232,9 +243,32 @@ const AnimalDetailPage: React.FC = () => {
   return (
     <div className="animal-detail-page">
       <div className="animal-detail-container">
-        <Link to={`/groups/${groupId}`} className="back-link">
-          ← Back to Group
-        </Link>
+        {/* Breadcrumb Navigation */}
+        <nav className="breadcrumb" aria-label="Breadcrumb">
+          <ol className="breadcrumb-list">
+            <li className="breadcrumb-item">
+              <Link to="/dashboard" className="breadcrumb-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                  <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+                <span className="sr-only">Home</span>
+              </Link>
+            </li>
+            <li className="breadcrumb-separator" aria-hidden="true">›</li>
+            <li className="breadcrumb-item">
+              <Link to={`/groups/${groupId}`} className="breadcrumb-link">
+                {group?.name || 'Group'}
+              </Link>
+            </li>
+            <li className="breadcrumb-separator" aria-hidden="true">›</li>
+            <li className="breadcrumb-item">
+              <span className="breadcrumb-current" aria-current="page">
+                {animal.name}
+              </span>
+            </li>
+          </ol>
+        </nav>
 
         <div className="animal-header">
           <div className="animal-main-info">
