@@ -135,6 +135,7 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 // GetGroupLatestComments returns the latest comments across all animals in a group
 func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -156,27 +157,55 @@ func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		// Query to get latest comments from animals in this group
-		// We need to join with animals table to filter by group_id
+		// Get animals in this group first
+		var animals []models.Animal
+		if err := db.WithContext(ctx).Where("group_id = ?", groupID).Find(&animals).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
+			return
+		}
+
+		// Get animal IDs
+		var animalIDs []uint
+		animalMap := make(map[uint]models.Animal)
+		for _, animal := range animals {
+			animalIDs = append(animalIDs, animal.ID)
+			animalMap[animal.ID] = animal
+		}
+
+		if len(animalIDs) == 0 {
+			c.JSON(http.StatusOK, []interface{}{})
+			return
+		}
+
+		// Get latest comments from these animals
+		var comments []models.AnimalComment
+		err := db.WithContext(ctx).
+			Where("animal_id IN ?", animalIDs).
+			Preload("User").
+			Preload("Tags").
+			Order("created_at DESC").
+			Limit(limit).
+			Find(&comments).Error
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
+			return
+		}
+
+		// Build response with animal information
 		type CommentWithAnimal struct {
 			models.AnimalComment
 			Animal models.Animal `json:"animal"`
 		}
 
 		var results []CommentWithAnimal
-		err := db.Table("animal_comments").
-			Select("animal_comments.*, animals.*").
-			Joins("JOIN animals ON animals.id = animal_comments.animal_id").
-			Where("animals.group_id = ? AND animals.deleted_at IS NULL AND animal_comments.deleted_at IS NULL", groupID).
-			Preload("User").
-			Preload("Tags").
-			Order("animal_comments.created_at DESC").
-			Limit(limit).
-			Scan(&results).Error
-
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
-			return
+		for _, comment := range comments {
+			if animal, ok := animalMap[comment.AnimalID]; ok {
+				results = append(results, CommentWithAnimal{
+					AnimalComment: comment,
+					Animal:        animal,
+				})
+			}
 		}
 
 		c.JSON(http.StatusOK, results)
