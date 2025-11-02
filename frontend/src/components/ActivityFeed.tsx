@@ -40,14 +40,18 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ groupId, filterType = 'all'
         type: filterType,
       });
 
+      // Handle null or missing data gracefully
+      const responseItems = response.data?.items || [];
+      const responseHasMore = response.data?.hasMore || false;
+
       if (isLoadMore) {
-        setItems(prev => [...prev, ...response.data.items]);
+        setItems(prev => [...prev, ...responseItems]);
       } else {
-        setItems(response.data.items);
+        setItems(responseItems);
       }
 
-      setHasMore(response.data.hasMore);
-      setOffset(currentOffset + response.data.items.length);
+      setHasMore(responseHasMore);
+      setOffset(currentOffset + responseItems.length);
       setError('');
     } catch (error) {
       console.error('Failed to load activity feed:', error);

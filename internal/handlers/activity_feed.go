@@ -60,7 +60,8 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		// Get filter type (all, comments, announcements)
 		filterType := c.Query("type")
 
-		var activityItems []ActivityItem
+		// Initialize with empty slice to ensure we never return nil
+		activityItems := make([]ActivityItem, 0)
 
 		// Fetch announcements (Updates) if not filtering for comments only
 		if filterType == "" || filterType == "all" || filterType == "announcements" {
@@ -162,6 +163,11 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		paginatedItems := activityItems[start:end]
+		
+		// Ensure we return an empty array instead of nil
+		if paginatedItems == nil {
+			paginatedItems = []ActivityItem{}
+		}
 
 		// Return response with pagination metadata
 		c.JSON(http.StatusOK, gin.H{
