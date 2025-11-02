@@ -180,6 +180,11 @@ func main() {
 			admin.GET("/animals/export-csv", handlers.ExportAnimalsCSV(db))
 			admin.GET("/animals/export-comments-csv", handlers.ExportAnimalCommentsCSV(db))
 			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db))
+
+			// Statistics routes (admin only)
+			admin.GET("/statistics/groups", handlers.GetGroupStatistics(db))
+			admin.GET("/statistics/users", handlers.GetUserStatistics(db))
+			admin.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
 		}
 
 		// Group-specific routes

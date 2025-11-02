@@ -1,14 +1,15 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import './UsersPage.css';
-import type { User, Group } from '../api/client';
-import { usersApi, groupsApi } from '../api/client';
+import type { User, Group, UserStatistics } from '../api/client';
+import { usersApi, groupsApi, statisticsApi } from '../api/client';
 
 const UsersPage: React.FC = () => {
   const [users, setUsers] = React.useState<User[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [showDeleted, setShowDeleted] = React.useState(false);
+  const [statistics, setStatistics] = React.useState<Record<number, UserStatistics>>({});
 
   // Group modal state
   const [groupModalUser, setGroupModalUser] = React.useState<User | null>(null);
@@ -23,14 +24,26 @@ const UsersPage: React.FC = () => {
   const [resetPasswordError, setResetPasswordError] = React.useState<string | null>(null);
   const [resetPasswordSuccess, setResetPasswordSuccess] = React.useState<string | null>(null);
 
-  // Fetch users (active or deleted)
+  // Fetch users and statistics (active or deleted)
   const fetchUsers = React.useCallback(() => {
     setLoading(true);
     setError(null);
     const apiCall = showDeleted ? usersApi.getDeleted() : usersApi.getAll();
-    apiCall
-      .then(res => {
-        setUsers(res.data);
+    
+    Promise.all([
+      apiCall,
+      statisticsApi.getUserStatistics()
+    ])
+      .then(([usersRes, statsRes]) => {
+        setUsers(usersRes.data);
+        
+        // Create a map of user_id to statistics
+        const statsMap: Record<number, UserStatistics> = {};
+        statsRes.data.forEach(stat => {
+          statsMap[stat.user_id] = stat;
+        });
+        setStatistics(statsMap);
+        
         setLoading(false);
       })
       .catch(err => {
@@ -327,64 +340,102 @@ const UsersPage: React.FC = () => {
                 <th>Email</th>
                 <th>Admin</th>
                 <th>Groups</th>
+                <th>Comments</th>
+                <th>Animals</th>
+                <th>Last Active</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users.map(user => (
-                <tr key={user.id}>
-                  <td>{user.username}</td>
-                  <td>{user.email}</td>
-                  <td>{user.is_admin ? 'Yes' : 'No'}</td>
-                  <td>
-                    {user.groups && user.groups.length > 0 ? (
-                      user.groups.map((g, index) => (
-                        <React.Fragment key={g.id}>
-                          <Link 
-                            to={`/groups/${g.id}`}
-                            className="group-link"
-                            title={`View ${g.name} group`}
-                          >
-                            {g.name}
-                          </Link>
-                          {index < user.groups!.length - 1 && ', '}
-                        </React.Fragment>
-                      ))
-                    ) : '-'}
-                  </td>
-                  <td>{showDeleted ? 'Deleted' : 'Active'}</td>
-                  <td>
-                    <div className="user-actions">
-                      {showDeleted ? (
-                        <button
-                          className="user-action-btn"
-                          title="Restore user"
-                          onClick={() => handleRestore(user)}
-                        >
-                          Restore
-                        </button>
+              {users.map(user => {
+                const stats = statistics[user.id];
+                return (
+                  <tr key={user.id}>
+                    <td>{user.username}</td>
+                    <td>{user.email}</td>
+                    <td>{user.is_admin ? 'Yes' : 'No'}</td>
+                    <td>
+                      {user.groups && user.groups.length > 0 ? (
+                        user.groups.map((g, index) => (
+                          <React.Fragment key={g.id}>
+                            <Link 
+                              to={`/groups/${g.id}`}
+                              className="group-link"
+                              title={`View ${g.name} group`}
+                            >
+                              {g.name}
+                            </Link>
+                            {index < user.groups!.length - 1 && ', '}
+                          </React.Fragment>
+                        ))
+                      ) : '-'}
+                    </td>
+                    <td className="user-stat">
+                      {stats ? (
+                        <span className="stat-badge" title={`${stats.comment_count} comment${stats.comment_count !== 1 ? 's' : ''}`}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                          </svg>
+                          {stats.comment_count}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td className="user-stat">
+                      {stats ? (
+                        <span className="stat-badge" title={`Interacted with ${stats.animals_interacted_with} animal${stats.animals_interacted_with !== 1 ? 's' : ''}`}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="11" cy="4" r="2"></circle>
+                            <circle cx="18" cy="8" r="2"></circle>
+                            <circle cx="20" cy="16" r="2"></circle>
+                            <circle cx="4" cy="16" r="2"></circle>
+                            <circle cx="4" cy="8" r="2"></circle>
+                          </svg>
+                          {stats.animals_interacted_with}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td className="user-stat">
+                      {stats?.last_active ? (
+                        <span className="last-activity" title={new Date(stats.last_active).toLocaleString()}>
+                          {formatRelativeTime(stats.last_active)}
+                        </span>
                       ) : (
-                        <>
+                        <span className="no-activity">No activity</span>
+                      )}
+                    </td>
+                    <td>{showDeleted ? 'Deleted' : 'Active'}</td>
+                    <td>
+                      <div className="user-actions">
+                        {showDeleted ? (
                           <button
                             className="user-action-btn"
-                            title={user.is_admin ? 'Demote from admin' : 'Promote to admin'}
-                            disabled={(user as any).deleted_at}
-                            onClick={() => handlePromoteDemote(user)}
+                            title="Restore user"
+                            onClick={() => handleRestore(user)}
                           >
-                            {user.is_admin ? 'Demote' : 'Promote'}
+                            Restore
                           </button>
-                          <button
-                            className="user-action-btn"
-                            title="Assign/Remove Group"
-                            disabled={(user as any).deleted_at}
-                            onClick={() => openGroupModal(user)}
-                          >
-                            Groups
-                          </button>
-                          <button
-                            className="user-action-btn"
-                            title="Reset password"
+                        ) : (
+                          <>
+                            <button
+                              className="user-action-btn"
+                              title={user.is_admin ? 'Demote from admin' : 'Promote to admin'}
+                              disabled={(user as any).deleted_at}
+                              onClick={() => handlePromoteDemote(user)}
+                            >
+                              {user.is_admin ? 'Demote' : 'Promote'}
+                            </button>
+                            <button
+                              className="user-action-btn"
+                              title="Assign/Remove Group"
+                              disabled={(user as any).deleted_at}
+                              onClick={() => openGroupModal(user)}
+                            >
+                              Groups
+                            </button>
+                            <button
+                              className="user-action-btn"
+                              title="Reset password"
                             disabled={(user as any).deleted_at}
                             onClick={() => openPasswordResetModal(user)}
                           >
@@ -404,7 +455,8 @@ const UsersPage: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
 
@@ -572,5 +624,21 @@ const UsersPage: React.FC = () => {
     </div>
   );
 };
-// (removed duplicate export default)
+
+// Helper function to format relative time
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
 export default UsersPage;
