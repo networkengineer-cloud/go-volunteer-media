@@ -232,10 +232,10 @@ func main() {
 		adminProtocols := protected.Group("/groups/:id/protocols")
 		adminProtocols.Use(middleware.AdminRequired())
 		{
+			adminProtocols.POST("/upload-image", handlers.UploadProtocolImage())
 			adminProtocols.POST("", handlers.CreateProtocol(db))
 			adminProtocols.PUT("/:protocolId", handlers.UpdateProtocol(db))
 			adminProtocols.DELETE("/:protocolId", handlers.DeleteProtocol(db))
-			adminProtocols.POST("/upload-image", handlers.UploadProtocolImage())
 		}
 	}
 
