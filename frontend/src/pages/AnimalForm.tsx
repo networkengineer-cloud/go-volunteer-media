@@ -319,17 +319,7 @@ const AnimalForm: React.FC = () => {
             </div>
           </div>
 
-          {formData.status === 'bite_quarantine' && (
-            <FormField
-              label="Quarantine Start Date"
-              id="quarantine_start_date"
-              type="date"
-              value={formData.quarantine_start_date ? formData.quarantine_start_date.split('T')[0] : ''}
-              onChange={(value) => setFormData({ ...formData, quarantine_start_date: value })}
-              helperText="Date the bite occurred (defaults to status change date). Quarantine is 10 days and cannot end on weekends."
-              autoComplete="off"
-            />
-          )}
+
 
           <div className="form-field">
             <label htmlFor="image_upload" className="form-field__label">
@@ -380,6 +370,14 @@ const AnimalForm: React.FC = () => {
               fullWidth={false}
             >
               {id ? 'Update Animal' : 'Add Animal'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => navigate(`/groups/${groupId}`)}
+              disabled={loading}
+            >
+              Cancel
             </Button>
             {id && (
               <Button
