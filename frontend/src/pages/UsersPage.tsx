@@ -6,10 +6,18 @@ import { usersApi, groupsApi, statisticsApi } from '../api/client';
 
 const UsersPage: React.FC = () => {
   const [users, setUsers] = React.useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = React.useState<User[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [showDeleted, setShowDeleted] = React.useState(false);
   const [statistics, setStatistics] = React.useState<Record<number, UserStatistics>>({});
+
+  // Filter and search state
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [filterGroup, setFilterGroup] = React.useState<number | 'all'>('all');
+  const [filterAdmin, setFilterAdmin] = React.useState<'all' | 'admin' | 'user'>('all');
+  const [sortBy, setSortBy] = React.useState<'name' | 'email' | 'last_active' | 'most_active'>('name');
+  const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
 
   // Group modal state
   const [groupModalUser, setGroupModalUser] = React.useState<User | null>(null);
@@ -32,10 +40,12 @@ const UsersPage: React.FC = () => {
     
     Promise.all([
       apiCall,
-      statisticsApi.getUserStatistics()
+      statisticsApi.getUserStatistics(),
+      groupsApi.getAll() // Fetch groups for filter
     ])
-      .then(([usersRes, statsRes]) => {
+      .then(([usersRes, statsRes, groupsRes]) => {
         setUsers(usersRes.data);
+        setAllGroups(groupsRes.data);
         
         // Create a map of user_id to statistics
         const statsMap: Record<number, UserStatistics> = {};
@@ -55,6 +65,64 @@ const UsersPage: React.FC = () => {
   React.useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  // Filter and sort users
+  React.useEffect(() => {
+    let filtered = [...users];
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(user =>
+        user.username.toLowerCase().includes(query) ||
+        user.email.toLowerCase().includes(query)
+      );
+    }
+
+    // Apply group filter
+    if (filterGroup !== 'all') {
+      filtered = filtered.filter(user =>
+        user.groups?.some(g => g.id === filterGroup)
+      );
+    }
+
+    // Apply admin filter
+    if (filterAdmin !== 'all') {
+      filtered = filtered.filter(user =>
+        filterAdmin === 'admin' ? user.is_admin : !user.is_admin
+      );
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      const statsA = statistics[a.id];
+      const statsB = statistics[b.id];
+
+      switch (sortBy) {
+        case 'name':
+          comparison = a.username.localeCompare(b.username);
+          break;
+        case 'email':
+          comparison = a.email.localeCompare(b.email);
+          break;
+        case 'last_active':
+          const lastActiveA = statsA?.last_active ? new Date(statsA.last_active).getTime() : 0;
+          const lastActiveB = statsB?.last_active ? new Date(statsB.last_active).getTime() : 0;
+          comparison = lastActiveB - lastActiveA; // Most recent first
+          break;
+        case 'most_active':
+          const commentsA = statsA?.comment_count || 0;
+          const commentsB = statsB?.comment_count || 0;
+          comparison = commentsB - commentsA; // Most comments first
+          break;
+      }
+
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    setFilteredUsers(filtered);
+  }, [users, searchQuery, filterGroup, filterAdmin, sortBy, sortOrder, statistics]);
 
   // Admin actions
   const handlePromoteDemote = async (user: User) => {
@@ -276,6 +344,94 @@ const UsersPage: React.FC = () => {
           {showDeleted ? 'Show Active Users' : 'Show Deleted Users'}
         </button>
       </div>
+
+      {/* Search and Filter Section */}
+      {!showDeleted && (
+        <div className="users-filters">
+          <div className="filter-row">
+            <div className="search-box">
+              <svg className="search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 17A8 8 0 1 0 9 1a8 8 0 0 0 0 16zM18 18l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search by username or email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Search users"
+              />
+              {searchQuery && (
+                <button
+                  className="clear-search"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
+            <select
+              className="filter-select"
+              value={filterGroup}
+              onChange={(e) => setFilterGroup(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+              aria-label="Filter by group"
+            >
+              <option value="all">All Groups</option>
+              {allGroups.map(group => (
+                <option key={group.id} value={group.id}>{group.name}</option>
+              ))}
+            </select>
+
+            <select
+              className="filter-select"
+              value={filterAdmin}
+              onChange={(e) => setFilterAdmin(e.target.value as 'all' | 'admin' | 'user')}
+              aria-label="Filter by role"
+            >
+              <option value="all">All Roles</option>
+              <option value="admin">Admins</option>
+              <option value="user">Users</option>
+            </select>
+
+            <select
+              className="filter-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'name' | 'email' | 'last_active' | 'most_active')}
+              aria-label="Sort by"
+            >
+              <option value="name">Sort by Name</option>
+              <option value="email">Sort by Email</option>
+              <option value="last_active">Sort by Last Active</option>
+              <option value="most_active">Sort by Most Active</option>
+            </select>
+
+            <button
+              className="sort-order-btn"
+              onClick={() => setSortOrder(order => order === 'asc' ? 'desc' : 'asc')}
+              aria-label={`Sort order: ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
+              title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+            >
+              {sortOrder === 'asc' ? (
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 5v10M5 10l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 15V5M15 10l-5 5-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </button>
+          </div>
+          
+          <div className="filter-summary">
+            Showing {filteredUsers.length} of {users.length} users
+            {searchQuery && <span> matching "{searchQuery}"</span>}
+          </div>
+        </div>
+      )}
+
       {showCreate && !showDeleted && (
         <form className="users-create-form" onSubmit={handleCreateSubmit}>
           <div>
@@ -348,11 +504,19 @@ const UsersPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {users.map(user => {
+              {filteredUsers.map(user => {
                 const stats = statistics[user.id];
                 return (
                   <tr key={user.id}>
-                    <td>{user.username}</td>
+                    <td>
+                      <Link 
+                        to={`/users/${user.id}/profile`}
+                        className="username-link"
+                        title={`View ${user.username}'s profile`}
+                      >
+                        {user.username}
+                      </Link>
+                    </td>
                     <td>{user.email}</td>
                     <td>{user.is_admin ? 'Yes' : 'No'}</td>
                     <td>
@@ -462,11 +626,19 @@ const UsersPage: React.FC = () => {
 
           {/* Mobile card view */}
           <div className="users-mobile-cards">
-            {users.map(user => (
+            {filteredUsers.map(user => (
               <div key={user.id} className="user-card">
                 <div className="user-card-header">
                   <div className="user-card-title">
-                    <div className="user-card-name">{user.username}</div>
+                    <div className="user-card-name">
+                      <Link 
+                        to={`/users/${user.id}/profile`}
+                        className="username-link"
+                        title={`View ${user.username}'s profile`}
+                      >
+                        {user.username}
+                      </Link>
+                    </div>
                     <div className="user-card-email">{user.email}</div>
                   </div>
                   {user.is_admin && (
