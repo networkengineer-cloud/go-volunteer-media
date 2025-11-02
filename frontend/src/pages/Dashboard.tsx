@@ -34,17 +34,21 @@ const Dashboard: React.FC = () => {
         } else {
           // If no default group, use the first group
           groupToShow = groupsResponse.data[0];
-          // Set it as default for future logins
+          // Set it as default for future logins (optional, non-blocking)
           try {
             await authApi.setDefaultGroup(groupToShow.id);
           } catch (error) {
+            // Silently fail - not critical for user experience
             console.error('Failed to set default group:', error);
           }
         }
 
         if (groupToShow) {
           // Redirect to the group page instead of showing dashboard
-          navigate(`/groups/${groupToShow.id}`, { replace: true });
+          // Use setTimeout to ensure state updates are complete before navigation
+          setTimeout(() => {
+            navigate(`/groups/${groupToShow!.id}`, { replace: true });
+          }, 0);
         }
       }
     } catch (error) {
@@ -98,7 +102,17 @@ const Dashboard: React.FC = () => {
   }
 
   // If we have groups, the redirect will happen and this won't render
-  return null;
+  // But we need a fallback during the navigation transition
+  return (
+    <div className="dashboard">
+      <div className="dashboard-header">
+        <SkeletonLoader variant="text" width="40%" height="2rem" />
+      </div>
+      <div className="skeleton-list">
+        <SkeletonLoader variant="comment" count={3} />
+      </div>
+    </div>
+  );
 };
 
 export default Dashboard;
