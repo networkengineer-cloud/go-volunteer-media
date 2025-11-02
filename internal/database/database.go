@@ -100,6 +100,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.CommentTag{},
 		&models.AnimalComment{},
 		&models.SiteSetting{},
+		&models.Protocol{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -128,9 +129,9 @@ func RunMigrations(db *gorm.DB) error {
 // createDefaultGroups creates the default groups if they don't exist
 func createDefaultGroups(db *gorm.DB) error {
 	defaultGroups := []models.Group{
-		{Name: "dogs", Description: "Dog volunteers group"},
-		{Name: "cats", Description: "Cat volunteers group"},
-		{Name: "modsquad", Description: "Behavior modification volunteers group"},
+		{Name: "dogs", Description: "Dog volunteers group", HasProtocols: false},
+		{Name: "cats", Description: "Cat volunteers group", HasProtocols: false},
+		{Name: "modsquad", Description: "Behavior modification volunteers group", HasProtocols: true},
 	}
 
 	for _, group := range defaultGroups {
@@ -141,6 +142,16 @@ func createDefaultGroups(db *gorm.DB) error {
 				return fmt.Errorf("failed to create default group %s: %w", group.Name, err)
 			}
 			logging.WithField("group_name", group.Name).Info("Created default group")
+		} else if result.Error == nil {
+			// Update existing modsquad group to enable protocols
+			if group.Name == "modsquad" && !existing.HasProtocols {
+				existing.HasProtocols = true
+				if err := db.Save(&existing).Error; err != nil {
+					logging.WithField("group_name", group.Name).Error("Failed to enable protocols for existing group", err)
+				} else {
+					logging.WithField("group_name", group.Name).Info("Enabled protocols for existing group")
+				}
+			}
 		}
 	}
 

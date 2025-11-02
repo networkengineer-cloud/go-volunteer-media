@@ -213,6 +213,10 @@ func main() {
 			// Updates routes
 			group.GET("/updates", handlers.GetUpdates(db))
 			group.POST("/updates", handlers.CreateUpdate(db))
+
+			// Protocol routes - all group members can view
+			group.GET("/protocols", handlers.GetProtocols(db))
+			group.GET("/protocols/:protocolId", handlers.GetProtocol(db))
 		}
 
 		// Admin-only animal management routes
@@ -222,6 +226,16 @@ func main() {
 			adminAnimals.POST("", handlers.CreateAnimal(db))
 			adminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db))
 			adminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
+		}
+
+		// Admin-only protocol management routes
+		adminProtocols := protected.Group("/groups/:id/protocols")
+		adminProtocols.Use(middleware.AdminRequired())
+		{
+			adminProtocols.POST("", handlers.CreateProtocol(db))
+			adminProtocols.PUT("/:protocolId", handlers.UpdateProtocol(db))
+			adminProtocols.DELETE("/:protocolId", handlers.DeleteProtocol(db))
+			adminProtocols.POST("/upload-image", handlers.UploadProtocolImage())
 		}
 	}
 
