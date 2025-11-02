@@ -26,7 +26,8 @@ const GroupsPage: React.FC = () => {
     name: '', 
     description: '', 
     image_url: '', 
-    hero_image_url: '' 
+    hero_image_url: '',
+    has_protocols: false
   });
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
@@ -126,7 +127,7 @@ const GroupsPage: React.FC = () => {
   // Open modal for creating a new group
   const openCreateModal = () => {
     setEditingGroup(null);
-    setModalData({ name: '', description: '', image_url: '', hero_image_url: '' });
+    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false });
     setModalError(null);
     setShowModal(true);
   };
@@ -138,7 +139,8 @@ const GroupsPage: React.FC = () => {
       name: group.name, 
       description: group.description, 
       image_url: group.image_url || '', 
-      hero_image_url: group.hero_image_url || '' 
+      hero_image_url: group.hero_image_url || '',
+      has_protocols: group.has_protocols || false
     });
     setModalError(null);
     setShowModal(true);
@@ -157,7 +159,7 @@ const GroupsPage: React.FC = () => {
   const closeModal = () => {
     setShowModal(false);
     setEditingGroup(null);
-    setModalData({ name: '', description: '', image_url: '', hero_image_url: '' });
+    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false });
     setModalError(null);
     setAvailableAnimals([]);
     setShowAnimalSelector(false);
@@ -183,7 +185,8 @@ const GroupsPage: React.FC = () => {
           modalData.name, 
           modalData.description, 
           modalData.image_url, 
-          modalData.hero_image_url
+          modalData.hero_image_url,
+          modalData.has_protocols
         );
       } else {
         // Create new group
@@ -191,7 +194,8 @@ const GroupsPage: React.FC = () => {
           modalData.name, 
           modalData.description, 
           modalData.image_url, 
-          modalData.hero_image_url
+          modalData.hero_image_url,
+          modalData.has_protocols
         );
       }
       fetchGroups();
@@ -447,6 +451,22 @@ const GroupsPage: React.FC = () => {
                   placeholder="Enter group description (optional)"
                   rows={4}
                 />
+              </div>
+              <div className="form-group">
+                <label htmlFor="has_protocols" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    id="has_protocols"
+                    name="has_protocols"
+                    type="checkbox"
+                    checked={modalData.has_protocols}
+                    onChange={(e) => setModalData(d => ({ ...d, has_protocols: e.target.checked }))}
+                    style={{ width: 'auto', cursor: 'pointer' }}
+                  />
+                  <span>Enable Protocols for this group</span>
+                </label>
+                <small style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block', marginLeft: '1.75rem' }}>
+                  Protocols allow you to document standardized procedures and workflows for this group.
+                </small>
               </div>
               <div className="form-group">
                 <label htmlFor="image_upload">Group Card Image</label>

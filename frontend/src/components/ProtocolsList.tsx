@@ -6,6 +6,7 @@ import EmptyState from './EmptyState';
 import SkeletonLoader from './SkeletonLoader';
 import ErrorState from './ErrorState';
 import Modal from './Modal';
+import ConfirmDialog from './ConfirmDialog';
 import './ProtocolsList.css';
 
 interface ProtocolsListProps {
@@ -20,6 +21,10 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingProtocol, setEditingProtocol] = useState<Protocol | null>(null);
   const [expandedProtocol, setExpandedProtocol] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; protocol: Protocol | null }>({ 
+    show: false, 
+    protocol: null 
+  });
 
   useEffect(() => {
     loadProtocols();
@@ -41,10 +46,6 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
   };
 
   const handleDelete = async (protocolId: number) => {
-    if (!confirm('Are you sure you want to delete this protocol?')) {
-      return;
-    }
-
     try {
       await protocolsApi.delete(groupId, protocolId);
       await loadProtocols();
@@ -52,6 +53,10 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
       console.error('Failed to delete protocol:', error);
       alert('Failed to delete protocol. Please try again.');
     }
+  };
+
+  const handleDeleteClick = (protocol: Protocol) => {
+    setDeleteConfirm({ show: true, protocol });
   };
 
   const handleEdit = (protocol: Protocol) => {
@@ -176,7 +181,7 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
                 </button>
                 <button
                   className="btn-danger"
-                  onClick={() => handleDelete(protocol.id)}
+                  onClick={() => handleDeleteClick(protocol)}
                   aria-label={`Delete ${protocol.title}`}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -211,6 +216,22 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
           />
         </Modal>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.show}
+        title="Delete Protocol?"
+        message={`Are you sure you want to delete "${deleteConfirm.protocol?.title}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteConfirm.protocol) {
+            handleDelete(deleteConfirm.protocol.id);
+          }
+        }}
+        onCancel={() => setDeleteConfirm({ show: false, protocol: null })}
+      />
     </div>
   );
 };
@@ -282,7 +303,9 @@ const ProtocolForm: React.FC<ProtocolFormProps> = ({ groupId, protocol, onSucces
   return (
     <form className="protocol-form" onSubmit={handleSubmit}>
       <div className="form-group">
-        <label htmlFor="protocol-title">Title *</label>
+        <label htmlFor="protocol-title">
+          Title <span style={{ color: 'var(--danger)' }}>*</span>
+        </label>
         <input
           id="protocol-title"
           type="text"
@@ -291,11 +314,19 @@ const ProtocolForm: React.FC<ProtocolFormProps> = ({ groupId, protocol, onSucces
           placeholder="Enter protocol title"
           required
           maxLength={200}
+          aria-label="Protocol title"
+          aria-required="true"
+          aria-describedby="title-hint"
         />
+        <small id="title-hint" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', display: 'block', marginTop: '0.25rem' }}>
+          {title.length}/200 characters
+        </small>
       </div>
 
       <div className="form-group">
-        <label htmlFor="protocol-content">Content *</label>
+        <label htmlFor="protocol-content">
+          Content <span style={{ color: 'var(--danger)' }}>*</span>
+        </label>
         <textarea
           id="protocol-content"
           value={content}
@@ -303,7 +334,13 @@ const ProtocolForm: React.FC<ProtocolFormProps> = ({ groupId, protocol, onSucces
           placeholder="Enter protocol details and instructions..."
           required
           rows={8}
+          aria-label="Protocol content"
+          aria-required="true"
+          aria-describedby="content-hint"
         />
+        <small id="content-hint" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', display: 'block', marginTop: '0.25rem' }}>
+          {content.length} characters
+        </small>
       </div>
 
       <div className="form-group">
@@ -314,8 +351,13 @@ const ProtocolForm: React.FC<ProtocolFormProps> = ({ groupId, protocol, onSucces
           accept="image/*"
           onChange={handleImageUpload}
           disabled={uploading}
+          aria-label="Upload protocol image"
+          aria-describedby="image-hint"
         />
-        {uploading && <p className="upload-status">Uploading...</p>}
+        <small id="image-hint" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', display: 'block', marginTop: '0.25rem' }}>
+          Accepted formats: JPG, PNG, GIF. Maximum size: 10MB
+        </small>
+        {uploading && <p className="upload-status" role="status" aria-live="polite">Uploading image...</p>}
         {imageUrl && !uploading && (
           <div className="image-preview">
             <img src={imageUrl} alt="Protocol preview" />
@@ -332,15 +374,19 @@ const ProtocolForm: React.FC<ProtocolFormProps> = ({ groupId, protocol, onSucces
       </div>
 
       <div className="form-group">
-        <label htmlFor="protocol-order">Order Index (for sorting)</label>
+        <label htmlFor="protocol-order">Display Order</label>
         <input
           id="protocol-order"
           type="number"
           value={orderIndex}
           onChange={(e) => setOrderIndex(Number(e.target.value))}
           placeholder="0"
+          aria-label="Display order for protocol"
+          aria-describedby="order-hint"
         />
-        <small>Lower numbers appear first</small>
+        <small id="order-hint" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', display: 'block', marginTop: '0.25rem' }}>
+          Lower numbers appear first. Leave as 0 to append to the end.
+        </small>
       </div>
 
       <div className="form-actions">
