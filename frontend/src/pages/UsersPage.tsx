@@ -352,7 +352,15 @@ const UsersPage: React.FC = () => {
                 const stats = statistics[user.id];
                 return (
                   <tr key={user.id}>
-                    <td>{user.username}</td>
+                    <td>
+                      <Link 
+                        to={`/users/${user.id}/profile`}
+                        className="username-link"
+                        title={`View ${user.username}'s profile`}
+                      >
+                        {user.username}
+                      </Link>
+                    </td>
                     <td>{user.email}</td>
                     <td>{user.is_admin ? 'Yes' : 'No'}</td>
                     <td>
@@ -466,7 +474,15 @@ const UsersPage: React.FC = () => {
               <div key={user.id} className="user-card">
                 <div className="user-card-header">
                   <div className="user-card-title">
-                    <div className="user-card-name">{user.username}</div>
+                    <div className="user-card-name">
+                      <Link 
+                        to={`/users/${user.id}/profile`}
+                        className="username-link"
+                        title={`View ${user.username}'s profile`}
+                      >
+                        {user.username}
+                      </Link>
+                    </div>
                     <div className="user-card-email">{user.email}</div>
                   </div>
                   {user.is_admin && (

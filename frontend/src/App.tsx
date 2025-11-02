@@ -17,6 +17,7 @@ import GroupsPage from './pages/GroupsPage';
 import BulkEditAnimalsPage from './pages/BulkEditAnimalsPage';
 import ResetPassword from './pages/ResetPassword';
 import Settings from './pages/Settings';
+import UserProfilePage from './pages/UserProfilePage';
 import './App.css';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -130,6 +131,14 @@ function App() {
             element={
               <PrivateRoute>
                 <Settings />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/users/:id/profile"
+            element={
+              <PrivateRoute>
+                <UserProfilePage />
               </PrivateRoute>
             }
           />

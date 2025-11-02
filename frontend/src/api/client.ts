@@ -149,6 +149,63 @@ export interface CommentTagStatistics {
   most_tagged_animal_name?: string;
 }
 
+// User Profile interfaces
+export interface UserProfileStatistics {
+  total_comments: number;
+  total_announcements: number;
+  animals_interacted: number;
+  most_active_group?: {
+    group_id: number;
+    group_name: string;
+    comment_count: number;
+  };
+  last_active_date?: string;
+}
+
+export interface UserCommentActivity {
+  id: number;
+  animal_id: number;
+  animal_name: string;
+  group_id: number;
+  group_name: string;
+  content: string;
+  image_url: string;
+  created_at: string;
+}
+
+export interface UserAnnouncementActivity {
+  id: number;
+  group_id: number;
+  group_name: string;
+  content: string;
+  created_at: string;
+}
+
+export interface AnimalInteraction {
+  animal_id: number;
+  animal_name: string;
+  group_id: number;
+  group_name: string;
+  image_url: string;
+  comment_count: number;
+  last_comment_at: string;
+}
+
+export interface UserProfile {
+  id: number;
+  username: string;
+  email: string;
+  is_admin: boolean;
+  created_at: string;
+  default_group_id?: number;
+  groups: Group[];
+  statistics: UserProfileStatistics;
+  recent_comments: UserCommentActivity[];
+  recent_announcements: UserAnnouncementActivity[];
+  animals_interacted_with: AnimalInteraction[];
+}
+
+
 // Auth API
 export const authApi = {
   login: (username: string, password: string) =>
@@ -310,6 +367,11 @@ export const statisticsApi = {
   getGroupStatistics: () => api.get<GroupStatistics[]>('/admin/statistics/groups'),
   getUserStatistics: () => api.get<UserStatistics[]>('/admin/statistics/users'),
   getCommentTagStatistics: () => api.get<CommentTagStatistics[]>('/admin/statistics/comment-tags'),
+};
+
+// User Profile API
+export const userProfileApi = {
+  getProfile: (userId: number) => api.get<UserProfile>(`/users/${userId}/profile`),
 };
 
 export default api;

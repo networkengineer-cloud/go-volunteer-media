@@ -244,6 +244,36 @@
   border-bottom-color: var(--teal-400);
 }
 
+/* Username links in tables */
+.username-link {
+  color: var(--brand);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid transparent;
+}
+
+.username-link:hover {
+  color: var(--brand-600);
+  border-bottom-color: var(--brand-600);
+}
+
+.username-link:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+[data-theme='dark'] .username-link {
+  color: var(--teal);
+}
+
+[data-theme='dark'] .username-link:hover {
+  color: var(--teal-400);
+  border-bottom-color: var(--teal-400);
+}
+
+
 /* Group modal */
 .group-modal-backdrop {
   position: fixed;

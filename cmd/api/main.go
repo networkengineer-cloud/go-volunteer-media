@@ -123,6 +123,7 @@ func main() {
 	{
 		// User routes
 		protected.GET("/me", handlers.GetCurrentUser(db))
+		protected.GET("/users/:id/profile", handlers.GetUserProfile(db))
 		protected.GET("/email-preferences", handlers.GetEmailPreferences(db))
 		protected.PUT("/email-preferences", handlers.UpdateEmailPreferences(db))
 		protected.PUT("/default-group", handlers.SetDefaultGroup(db))
