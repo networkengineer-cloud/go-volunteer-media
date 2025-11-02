@@ -186,6 +186,9 @@ func main() {
 			admin.GET("/statistics/groups", handlers.GetGroupStatistics(db))
 			admin.GET("/statistics/users", handlers.GetUserStatistics(db))
 			admin.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
+			
+			// Admin dashboard
+			admin.GET("/dashboard/stats", handlers.GetAdminDashboardStats(db))
 		}
 
 		// Group-specific routes

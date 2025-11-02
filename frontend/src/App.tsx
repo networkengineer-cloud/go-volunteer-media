@@ -18,6 +18,7 @@ import BulkEditAnimalsPage from './pages/BulkEditAnimalsPage';
 import ResetPassword from './pages/ResetPassword';
 import Settings from './pages/Settings';
 import UserProfilePage from './pages/UserProfilePage';
+import AdminDashboard from './pages/AdminDashboard';
 import './App.css';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -140,6 +141,14 @@ function App() {
               <PrivateRoute>
                 <UserProfilePage />
               </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin/dashboard"
+            element={
+              <AdminRoute>
+                <AdminDashboard />
+              </AdminRoute>
             }
           />
           <Route

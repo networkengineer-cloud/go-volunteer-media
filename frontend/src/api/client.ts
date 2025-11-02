@@ -374,4 +374,55 @@ export const userProfileApi = {
   getProfile: (userId: number) => api.get<UserProfile>(`/users/${userId}/profile`),
 };
 
+// Admin Dashboard interfaces
+export interface AdminDashboardStats {
+  total_users: number;
+  total_groups: number;
+  total_animals: number;
+  total_comments: number;
+  recent_users: RecentUser[];
+  most_active_groups: ActiveGroupInfo[];
+  animals_needing_attention: AnimalAlert[];
+  system_health: SystemHealthInfo;
+}
+
+export interface RecentUser {
+  id: number;
+  username: string;
+  email: string;
+  is_admin: boolean;
+  created_at: string;
+}
+
+export interface ActiveGroupInfo {
+  group_id: number;
+  group_name: string;
+  user_count: number;
+  animal_count: number;
+  comment_count: number;
+  last_activity: string;
+}
+
+export interface AnimalAlert {
+  animal_id: number;
+  animal_name: string;
+  group_id: number;
+  group_name: string;
+  image_url: string;
+  alert_tags: string[];
+  last_comment: string;
+}
+
+export interface SystemHealthInfo {
+  active_users_last_24h: number;
+  comments_last_24h: number;
+  new_users_last_7_days: number;
+  average_comments_per_day: number;
+}
+
+// Admin Dashboard API
+export const adminDashboardApi = {
+  getStats: () => api.get<AdminDashboardStats>('/admin/dashboard/stats'),
+};
+
 export default api;
