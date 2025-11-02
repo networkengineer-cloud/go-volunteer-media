@@ -51,7 +51,7 @@
   padding: 0.5rem 2rem 0.5rem 0.75rem;
   border: 1px solid var(--neutral-300);
   border-radius: 6px;
-  background: white;
+  background: var(--surface);
   color: var(--text-primary);
   font-size: 0.9375rem;
   font-weight: 500;
@@ -71,6 +71,11 @@
   outline: 2px solid var(--brand);
   outline-offset: 2px;
   border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.1);
+}
+
+[data-theme='dark'] .group-select:focus {
+  box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.2);
 }
 
 [data-theme='dark'] .group-select {
