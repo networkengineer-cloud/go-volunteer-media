@@ -49,22 +49,27 @@ const Modal: React.FC<ModalProps> = ({
     }
   }, [isOpen, onClose]);
 
-  // Focus trap implementation
+  // Focus trap implementation - only handle Tab key to trap focus
+  // Don't interfere with normal typing in input fields
   useEffect(() => {
     if (!isOpen) return;
 
     const modal = modalRef.current;
     if (!modal) return;
 
-    const focusableElements = modal.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
-
     const handleTabKey = (e: KeyboardEvent) => {
+      // Only handle Tab key for focus trap
       if (e.key !== 'Tab') return;
+
+      // Get focusable elements at the time of Tab press
+      const focusableElements = modal.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      );
+
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
 
       if (e.shiftKey) {
         // Shift + Tab (backwards)
