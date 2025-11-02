@@ -1,0 +1,358 @@
+import React, { useEffect, useState } from 'react';
+import { protocolsApi } from '../api/client';
+import type { Protocol } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
+import EmptyState from './EmptyState';
+import SkeletonLoader from './SkeletonLoader';
+import ErrorState from './ErrorState';
+import Modal from './Modal';
+import './ProtocolsList.css';
+
+interface ProtocolsListProps {
+  groupId: number;
+}
+
+const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
+  const { isAdmin } = useAuth();
+  const [protocols, setProtocols] = useState<Protocol[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+  const [showForm, setShowForm] = useState(false);
+  const [editingProtocol, setEditingProtocol] = useState<Protocol | null>(null);
+  const [expandedProtocol, setExpandedProtocol] = useState<number | null>(null);
+
+  useEffect(() => {
+    loadProtocols();
+  }, [groupId]);
+
+  const loadProtocols = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await protocolsApi.getAll(groupId);
+      setProtocols(response.data);
+    } catch (error) {
+      console.error('Failed to load protocols:', error);
+      const err = error as { response?: { data?: { error?: string } } };
+      setError(err.response?.data?.error || 'Failed to load protocols. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (protocolId: number) => {
+    if (!confirm('Are you sure you want to delete this protocol?')) {
+      return;
+    }
+
+    try {
+      await protocolsApi.delete(groupId, protocolId);
+      await loadProtocols();
+    } catch (error) {
+      console.error('Failed to delete protocol:', error);
+      alert('Failed to delete protocol. Please try again.');
+    }
+  };
+
+  const handleEdit = (protocol: Protocol) => {
+    setEditingProtocol(protocol);
+    setShowForm(true);
+  };
+
+  const handleFormSuccess = () => {
+    setShowForm(false);
+    setEditingProtocol(null);
+    loadProtocols();
+  };
+
+  const toggleExpanded = (protocolId: number) => {
+    setExpandedProtocol(expandedProtocol === protocolId ? null : protocolId);
+  };
+
+  if (loading) {
+    return (
+      <div className="protocols-list">
+        <SkeletonLoader variant="card" count={3} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="protocols-list">
+        <ErrorState
+          title="Unable to Load Protocols"
+          message={error}
+          onRetry={loadProtocols}
+        />
+      </div>
+    );
+  }
+
+  if (protocols.length === 0) {
+    return (
+      <div className="protocols-list">
+        <EmptyState
+          icon={
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+            </svg>
+          }
+          title="No Protocols Yet"
+          description={
+            isAdmin
+              ? 'Get started by adding your first protocol. Protocols help volunteers follow standardized procedures.'
+              : 'No protocols have been added to this group yet. Protocols will appear here once an admin adds them.'
+          }
+          primaryAction={
+            isAdmin
+              ? {
+                  label: 'Add First Protocol',
+                  onClick: () => setShowForm(true),
+                }
+              : undefined
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="protocols-list">
+      <div className="protocols-header">
+        <h2>Protocols</h2>
+        {isAdmin && (
+          <button
+            className="btn-primary"
+            onClick={() => {
+              setEditingProtocol(null);
+              setShowForm(true);
+            }}
+            aria-label="Add new protocol"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span>Add Protocol</span>
+          </button>
+        )}
+      </div>
+
+      <div className="protocols-grid">
+        {protocols.map((protocol) => (
+          <div key={protocol.id} className="protocol-card">
+            {protocol.image_url && (
+              <div className="protocol-image">
+                <img src={protocol.image_url} alt={protocol.title} />
+              </div>
+            )}
+            <div className="protocol-content">
+              <h3>{protocol.title}</h3>
+              <div className={`protocol-text ${expandedProtocol === protocol.id ? 'expanded' : ''}`}>
+                {protocol.content}
+              </div>
+              {protocol.content.length > 200 && (
+                <button
+                  className="protocol-expand-btn"
+                  onClick={() => toggleExpanded(protocol.id)}
+                >
+                  {expandedProtocol === protocol.id ? 'Show Less' : 'Show More'}
+                </button>
+              )}
+            </div>
+            {isAdmin && (
+              <div className="protocol-actions">
+                <button
+                  className="btn-secondary"
+                  onClick={() => handleEdit(protocol)}
+                  aria-label={`Edit ${protocol.title}`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                  <span>Edit</span>
+                </button>
+                <button
+                  className="btn-danger"
+                  onClick={() => handleDelete(protocol.id)}
+                  aria-label={`Delete ${protocol.title}`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  <span>Delete</span>
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Protocol Form Modal */}
+      {showForm && (
+        <Modal
+          isOpen={showForm}
+          onClose={() => {
+            setShowForm(false);
+            setEditingProtocol(null);
+          }}
+          title={editingProtocol ? 'Edit Protocol' : 'Add Protocol'}
+        >
+          <ProtocolForm
+            groupId={groupId}
+            protocol={editingProtocol}
+            onSuccess={handleFormSuccess}
+            onCancel={() => {
+              setShowForm(false);
+              setEditingProtocol(null);
+            }}
+          />
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+interface ProtocolFormProps {
+  groupId: number;
+  protocol: Protocol | null;
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+const ProtocolForm: React.FC<ProtocolFormProps> = ({ groupId, protocol, onSuccess, onCancel }) => {
+  const [title, setTitle] = useState(protocol?.title || '');
+  const [content, setContent] = useState(protocol?.content || '');
+  const [imageUrl, setImageUrl] = useState(protocol?.image_url || '');
+  const [orderIndex, setOrderIndex] = useState(protocol?.order_index || 0);
+  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploading(true);
+      const response = await protocolsApi.uploadImage(groupId, file);
+      setImageUrl(response.data.url);
+    } catch (error) {
+      console.error('Failed to upload image:', error);
+      alert('Failed to upload image. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!title.trim() || !content.trim()) {
+      alert('Please fill in all required fields.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const data = {
+        title: title.trim(),
+        content: content.trim(),
+        image_url: imageUrl,
+        order_index: orderIndex,
+      };
+
+      if (protocol) {
+        await protocolsApi.update(groupId, protocol.id, data);
+      } else {
+        await protocolsApi.create(groupId, data);
+      }
+
+      onSuccess();
+    } catch (error) {
+      console.error('Failed to save protocol:', error);
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || 'Failed to save protocol. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form className="protocol-form" onSubmit={handleSubmit}>
+      <div className="form-group">
+        <label htmlFor="protocol-title">Title *</label>
+        <input
+          id="protocol-title"
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Enter protocol title"
+          required
+          maxLength={200}
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="protocol-content">Content *</label>
+        <textarea
+          id="protocol-content"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Enter protocol details and instructions..."
+          required
+          rows={8}
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="protocol-image">Image (optional)</label>
+        <input
+          id="protocol-image"
+          type="file"
+          accept="image/*"
+          onChange={handleImageUpload}
+          disabled={uploading}
+        />
+        {uploading && <p className="upload-status">Uploading...</p>}
+        {imageUrl && !uploading && (
+          <div className="image-preview">
+            <img src={imageUrl} alt="Protocol preview" />
+            <button
+              type="button"
+              className="remove-image"
+              onClick={() => setImageUrl('')}
+              aria-label="Remove image"
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="protocol-order">Order Index (for sorting)</label>
+        <input
+          id="protocol-order"
+          type="number"
+          value={orderIndex}
+          onChange={(e) => setOrderIndex(Number(e.target.value))}
+          placeholder="0"
+        />
+        <small>Lower numbers appear first</small>
+      </div>
+
+      <div className="form-actions">
+        <button type="button" className="btn-secondary" onClick={onCancel} disabled={submitting}>
+          Cancel
+        </button>
+        <button type="submit" className="btn-primary" disabled={submitting}>
+          {submitting ? 'Saving...' : protocol ? 'Update Protocol' : 'Add Protocol'}
+        </button>
+      </div>
+    </form>
+  );
+};
+
+export default ProtocolsList;

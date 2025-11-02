@@ -35,9 +35,11 @@ type Group struct {
 	Description  string         `json:"description"`
 	ImageURL     string         `json:"image_url"`
 	HeroImageURL string         `json:"hero_image_url"`
+	HasProtocols bool           `gorm:"default:false" json:"has_protocols"` // Enable protocols feature for this group
 	Users        []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
 	Animals      []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
 	Updates      []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
+	Protocols    []Protocol     `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
 }
 
 // Animal represents an animal in a group
@@ -154,4 +156,17 @@ type SiteSetting struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Key       string    `gorm:"uniqueIndex;not null" json:"key"`
 	Value     string    `gorm:"type:text" json:"value"`
+}
+
+// Protocol represents a protocol/procedure for a group
+type Protocol struct {
+	ID         uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
+	GroupID    uint           `gorm:"not null;index" json:"group_id"`
+	Title      string         `gorm:"not null" json:"title"`
+	Content    string         `gorm:"type:text;not null" json:"content"`
+	ImageURL   string         `json:"image_url"`
+	OrderIndex int            `gorm:"default:0" json:"order_index"` // For custom ordering
 }

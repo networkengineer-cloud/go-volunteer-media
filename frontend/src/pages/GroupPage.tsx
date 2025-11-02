@@ -9,9 +9,10 @@ import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import Modal from '../components/Modal';
+import ProtocolsList from '../components/ProtocolsList';
 import './GroupPage.css';
 
-type ViewMode = 'activity' | 'animals';
+type ViewMode = 'activity' | 'animals' | 'protocols';
 type FilterType = 'all' | 'comments' | 'announcements';
 
 const GroupPage: React.FC = () => {
@@ -207,6 +208,22 @@ const GroupPage: React.FC = () => {
           </svg>
           <span>Animals ({animals.length})</span>
         </button>
+        {group.has_protocols && (
+          <button
+            role="tab"
+            aria-selected={viewMode === 'protocols'}
+            aria-controls="protocols-panel"
+            id="protocols-tab"
+            className={`group-tab ${viewMode === 'protocols' ? 'group-tab--active' : ''}`}
+            onClick={() => setViewMode('protocols')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+            </svg>
+            <span>Protocols</span>
+          </button>
+        )}
       </div>
 
       {/* Activity Feed View */}
@@ -392,6 +409,18 @@ const GroupPage: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Protocols View */}
+      {viewMode === 'protocols' && group.has_protocols && (
+        <div 
+          role="tabpanel"
+          id="protocols-panel"
+          aria-labelledby="protocols-tab"
+          className="group-content"
+        >
+          <ProtocolsList groupId={Number(id)} />
         </div>
       )}
 
