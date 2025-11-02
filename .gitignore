@@ -52,3 +52,7 @@ package.json
 test-results/
 playwright-report/
 playwright/.cache/
+
+# Go build artifacts
+main
+*.exe
