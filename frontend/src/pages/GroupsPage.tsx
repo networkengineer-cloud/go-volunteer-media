@@ -8,9 +8,16 @@ import { useToast } from '../contexts/ToastContext';
 const GroupsPage: React.FC = () => {
   const toast = useToast();
   const [groups, setGroups] = React.useState<Group[]>([]);
+  const [filteredGroups, setFilteredGroups] = React.useState<Group[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [statistics, setStatistics] = React.useState<Record<number, GroupStatistics>>({});
+
+  // Filter and search state
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [sortBy, setSortBy] = React.useState<'name' | 'members' | 'animals' | 'activity'>('name');
+  const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
+  const [filterActivity, setFilterActivity] = React.useState<'all' | 'active' | 'inactive'>('all');
 
   // Create/Edit modal state
   const [showModal, setShowModal] = React.useState(false);
@@ -56,6 +63,65 @@ const GroupsPage: React.FC = () => {
   React.useEffect(() => {
     fetchGroups();
   }, [fetchGroups]);
+
+  // Filter and sort groups
+  React.useEffect(() => {
+    let filtered = [...groups];
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(group =>
+        group.name.toLowerCase().includes(query) ||
+        group.description.toLowerCase().includes(query)
+      );
+    }
+
+    // Apply activity filter
+    if (filterActivity !== 'all') {
+      const now = new Date();
+      const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      
+      filtered = filtered.filter(group => {
+        const stats = statistics[group.id];
+        const hasRecentActivity = stats?.last_activity && new Date(stats.last_activity) > dayAgo;
+        
+        return filterActivity === 'active' ? hasRecentActivity : !hasRecentActivity;
+      });
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      const statsA = statistics[a.id];
+      const statsB = statistics[b.id];
+
+      switch (sortBy) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'members':
+          const membersA = statsA?.user_count || 0;
+          const membersB = statsB?.user_count || 0;
+          comparison = membersB - membersA; // Most members first
+          break;
+        case 'animals':
+          const animalsA = statsA?.animal_count || 0;
+          const animalsB = statsB?.animal_count || 0;
+          comparison = animalsB - animalsA; // Most animals first
+          break;
+        case 'activity':
+          const activityA = statsA?.last_activity ? new Date(statsA.last_activity).getTime() : 0;
+          const activityB = statsB?.last_activity ? new Date(statsB.last_activity).getTime() : 0;
+          comparison = activityB - activityA; // Most recent first
+          break;
+      }
+
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    setFilteredGroups(filtered);
+  }, [groups, searchQuery, sortBy, sortOrder, filterActivity, statistics]);
 
   // Open modal for creating a new group
   const openCreateModal = () => {
@@ -160,12 +226,89 @@ const GroupsPage: React.FC = () => {
         </button>
       </div>
 
+      {/* Search and Filter Section */}
+      <div className="groups-filters">
+        <div className="filter-row">
+          <div className="search-box">
+            <svg className="search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 17A8 8 0 1 0 9 1a8 8 0 0 0 0 16zM18 18l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search groups by name or description..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search groups"
+            />
+            {searchQuery && (
+              <button
+                className="clear-search"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          <select
+            className="filter-select"
+            value={filterActivity}
+            onChange={(e) => setFilterActivity(e.target.value as 'all' | 'active' | 'inactive')}
+            aria-label="Filter by activity"
+          >
+            <option value="all">All Groups</option>
+            <option value="active">Active (24h)</option>
+            <option value="inactive">Inactive</option>
+          </select>
+
+          <select
+            className="filter-select"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'name' | 'members' | 'animals' | 'activity')}
+            aria-label="Sort by"
+          >
+            <option value="name">Sort by Name</option>
+            <option value="members">Sort by Members</option>
+            <option value="animals">Sort by Animals</option>
+            <option value="activity">Sort by Activity</option>
+          </select>
+
+          <button
+            className="sort-order-btn"
+            onClick={() => setSortOrder(order => order === 'asc' ? 'desc' : 'asc')}
+            aria-label={`Sort order: ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
+            title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+          >
+            {sortOrder === 'asc' ? (
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 5v10M5 10l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 15V5M15 10l-5 5-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </button>
+        </div>
+        
+        <div className="filter-summary">
+          Showing {filteredGroups.length} of {groups.length} groups
+          {searchQuery && <span> matching "{searchQuery}"</span>}
+        </div>
+      </div>
+
       {loading ? (
         <div className="groups-loading">Loading groups…</div>
       ) : error ? (
         <div className="groups-error">{error}</div>
-      ) : groups.length === 0 ? (
-        <div className="groups-empty">No groups yet. Create one to get started!</div>
+      ) : filteredGroups.length === 0 ? (
+        <div className="groups-empty">
+          {searchQuery || filterActivity !== 'all' 
+            ? 'No groups match your filters.' 
+            : 'No groups yet. Create one to get started!'}
+        </div>
       ) : (
         <table className="groups-table">
           <thead>
@@ -180,7 +323,7 @@ const GroupsPage: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {groups.map(group => {
+            {filteredGroups.map(group => {
               const stats = statistics[group.id];
               return (
                 <tr key={group.id}>
