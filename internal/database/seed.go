@@ -565,10 +565,10 @@ func seedAnnouncements(db *gorm.DB, users []models.User) error {
 
 // seedProtocols creates demo protocols for ModSquad group
 func seedProtocols(db *gorm.DB, users []models.User, groups []models.Group) error {
-	// Find the ModSquad group
+	// Find the ModSquad group (case-insensitive search)
 	var modSquadGroup *models.Group
 	for i := range groups {
-		if groups[i].Name == "ModSquad" {
+		if groups[i].Name == "modsquad" || groups[i].Name == "ModSquad" {
 			modSquadGroup = &groups[i]
 			break
 		}
