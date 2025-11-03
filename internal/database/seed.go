@@ -66,6 +66,11 @@ func SeedData(db *gorm.DB, force bool) error {
 		return fmt.Errorf("failed to seed announcements: %w", err)
 	}
 
+	// Seed protocols
+	if err := seedProtocols(db, users, groups); err != nil {
+		return fmt.Errorf("failed to seed protocols: %w", err)
+	}
+
 	// Update site settings with hero image
 	if err := updateSiteSettings(db); err != nil {
 		return fmt.Errorf("failed to update site settings: %w", err)
@@ -250,17 +255,17 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 			LastStatusChange: &tenDaysAgo,
 		},
 		{
-			GroupID:          modsquadGroupID,
-			Name:             "Rocky",
-			Species:          "Dog",
-			Breed:            "Pit Bull Terrier",
-			Age:              4,
-			Description:      "Currently in bite quarantine following an incident. Rocky is working with our behavior team and showing excellent progress with positive reinforcement training. Evaluation pending completion of quarantine period.",
-			Status:           "bite_quarantine",
-			ImageURL:         "https://images.unsplash.com/photo-1551717743-49959800b1f6?w=800&q=80", // Pit Bull
-			ArrivalDate:      &twentyDaysAgo,
+			GroupID:             modsquadGroupID,
+			Name:                "Rocky",
+			Species:             "Dog",
+			Breed:               "Pit Bull Terrier",
+			Age:                 4,
+			Description:         "Currently in bite quarantine following an incident. Rocky is working with our behavior team and showing excellent progress with positive reinforcement training. Evaluation pending completion of quarantine period.",
+			Status:              "bite_quarantine",
+			ImageURL:            "https://images.unsplash.com/photo-1551717743-49959800b1f6?w=800&q=80", // Pit Bull
+			ArrivalDate:         &twentyDaysAgo,
 			QuarantineStartDate: &twoDaysAgo,
-			LastStatusChange: &twoDaysAgo,
+			LastStatusChange:    &twoDaysAgo,
 		},
 		{
 			GroupID:          modsquadGroupID,
@@ -553,6 +558,65 @@ func seedAnnouncements(db *gorm.DB, users []models.User) error {
 			return err
 		}
 		logging.WithField("title", announcements[i].Title).Info("Created ModSquad demo announcement")
+	}
+
+	return nil
+}
+
+// seedProtocols creates demo protocols for ModSquad group
+func seedProtocols(db *gorm.DB, users []models.User, groups []models.Group) error {
+	// Find the ModSquad group (case-insensitive search)
+	var modSquadGroup *models.Group
+	for i := range groups {
+		if groups[i].Name == "modsquad" || groups[i].Name == "ModSquad" {
+			modSquadGroup = &groups[i]
+			break
+		}
+	}
+
+	if modSquadGroup == nil {
+		logging.Warn("ModSquad group not found - skipping protocol seeding")
+		return nil
+	}
+
+	protocols := []models.Protocol{
+		{
+			GroupID:    modSquadGroup.ID,
+			Title:      "Daily Dog Care Routine",
+			Content:    "Morning Care (7:00 AM - 9:00 AM):\n1. Check dog's overall health and behavior\n2. Provide fresh water in clean bowls\n3. Feed according to individual dietary plan (see animal profile)\n4. Take dog outside for bathroom break and short walk\n5. Clean any messes in kennel or living area\n\nMidday Care (12:00 PM - 2:00 PM):\n1. Brief bathroom break and playtime\n2. Provide fresh water if needed\n3. Monitor for any signs of distress or illness\n\nEvening Care (5:00 PM - 7:00 PM):\n1. Evening meal (if on twice-daily feeding schedule)\n2. Extended walk or play session (30-45 minutes)\n3. Fresh water and bathroom break\n4. Clean bowls and living area\n5. Log any concerns or observations in the system\n\nRemember: Every dog is unique! Always check their individual profile for specific dietary restrictions, medical needs, or behavioral notes.",
+			OrderIndex: 1,
+		},
+		{
+			GroupID:    modSquadGroup.ID,
+			Title:      "Medication Administration",
+			Content:    "Before Administering Medication:\n1. Verify you have the correct dog (check name tag and profile)\n2. Confirm the medication, dosage, and timing in the animal's profile\n3. Wash your hands thoroughly\n4. Gather supplies: medication, treats, pill pocket (if needed)\n\nAdministration Steps:\n1. Stay calm and speak in a soothing voice\n2. For pills: Hide in pill pocket, peanut butter, or cheese\n3. For liquids: Use provided syringe, aim for side of mouth\n4. Ensure dog swallows completely (gentle throat massage may help)\n5. Offer water immediately after\n6. Reward with praise and a healthy treat\n\nAfter Administration:\n1. Log medication given in the system immediately\n2. Note any difficulties or reactions\n3. Watch for 15-20 minutes for adverse reactions\n4. Contact vet immediately if vomiting, excessive drooling, or distress occurs\n\nIMPORTANT: Never skip or delay scheduled medications. If you cannot administer, notify a supervisor immediately.",
+			OrderIndex: 2,
+		},
+		{
+			GroupID:    modSquadGroup.ID,
+			Title:      "New Foster Dog Intake",
+			Content:    "First 24 Hours - Critical Adjustment Period:\n\n1. Quiet Introduction:\n- Bring dog to designated area away from other animals\n- Allow 30 minutes to decompress in quiet space\n- Provide water but wait 1-2 hours before first meal\n\n2. Initial Assessment:\n- Check for visible injuries or health concerns\n- Note temperament: nervous, friendly, fearful, energetic\n- Test basic commands: sit, stay, come\n- Observe bathroom habits and preferences\n\n3. Profile Setup:\n- Take clear photos (face, full body, any distinguishing marks)\n- Record all observations in the system\n- Note any supplies needed (specific food, toys, bedding)\n- Document initial weight\n\n4. First Week Guidelines:\n- Maintain consistent routine\n- Gradually introduce to other dogs (if applicable)\n- Monitor eating, drinking, and bathroom habits\n- Take notes on personality and quirks\n- Schedule vet appointment within 3-5 days\n\n5. Red Flags - Contact Supervisor Immediately:\n- Refusal to eat/drink for 24+ hours\n- Lethargy or unresponsiveness\n- Vomiting or diarrhea\n- Aggression toward people or other animals\n- Signs of injury or illness",
+			OrderIndex: 3,
+		},
+		{
+			GroupID:    modSquadGroup.ID,
+			Title:      "Emergency Procedures",
+			Content:    "In ANY emergency, remain calm and act quickly.\n\nSTEP 1: Assess the Situation\n- Is the dog breathing?\n- Is there visible injury or bleeding?\n- Is the dog conscious and responsive?\n- Are other animals or people at risk?\n\nSTEP 2: Immediate Actions\nFor Severe Bleeding:\n- Apply direct pressure with clean cloth\n- Elevate wound above heart if possible\n- Do not remove cloth if blood soaks through (add more on top)\n\nFor Choking:\n- Open mouth and look for visible obstruction\n- If visible, try to carefully remove\n- If not visible or cannot remove, perform Heimlich (small dogs: hold upside down, larger dogs: abdominal thrusts)\n\nFor Unconsciousness:\n- Check for breathing and pulse\n- Begin CPR if needed (30 compressions, 2 breaths)\n- Call emergency vet while performing CPR\n\nSTEP 3: Contact Emergency Services\nEmergency Vet: (555) 123-4567\nAfter Hours: (555) 123-4568\nSupervisor: [Contact from profile]\n\nSTEP 4: Transport\n- Use blanket or board as stretcher for injured dog\n- Keep dog warm\n- Minimize movement\n- Have someone call ahead to vet\n\nSTEP 5: Document\n- Take photos if safe to do so\n- Record time of incident\n- Note all actions taken\n- Update system ASAP after emergency is handled",
+			OrderIndex: 4,
+		},
+		{
+			GroupID:    modSquadGroup.ID,
+			Title:      "Adoption Appointment Protocol",
+			Content:    "Preparation (Day Before):\n1. Verify appointment in system\n2. Ensure dog is clean and groomed\n3. Prepare dog's profile printout with:\n   - Medical history\n   - Behavioral notes\n   - Dietary requirements\n   - Current medications\n4. Gather any supplies (collar, leash, toys) that will go with dog\n\nDay of Appointment:\n\n30 Minutes Before:\n- Bathroom break for dog\n- Check that meeting area is clean and prepared\n- Review adoption application notes\n- Have paperwork ready\n\nDuring Meeting:\n1. Allow adopters to approach dog at their pace\n2. Demonstrate dog's commands and behaviors\n3. Discuss dog's personality, quirks, and needs honestly\n4. Allow interaction time (15-30 minutes minimum)\n5. Answer all questions thoroughly\n6. If they have other pets, discuss slow introduction methods\n\nIf Adoption Proceeds:\n1. Complete all paperwork\n2. Provide copy of medical records\n3. Give dietary and medication instructions\n4. Provide emergency contact information\n5. Schedule follow-up check-in (1 week)\n6. Update dog's status in system immediately\n\nIf Adoption Doesn't Proceed:\n1. Thank adopters for their time\n2. Ask if they'd like to meet other dogs\n3. Update system with notes about the meeting\n4. No judgment - the right match is most important!\n\nRemember: Our goal is successful, lasting adoptions. It's better to wait for the right family than rush into a poor match.",
+			OrderIndex: 5,
+		},
+	}
+
+	for i := range protocols {
+		if err := db.Create(&protocols[i]).Error; err != nil {
+			return err
+		}
+		logging.WithField("title", protocols[i].Title).Info("Created ModSquad demo protocol")
 	}
 
 	return nil

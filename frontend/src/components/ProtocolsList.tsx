@@ -20,7 +20,7 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
   const [error, setError] = useState<string>('');
   const [showForm, setShowForm] = useState(false);
   const [editingProtocol, setEditingProtocol] = useState<Protocol | null>(null);
-  const [expandedProtocol, setExpandedProtocol] = useState<number | null>(null);
+  const [viewingProtocol, setViewingProtocol] = useState<Protocol | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; protocol: Protocol | null }>({ 
     show: false, 
     protocol: null 
@@ -29,6 +29,10 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
   useEffect(() => {
     loadProtocols();
   }, [groupId]);
+
+  useEffect(() => {
+    console.log('showForm changed to:', showForm);
+  }, [showForm]);
 
   const loadProtocols = async () => {
     try {
@@ -70,8 +74,8 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
     loadProtocols();
   };
 
-  const toggleExpanded = (protocolId: number) => {
-    setExpandedProtocol(expandedProtocol === protocolId ? null : protocolId);
+  const handleViewProtocol = (protocol: Protocol) => {
+    setViewingProtocol(protocol);
   };
 
   if (loading) {
@@ -94,9 +98,9 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
     );
   }
 
-  if (protocols.length === 0) {
-    return (
-      <div className="protocols-list">
+  return (
+    <div className="protocols-list">
+      {protocols.length === 0 ? (
         <EmptyState
           icon={
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -119,20 +123,18 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
               : undefined
           }
         />
-      </div>
-    );
-  }
-
-  return (
-    <div className="protocols-list">
+      ) : (
+        <>
       <div className="protocols-header">
         <h2>Protocols</h2>
         {isAdmin && (
           <button
             className="btn-primary"
             onClick={() => {
+              console.log('Add Protocol button clicked');
               setEditingProtocol(null);
               setShowForm(true);
+              console.log('showForm should now be true');
             }}
             aria-label="Add new protocol"
           >
@@ -147,24 +149,35 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
       <div className="protocols-grid">
         {protocols.map((protocol) => (
           <div key={protocol.id} className="protocol-card">
-            {protocol.image_url && (
-              <div className="protocol-image">
-                <img src={protocol.image_url} alt={protocol.title} />
-              </div>
-            )}
-            <div className="protocol-content">
-              <h3>{protocol.title}</h3>
-              <div className={`protocol-text ${expandedProtocol === protocol.id ? 'expanded' : ''}`}>
-                {protocol.content}
-              </div>
-              {protocol.content.length > 200 && (
-                <button
-                  className="protocol-expand-btn"
-                  onClick={() => toggleExpanded(protocol.id)}
-                >
-                  {expandedProtocol === protocol.id ? 'Show Less' : 'Show More'}
-                </button>
+            <div 
+              className="protocol-card-clickable"
+              onClick={() => handleViewProtocol(protocol)}
+              role="button"
+              tabIndex={0}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleViewProtocol(protocol);
+                }
+              }}
+              aria-label={`View ${protocol.title} details`}
+            >
+              {protocol.image_url && (
+                <div className="protocol-image">
+                  <img src={protocol.image_url} alt={protocol.title} />
+                </div>
               )}
+              <div className="protocol-content">
+                <h3>{protocol.title}</h3>
+                <div className="protocol-text protocol-text-preview">
+                  {protocol.content.length > 150 
+                    ? `${protocol.content.substring(0, 150)}...` 
+                    : protocol.content}
+                </div>
+                <div className="protocol-view-more">
+                  Click to view full protocol →
+                </div>
+              </div>
             </div>
             {isAdmin && (
               <div className="protocol-actions">
@@ -194,12 +207,15 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
           </div>
         ))}
       </div>
+      </>
+      )}
 
       {/* Protocol Form Modal */}
       {showForm && (
         <Modal
           isOpen={showForm}
           onClose={() => {
+            console.log('Modal onClose called');
             setShowForm(false);
             setEditingProtocol(null);
           }}
@@ -210,10 +226,61 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
             protocol={editingProtocol}
             onSuccess={handleFormSuccess}
             onCancel={() => {
+              console.log('Form cancel called');
               setShowForm(false);
               setEditingProtocol(null);
             }}
           />
+        </Modal>
+      )}
+
+      {/* Protocol View Modal */}
+      {viewingProtocol && (
+        <Modal
+          isOpen={!!viewingProtocol}
+          onClose={() => setViewingProtocol(null)}
+          title={viewingProtocol.title}
+          size="large"
+        >
+          <div className="protocol-view">
+            {viewingProtocol.image_url && (
+              <div className="protocol-view-image">
+                <img src={viewingProtocol.image_url} alt={viewingProtocol.title} />
+              </div>
+            )}
+            <div className="protocol-view-content">
+              <p>{viewingProtocol.content}</p>
+            </div>
+            {isAdmin && (
+              <div className="protocol-view-actions">
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    setViewingProtocol(null);
+                    handleEdit(viewingProtocol);
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                  <span>Edit</span>
+                </button>
+                <button
+                  className="btn-danger"
+                  onClick={() => {
+                    setViewingProtocol(null);
+                    handleDeleteClick(viewingProtocol);
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  <span>Delete</span>
+                </button>
+              </div>
+            )}
+          </div>
         </Modal>
       )}
 
@@ -334,12 +401,13 @@ const ProtocolForm: React.FC<ProtocolFormProps> = ({ groupId, protocol, onSucces
           placeholder="Enter protocol details and instructions..."
           required
           rows={8}
+          maxLength={1000}
           aria-label="Protocol content"
           aria-required="true"
           aria-describedby="content-hint"
         />
-        <small id="content-hint" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', display: 'block', marginTop: '0.25rem' }}>
-          {content.length} characters
+        <small id="content-hint" style={{ color: content.length > 900 ? 'var(--danger)' : 'var(--text-secondary)', fontSize: '0.875rem', display: 'block', marginTop: '0.25rem' }}>
+          {content.length}/1000 characters{content.length > 900 && ` (${1000 - content.length} remaining)`}
         </small>
       </div>
 

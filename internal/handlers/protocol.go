@@ -18,7 +18,7 @@ import (
 
 type ProtocolRequest struct {
 	Title      string `json:"title" binding:"required,min=2,max=200"`
-	Content    string `json:"content" binding:"required,min=10"`
+	Content    string `json:"content" binding:"required,min=10,max=1000"`
 	ImageURL   string `json:"image_url,omitempty"`
 	OrderIndex int    `json:"order_index"`
 }
