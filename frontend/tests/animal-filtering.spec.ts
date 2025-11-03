@@ -7,9 +7,9 @@ test.describe('Animal Filtering and Search Feature', () => {
       await expect(page.locator('body')).toBeVisible();
       
       console.log('Animal filtering test - Component includes:');
-      console.log('- Status filter dropdown with options: Available (default), All, Available, Foster, Bite Quarantine, Archived');
+      console.log('- Status filter dropdown with options: Available & Bite Quarantine (default), All, Available Only, Foster, Bite Quarantine Only, Archived');
       console.log('- Name search input field');
-      console.log('- Default view shows only available animals');
+      console.log('- Default view shows available and bite_quarantine animals');
       console.log('- Filter updates trigger API call with query parameters');
     });
 
@@ -25,18 +25,20 @@ test.describe('Animal Filtering and Search Feature', () => {
   test.describe('Backend API Tests (require backend)', () => {
     test('GetAnimals should support status filtering', async ({ page }) => {
       // This test would verify:
-      // 1. Default query returns only available animals
+      // 1. Default query returns available and bite_quarantine animals
       // 2. status=all returns all animals
       // 3. status=archived returns only archived animals
       // 4. status=foster returns only foster animals
       // 5. status=bite_quarantine returns only bite quarantine animals
+      // 6. status=available returns only available animals
       
       console.log('Backend filtering tests would verify:');
-      console.log('- GET /groups/:id/animals (no params) -> only available animals');
+      console.log('- GET /groups/:id/animals (no params) -> available and bite_quarantine animals');
       console.log('- GET /groups/:id/animals?status=all -> all animals');
+      console.log('- GET /groups/:id/animals?status=available -> available animals only');
       console.log('- GET /groups/:id/animals?status=archived -> archived animals');
       console.log('- GET /groups/:id/animals?status=foster -> foster animals');
-      console.log('- GET /groups/:id/animals?status=bite_quarantine -> bite quarantine animals');
+      console.log('- GET /groups/:id/animals?status=bite_quarantine -> bite quarantine animals only');
     });
 
     test('GetAnimals should support name search', async ({ page }) => {
@@ -122,7 +124,7 @@ test.describe('Animal Filtering and Search Feature', () => {
 
     test('should update animals list when filters change', async ({ page }) => {
       // This would test the reactive behavior:
-      // 1. Initial load shows available animals
+      // 1. Initial load shows available and bite_quarantine animals
       // 2. Changing status filter reloads animals
       // 3. Typing in search field reloads animals
       // 4. Both filters work together

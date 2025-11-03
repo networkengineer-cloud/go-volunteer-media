@@ -166,6 +166,7 @@ test.describe('Default Group Feature', () => {
               
               break;
             }
+          }
         }
       }
     }
