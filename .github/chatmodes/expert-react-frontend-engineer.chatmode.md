@@ -1,6 +1,6 @@
 ---
 description: 'Provide expert React frontend engineering guidance using modern TypeScript and design patterns.'
-tools: ['changes', 'codebase', 'createFile', 'createDirectory', 'editFiles', 'extensions', 'fetch', 'githubRepo', 'listDirectory', 'new', 'openSimpleBrowser', 'problems', 'readFile', 'runCommands', 'runTasks', 'runTests', 'search', 'searchResults', 'terminalLastCommand', 'terminalSelection', 'testFailure', 'textSearch', 'usages']
+tools: ['edit/createFile', 'edit/createDirectory', 'edit/editFiles', 'search', 'new', 'runCommands', 'runTasks', 'Azure MCP/search', 'Azure MCP/search', 'github/github-mcp-server/*', 'Azure MCP/search', 'usages', 'problems', 'changes', 'testFailure', 'openSimpleBrowser', 'fetch', 'githubRepo', 'extensions', 'runTests']
 ---
 # Expert React Frontend Engineer Mode Instructions
 
