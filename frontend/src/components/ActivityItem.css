@@ -227,36 +227,34 @@
 }
 
 /* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .activity-item {
-    --card-background: #1f2937;
-    --text-primary: #f3f4f6;
-    --text-secondary: #9ca3af;
-    --border-color: #374151;
-    --background-secondary: #374151;
-  }
+[data-theme='dark'] .activity-item {
+  --card-background: #1f2937;
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --border-color: #374151;
+  --background-secondary: #374151;
+}
 
-  .activity-item__avatar {
-    background: linear-gradient(135deg, #4c51bf 0%, #6b46c1 100%);
-  }
+[data-theme='dark'] .activity-item__avatar {
+  background: linear-gradient(135deg, #4c51bf 0%, #6b46c1 100%);
+}
 
-  .activity-item__type-badge--announcement {
-    background: #78350f;
-    color: #fef3c7;
-  }
+[data-theme='dark'] .activity-item__type-badge--announcement {
+  background: #78350f;
+  color: #fef3c7;
+}
 
-  .activity-item__type-badge--comment {
-    background: #1e3a8a;
-    color: #dbeafe;
-  }
+[data-theme='dark'] .activity-item__type-badge--comment {
+  background: #1e3a8a;
+  color: #dbeafe;
+}
 
-  .activity-item__animal-name {
-    background: #374151;
-  }
+[data-theme='dark'] .activity-item__animal-name {
+  background: #374151;
+}
 
-  .activity-item__animal-name:hover {
-    background: #064e3b;
-  }
+[data-theme='dark'] .activity-item__animal-name:hover {
+  background: #064e3b;
 }
 
 /* Responsive design */
