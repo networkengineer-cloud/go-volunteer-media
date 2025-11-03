@@ -252,17 +252,6 @@ const GroupPage: React.FC = () => {
             </div>
             <div className="quick-actions-bar__actions">
               <button
-                className="quick-actions-bar__button quick-actions-bar__button--secondary"
-                onClick={() => navigate(`/groups/${id}`)}
-                aria-label="View all animals in this group"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <circle cx="12" cy="8" r="4" />
-                  <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
-                </svg>
-                <span>View Animals</span>
-              </button>
-              <button
                 className="quick-actions-bar__button quick-actions-bar__button--primary"
                 onClick={() => setShowAnnouncementForm(true)}
                 aria-label="Post new announcement"
@@ -316,11 +305,11 @@ const GroupPage: React.FC = () => {
                   onChange={(e) => setStatusFilter(e.target.value)}
                   aria-label="Filter animals by status"
                 >
-                  <option value="">Available (default)</option>
+                  <option value="">Available & Bite Quarantine (default)</option>
                   <option value="all">All Animals</option>
-                  <option value="available">Available</option>
+                  <option value="available">Available Only</option>
                   <option value="foster">Foster</option>
-                  <option value="bite_quarantine">Bite Quarantine</option>
+                  <option value="bite_quarantine">Bite Quarantine Only</option>
                   <option value="archived">Archived</option>
                 </select>
               </div>

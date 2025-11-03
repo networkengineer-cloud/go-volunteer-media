@@ -160,12 +160,19 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 		// Build query with filters
 		query := db.Where("group_id = ?", groupID)
 
-		// Status filter (default to "available" if not specified)
+		// Status filter (default to "available" and "bite_quarantine" if not specified)
 		status := c.Query("status")
 		if status == "" {
-			query = query.Where("status = ?", "available")
+			// Default: show available and bite_quarantine animals
+			query = query.Where("status IN ?", []string{"available", "bite_quarantine"})
 		} else if status != "all" {
-			query = query.Where("status = ?", status)
+			// Support comma-separated statuses for multiple filters
+			if strings.Contains(status, ",") {
+				statuses := strings.Split(status, ",")
+				query = query.Where("status IN ?", statuses)
+			} else {
+				query = query.Where("status = ?", status)
+			}
 		}
 
 		// Name search filter
