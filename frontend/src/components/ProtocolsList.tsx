@@ -30,6 +30,10 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
     loadProtocols();
   }, [groupId]);
 
+  useEffect(() => {
+    console.log('showForm changed to:', showForm);
+  }, [showForm]);
+
   const loadProtocols = async () => {
     try {
       setLoading(true);
@@ -131,8 +135,10 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
           <button
             className="btn-primary"
             onClick={() => {
+              console.log('Add Protocol button clicked');
               setEditingProtocol(null);
               setShowForm(true);
+              console.log('showForm should now be true');
             }}
             aria-label="Add new protocol"
           >
@@ -200,6 +206,7 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
         <Modal
           isOpen={showForm}
           onClose={() => {
+            console.log('Modal onClose called');
             setShowForm(false);
             setEditingProtocol(null);
           }}
@@ -210,6 +217,7 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
             protocol={editingProtocol}
             onSuccess={handleFormSuccess}
             onCancel={() => {
+              console.log('Form cancel called');
               setShowForm(false);
               setEditingProtocol(null);
             }}
