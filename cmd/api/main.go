@@ -204,6 +204,10 @@ func main() {
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
 			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
 			
+			// Animal protocols - all group members can view and add protocol entries
+			group.GET("/animals/:animalId/protocols", handlers.GetAnimalProtocols(db))
+			group.POST("/animals/:animalId/protocols", handlers.CreateAnimalProtocol(db))
+			
 			// Latest comments across the group
 			group.GET("/latest-comments", handlers.GetGroupLatestComments(db))
 
@@ -226,6 +230,9 @@ func main() {
 			adminAnimals.POST("", handlers.CreateAnimal(db))
 			adminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db))
 			adminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
+			
+			// Admin can delete animal protocol entries
+			adminAnimals.DELETE("/:animalId/protocols/:protocolId", handlers.DeleteAnimalProtocol(db))
 		}
 
 		// Admin-only protocol management routes

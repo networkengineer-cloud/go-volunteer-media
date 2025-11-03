@@ -109,6 +109,17 @@ export interface CommentWithAnimal extends AnimalComment {
   animal: Animal;
 }
 
+export interface AnimalProtocol {
+  id: number;
+  animal_id: number;
+  user_id: number;
+  content: string;
+  image_url: string;
+  created_at: string;
+  updated_at: string;
+  user?: User;
+}
+
 export interface CommentTag {
   id: number;
   name: string;
@@ -334,6 +345,19 @@ export const animalCommentsApi = {
       image_url,
       tag_ids,
     }),
+};
+
+// Animal Protocols API
+export const animalProtocolsApi = {
+  getAll: (groupId: number, animalId: number) =>
+    api.get<AnimalProtocol[]>('/groups/' + groupId + '/animals/' + animalId + '/protocols'),
+  create: (groupId: number, animalId: number, content: string, image_url?: string) =>
+    api.post<AnimalProtocol>('/groups/' + groupId + '/animals/' + animalId + '/protocols', {
+      content,
+      image_url,
+    }),
+  delete: (groupId: number, animalId: number, protocolId: number) =>
+    api.delete('/groups/' + groupId + '/animals/' + animalId + '/protocols/' + protocolId),
 };
 
 // Comment Tags API

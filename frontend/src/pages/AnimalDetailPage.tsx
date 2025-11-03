@@ -7,6 +7,7 @@ import { useToast } from '../contexts/ToastContext';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
+import AnimalProtocols from '../components/AnimalProtocols';
 import './AnimalDetailPage.css';
 
 // Helper function to calculate quarantine end date (10 days, cannot end on weekend)
@@ -513,6 +514,9 @@ const AnimalDetailPage: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Protocol Entries Section */}
+        <AnimalProtocols groupId={Number(groupId)} animalId={Number(id)} />
       </div>
     </div>
   );
