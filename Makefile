@@ -81,6 +81,15 @@ seed-force: ## Force seed database (even if data exists)
 	@echo "Force seeding database with demo data..."
 	go run cmd/seed/main.go --force
 
+db-reseed: ## Stop database, start fresh, and seed with demo data
+	@echo "Reseeding database with fresh data..."
+	@$(MAKE) db-stop
+	@$(MAKE) db-start
+	@echo "Waiting for database to be ready..."
+	@sleep 5
+	@$(MAKE) seed
+	@echo "✅ Database reseeded successfully!"
+
 lint: ## Run linter
 	@echo "Running golangci-lint..."
 	golangci-lint run
