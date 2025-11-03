@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { animalsApi, announcementsApi } from '../api/client';
+import { animalsApi, announcementsApi, animalTagsApi } from '../api/client';
+import type { AnimalTag } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import FormField from '../components/FormField';
 import Button from '../components/Button';
@@ -18,6 +19,8 @@ const AnimalForm: React.FC = () => {
   const [quarantineContext, setQuarantineContext] = useState('');
   const [quarantineDate, setQuarantineDate] = useState('');
   const [originalStatus, setOriginalStatus] = useState('');
+  const [availableTags, setAvailableTags] = useState<AnimalTag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     species: '',
@@ -32,10 +35,20 @@ const AnimalForm: React.FC = () => {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    loadAvailableTags();
     if (id && groupId) {
       loadAnimal(parseInt(groupId), parseInt(id));
     }
   }, [id, groupId]);
+
+  const loadAvailableTags = async () => {
+    try {
+      const response = await animalTagsApi.getAll();
+      setAvailableTags(response.data);
+    } catch (error) {
+      console.error('Failed to load tags:', error);
+    }
+  };
 
   const loadAnimal = async (gId: number, animalId: number) => {
     try {
@@ -46,6 +59,10 @@ const AnimalForm: React.FC = () => {
         quarantine_start_date: animal.quarantine_start_date || '',
       });
       setOriginalStatus(animal.status);
+      // Set selected tags
+      if (animal.tags) {
+        setSelectedTagIds(animal.tags.map(tag => tag.id));
+      }
     } catch (error) {
       console.error('Failed to load animal:', error);
       toast.showError('Failed to load animal details');
@@ -79,6 +96,14 @@ const AnimalForm: React.FC = () => {
     setTouched({ ...touched, [field]: true });
     const error = validateField(field, formData[field as keyof typeof formData]);
     setErrors({ ...errors, [field]: error });
+  };
+
+  const handleTagToggle = (tagId: number) => {
+    if (selectedTagIds.includes(tagId)) {
+      setSelectedTagIds(selectedTagIds.filter(id => id !== tagId));
+    } else {
+      setSelectedTagIds([...selectedTagIds, tagId]);
+    }
   };
 
   const handleFieldChange = (field: string, value: string | number) => {
@@ -156,13 +181,28 @@ const AnimalForm: React.FC = () => {
   const saveAnimal = async () => {
     setLoading(true);
     try {
+      let animalId = id ? parseInt(id) : null;
+      
       if (id && groupId) {
         await animalsApi.update(parseInt(groupId), parseInt(id), formData);
         toast.showSuccess('Animal updated successfully!');
       } else if (groupId) {
-        await animalsApi.create(parseInt(groupId), formData);
+        const response = await animalsApi.create(parseInt(groupId), formData);
+        animalId = response.data.id;
         toast.showSuccess('Animal added successfully!');
       }
+      
+      // Assign tags to the animal
+      if (animalId && selectedTagIds.length >= 0) {
+        try {
+          await animalTagsApi.assignToAnimal(animalId, selectedTagIds);
+        } catch (error) {
+          console.error('Failed to assign tags:', error);
+          // Don't fail the whole operation if tag assignment fails
+          toast.showWarning('Animal saved but failed to update tags');
+        }
+      }
+      
       navigate(`/groups/${groupId}`);
     } catch (error: any) {
       const errorMsg = error.response?.data?.error || 'Failed to save animal. Please try again.';
@@ -360,6 +400,70 @@ const AnimalForm: React.FC = () => {
             helperText="Optional details about the animal's personality, care needs, or history"
             maxLength={1000}
           />
+
+          {/* Animal Tags Selection */}
+          <div className="form-field">
+            <label className="form-field__label">Animal Tags</label>
+            <p className="form-field__helper">
+              Select tags for behavior traits and walker status
+            </p>
+            
+            {availableTags.length > 0 && (
+              <div className="tag-categories">
+                {/* Behavior Tags */}
+                <div className="tag-category">
+                  <h4>Behavior Traits</h4>
+                  <div className="tag-selection-grid">
+                    {availableTags.filter(tag => tag.category === 'behavior').map(tag => (
+                      <label key={tag.id} className="tag-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedTagIds.includes(tag.id)}
+                          onChange={() => handleTagToggle(tag.id)}
+                        />
+                        <span
+                          className="tag-label"
+                          style={{ 
+                            backgroundColor: selectedTagIds.includes(tag.id) ? tag.color : 'transparent',
+                            borderColor: tag.color,
+                            color: selectedTagIds.includes(tag.id) ? 'white' : tag.color
+                          }}
+                        >
+                          {tag.name}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Walker Status Tags */}
+                <div className="tag-category">
+                  <h4>Walker Status</h4>
+                  <div className="tag-selection-grid">
+                    {availableTags.filter(tag => tag.category === 'walker_status').map(tag => (
+                      <label key={tag.id} className="tag-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedTagIds.includes(tag.id)}
+                          onChange={() => handleTagToggle(tag.id)}
+                        />
+                        <span
+                          className="tag-label"
+                          style={{ 
+                            backgroundColor: selectedTagIds.includes(tag.id) ? tag.color : 'transparent',
+                            borderColor: tag.color,
+                            color: selectedTagIds.includes(tag.id) ? 'white' : tag.color
+                          }}
+                        >
+                          {tag.name}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="form-actions">
             <Button

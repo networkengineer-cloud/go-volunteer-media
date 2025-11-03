@@ -61,6 +61,7 @@ type Animal struct {
 	QuarantineStartDate *time.Time     `json:"quarantine_start_date"`                                            // When bite quarantine started
 	ArchivedDate        *time.Time     `json:"archived_date"`                                                    // When animal was archived
 	LastStatusChange    *time.Time     `json:"last_status_change"`                                               // Timestamp of last status change
+	Tags                []AnimalTag    `gorm:"many2many:animal_tags;" json:"tags,omitempty"`                     // Tags associated with this animal
 }
 
 // LengthOfStay returns the number of days since the animal's arrival date
@@ -169,4 +170,15 @@ type Protocol struct {
 	Content    string         `gorm:"type:text;not null" json:"content"`
 	ImageURL   string         `json:"image_url"`
 	OrderIndex int            `gorm:"default:0" json:"order_index"` // For custom ordering
+}
+
+// AnimalTag represents a tag that can be applied to animals
+type AnimalTag struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	Name      string         `gorm:"uniqueIndex;not null" json:"name"`
+	Category  string         `gorm:"not null" json:"category"` // "behavior" or "walker_status"
+	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
 }

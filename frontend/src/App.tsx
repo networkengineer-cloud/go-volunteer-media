@@ -13,6 +13,7 @@ import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
 import UsersPage from './pages/UsersPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
+import AdminAnimalTagsPage from './pages/AdminAnimalTagsPage';
 import GroupsPage from './pages/GroupsPage';
 import BulkEditAnimalsPage from './pages/BulkEditAnimalsPage';
 import ResetPassword from './pages/ResetPassword';
@@ -172,6 +173,14 @@ function App() {
             element={
               <AdminRoute>
                 <AdminSettingsPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/animal-tags"
+            element={
+              <AdminRoute>
+                <AdminAnimalTagsPage />
               </AdminRoute>
             }
           />

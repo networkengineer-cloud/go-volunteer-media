@@ -218,3 +218,65 @@
     max-width: 100%;
   }
 }
+
+/* Tag Selection Styles */
+.tag-categories {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.tag-category h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 0.75rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tag-selection-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.tag-checkbox {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tag-checkbox input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tag-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 2px solid;
+  transition: all 0.2s ease;
+  text-transform: capitalize;
+}
+
+.tag-checkbox:hover .tag-label {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.tag-checkbox input[type="checkbox"]:focus + .tag-label {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+[data-theme='dark'] .tag-checkbox:hover .tag-label {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}

@@ -301,6 +301,26 @@ const AnimalDetailPage: React.FC = () => {
               {animal.description && (
                 <p className="animal-description">{animal.description}</p>
               )}
+              
+              {/* Animal Tags Section */}
+              {animal.tags && animal.tags.length > 0 && (
+                <div className="animal-tags-section">
+                  <h3>Tags</h3>
+                  <div className="animal-tags-list">
+                    {animal.tags.map(tag => (
+                      <span
+                        key={tag.id}
+                        className="animal-tag"
+                        style={{ backgroundColor: tag.color }}
+                        title={tag.category}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
               {isAdmin && (
                 <button onClick={handleEdit} className="btn-edit">
                   Edit Animal Details
