@@ -71,6 +71,7 @@ export interface Animal {
   quarantine_start_date?: string;
   archived_date?: string;
   last_status_change?: string;
+  tags?: AnimalTag[];
 }
 
 export interface Update {
@@ -114,6 +115,14 @@ export interface CommentTag {
   name: string;
   color: string;
   is_system: boolean;
+  created_at: string;
+}
+
+export interface AnimalTag {
+  id: number;
+  name: string;
+  category: string; // 'behavior' or 'walker_status'
+  color: string;
   created_at: string;
 }
 
@@ -342,6 +351,18 @@ export const commentTagsApi = {
   create: (name: string, color: string) =>
     api.post<CommentTag>('/admin/comment-tags', { name, color }),
   delete: (tagId: number) => api.delete('/admin/comment-tags/' + tagId),
+};
+
+// Animal Tags API
+export const animalTagsApi = {
+  getAll: () => api.get<AnimalTag[]>('/animal-tags'),
+  create: (data: { name: string; category: string; color: string }) =>
+    api.post<AnimalTag>('/admin/animal-tags', data),
+  update: (tagId: number, data: { name: string; category: string; color: string }) =>
+    api.put<AnimalTag>('/admin/animal-tags/' + tagId, data),
+  delete: (tagId: number) => api.delete('/admin/animal-tags/' + tagId),
+  assignToAnimal: (animalId: number, tagIds: number[]) =>
+    api.post<Animal>('/admin/animals/' + animalId + '/tags', { tag_ids: tagIds }),
 };
 
 // Protocols API
