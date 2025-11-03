@@ -138,6 +138,9 @@ func main() {
 		// Comment tags (all authenticated users can view)
 		protected.GET("/comment-tags", handlers.GetCommentTags(db))
 
+		// Animal tags (all authenticated users can view)
+		protected.GET("/animal-tags", handlers.GetAnimalTags(db))
+
 		// Image upload (authenticated users only)
 		protected.POST("/animals/upload-image", handlers.UploadAnimalImage())
 
@@ -169,6 +172,12 @@ func main() {
 			// Comment tag management (admin only)
 			admin.POST("/comment-tags", handlers.CreateCommentTag(db))
 			admin.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
+
+			// Animal tag management (admin only)
+			admin.POST("/animal-tags", handlers.CreateAnimalTag(db))
+			admin.PUT("/animal-tags/:tagId", handlers.UpdateAnimalTag(db))
+			admin.DELETE("/animal-tags/:tagId", handlers.DeleteAnimalTag(db))
+			admin.POST("/animals/:animalId/tags", handlers.AssignTagsToAnimal(db))
 
 			// Site settings management (admin only)
 			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))

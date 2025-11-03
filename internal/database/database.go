@@ -101,6 +101,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.AnimalComment{},
 		&models.SiteSetting{},
 		&models.Protocol{},
+		&models.AnimalTag{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -110,6 +111,11 @@ func RunMigrations(db *gorm.DB) error {
 
 	// Create default groups if they don't exist
 	if err := createDefaultGroups(db); err != nil {
+		return err
+	}
+
+	// Create default animal tags if they don't exist
+	if err := createDefaultAnimalTags(db); err != nil {
 		return err
 	}
 
@@ -129,8 +135,6 @@ func RunMigrations(db *gorm.DB) error {
 // createDefaultGroups creates the default groups if they don't exist
 func createDefaultGroups(db *gorm.DB) error {
 	defaultGroups := []models.Group{
-		{Name: "dogs", Description: "Dog volunteers group", HasProtocols: false},
-		{Name: "cats", Description: "Cat volunteers group", HasProtocols: false},
 		{Name: "modsquad", Description: "Behavior modification volunteers group", HasProtocols: true},
 	}
 
@@ -173,6 +177,34 @@ func createDefaultCommentTags(db *gorm.DB) error {
 				return fmt.Errorf("failed to create default tag %s: %w", tag.Name, err)
 			}
 			logging.WithField("tag_name", tag.Name).Info("Created default comment tag")
+		}
+	}
+
+	return nil
+}
+
+// createDefaultAnimalTags creates the default animal tags if they don't exist
+func createDefaultAnimalTags(db *gorm.DB) error {
+	defaultTags := []models.AnimalTag{
+		// Behavior tags
+		{Name: "resource guarding", Category: "behavior", Color: "#ef4444"},
+		{Name: "shy", Category: "behavior", Color: "#a855f7"},
+		{Name: "reactive", Category: "behavior", Color: "#f97316"},
+		{Name: "friendly", Category: "behavior", Color: "#22c55e"},
+		// Walker status tags
+		{Name: "2.0 walker", Category: "walker_status", Color: "#3b82f6"},
+		{Name: "dual walker", Category: "walker_status", Color: "#06b6d4"},
+		{Name: "experienced only", Category: "walker_status", Color: "#8b5cf6"},
+	}
+
+	for _, tag := range defaultTags {
+		var existing models.AnimalTag
+		result := db.Where("name = ?", tag.Name).First(&existing)
+		if result.Error == gorm.ErrRecordNotFound {
+			if err := db.Create(&tag).Error; err != nil {
+				return fmt.Errorf("failed to create default animal tag %s: %w", tag.Name, err)
+			}
+			logging.WithField("tag_name", tag.Name).Info("Created default animal tag")
 		}
 	}
 

@@ -182,7 +182,7 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animals []models.Animal
-		if err := query.Find(&animals).Error; err != nil {
+		if err := query.Preload("Tags").Find(&animals).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
 			return
 		}
@@ -206,7 +206,7 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animal models.Animal
-		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+		if err := db.Preload("Tags").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}
@@ -303,7 +303,7 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animal models.Animal
-		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+		if err := db.Preload("Tags").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}
@@ -376,7 +376,7 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animal models.Animal
-		if err := db.First(&animal, animalID).Error; err != nil {
+		if err := db.Preload("Tags").First(&animal, animalID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}
@@ -450,7 +450,7 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Reload animal to get updated data
-		if err := db.First(&animal, animalID).Error; err != nil {
+		if err := db.Preload("Tags").First(&animal, animalID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload animal"})
 			return
 		}
@@ -790,7 +790,7 @@ func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animals []models.Animal
-		if err := query.Order("group_id, name").Find(&animals).Error; err != nil {
+		if err := query.Preload("Tags").Order("group_id, name").Find(&animals).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
 			return
 		}
