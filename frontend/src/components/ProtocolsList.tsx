@@ -334,12 +334,13 @@ const ProtocolForm: React.FC<ProtocolFormProps> = ({ groupId, protocol, onSucces
           placeholder="Enter protocol details and instructions..."
           required
           rows={8}
+          maxLength={1000}
           aria-label="Protocol content"
           aria-required="true"
           aria-describedby="content-hint"
         />
-        <small id="content-hint" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', display: 'block', marginTop: '0.25rem' }}>
-          {content.length} characters
+        <small id="content-hint" style={{ color: content.length > 900 ? 'var(--danger)' : 'var(--text-secondary)', fontSize: '0.875rem', display: 'block', marginTop: '0.25rem' }}>
+          {content.length}/1000 characters{content.length > 900 && ` (${1000 - content.length} remaining)`}
         </small>
       </div>
 
