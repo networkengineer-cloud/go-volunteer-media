@@ -170,16 +170,3 @@ type Protocol struct {
 	ImageURL   string         `json:"image_url"`
 	OrderIndex int            `gorm:"default:0" json:"order_index"` // For custom ordering
 }
-
-// AnimalProtocol represents a protocol note/entry for a specific animal
-type AnimalProtocol struct {
-	ID        uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt time.Time      `gorm:"index:idx_animal_protocol_created" json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	AnimalID  uint           `gorm:"not null;index:idx_animal_protocol_created" json:"animal_id"`
-	UserID    uint           `gorm:"not null;index" json:"user_id"`
-	Content   string         `gorm:"type:text;not null" json:"content"` // Max 1000 chars enforced in handler
-	ImageURL  string         `json:"image_url"`
-	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
-}
