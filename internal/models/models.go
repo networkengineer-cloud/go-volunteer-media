@@ -61,7 +61,7 @@ type Animal struct {
 	QuarantineStartDate *time.Time     `json:"quarantine_start_date"`                                            // When bite quarantine started
 	ArchivedDate        *time.Time     `json:"archived_date"`                                                    // When animal was archived
 	LastStatusChange    *time.Time     `json:"last_status_change"`                                               // Timestamp of last status change
-	Tags                []AnimalTag    `gorm:"many2many:animal_tags;" json:"tags,omitempty"`                     // Tags associated with this animal
+	Tags                []AnimalTag    `gorm:"many2many:animal_animal_tags;" json:"tags,omitempty"`              // Tags associated with this animal
 }
 
 // LengthOfStay returns the number of days since the animal's arrival date
