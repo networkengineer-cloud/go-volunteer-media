@@ -68,5 +68,5 @@ func main() {
 	fmt.Println("  ModSquad Volunteer: lisa_modsquad")
 	fmt.Println("\nAll volunteers have access to the ModSquad group.")
 	fmt.Println("ModSquad now has 10 dogs with Unsplash images!")
-	fmt.Println("=================================\n")
+	fmt.Println("=================================")
 }

@@ -257,7 +257,7 @@ const AnimalForm: React.FC = () => {
 
   const calculateQuarantineEndDate = (startDateString: string): string => {
     const startDate = new Date(startDateString);
-    let endDate = new Date(startDate);
+    const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 10);
     
     // Adjust for weekends

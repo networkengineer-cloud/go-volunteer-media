@@ -375,7 +375,7 @@ const GroupPage: React.FC = () => {
                         <p className="quarantine-end-date">
                           Ends: {(() => {
                             const startDate = new Date(animal.quarantine_start_date);
-                            let endDate = new Date(startDate);
+                            const endDate = new Date(startDate);
                             endDate.setDate(endDate.getDate() + 10);
                             while (endDate.getDay() === 0 || endDate.getDay() === 6) {
                               endDate.setDate(endDate.getDate() + 1);
