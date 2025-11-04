@@ -751,3 +751,367 @@ func TestDeleteAnimal_AccessDenied(t *testing.T) {
 		t.Errorf("Animal should still exist: %v", err)
 	}
 }
+
+// TestUpdateAnimal_Success tests successful animal update
+func TestUpdateAnimal_Success(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	updateReq := AnimalRequest{
+		Name:        "Rex Updated",
+		Species:     "Dog",
+		Breed:       "Labrador",
+		Age:         4,
+		Description: "Updated description",
+		Status:      "available",
+	}
+
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var updatedAnimal models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &updatedAnimal); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if updatedAnimal.Name != "Rex Updated" {
+		t.Errorf("Expected name 'Rex Updated', got '%s'", updatedAnimal.Name)
+	}
+
+	if updatedAnimal.Breed != "Labrador" {
+		t.Errorf("Expected breed 'Labrador', got '%s'", updatedAnimal.Breed)
+	}
+
+	if updatedAnimal.Age != 4 {
+		t.Errorf("Expected age 4, got %d", updatedAnimal.Age)
+	}
+}
+
+// TestUpdateAnimal_NotFound tests updating non-existent animal
+func TestUpdateAnimal_NotFound(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	updateReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+	}
+
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: "99999"},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/99999", group.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db)
+	handler(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+// TestUpdateAnimal_StatusTransition tests status change tracking
+func TestUpdateAnimal_StatusTransition(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+	oldStatusChangeTime := animal.LastStatusChange
+
+	// Wait a bit to ensure time difference
+	time.Sleep(10 * time.Millisecond)
+
+	tests := []struct {
+		name              string
+		newStatus         string
+		checkDateField    func(*models.Animal) bool
+		checkClearedField func(*models.Animal) bool
+	}{
+		{
+			name:      "transition to foster",
+			newStatus: "foster",
+			checkDateField: func(a *models.Animal) bool {
+				return a.FosterStartDate != nil
+			},
+			checkClearedField: func(a *models.Animal) bool {
+				return a.QuarantineStartDate == nil && a.ArchivedDate == nil
+			},
+		},
+		{
+			name:      "transition to bite_quarantine",
+			newStatus: "bite_quarantine",
+			checkDateField: func(a *models.Animal) bool {
+				return a.QuarantineStartDate != nil
+			},
+			checkClearedField: func(a *models.Animal) bool {
+				return a.FosterStartDate == nil && a.ArchivedDate == nil
+			},
+		},
+		{
+			name:      "transition to archived",
+			newStatus: "archived",
+			checkDateField: func(a *models.Animal) bool {
+				return a.ArchivedDate != nil
+			},
+			checkClearedField: func(a *models.Animal) bool {
+				return true // archived doesn't clear other fields by default
+			},
+		},
+		{
+			name:      "transition back to available",
+			newStatus: "available",
+			checkDateField: func(a *models.Animal) bool {
+				return true // available doesn't set specific dates
+			},
+			checkClearedField: func(a *models.Animal) bool {
+				return a.FosterStartDate == nil && a.QuarantineStartDate == nil && a.ArchivedDate == nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updateReq := AnimalRequest{
+				Name:    "Rex",
+				Species: "Dog",
+				Status:  tt.newStatus,
+			}
+
+			jsonData, _ := json.Marshal(updateReq)
+
+			c, w := setupAnimalTestContext(user.ID, false)
+			c.Params = gin.Params{
+				{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+				{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+			}
+			c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			handler := UpdateAnimal(db)
+			handler(c)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+			}
+
+			var updatedAnimal models.Animal
+			if err := json.Unmarshal(w.Body.Bytes(), &updatedAnimal); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			if updatedAnimal.Status != tt.newStatus {
+				t.Errorf("Expected status '%s', got '%s'", tt.newStatus, updatedAnimal.Status)
+			}
+
+			// Check that LastStatusChange was updated
+			if updatedAnimal.LastStatusChange.Equal(*oldStatusChangeTime) {
+				t.Error("Expected LastStatusChange to be updated")
+			}
+
+			// Check status-specific date field
+			if !tt.checkDateField(&updatedAnimal) {
+				t.Errorf("Expected status-specific date to be set for status '%s'", tt.newStatus)
+			}
+
+			// Check cleared fields
+			if !tt.checkClearedField(&updatedAnimal) {
+				t.Errorf("Expected other status fields to be cleared for status '%s'", tt.newStatus)
+			}
+
+			// Update oldStatusChangeTime for next iteration
+			oldStatusChangeTime = updatedAnimal.LastStatusChange
+			time.Sleep(10 * time.Millisecond)
+		})
+	}
+}
+
+// TestUpdateAnimal_NoStatusChange tests updating without changing status
+func TestUpdateAnimal_NoStatusChange(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+	originalStatus := animal.Status
+	originalStatusChangeTime := animal.LastStatusChange
+
+	// Update other fields but keep same status
+	updateReq := AnimalRequest{
+		Name:        "Rex Updated",
+		Species:     "Dog",
+		Breed:       "Labrador",
+		Age:         4,
+		Description: "Updated description",
+		Status:      originalStatus,
+	}
+
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var updatedAnimal models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &updatedAnimal); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	// Name should be updated
+	if updatedAnimal.Name != "Rex Updated" {
+		t.Errorf("Expected name 'Rex Updated', got '%s'", updatedAnimal.Name)
+	}
+
+	// Status should remain the same
+	if updatedAnimal.Status != originalStatus {
+		t.Errorf("Expected status '%s', got '%s'", originalStatus, updatedAnimal.Status)
+	}
+
+	// LastStatusChange should remain the same (no status change)
+	if !updatedAnimal.LastStatusChange.Equal(*originalStatusChangeTime) {
+		t.Error("Expected LastStatusChange to remain unchanged when status doesn't change")
+	}
+}
+
+// TestUpdateAnimal_ValidationError tests validation on update
+func TestUpdateAnimal_ValidationError(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	// Missing required name field
+	updateReq := AnimalRequest{
+		Species: "Dog",
+	}
+
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db)
+	handler(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+// TestUpdateAnimal_AccessDenied tests unauthorized update
+func TestUpdateAnimal_AccessDenied(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	_, group1 := createAnimalTestUser(t, db, "user1", "user1@example.com", false)
+	user2, _ := createAnimalTestUser(t, db, "user2", "user2@example.com", false)
+
+	animal := createTestAnimal(t, db, group1.ID, "Rex", "Dog")
+
+	updateReq := AnimalRequest{
+		Name:    "Rex Updated",
+		Species: "Dog",
+	}
+
+	jsonData, _ := json.Marshal(updateReq)
+
+	// Try to update user1's animal with user2's credentials
+	c, w := setupAnimalTestContext(user2.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group1.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group1.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db)
+	handler(c)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Expected status %d, got %d", http.StatusForbidden, w.Code)
+	}
+
+	// Verify animal was not updated
+	var dbAnimal models.Animal
+	db.First(&dbAnimal, animal.ID)
+	if dbAnimal.Name != "Rex" {
+		t.Errorf("Animal should not have been updated, got name: %s", dbAnimal.Name)
+	}
+}
+
+// TestUpdateAnimal_CustomQuarantineDate tests setting custom quarantine start date
+func TestUpdateAnimal_CustomQuarantineDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	customDate := time.Now().AddDate(0, 0, -7) // 7 days ago
+	updateReq := AnimalRequest{
+		Name:                "Rex",
+		Species:             "Dog",
+		Status:              "bite_quarantine",
+		QuarantineStartDate: &customDate,
+	}
+
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var updatedAnimal models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &updatedAnimal); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if updatedAnimal.QuarantineStartDate == nil {
+		t.Error("Expected QuarantineStartDate to be set")
+	} else if !updatedAnimal.QuarantineStartDate.Equal(customDate) {
+		t.Errorf("Expected QuarantineStartDate to be %v, got %v", customDate, *updatedAnimal.QuarantineStartDate)
+	}
+}
