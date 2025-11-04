@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { protocolsApi } from '../api/client';
 import type { Protocol } from '../api/client';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import EmptyState from './EmptyState';
 import SkeletonLoader from './SkeletonLoader';
 import ErrorState from './ErrorState';

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import { groupsApi, authApi } from '../api/client';
 import type { Group } from '../api/client';
 import EmptyState from '../components/EmptyState';

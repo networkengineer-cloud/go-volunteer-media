@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { animalTagsApi } from '../api/client';
 import type { AnimalTag } from '../api/client';
-import { useToast } from '../contexts/ToastContext';
+import { useToast } from '../hooks/useToast';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
 import FormField from '../components/FormField';

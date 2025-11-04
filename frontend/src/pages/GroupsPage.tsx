@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import './GroupsPage.css';
 import type { Group, Animal, GroupStatistics } from '../api/client';
 import { groupsApi, animalsApi, statisticsApi } from '../api/client';
-import { useToast } from '../contexts/ToastContext';
+import { useToast } from '../hooks/useToast';
 
 const GroupsPage: React.FC = () => {
   const toast = useToast();

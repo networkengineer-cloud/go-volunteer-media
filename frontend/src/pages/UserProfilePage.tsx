@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { userProfileApi } from '../api/client';
 import type { UserProfile } from '../api/client';
-import { useToast } from '../contexts/ToastContext';
+import { useToast } from '../hooks/useToast';
 import './UserProfilePage.css';
 
 const UserProfilePage: React.FC = () => {
