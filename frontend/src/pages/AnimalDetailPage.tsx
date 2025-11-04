@@ -15,7 +15,7 @@ const calculateQuarantineEndDate = (startDateString?: string): string => {
   
   const startDate = new Date(startDateString);
   // Add 10 days
-  let endDate = new Date(startDate);
+  const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + 10);
   
   // If end date is Saturday (6) or Sunday (0), move to Monday
