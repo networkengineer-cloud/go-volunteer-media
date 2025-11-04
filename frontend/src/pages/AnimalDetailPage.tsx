@@ -46,21 +46,6 @@ const AnimalDetailPage: React.FC = () => {
   const [error, setError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (groupId && id) {
-      loadAnimalData(Number(groupId), Number(id));
-      loadGroupData(Number(groupId));
-      loadTags();
-    }
-  }, [groupId, id, loadAnimalData, loadGroupData, loadTags]);
-
-  useEffect(() => {
-    if (groupId && id) {
-      const tagFilterString = filterTags.join(',');
-      loadComments(Number(groupId), Number(id), tagFilterString);
-    }
-  }, [filterTags, groupId, id, loadComments]);
-
   const loadComments = useCallback(async (gId: number, animalId: number, filter: string) => {
     try {
       const commentsRes = await animalCommentsApi.getAll(gId, animalId, filter);
@@ -102,6 +87,21 @@ const AnimalDetailPage: React.FC = () => {
       setLoading(false);
     }
   }, [loadComments]);
+
+  useEffect(() => {
+    if (groupId && id) {
+      loadAnimalData(Number(groupId), Number(id));
+      loadGroupData(Number(groupId));
+      loadTags();
+    }
+  }, [groupId, id, loadAnimalData, loadGroupData, loadTags]);
+
+  useEffect(() => {
+    if (groupId && id) {
+      const tagFilterString = filterTags.join(',');
+      loadComments(Number(groupId), Number(id), tagFilterString);
+    }
+  }, [filterTags, groupId, id, loadComments]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
