@@ -32,7 +32,7 @@ test.describe('Default Group Feature', () => {
     await page.goto(BASE_URL + '/login');
   });
 
-  test('should display default group after login', async ({ page }) => {
+  test('should display default group after login', async () => {
     // Login as regular user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
@@ -55,7 +55,7 @@ test.describe('Default Group Feature', () => {
     }
   });
 
-  test('should display group switcher when user has multiple groups', async ({ page }) => {
+  test('should display group switcher when user has multiple groups', async () => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
@@ -78,7 +78,7 @@ test.describe('Default Group Feature', () => {
     }
   });
 
-  test('should display activity feed or latest comments', async ({ page }) => {
+  test('should display activity feed or latest comments', async () => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
@@ -98,7 +98,7 @@ test.describe('Default Group Feature', () => {
     }
   });
 
-  test('should display animals section or tab', async ({ page }) => {
+  test('should display animals section or tab', async () => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
@@ -122,7 +122,7 @@ test.describe('Default Group Feature', () => {
     }
   });
 
-  test('should be able to switch between groups', async ({ page }) => {
+  test('should be able to switch between groups', async () => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
@@ -172,7 +172,7 @@ test.describe('Default Group Feature', () => {
     }
   });
 
-  test('should redirect directly to group page from dashboard', async ({ page }) => {
+  test('should redirect directly to group page from dashboard', async () => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
@@ -193,13 +193,13 @@ test.describe('Default Group Feature', () => {
     await expect(page.locator('.group-tabs')).toBeVisible();
   });
 
-  test('should show appropriate message when user has no groups', async ({ page }) => {
+  test('should show appropriate message when user has no groups', async () => {
     // This test would need a user with no groups
     // For now, we'll skip it or create a test user with no groups
     test.skip();
   });
 
-  test('activity feed should be visible on group page', async ({ page }) => {
+  test('activity feed should be visible on group page', async () => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
@@ -219,7 +219,7 @@ test.describe('Default Group Feature', () => {
     await expect(activityPanel).toBeVisible();
   });
 
-  test('should display comments in activity feed', async ({ page }) => {
+  test('should display comments in activity feed', async () => {
     // Login as user
     await page.fill('input[name="username"]', TEST_USER.username);
     await page.fill('input[name="password"]', TEST_USER.password);
@@ -238,7 +238,7 @@ test.describe('Default Group Feature', () => {
 
 test.describe('Default Group Feature - Admin View', () => {
   
-  test('should allow admin to see all groups and switch between them', async ({ page }) => {
+  test('should allow admin to see all groups and switch between them', async () => {
     // Login as admin
     await page.goto(BASE_URL + '/login');
     await page.fill('input[name="username"]', ADMIN_USER.username);

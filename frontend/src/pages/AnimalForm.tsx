@@ -141,7 +141,7 @@ const AnimalForm: React.FC = () => {
       const res = await animalsApi.uploadImage(file);
       setFormData({ ...formData, image_url: res.data.url });
       toast.showSuccess('Image uploaded successfully!');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Upload error:', err);
       const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);
@@ -204,7 +204,7 @@ const AnimalForm: React.FC = () => {
       }
       
       navigate(`/groups/${groupId}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMsg = error.response?.data?.error || 'Failed to save animal. Please try again.';
       toast.showError(errorMsg);
     } finally {
@@ -247,7 +247,7 @@ const AnimalForm: React.FC = () => {
       toast.showSuccess('Animal updated and announcement created successfully!');
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMsg = error.response?.data?.error || 'Failed to save animal. Please try again.';
       toast.showError(errorMsg);
     } finally {
@@ -275,7 +275,7 @@ const AnimalForm: React.FC = () => {
         toast.showSuccess('Animal deleted successfully');
         navigate(`/groups/${groupId}`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMsg = error.response?.data?.error || 'Failed to delete animal. Please try again.';
       toast.showError(errorMsg);
     }

@@ -22,7 +22,7 @@ const Settings: React.FC = () => {
       const response = await axios.get('/api/email-preferences');
       setEmailNotificationsEnabled(response.data.email_notifications_enabled || false);
       setError('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load preferences:', err);
       setError('Failed to load preferences');
     } finally {
@@ -41,7 +41,7 @@ const Settings: React.FC = () => {
       });
       setSuccess('Preferences saved successfully!');
       setTimeout(() => setSuccess(''), SUCCESS_MESSAGE_TIMEOUT);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to save preferences:', err);
       setError(err.response?.data?.error || 'Failed to save preferences');
     } finally {

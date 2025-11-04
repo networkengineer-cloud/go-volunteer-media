@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Bulk Edit Animals Feature', () => {
   test.describe('Visual Tests', () => {
-    test('bulk edit animals page should be accessible via navigation for admin', async ({ page }) => {
+    test('bulk edit animals page should be accessible via navigation for admin', async () => {
       await page.goto('http://localhost:5173');
       await expect(page.locator('body')).toBeVisible();
       
@@ -10,7 +10,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       await page.screenshot({ path: 'test-results/bulk-edit-home.png', fullPage: true });
     });
 
-    test('bulk edit page component should render correctly', async ({ page }) => {
+    test('bulk edit page component should render correctly', async () => {
       // This test verifies that the BulkEditAnimalsPage component exists and is properly structured
       // In a full test environment with backend, we would:
       // 1. Login as admin
@@ -35,7 +35,7 @@ test.describe('Bulk Edit Animals Feature', () => {
   });
 
   test.describe('Integration Tests (require backend)', () => {
-    test.skip('should display bulk edit animals page for admin', async ({ page }) => {
+    test.skip('should display bulk edit animals page for admin', async () => {
       // This would require:
       // 1. Backend running with database
       // 2. Admin user credentials
@@ -53,7 +53,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       console.log('Bulk edit integration test - requires full setup');
     });
 
-    test.skip('should filter animals by status', async ({ page }) => {
+    test.skip('should filter animals by status', async () => {
       // This test would verify filtering functionality
       // Example:
       // await page.selectOption('select[name="status"]', 'available');
@@ -62,7 +62,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       console.log('Filter test - requires backend with test data');
     });
 
-    test.skip('should filter animals by group', async ({ page }) => {
+    test.skip('should filter animals by group', async () => {
       // This test would verify group filtering
       // Example:
       // await page.selectOption('select[name="group"]', '1');
@@ -71,7 +71,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       console.log('Group filter test - requires backend with test data');
     });
 
-    test.skip('should select multiple animals', async ({ page }) => {
+    test.skip('should select multiple animals', async () => {
       // This test would verify bulk selection
       // Example:
       // await page.click('input[type="checkbox"]:nth-of-type(1)');
@@ -81,7 +81,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       console.log('Selection test - requires backend with test data');
     });
 
-    test.skip('should select all animals', async ({ page }) => {
+    test.skip('should select all animals', async () => {
       // This test would verify select all functionality
       // Example:
       // await page.click('thead input[type="checkbox"]');
@@ -91,7 +91,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       console.log('Select all test - requires backend with test data');
     });
 
-    test.skip('should move animals to different group', async ({ page }) => {
+    test.skip('should move animals to different group', async () => {
       // This test would verify bulk move functionality
       // Example:
       // await page.click('input[type="checkbox"]:nth-of-type(1)');
@@ -103,7 +103,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       console.log('Bulk move test - requires backend with test data');
     });
 
-    test.skip('should change animal status in bulk', async ({ page }) => {
+    test.skip('should change animal status in bulk', async () => {
       // This test would verify bulk status change
       // Example:
       // await page.click('input[type="checkbox"]:nth-of-type(1)');
@@ -115,7 +115,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       console.log('Bulk status change test - requires backend with test data');
     });
 
-    test.skip('should export animals to CSV', async ({ page }) => {
+    test.skip('should export animals to CSV', async () => {
       // This test would verify CSV export
       // Example:
       // const [download] = await Promise.all([
@@ -127,7 +127,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       console.log('CSV export test - requires backend with test data');
     });
 
-    test.skip('should import animals from CSV', async ({ page }) => {
+    test.skip('should import animals from CSV', async () => {
       // This test would verify CSV import
       // Example:
       // await page.click('button:text("Import CSV")');
@@ -138,7 +138,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       console.log('CSV import test - requires backend with test data');
     });
 
-    test.skip('should show validation errors for invalid CSV', async ({ page }) => {
+    test.skip('should show validation errors for invalid CSV', async () => {
       // This test would verify CSV validation
       // Example:
       // await page.click('button:text("Import CSV")');
@@ -149,7 +149,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       console.log('CSV validation test - requires backend with test data');
     });
 
-    test.skip('should require admin access', async ({ page }) => {
+    test.skip('should require admin access', async () => {
       // This test would verify admin-only access
       // Example:
       // await page.goto('http://localhost:5173/login');

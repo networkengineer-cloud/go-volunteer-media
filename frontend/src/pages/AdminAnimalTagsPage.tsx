@@ -65,7 +65,7 @@ const AdminAnimalTagsPage: React.FC = () => {
       }
       setShowModal(false);
       loadTags();
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMsg = error.response?.data?.error || 'Failed to save tag';
       toast.showError(errorMsg);
     }
@@ -80,7 +80,7 @@ const AdminAnimalTagsPage: React.FC = () => {
       await animalTagsApi.delete(tag.id);
       toast.showSuccess('Tag deleted successfully');
       loadTags();
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMsg = error.response?.data?.error || 'Failed to delete tag';
       toast.showError(errorMsg);
     }

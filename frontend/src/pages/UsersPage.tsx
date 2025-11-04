@@ -1,4 +1,5 @@
 import React from 'react';
+import axios from 'axios';
 import { Link } from 'react-router-dom';
 import './UsersPage.css';
 import type { User, Group, UserStatistics } from '../api/client';
@@ -57,7 +58,7 @@ const UsersPage: React.FC = () => {
         setLoading(false);
       })
       .catch(err => {
-        setError(err.response?.data?.error || 'Failed to fetch users');
+        setError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to fetch users');
         setLoading(false);
       });
   }, [showDeleted]);
@@ -106,16 +107,18 @@ const UsersPage: React.FC = () => {
         case 'email':
           comparison = a.email.localeCompare(b.email);
           break;
-        case 'last_active':
+        case 'last_active': {
           const lastActiveA = statsA?.last_active ? new Date(statsA.last_active).getTime() : 0;
           const lastActiveB = statsB?.last_active ? new Date(statsB.last_active).getTime() : 0;
           comparison = lastActiveB - lastActiveA; // Most recent first
           break;
-        case 'most_active':
+        }
+        case 'most_active': {
           const commentsA = statsA?.comment_count || 0;
           const commentsB = statsB?.comment_count || 0;
           comparison = commentsB - commentsA; // Most comments first
           break;
+        }
       }
 
       return sortOrder === 'asc' ? comparison : -comparison;
@@ -133,8 +136,8 @@ const UsersPage: React.FC = () => {
         await usersApi.promote(user.id);
       }
       fetchUsers();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to update admin status');
+    } catch (err: unknown) {
+      setError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to update admin status');
     }
   };
 
@@ -144,8 +147,8 @@ const UsersPage: React.FC = () => {
     try {
       await usersApi.delete(user.id);
       fetchUsers();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to delete user');
+    } catch (err: unknown) {
+      setError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to delete user');
     }
   };
 
@@ -154,8 +157,8 @@ const UsersPage: React.FC = () => {
     try {
       await usersApi.restore(user.id);
       fetchUsers();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to restore user');
+    } catch (err: unknown) {
+      setError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to restore user');
     }
   };
 
@@ -167,8 +170,8 @@ const UsersPage: React.FC = () => {
     try {
       const res = await groupsApi.getAll();
       setAllGroups(res.data);
-    } catch (err: any) {
-      setGroupModalError(err.response?.data?.error || 'Failed to fetch groups');
+    } catch (err: unknown) {
+      setGroupModalError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to fetch groups');
     } finally {
       setGroupModalLoading(false);
     }
@@ -209,8 +212,8 @@ const UsersPage: React.FC = () => {
       if (updatedUser) {
         setGroupModalUser(updatedUser);
       }
-    } catch (err: any) {
-      setGroupModalError(err.response?.data?.error || 'Failed to update group');
+    } catch (err: unknown) {
+      setGroupModalError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to update group');
     }
   };
 
@@ -248,8 +251,8 @@ const UsersPage: React.FC = () => {
       setTimeout(() => {
         closePasswordResetModal();
       }, 1500);
-    } catch (err: any) {
-      setResetPasswordError(err.response?.data?.error || 'Failed to reset password');
+    } catch (err: unknown) {
+      setResetPasswordError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to reset password');
     } finally {
       setResetPasswordLoading(false);
     }
@@ -322,7 +325,7 @@ const UsersPage: React.FC = () => {
       setCreateData({ username: '', email: '', password: '', is_admin: false, groupIds: [] });
       fetchUsers();
       setShowCreate(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setCreateError(err.response?.data?.error || 'Failed to create user');
     } finally {
       setCreateLoading(false);
@@ -584,7 +587,7 @@ const UsersPage: React.FC = () => {
                             <button
                               className="user-action-btn"
                               title={user.is_admin ? 'Demote from admin' : 'Promote to admin'}
-                              disabled={(user as any).deleted_at}
+                              disabled={user.deleted_at}
                               onClick={() => handlePromoteDemote(user)}
                             >
                               {user.is_admin ? 'Demote' : 'Promote'}
@@ -592,7 +595,7 @@ const UsersPage: React.FC = () => {
                             <button
                               className="user-action-btn"
                               title="Assign/Remove Group"
-                              disabled={(user as any).deleted_at}
+                              disabled={user.deleted_at}
                               onClick={() => openGroupModal(user)}
                             >
                               Groups
@@ -600,7 +603,7 @@ const UsersPage: React.FC = () => {
                             <button
                               className="user-action-btn"
                               title="Reset password"
-                            disabled={(user as any).deleted_at}
+                            disabled={user.deleted_at}
                             onClick={() => openPasswordResetModal(user)}
                           >
                             Reset Password
@@ -609,7 +612,7 @@ const UsersPage: React.FC = () => {
                           <button
                             className="user-action-btn danger"
                             title="Delete user"
-                            disabled={(user as any).deleted_at}
+                            disabled={user.deleted_at}
                             onClick={() => handleDelete(user)}
                           >
                             Delete
@@ -684,28 +687,28 @@ const UsersPage: React.FC = () => {
                     <>
                       <button
                         className="user-action-btn"
-                        disabled={(user as any).deleted_at}
+                        disabled={user.deleted_at}
                         onClick={() => handlePromoteDemote(user)}
                       >
                         {user.is_admin ? 'Demote' : 'Promote'}
                       </button>
                       <button
                         className="user-action-btn"
-                        disabled={(user as any).deleted_at}
+                        disabled={user.deleted_at}
                         onClick={() => openGroupModal(user)}
                       >
                         Groups
                       </button>
                       <button
                         className="user-action-btn"
-                        disabled={(user as any).deleted_at}
+                        disabled={user.deleted_at}
                         onClick={() => openPasswordResetModal(user)}
                       >
                         Reset Password
                       </button>
                       <button
                         className="user-action-btn danger"
-                        disabled={(user as any).deleted_at}
+                        disabled={user.deleted_at}
                         onClick={() => handleDelete(user)}
                       >
                         Delete

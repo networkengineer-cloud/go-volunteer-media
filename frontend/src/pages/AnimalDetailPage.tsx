@@ -85,7 +85,7 @@ const AnimalDetailPage: React.FC = () => {
       const animalRes = await animalsApi.getById(gId, animalId);
       setAnimal(animalRes.data);
       await loadComments(gId, animalId, '');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load animal data:', error);
       setError(error.response?.data?.error || 'Failed to load animal information. Please try again.');
     } finally {
@@ -123,7 +123,7 @@ const AnimalDetailPage: React.FC = () => {
       const res = await imageUploadApi.uploadImage(file);
       setCommentImage(res.data.url);
       toast.showSuccess('Image uploaded successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Upload error:', error);
       const errorMsg = error.response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);
@@ -156,7 +156,7 @@ const AnimalDetailPage: React.FC = () => {
       setCommentImage('');
       setSelectedTags([]);
       toast.showSuccess('Comment posted successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to post comment:', error);
       const errorMsg = error.response?.data?.error || 'Failed to post comment. Please try again.';
       toast.showError(errorMsg);

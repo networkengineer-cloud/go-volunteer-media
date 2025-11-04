@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 
 test.describe('Group Images Feature', () => {
   test.describe('Visual Tests - Groups with Images', () => {
-    test.skip('dashboard should display groups with custom images', async ({ page }) => {
+    test.skip('dashboard should display groups with custom images', async () => {
       await page.goto('http://localhost:5173');
       
       // The dashboard should show groups
@@ -17,7 +17,7 @@ test.describe('Group Images Feature', () => {
       await page.screenshot({ path: 'test-results/dashboard-groups.png', fullPage: true });
     });
 
-    test.skip('group page should display hero image when set', async ({ page }) => {
+    test.skip('group page should display hero image when set', async () => {
       // When a group has a hero_image_url set, it should display
       // at the top of the group page as a banner
       
@@ -33,7 +33,7 @@ test.describe('Group Images Feature', () => {
   });
 
   test.describe('Admin Group Management - Image Upload', () => {
-    test.skip('groups management modal should only allow file upload', async ({ page }) => {
+    test.skip('groups management modal should only allow file upload', async () => {
       // The groups management modal should:
       // 1. Have a file upload input for group card image
       // 2. Have a file upload input for hero image
@@ -48,7 +48,7 @@ test.describe('Group Images Feature', () => {
       console.log('- Accepts .jpg, .jpeg, .png, .gif files');
     });
 
-    test.skip('hero image selector should show animal images', async ({ page }) => {
+    test.skip('hero image selector should show animal images', async () => {
       // When editing a group with animals:
       // 1. Modal shows "Select from Animal Images" button
       // 2. Clicking button reveals grid of animal images
@@ -65,7 +65,7 @@ test.describe('Group Images Feature', () => {
   });
 
   test.describe('Animal Form - Image Upload', () => {
-    test.skip('animal form should only allow file upload', async ({ page }) => {
+    test.skip('animal form should only allow file upload', async () => {
       // The animal form should:
       // 1. Have only a file upload input for image
       // 2. NOT have URL text input field
@@ -80,7 +80,7 @@ test.describe('Group Images Feature', () => {
   });
 
   test.describe('Update Form - Image Upload', () => {
-    test.skip('update form should only allow file upload', async ({ page }) => {
+    test.skip('update form should only allow file upload', async () => {
       // The update form should:
       // 1. Have only a file upload input for image
       // 2. NOT have URL text input field
@@ -96,7 +96,7 @@ test.describe('Group Images Feature', () => {
   });
 
   test.describe('Integration Tests (require backend)', () => {
-    test.skip('should upload and display group card image', async ({ page }) => {
+    test.skip('should upload and display group card image', async () => {
       // Full integration test flow:
       // 1. Login as admin
       // 2. Navigate to groups management
@@ -107,7 +107,7 @@ test.describe('Group Images Feature', () => {
       // 7. Verify group card displays uploaded image
     });
 
-    test.skip('should upload and display hero image', async ({ page }) => {
+    test.skip('should upload and display hero image', async () => {
       // Full integration test flow:
       // 1. Login as admin
       // 2. Navigate to groups management
@@ -118,7 +118,7 @@ test.describe('Group Images Feature', () => {
       // 7. Verify hero banner displays uploaded image
     });
 
-    test.skip('should select animal image as hero image', async ({ page }) => {
+    test.skip('should select animal image as hero image', async () => {
       // Full integration test flow:
       // 1. Login as admin
       // 2. Create an animal with image
@@ -131,7 +131,7 @@ test.describe('Group Images Feature', () => {
       // 9. Verify hero banner displays selected animal image
     });
 
-    test.skip('should upload animal image without URL field', async ({ page }) => {
+    test.skip('should upload animal image without URL field', async () => {
       // Full integration test flow:
       // 1. Login as admin
       // 2. Navigate to add animal
@@ -142,7 +142,7 @@ test.describe('Group Images Feature', () => {
       // 7. Verify image displays on animal card
     });
 
-    test.skip('should upload update image without URL field', async ({ page }) => {
+    test.skip('should upload update image without URL field', async () => {
       // Full integration test flow:
       // 1. Login as user
       // 2. Navigate to group
@@ -156,7 +156,7 @@ test.describe('Group Images Feature', () => {
   });
 
   test.describe('Validation', () => {
-    test.skip('should only accept image file types', async ({ page }) => {
+    test.skip('should only accept image file types', async () => {
       // Verify file upload inputs have accept=".jpg,.jpeg,.png,.gif"
       // This limits browser file picker to image types
       
@@ -166,7 +166,7 @@ test.describe('Group Images Feature', () => {
       console.log('- Server-side validation also checks file type');
     });
 
-    test.skip('should show error for invalid file types', async ({ page }) => {
+    test.skip('should show error for invalid file types', async () => {
       // If user tries to upload non-image file
       // Server should return error
       // UI should display error message

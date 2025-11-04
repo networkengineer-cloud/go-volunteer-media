@@ -34,6 +34,7 @@ export interface User {
   is_admin: boolean;
   default_group_id?: number;
   groups?: Group[];
+  deleted_at?: string | null;
 }
 
 export interface Group {
@@ -251,7 +252,7 @@ export const groupsApi = {
     return api.get<CommentWithAnimal[]>('/groups/' + id + '/latest-comments', { params });
   },
   getActivityFeed: (id: number, options?: { limit?: number; offset?: number; type?: 'all' | 'comments' | 'announcements' }) => {
-    const params: any = {};
+    const params: Record<string, unknown> = {};
     if (options?.limit) params.limit = options.limit;
     if (options?.offset) params.offset = options.offset;
     if (options?.type && options.type !== 'all') params.type = options.type;
@@ -272,7 +273,7 @@ export const groupsApi = {
 // Animals API
 export const animalsApi = {
   getAll: (groupId: number, status?: string, name?: string) => {
-    const params: any = {};
+    const params: Record<string, unknown> = {};
     if (status !== undefined) params.status = status;
     if (name) params.name = name;
     return api.get<Animal[]>('/groups/' + groupId + '/animals', { params });
@@ -292,14 +293,14 @@ export const animalsApi = {
   },
   // Admin bulk operations
   getAllForAdmin: (status?: string, groupId?: number, name?: string) => {
-    const params: any = {};
+    const params: Record<string, unknown> = {};
     if (status !== undefined) params.status = status;
     if (groupId !== undefined) params.group_id = groupId;
     if (name) params.name = name;
     return api.get<Animal[]>('/admin/animals', { params });
   },
   bulkUpdate: (animalIds: number[], groupId?: number, status?: string) => {
-    const data: any = { animal_ids: animalIds };
+    const data: Record<string, unknown> = { animal_ids: animalIds };
     if (groupId !== undefined) data.group_id = groupId;
     if (status !== undefined) data.status = status;
     return api.post<{ message: string; count: number }>('/admin/animals/bulk-update', data);
@@ -317,7 +318,7 @@ export const animalsApi = {
     });
   },
   exportCommentsCSV: (groupId?: number, animalId?: number, tags?: string) => {
-    const params: any = {};
+    const params: Record<string, unknown> = {};
     if (groupId) params.group_id = groupId;
     if (animalId) params.animal_id = animalId;
     if (tags) params.tags = tags;
