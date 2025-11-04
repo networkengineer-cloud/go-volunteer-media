@@ -1115,3 +1115,295 @@ func TestUpdateAnimal_CustomQuarantineDate(t *testing.T) {
 		t.Errorf("Expected QuarantineStartDate to be %v, got %v", customDate, *updatedAnimal.QuarantineStartDate)
 	}
 }
+
+// TestBulkUpdateAnimals_StatusUpdate tests bulk status update
+func TestBulkUpdateAnimals_StatusUpdate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", true) // Admin user
+
+	// Create multiple test animals
+	animal1 := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+	animal2 := createTestAnimal(t, db, group.ID, "Fluffy", "Cat")
+	animal3 := createTestAnimal(t, db, group.ID, "Max", "Dog")
+
+	newStatus := "foster"
+	bulkReq := BulkUpdateAnimalsRequest{
+		AnimalIDs: []uint{animal1.ID, animal2.ID, animal3.ID},
+		Status:    &newStatus,
+	}
+
+	jsonData, _ := json.Marshal(bulkReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Request = httptest.NewRequest("PATCH", "/api/v1/admin/animals/bulk", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := BulkUpdateAnimals(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if response["count"].(float64) != 3 {
+		t.Errorf("Expected count 3, got %v", response["count"])
+	}
+
+	// Verify animals were updated
+	var animals []models.Animal
+	db.Where("id IN ?", []uint{animal1.ID, animal2.ID, animal3.ID}).Find(&animals)
+
+	for _, animal := range animals {
+		if animal.Status != "foster" {
+			t.Errorf("Expected animal %s to have status 'foster', got '%s'", animal.Name, animal.Status)
+		}
+	}
+}
+
+// TestBulkUpdateAnimals_GroupUpdate tests bulk group update
+func TestBulkUpdateAnimals_GroupUpdate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group1 := createAnimalTestUser(t, db, "testuser", "test@example.com", true)
+
+	// Create second group
+	group2 := &models.Group{
+		Name:        "Group 2",
+		Description: "Test group 2",
+	}
+	db.Create(group2)
+
+	// Create animals in group1
+	animal1 := createTestAnimal(t, db, group1.ID, "Rex", "Dog")
+	animal2 := createTestAnimal(t, db, group1.ID, "Fluffy", "Cat")
+
+	bulkReq := BulkUpdateAnimalsRequest{
+		AnimalIDs: []uint{animal1.ID, animal2.ID},
+		GroupID:   &group2.ID,
+	}
+
+	jsonData, _ := json.Marshal(bulkReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Request = httptest.NewRequest("PATCH", "/api/v1/admin/animals/bulk", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := BulkUpdateAnimals(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	// Verify animals were moved to group2
+	var animals []models.Animal
+	db.Where("id IN ?", []uint{animal1.ID, animal2.ID}).Find(&animals)
+
+	for _, animal := range animals {
+		if animal.GroupID != group2.ID {
+			t.Errorf("Expected animal %s to be in group %d, got group %d", animal.Name, group2.ID, animal.GroupID)
+		}
+	}
+}
+
+// TestBulkUpdateAnimals_BothUpdates tests updating both status and group
+func TestBulkUpdateAnimals_BothUpdates(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group1 := createAnimalTestUser(t, db, "testuser", "test@example.com", true)
+
+	// Create second group
+	group2 := &models.Group{
+		Name:        "Group 2",
+		Description: "Test group 2",
+	}
+	db.Create(group2)
+
+	animal := createTestAnimal(t, db, group1.ID, "Rex", "Dog")
+
+	newStatus := "foster"
+	bulkReq := BulkUpdateAnimalsRequest{
+		AnimalIDs: []uint{animal.ID},
+		GroupID:   &group2.ID,
+		Status:    &newStatus,
+	}
+
+	jsonData, _ := json.Marshal(bulkReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Request = httptest.NewRequest("PATCH", "/api/v1/admin/animals/bulk", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := BulkUpdateAnimals(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	// Verify both updates applied
+	var updatedAnimal models.Animal
+	db.First(&updatedAnimal, animal.ID)
+
+	if updatedAnimal.GroupID != group2.ID {
+		t.Errorf("Expected animal to be in group %d, got group %d", group2.ID, updatedAnimal.GroupID)
+	}
+
+	if updatedAnimal.Status != "foster" {
+		t.Errorf("Expected status 'foster', got '%s'", updatedAnimal.Status)
+	}
+}
+
+// TestBulkUpdateAnimals_EmptyAnimalIDs tests validation for empty animal IDs
+func TestBulkUpdateAnimals_EmptyAnimalIDs(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, _ := createAnimalTestUser(t, db, "testuser", "test@example.com", true)
+
+	newStatus := "foster"
+	bulkReq := BulkUpdateAnimalsRequest{
+		AnimalIDs: []uint{},
+		Status:    &newStatus,
+	}
+
+	jsonData, _ := json.Marshal(bulkReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Request = httptest.NewRequest("PATCH", "/api/v1/admin/animals/bulk", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := BulkUpdateAnimals(db)
+	handler(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+
+	var response map[string]string
+	json.Unmarshal(w.Body.Bytes(), &response)
+	if response["error"] != "No animal IDs provided" {
+		t.Errorf("Expected error 'No animal IDs provided', got '%s'", response["error"])
+	}
+}
+
+// TestBulkUpdateAnimals_NoUpdates tests validation for no updates provided
+func TestBulkUpdateAnimals_NoUpdates(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", true)
+
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	bulkReq := BulkUpdateAnimalsRequest{
+		AnimalIDs: []uint{animal.ID},
+		// No status or group_id provided
+	}
+
+	jsonData, _ := json.Marshal(bulkReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Request = httptest.NewRequest("PATCH", "/api/v1/admin/animals/bulk", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := BulkUpdateAnimals(db)
+	handler(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+
+	var response map[string]string
+	json.Unmarshal(w.Body.Bytes(), &response)
+	if response["error"] != "No updates provided" {
+		t.Errorf("Expected error 'No updates provided', got '%s'", response["error"])
+	}
+}
+
+// TestBulkUpdateAnimals_ValidationError tests validation on malformed request
+func TestBulkUpdateAnimals_ValidationError(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, _ := createAnimalTestUser(t, db, "testuser", "test@example.com", true)
+
+	// Missing required animal_ids field
+	jsonData := []byte(`{"status": "foster"}`)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Request = httptest.NewRequest("PATCH", "/api/v1/admin/animals/bulk", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := BulkUpdateAnimals(db)
+	handler(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+// TestBulkUpdateAnimals_NonExistentAnimals tests bulk update with non-existent IDs
+func TestBulkUpdateAnimals_NonExistentAnimals(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, _ := createAnimalTestUser(t, db, "testuser", "test@example.com", true)
+
+	newStatus := "foster"
+	bulkReq := BulkUpdateAnimalsRequest{
+		AnimalIDs: []uint{99999, 88888, 77777},
+		Status:    &newStatus,
+	}
+
+	jsonData, _ := json.Marshal(bulkReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Request = httptest.NewRequest("PATCH", "/api/v1/admin/animals/bulk", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := BulkUpdateAnimals(db)
+	handler(c)
+
+	// The handler doesn't check if animals exist - it returns success even if no rows affected
+	// This is acceptable behavior for bulk operations
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+}
+
+// TestBulkUpdateAnimals_PartialSuccess tests bulk update with mix of valid and invalid IDs
+func TestBulkUpdateAnimals_PartialSuccess(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", true)
+
+	animal1 := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+	animal2 := createTestAnimal(t, db, group.ID, "Fluffy", "Cat")
+
+	newStatus := "foster"
+	bulkReq := BulkUpdateAnimalsRequest{
+		AnimalIDs: []uint{animal1.ID, animal2.ID, 99999}, // Mix of valid and invalid
+		Status:    &newStatus,
+	}
+
+	jsonData, _ := json.Marshal(bulkReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Request = httptest.NewRequest("PATCH", "/api/v1/admin/animals/bulk", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := BulkUpdateAnimals(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	// Verify valid animals were updated
+	var animal1Updated, animal2Updated models.Animal
+	db.First(&animal1Updated, animal1.ID)
+	db.First(&animal2Updated, animal2.ID)
+
+	if animal1Updated.Status != "foster" {
+		t.Errorf("Expected animal1 status 'foster', got '%s'", animal1Updated.Status)
+	}
+
+	if animal2Updated.Status != "foster" {
+		t.Errorf("Expected animal2 status 'foster', got '%s'", animal2Updated.Status)
+	}
+}
