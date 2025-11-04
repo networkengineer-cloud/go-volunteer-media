@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 
 test.describe('Animal Comment Tag Selection and Filtering', () => {
   test.describe('Visual Tests - Tag Selection UX', () => {
-    test('tag selection should use multi-select dropdown instead of checkboxes', async ({ page }) => {
+    test('tag selection should use multi-select dropdown instead of checkboxes', async () => {
       // This test verifies the UX improvement for tag selection
       
       console.log('Tag Selection UX Requirements:');
@@ -20,7 +20,7 @@ test.describe('Animal Comment Tag Selection and Filtering', () => {
       console.log('- Each selected tag has a remove button (×)');
     });
 
-    test('tag filter buttons should show active state and comment count', async ({ page }) => {
+    test('tag filter buttons should show active state and comment count', async () => {
       console.log('Tag Filter Requirements:');
       console.log('✓ "All" button shows count when active');
       console.log('✓ Active filter button has "active" class');
@@ -30,7 +30,7 @@ test.describe('Animal Comment Tag Selection and Filtering', () => {
   });
 
   test.describe('Behavior Tests - Tag Filtering', () => {
-    test('should filter comments when a tag is selected', async ({ page }) => {
+    test('should filter comments when a tag is selected', async () => {
       console.log('Tag Filtering Behavior:');
       console.log('1. When "All" is selected: Show all comments');
       console.log('2. When "Behavior" tag is selected:');
@@ -42,7 +42,7 @@ test.describe('Animal Comment Tag Selection and Filtering', () => {
       console.log('5. Backend should filter with JOIN on comment_tags table');
     });
 
-    test('should handle empty filter results gracefully', async ({ page }) => {
+    test('should handle empty filter results gracefully', async () => {
       console.log('Edge Cases:');
       console.log('✓ If no comments match filter: Show "No comments" message');
       console.log('✓ Filter state persists when adding new comments');
@@ -51,7 +51,7 @@ test.describe('Animal Comment Tag Selection and Filtering', () => {
   });
 
   test.describe('Backend API Behavior', () => {
-    test('GET /groups/:id/animals/:animalId/comments should support tag filtering', async ({ page }) => {
+    test('GET /groups/:id/animals/:animalId/comments should support tag filtering', async () => {
       console.log('Backend API Requirements:');
       console.log('✓ GET /groups/:id/animals/:animalId/comments (no params) -> all comments');
       console.log('✓ GET /groups/:id/animals/:animalId/comments?tags=Behavior -> only Behavior tagged');
@@ -63,7 +63,7 @@ test.describe('Animal Comment Tag Selection and Filtering', () => {
   });
 
   test.describe('CSS Styling', () => {
-    test('multi-select component should have proper styling', async ({ page }) => {
+    test('multi-select component should have proper styling', async () => {
       console.log('CSS Requirements for .tag-multi-select:');
       console.log('✓ width: 100%, max-width: 400px');
       console.log('✓ padding: 0.5rem');
@@ -85,7 +85,7 @@ test.describe('Animal Comment Tag Selection and Filtering', () => {
   });
 
   test.describe('Integration Test Requirements', () => {
-    test('full workflow with backend running', async ({ page }) => {
+    test('full workflow with backend running', async () => {
       console.log('Integration Test Steps (requires backend):');
       console.log('1. Login as test user');
       console.log('2. Navigate to animal detail page');

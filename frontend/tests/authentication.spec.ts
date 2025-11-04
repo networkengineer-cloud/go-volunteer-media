@@ -32,7 +32,7 @@ const INVALID_USER = {
 };
 
 test.describe('Authentication - Admin User', () => {
-  test('should successfully login as admin user', async ({ page }) => {
+  test('should successfully login as admin user', async () => {
     // Navigate to login page
     await page.goto(BASE_URL + '/login');
     
@@ -62,7 +62,7 @@ test.describe('Authentication - Admin User', () => {
     console.log('✅ Admin user logged in successfully');
   });
 
-  test('should display admin-specific navigation/features', async ({ page }) => {
+  test('should display admin-specific navigation/features', async () => {
     // Login as admin
     await page.goto(BASE_URL + '/login');
     await page.fill('input[name="username"]', ADMIN_USER.username);
@@ -84,7 +84,7 @@ test.describe('Authentication - Admin User', () => {
     console.log('✅ Admin features accessible');
   });
 
-  test('should maintain session after page reload', async ({ page }) => {
+  test('should maintain session after page reload', async () => {
     // Login as admin
     await page.goto(BASE_URL + '/login');
     await page.fill('input[name="username"]', ADMIN_USER.username);
@@ -112,7 +112,7 @@ test.describe('Authentication - Admin User', () => {
 });
 
 test.describe('Authentication - Regular User', () => {
-  test('should successfully login as regular user', async ({ page }) => {
+  test('should successfully login as regular user', async () => {
     // Navigate to login page
     await page.goto(BASE_URL + '/login');
     
@@ -133,7 +133,7 @@ test.describe('Authentication - Regular User', () => {
     console.log('✅ Regular user logged in successfully');
   });
 
-  test('should not see admin-only features', async ({ page }) => {
+  test('should not see admin-only features', async () => {
     // Login as regular user
     await page.goto(BASE_URL + '/login');
     await page.fill('input[name="username"]', REGULAR_USER.username);
@@ -163,7 +163,7 @@ test.describe('Authentication - Regular User', () => {
 });
 
 test.describe('Authentication - Failed Login', () => {
-  test('should show error for invalid credentials', async ({ page }) => {
+  test('should show error for invalid credentials', async () => {
     await page.goto(BASE_URL + '/login');
     
     // Try to login with invalid credentials
@@ -196,7 +196,7 @@ test.describe('Authentication - Failed Login', () => {
     console.log('✅ Error shown for invalid credentials');
   });
 
-  test('should not create session token for failed login', async ({ page }) => {
+  test('should not create session token for failed login', async () => {
     await page.goto(BASE_URL + '/login');
     
     // Clear any existing tokens
@@ -218,7 +218,7 @@ test.describe('Authentication - Failed Login', () => {
 });
 
 test.describe('Authentication - Logout', () => {
-  test('should successfully logout', async ({ page }) => {
+  test('should successfully logout', async () => {
     // Login first
     await page.goto(BASE_URL + '/login');
     await page.fill('input[name="username"]', REGULAR_USER.username);
@@ -276,7 +276,7 @@ test.describe('Authentication - Logout', () => {
 });
 
 test.describe('Authentication - API Integration', () => {
-  test('should receive valid JWT token on successful login', async ({ page }) => {
+  test('should receive valid JWT token on successful login', async () => {
     // Intercept API calls
     let loginResponse: Record<string, unknown> | null = null;
     
@@ -308,7 +308,7 @@ test.describe('Authentication - API Integration', () => {
     }
   });
 
-  test('should include auth token in subsequent API requests', async ({ page }) => {
+  test('should include auth token in subsequent API requests', async () => {
     // Login first
     await page.goto(BASE_URL + '/login');
     await page.fill('input[name="username"]', ADMIN_USER.username);
@@ -346,7 +346,7 @@ test.describe('Authentication - API Integration', () => {
 });
 
 test.describe('Authentication - Edge Cases', () => {
-  test('should handle empty credentials', async ({ page }) => {
+  test('should handle empty credentials', async () => {
     await page.goto(BASE_URL + '/login');
     
     // Try to submit with empty fields
@@ -360,7 +360,7 @@ test.describe('Authentication - Edge Cases', () => {
     console.log('✅ Empty credentials handled');
   });
 
-  test('should handle network errors gracefully', async ({ page }) => {
+  test('should handle network errors gracefully', async () => {
     // Block API requests to simulate network error
     await page.route('**/api/login', route => route.abort());
     
@@ -377,7 +377,7 @@ test.describe('Authentication - Edge Cases', () => {
     console.log('✅ Network error handled gracefully');
   });
 
-  test('should handle SQL injection attempts safely', async ({ page }) => {
+  test('should handle SQL injection attempts safely', async () => {
     await page.goto(BASE_URL + '/login');
     
     // Try SQL injection in username field

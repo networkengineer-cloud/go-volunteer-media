@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * Admin Password Reset E2E Tests
@@ -29,7 +29,7 @@ const NEW_PASSWORD = 'newpassword123';
 
 test.describe('Admin Password Reset', () => {
   // Helper function to login as admin
-  async function loginAsAdmin(page: any) {
+  async function loginAsAdmin(page: Page) {
     await page.goto(BASE_URL + '/login');
     await page.fill('input[name="username"]', ADMIN_USER.username);
     await page.fill('input[name="password"]', ADMIN_USER.password);
@@ -37,7 +37,7 @@ test.describe('Admin Password Reset', () => {
     await page.waitForURL(/dashboard|\/$/);
   }
 
-  test('admin should see Reset Password button in users list', async ({ page }) => {
+  test('admin should see Reset Password button in users list', async () => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -52,7 +52,7 @@ test.describe('Admin Password Reset', () => {
     await expect(resetPasswordButtons.first()).toBeVisible();
   });
 
-  test('admin should be able to open password reset modal', async ({ page }) => {
+  test('admin should be able to open password reset modal', async () => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -78,7 +78,7 @@ test.describe('Admin Password Reset', () => {
     await expect(page.locator('button:has-text("Cancel")')).toBeVisible();
   });
 
-  test('password reset modal should validate minimum password length', async ({ page }) => {
+  test('password reset modal should validate minimum password length', async () => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -104,7 +104,7 @@ test.describe('Admin Password Reset', () => {
     await expect(page.locator('.group-modal-backdrop')).toBeVisible();
   });
 
-  test('admin should be able to reset user password and user can login with new password', async ({ page, browser }) => {
+  test('admin should be able to reset user password and user can login with new password', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -175,7 +175,7 @@ test.describe('Admin Password Reset', () => {
     await expect(page.locator('.users-success')).toContainText(/reset.*successfully/i);
   });
 
-  test('should close modal when clicking Cancel button', async ({ page }) => {
+  test('should close modal when clicking Cancel button', async () => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -199,7 +199,7 @@ test.describe('Admin Password Reset', () => {
     await expect(page.locator('.group-modal-backdrop')).not.toBeVisible();
   });
 
-  test('should close modal when clicking backdrop', async ({ page }) => {
+  test('should close modal when clicking backdrop', async () => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -223,7 +223,7 @@ test.describe('Admin Password Reset', () => {
     await expect(page.locator('.group-modal-backdrop')).not.toBeVisible();
   });
 
-  test('Reset Password button should be disabled for deleted users', async ({ page }) => {
+  test('Reset Password button should be disabled for deleted users', async () => {
     // Login as admin
     await loginAsAdmin(page);
     

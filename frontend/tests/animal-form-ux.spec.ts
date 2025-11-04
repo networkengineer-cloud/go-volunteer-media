@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * Animal Form UX E2E Tests
@@ -18,7 +18,7 @@ const ADMIN_USER = {
 };
 
 // Helper function to login
-async function loginAsAdmin(page: any) {
+async function loginAsAdmin(page: Page) {
   await page.goto(BASE_URL + '/login');
   await page.fill('input[name="username"]', ADMIN_USER.username);
   await page.fill('input[name="password"]', ADMIN_USER.password);
@@ -31,7 +31,7 @@ test.describe('Animal Form UX Improvements', () => {
     await loginAsAdmin(page);
   });
 
-  test('should display Cancel button on animal edit form', async ({ page }) => {
+  test('should display Cancel button on animal edit form', async () => {
     // Navigate to a group (assuming group ID 1 exists)
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -57,7 +57,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should navigate back to group when Cancel is clicked', async ({ page }) => {
+  test('should navigate back to group when Cancel is clicked', async () => {
     // Navigate to a group
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -87,7 +87,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should NOT show duplicate date field when Bite Quarantine is selected', async ({ page }) => {
+  test('should NOT show duplicate date field when Bite Quarantine is selected', async () => {
     // Navigate to add new animal page
     await page.goto(BASE_URL + '/groups/1/animals/new');
     await page.waitForLoadState('networkidle');
@@ -110,7 +110,7 @@ test.describe('Animal Form UX Improvements', () => {
     console.log('✅ No duplicate quarantine date field in main form');
   });
 
-  test('should show date field in modal when Bite Quarantine is selected and Update is clicked', async ({ page }) => {
+  test('should show date field in modal when Bite Quarantine is selected and Update is clicked', async () => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -145,7 +145,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should preserve focus when typing in modal textarea', async ({ page }) => {
+  test('should preserve focus when typing in modal textarea', async () => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -195,7 +195,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should preserve focus when typing in modal date input', async ({ page }) => {
+  test('should preserve focus when typing in modal date input', async () => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -240,7 +240,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should allow closing modal with Cancel button', async ({ page }) => {
+  test('should allow closing modal with Cancel button', async () => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -278,7 +278,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should allow closing modal with Escape key', async ({ page }) => {
+  test('should allow closing modal with Escape key', async () => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -315,7 +315,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should have proper button order: Update, Cancel, Delete', async ({ page }) => {
+  test('should have proper button order: Update, Cancel, Delete', async () => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -361,7 +361,7 @@ test.describe('Animal Form UX - Accessibility', () => {
     await loginAsAdmin(page);
   });
 
-  test('Cancel button should be keyboard accessible', async ({ page }) => {
+  test('Cancel button should be keyboard accessible', async () => {
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
 
@@ -392,7 +392,7 @@ test.describe('Animal Form UX - Accessibility', () => {
     }
   });
 
-  test('Modal should trap focus within itself', async ({ page }) => {
+  test('Modal should trap focus within itself', async () => {
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
 

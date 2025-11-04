@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 test.describe('Animal Tagging System', () => {
   // Helper to login as admin
-  async function loginAsAdmin(page: any) {
+  async function loginAsAdmin(page: Page) {
     await page.goto('http://localhost:5173/login');
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'admin123');
@@ -10,7 +10,7 @@ test.describe('Animal Tagging System', () => {
     await page.waitForURL(/.*dashboard/);
   }
 
-  test('should only have modsquad as default group', async ({ page }) => {
+  test('should only have modsquad as default group', async () => {
     await loginAsAdmin(page);
     
     // Navigate to groups management page
@@ -26,7 +26,7 @@ test.describe('Animal Tagging System', () => {
     expect(hasModsquad).toBeTruthy();
   });
 
-  test('should display default animal tags in admin page', async ({ page }) => {
+  test('should display default animal tags in admin page', async () => {
     await loginAsAdmin(page);
     
     // Navigate to animal tags management
@@ -50,7 +50,7 @@ test.describe('Animal Tagging System', () => {
     await expect(walker20).toBeVisible();
   });
 
-  test('should create a new animal tag', async ({ page }) => {
+  test('should create a new animal tag', async () => {
     await loginAsAdmin(page);
     
     // Navigate to animal tags management
@@ -74,7 +74,7 @@ test.describe('Animal Tagging System', () => {
     await expect(newTag).toBeVisible();
   });
 
-  test('should display tags on animal detail page', async ({ page }) => {
+  test('should display tags on animal detail page', async () => {
     await loginAsAdmin(page);
     
     // First, we need to create an animal with tags
@@ -128,7 +128,7 @@ test.describe('Animal Tagging System', () => {
     }
   });
 
-  test('should allow editing animal tags in animal form', async ({ page }) => {
+  test('should allow editing animal tags in animal form', async () => {
     await loginAsAdmin(page);
     
     // Navigate to dashboard
@@ -176,7 +176,7 @@ test.describe('Animal Tagging System', () => {
     }
   });
 
-  test('should delete an animal tag from admin page', async ({ page }) => {
+  test('should delete an animal tag from admin page', async () => {
     await loginAsAdmin(page);
     
     // Navigate to animal tags management
@@ -207,7 +207,7 @@ test.describe('Animal Tagging System', () => {
     }
   });
 
-  test('should edit an existing animal tag', async ({ page }) => {
+  test('should edit an existing animal tag', async () => {
     await loginAsAdmin(page);
     
     // Navigate to animal tags management

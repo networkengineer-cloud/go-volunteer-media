@@ -15,7 +15,7 @@ test.describe('Activity Feed UX', () => {
     await page.waitForURL('**/');
   });
 
-  test('displays activity feed tabs on group page', async ({ page }) => {
+  test('displays activity feed tabs on group page', async () => {
     // Navigate to a group page (assuming group ID 1 exists)
     await page.goto('http://localhost:5173/groups/1');
     
@@ -28,7 +28,7 @@ test.describe('Activity Feed UX', () => {
     await expect(activityTab).toHaveClass(/group-tab--active/);
   });
 
-  test('switches between activity feed and animals view', async ({ page }) => {
+  test('switches between activity feed and animals view', async () => {
     await page.goto('http://localhost:5173/groups/1');
     
     // Click on Animals tab
@@ -48,7 +48,7 @@ test.describe('Activity Feed UX', () => {
     await expect(page.locator('.activity-feed')).toBeVisible();
   });
 
-  test('shows quick actions bar on activity feed', async ({ page }) => {
+  test('shows quick actions bar on activity feed', async () => {
     await page.goto('http://localhost:5173/groups/1');
     
     // Quick actions bar should be visible
@@ -61,7 +61,7 @@ test.describe('Activity Feed UX', () => {
     await expect(page.locator('button:has-text("New Announcement")')).toBeVisible();
   });
 
-  test('filters activity by type', async ({ page }) => {
+  test('filters activity by type', async () => {
     await page.goto('http://localhost:5173/groups/1');
     
     // Change filter to comments only
@@ -80,7 +80,7 @@ test.describe('Activity Feed UX', () => {
     await page.selectOption('#activity-filter', 'all');
   });
 
-  test('opens announcement form modal', async ({ page }) => {
+  test('opens announcement form modal', async () => {
     await page.goto('http://localhost:5173/groups/1');
     
     // Click New Announcement button
@@ -99,7 +99,7 @@ test.describe('Activity Feed UX', () => {
     await expect(page.locator('.modal')).not.toBeVisible();
   });
 
-  test('displays activity items correctly', async ({ page }) => {
+  test('displays activity items correctly', async () => {
     await page.goto('http://localhost:5173/groups/1');
     
     // Wait for activity items to load
@@ -115,7 +115,7 @@ test.describe('Activity Feed UX', () => {
     await expect(activityItems.first().locator('.activity-item__text')).toBeVisible();
   });
 
-  test('supports keyboard navigation', async ({ page }) => {
+  test('supports keyboard navigation', async () => {
     await page.goto('http://localhost:5173/groups/1');
     
     // Tab to the first tab button
@@ -136,7 +136,7 @@ test.describe('Activity Feed UX', () => {
     await expect(animalsTab).toHaveClass(/group-tab--active/);
   });
 
-  test('is responsive on mobile', async ({ page }) => {
+  test('is responsive on mobile', async () => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('http://localhost:5173/groups/1');
@@ -150,7 +150,7 @@ test.describe('Activity Feed UX', () => {
     await expect(quickActions).toBeVisible();
   });
 
-  test('shows empty state when no activity', async ({ page }) => {
+  test('shows empty state when no activity', async () => {
     // Navigate to a new group with no activity
     await page.goto('http://localhost:5173/groups/999'); // Assuming this group doesn't exist or has no activity
     
@@ -161,7 +161,7 @@ test.describe('Activity Feed UX', () => {
     expect(hasEmptyState || hasError).toBeTruthy();
   });
 
-  test('supports infinite scroll loading', async ({ page }) => {
+  test('supports infinite scroll loading', async () => {
     await page.goto('http://localhost:5173/groups/1');
     
     // Wait for initial items to load

@@ -30,7 +30,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Comment Form Dark Mode', () => {
-    test('comment form should be visible and readable in dark mode', async ({ page }) => {
+    test('comment form should be visible and readable in dark mode', async () => {
       // Navigate to an animal detail page
       await page.goto('/dashboard');
       
@@ -76,14 +76,14 @@ test.describe('Dark Mode Contrast & Readability', () => {
       // Light colors have higher RGB values (typically > 200)
       const colorMatch = textareaStyles.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
       if (colorMatch) {
-        const [_, r, g, b] = colorMatch.map(Number);
+        const [, r, g, b] = colorMatch.map(Number);
         const avgColor = (r + g + b) / 3;
         expect(avgColor).toBeGreaterThan(150); // Should be light colored text
         console.log('Textarea text color average:', avgColor);
       }
     });
 
-    test('comment form buttons should be readable in dark mode', async ({ page }) => {
+    test('comment form buttons should be readable in dark mode', async () => {
       // Navigate to an animal detail page
       await page.goto('/dashboard');
       const firstAnimalLink = page.locator('.animal-card-mini, .animal-card').first();
@@ -125,7 +125,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Comment Cards Dark Mode', () => {
-    test('existing comment cards should be readable in dark mode', async ({ page }) => {
+    test('existing comment cards should be readable in dark mode', async () => {
       // Navigate to an animal with comments
       await page.goto('/dashboard');
       const firstAnimalLink = page.locator('.animal-card-mini, .animal-card').first();
@@ -162,7 +162,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
           // Text should be light colored in dark mode
           const colorMatch = textColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
           if (colorMatch) {
-            const [_, r, g, b] = colorMatch.map(Number);
+            const [, r, g, b] = colorMatch.map(Number);
             const avgColor = (r + g + b) / 3;
             expect(avgColor).toBeGreaterThan(150); // Light text
             console.log('Comment text color average:', avgColor);
@@ -191,7 +191,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Group Selector Dark Mode', () => {
-    test('group selector on dashboard should be readable in dark mode', async ({ page }) => {
+    test('group selector on dashboard should be readable in dark mode', async () => {
       await page.goto('/dashboard');
       
       // Find the group selector
@@ -216,7 +216,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
       // Text color should be light in dark mode
       const colorMatch = selectStyles.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
       if (colorMatch) {
-        const [_, r, g, b] = colorMatch.map(Number);
+        const [, r, g, b] = colorMatch.map(Number);
         const avgColor = (r + g + b) / 3;
         expect(avgColor).toBeGreaterThan(150); // Light colored text
         console.log('Group selector text color average:', avgColor);
@@ -232,7 +232,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
       console.log('Group selector has', options.length, 'options');
     });
 
-    test('group selector on group page should be readable in dark mode', async ({ page }) => {
+    test('group selector on group page should be readable in dark mode', async () => {
       // Navigate to a group page
       await page.goto('/dashboard');
       
@@ -269,7 +269,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
         // Text color should be light in dark mode
         const colorMatch = selectStyles.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
         if (colorMatch) {
-          const [_, r, g, b] = colorMatch.map(Number);
+          const [, r, g, b] = colorMatch.map(Number);
           const avgColor = (r + g + b) / 3;
           expect(avgColor).toBeGreaterThan(150);
           console.log('Group selector text color average:', avgColor);
@@ -279,7 +279,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Form Inputs Dark Mode', () => {
-    test('all text inputs should be readable in dark mode', async ({ page }) => {
+    test('all text inputs should be readable in dark mode', async () => {
       // Test settings page inputs
       await page.goto('/settings');
       
@@ -307,7 +307,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
         // Text color should be light
         const colorMatch = inputStyles.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
         if (colorMatch) {
-          const [_, r, g, b] = colorMatch.map(Number);
+          const [, r, g, b] = colorMatch.map(Number);
           const avgColor = (r + g + b) / 3;
           expect(avgColor).toBeGreaterThan(150);
         }
@@ -316,7 +316,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Mobile Dark Mode', () => {
-    test('comment form should be readable in dark mode on mobile', async ({ page }) => {
+    test('comment form should be readable in dark mode on mobile', async () => {
       // Set mobile viewport
       await page.setViewportSize({ width: 375, height: 667 });
       
@@ -339,7 +339,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
       console.log('Mobile comment form background in dark mode:', formBg);
     });
 
-    test('group selector should be readable in dark mode on mobile', async ({ page }) => {
+    test('group selector should be readable in dark mode on mobile', async () => {
       // Set mobile viewport
       await page.setViewportSize({ width: 375, height: 667 });
       
@@ -364,7 +364,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Contrast Validation', () => {
-    test('should log color combinations for manual contrast review', async ({ page }) => {
+    test('should log color combinations for manual contrast review', async () => {
       console.log('\n=== DARK MODE COLOR AUDIT ===');
       
       // Navigate to various pages and log color combinations
