@@ -263,6 +263,12 @@ const AnimalDetailPage: React.FC = () => {
             </li>
             <li className="breadcrumb-separator" aria-hidden="true">›</li>
             <li className="breadcrumb-item">
+              <Link to={`/groups/${groupId}?view=animals`} className="breadcrumb-link">
+                Animals
+              </Link>
+            </li>
+            <li className="breadcrumb-separator" aria-hidden="true">›</li>
+            <li className="breadcrumb-item">
               <span className="breadcrumb-current" aria-current="page">
                 {animal.name}
               </span>

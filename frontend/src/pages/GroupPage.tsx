@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { groupsApi, animalsApi, authApi } from '../api/client';
 import type { Group, Animal } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,17 +19,30 @@ const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  // Get initial view mode from URL parameter (default to 'activity')
+  const initialViewMode = (searchParams.get('view') as ViewMode) || 'activity';
+  
   const [group, setGroup] = useState<Group | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const [viewMode, setViewMode] = useState<ViewMode>('activity');
+  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [nameSearch, setNameSearch] = useState<string>('');
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [activityFeedKey, setActivityFeedKey] = useState(0);
+
+  // Update view mode when URL search params change
+  useEffect(() => {
+    const viewParam = searchParams.get('view') as ViewMode;
+    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols')) {
+      setViewMode(viewParam);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (id) {

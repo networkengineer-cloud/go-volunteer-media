@@ -97,10 +97,14 @@
 }
 
 .animal-main-info {
-  background: white;
+  background: var(--surface);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] .animal-main-info {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .animal-main-image {
@@ -280,19 +284,29 @@
   flex-wrap: wrap;
   margin-bottom: 1.5rem;
   padding: 1rem 0;
-  border-top: 1px solid #e2e8f0;
-  border-bottom: 1px solid #e2e8f0;
+  border-top: 1px solid var(--neutral-200);
+  border-bottom: 1px solid var(--neutral-200);
+}
+
+[data-theme='dark'] .tag-filters {
+  border-top-color: var(--neutral-700);
+  border-bottom-color: var(--neutral-700);
 }
 
 .tag-filter {
   padding: 0.4rem 0.8rem;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--neutral-200);
   border-radius: 20px;
-  background: var(--bg-primary);
+  background: var(--surface);
   color: var(--text-primary);
   cursor: pointer;
   font-size: 0.9rem;
   transition: all 0.2s;
+}
+
+[data-theme='dark'] .tag-filter {
+  border-color: var(--neutral-700);
+  background: var(--neutral-800);
 }
 
 .tag-filter:hover {
@@ -697,7 +711,11 @@
 .animal-tags-section {
   margin-top: 1.5rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--neutral-200);
+}
+
+[data-theme='dark'] .animal-tags-section {
+  border-top-color: var(--neutral-700);
 }
 
 .animal-tags-section h3 {
