@@ -101,21 +101,24 @@ const GroupsPage: React.FC = () => {
         case 'name':
           comparison = a.name.localeCompare(b.name);
           break;
-        case 'members':
+        case 'members': {
           const membersA = statsA?.user_count || 0;
           const membersB = statsB?.user_count || 0;
           comparison = membersB - membersA; // Most members first
           break;
-        case 'animals':
+        }
+        case 'animals': {
           const animalsA = statsA?.animal_count || 0;
           const animalsB = statsB?.animal_count || 0;
           comparison = animalsB - animalsA; // Most animals first
           break;
-        case 'activity':
+        }
+        case 'activity': {
           const activityA = statsA?.last_activity ? new Date(statsA.last_activity).getTime() : 0;
           const activityB = statsB?.last_activity ? new Date(statsB.last_activity).getTime() : 0;
           comparison = activityB - activityA; // Most recent first
           break;
+        }
       }
 
       return sortOrder === 'asc' ? comparison : -comparison;
@@ -200,7 +203,7 @@ const GroupsPage: React.FC = () => {
       }
       fetchGroups();
       closeModal();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setModalError(err.response?.data?.error || 'Failed to save group');
     } finally {
       setModalLoading(false);
@@ -216,7 +219,7 @@ const GroupsPage: React.FC = () => {
     try {
       await groupsApi.delete(group.id);
       fetchGroups();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(err.response?.data?.error || 'Failed to delete group');
     }
   };
@@ -495,7 +498,7 @@ const GroupsPage: React.FC = () => {
                       const res = await groupsApi.uploadImage(file);
                       setModalData({ ...modalData, image_url: res.data.url });
                       toast.showSuccess('Image uploaded successfully!');
-                    } catch (err: any) {
+                    } catch (err: unknown) {
                       console.error('Upload error:', err);
                       const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
                       toast.showError(errorMsg);
@@ -540,7 +543,7 @@ const GroupsPage: React.FC = () => {
                       const res = await groupsApi.uploadImage(file);
                       setModalData({ ...modalData, hero_image_url: res.data.url });
                       toast.showSuccess('Hero image uploaded successfully!');
-                    } catch (err: any) {
+                    } catch (err: unknown) {
                       console.error('Upload error:', err);
                       const errorMsg = err.response?.data?.error || 'Failed to upload hero image. Please try again.';
                       toast.showError(errorMsg);

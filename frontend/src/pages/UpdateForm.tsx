@@ -88,7 +88,7 @@ const UpdateForm: React.FC = () => {
       const res = await animalsApi.uploadImage(file);
       setFormData({ ...formData, image_url: res.data.url });
       toast.showSuccess('Image uploaded successfully!');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Upload error:', err);
       const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);
@@ -125,7 +125,7 @@ const UpdateForm: React.FC = () => {
         toast.showSuccess('Announcement created successfully!');
         navigate(`/groups/${groupId}`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMsg = error.response?.data?.error || 'Failed to create announcement. Please try again.';
       toast.showError(errorMsg);
     } finally {

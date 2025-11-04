@@ -27,7 +27,7 @@ const UserProfilePage: React.FC = () => {
       setLoading(true);
       const response = await userProfileApi.getProfile(parseInt(id));
       setProfile(response.data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load user profile:', error);
       if (error.response?.status === 403) {
         showToast('You do not have permission to view this profile', 'error');

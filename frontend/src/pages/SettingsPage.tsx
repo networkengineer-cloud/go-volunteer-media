@@ -78,7 +78,7 @@ const SettingsPage: React.FC = () => {
       // Clear file input
       const fileInput = document.getElementById('heroImage') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to save settings:', error);
       const errorMsg = error.response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);

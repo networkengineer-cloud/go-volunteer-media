@@ -72,7 +72,7 @@ const BulkEditAnimalsPage: React.FC = () => {
       ]);
       setAnimals(animalsRes.data);
       setGroups(groupsRes.data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load data:', error);
       const errorMsg = error.response?.data?.error || 'Failed to load animals. Please try again.';
       toast.showError(errorMsg);
@@ -108,7 +108,7 @@ const BulkEditAnimalsPage: React.FC = () => {
         a.id === animalId ? { ...a, status: newStatus } : a
       ));
       toast.showSuccess('Status updated successfully');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to update status:', error);
       const errorMsg = error.response?.data?.error || 'Failed to update status. Please try again.';
       toast.showError(errorMsg);
@@ -126,7 +126,7 @@ const BulkEditAnimalsPage: React.FC = () => {
         a.id === animalId ? { ...a, group_id: newGroupId } : a
       ));
       toast.showSuccess('Group updated successfully');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to update group:', error);
       const errorMsg = error.response?.data?.error || 'Failed to update group. Please try again.';
       toast.showError(errorMsg);
@@ -168,7 +168,7 @@ const BulkEditAnimalsPage: React.FC = () => {
       setBulkGroupId('');
       setBulkStatus('');
       loadData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to bulk update:', error);
       const errorMsg = error.response?.data?.error || 'Failed to update animals. Please try again.';
       toast.showError(errorMsg);
@@ -191,7 +191,7 @@ const BulkEditAnimalsPage: React.FC = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
       toast.showSuccess('Animals exported to CSV successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to export CSV:', error);
       const errorMsg = error.response?.data?.error || 'Failed to export CSV. Please try again.';
       toast.showError(errorMsg);
@@ -214,7 +214,7 @@ const BulkEditAnimalsPage: React.FC = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
       toast.showSuccess('Comments exported to CSV successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to export comments CSV:', error);
       const errorMsg = error.response?.data?.error || 'Failed to export comments. Please try again.';
       toast.showError(errorMsg);
@@ -233,7 +233,7 @@ const BulkEditAnimalsPage: React.FC = () => {
       setImportFile(null);
       loadData();
       toast.showSuccess('CSV imported successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to import CSV:', error);
       const errorMsg = error.response?.data?.error || 'Failed to import CSV. Please check the file format and try again.';
       toast.showError(errorMsg);

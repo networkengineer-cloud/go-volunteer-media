@@ -104,7 +104,7 @@ const Login: React.FC = () => {
       await login(username, password);
       toast.showSuccess('Successfully logged in!');
       navigate('/dashboard');
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Enhanced error handling for account lockout
       const errorResponse = err.response?.data;
       let errorMessage = '';
@@ -150,7 +150,7 @@ const Login: React.FC = () => {
         setShowForgotPassword(false);
         setResetSuccess('');
       }, SUCCESS_MESSAGE_TIMEOUT);
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errorMsg = err.response?.data?.error || 'Failed to send reset email';
       setResetError(errorMsg);
       toast.showError(errorMsg);
