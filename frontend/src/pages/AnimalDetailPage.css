@@ -233,6 +233,7 @@
 [data-theme='dark'] .btn-toggle-form {
   background: var(--neutral-800);
   border-color: var(--neutral-700);
+  color: var(--text-primary);
 }
 
 .btn-toggle-form:hover {
@@ -332,12 +333,17 @@
   flex-direction: column;
   gap: 0.5rem;
   margin-bottom: 1rem;
+  background: transparent;
 }
 
 .tag-select-label {
   font-weight: 500;
   color: var(--text-primary);
   font-size: 0.95rem;
+}
+
+[data-theme='dark'] .tag-select-label {
+  color: var(--text-primary);
 }
 
 .tag-multi-select {
@@ -356,6 +362,7 @@
 [data-theme='dark'] .tag-multi-select {
   background: var(--neutral-800);
   border-color: var(--neutral-700);
+  color: var(--text-primary);
 }
 
 .tag-multi-select:focus {
@@ -389,6 +396,10 @@
   font-size: 0.85rem;
   color: var(--text-secondary);
   font-style: italic;
+}
+
+[data-theme='dark'] .tag-select-hint {
+  color: var(--text-secondary);
 }
 
 .selected-tags-preview {
@@ -451,6 +462,7 @@
   background: var(--surface);
   border-color: var(--neutral-700);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color: var(--text-primary);
 }
 
 .comment-form textarea {
@@ -533,11 +545,13 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  font-size: 0.95rem;
 }
 
 [data-theme='dark'] .btn-upload {
   background: var(--neutral-800);
   border-color: var(--neutral-700);
+  color: var(--text-primary);
 }
 
 .btn-upload:hover:not(:disabled) {
