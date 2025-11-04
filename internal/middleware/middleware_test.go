@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
@@ -479,4 +480,280 @@ func containsAt(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestSecurityHeaders tests security headers middleware
+func TestSecurityHeaders(t *testing.T) {
+	tests := []struct {
+		name          string
+		wantHeaders   map[string]string
+	}{
+		{
+			name: "security headers are set",
+			wantHeaders: map[string]string{
+				"X-Content-Type-Options":  "nosniff",
+				"X-Frame-Options":         "DENY",
+				"X-XSS-Protection":        "1; mode=block",
+				"Referrer-Policy":         "strict-origin-when-cross-origin",
+				"Permissions-Policy":      "geolocation=(), microphone=(), camera=()",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create test server
+			router := gin.New()
+			router.Use(SecurityHeaders())
+			router.GET("/test", func(c *gin.Context) {
+				c.JSON(200, gin.H{"message": "ok"})
+			})
+
+			// Create request
+			req, _ := http.NewRequest("GET", "/test", nil)
+
+			// Record response
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			// Check status
+			if w.Code != 200 {
+				t.Errorf("SecurityHeaders() status = %v, want 200", w.Code)
+			}
+
+			// Check all expected headers
+			for header, expectedValue := range tt.wantHeaders {
+				gotValue := w.Header().Get(header)
+				if gotValue != expectedValue {
+					t.Errorf("SecurityHeaders() %s = %v, want %v", header, gotValue, expectedValue)
+				}
+			}
+
+			// Check CSP header separately as it's complex
+			cspHeader := w.Header().Get("Content-Security-Policy")
+			if cspHeader == "" {
+				t.Error("SecurityHeaders() Content-Security-Policy header not set")
+			}
+			
+			// Verify CSP contains key directives
+			expectedCSPDirectives := []string{
+				"default-src 'self'",
+				"frame-ancestors 'none'",
+				"base-uri 'self'",
+			}
+			for _, directive := range expectedCSPDirectives {
+				if !containsSubstring(cspHeader, directive) {
+					t.Errorf("SecurityHeaders() CSP missing directive: %s", directive)
+				}
+			}
+		})
+	}
+}
+
+// TestRateLimit tests IP-based rate limiting
+func TestRateLimit(t *testing.T) {
+	t.Run("allows requests within limit", func(t *testing.T) {
+		// Create test server with rate limit of 5 requests per second
+		router := gin.New()
+		router.Use(RateLimit(5, 1*time.Second))
+		router.GET("/test", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "ok"})
+		})
+
+		// First 5 requests should succeed
+		for i := 0; i < 5; i++ {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			req.RemoteAddr = "192.168.1.1:12345" // Same IP
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != 200 {
+				t.Errorf("Request %d: expected status 200, got %d", i+1, w.Code)
+			}
+		}
+	})
+
+	t.Run("blocks requests exceeding limit", func(t *testing.T) {
+		// Create test server with rate limit of 3 requests per second
+		router := gin.New()
+		router.Use(RateLimit(3, 1*time.Second))
+		router.GET("/test", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "ok"})
+		})
+
+		// First 3 requests should succeed
+		for i := 0; i < 3; i++ {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			req.RemoteAddr = "192.168.1.2:12345"
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != 200 {
+				t.Errorf("Request %d: expected status 200, got %d", i+1, w.Code)
+			}
+		}
+
+		// 4th request should be rate limited
+		req, _ := http.NewRequest("GET", "/test", nil)
+		req.RemoteAddr = "192.168.1.2:12345"
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != 429 {
+			t.Errorf("Expected status 429 (rate limited), got %d", w.Code)
+		}
+
+		body := w.Body.String()
+		if !containsSubstring(body, "Too many requests") {
+			t.Errorf("Expected rate limit error message, got: %s", body)
+		}
+	})
+
+	t.Run("different IPs are tracked separately", func(t *testing.T) {
+		// Create test server with rate limit of 2 requests per second
+		router := gin.New()
+		router.Use(RateLimit(2, 1*time.Second))
+		router.GET("/test", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "ok"})
+		})
+
+		// IP1: 2 requests should succeed
+		for i := 0; i < 2; i++ {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			req.RemoteAddr = "192.168.1.10:12345"
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != 200 {
+				t.Errorf("IP1 Request %d: expected status 200, got %d", i+1, w.Code)
+			}
+		}
+
+		// IP2: 2 requests should also succeed (independent tracking)
+		for i := 0; i < 2; i++ {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			req.RemoteAddr = "192.168.1.20:12345"
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != 200 {
+				t.Errorf("IP2 Request %d: expected status 200, got %d", i+1, w.Code)
+			}
+		}
+	})
+}
+
+// TestRateLimitByUser tests user-based rate limiting
+func TestRateLimitByUser(t *testing.T) {
+	t.Run("rate limits authenticated users", func(t *testing.T) {
+		// Create test server with rate limit of 3 requests per second
+		router := gin.New()
+		
+		// Middleware to set user context
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", uint(1))
+			c.Next()
+		})
+		
+		router.Use(RateLimitByUser(3, 1*time.Second))
+		router.GET("/test", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "ok"})
+		})
+
+		// First 3 requests should succeed
+		for i := 0; i < 3; i++ {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != 200 {
+				t.Errorf("Request %d: expected status 200, got %d", i+1, w.Code)
+			}
+		}
+
+		// 4th request should be rate limited
+		req, _ := http.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != 429 {
+			t.Errorf("Expected status 429 (rate limited), got %d", w.Code)
+		}
+	})
+
+	t.Run("falls back to IP when no user context", func(t *testing.T) {
+		// Create test server with rate limit of 2 requests per second
+		router := gin.New()
+		router.Use(RateLimitByUser(2, 1*time.Second))
+		router.GET("/test", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "ok"})
+		})
+
+		// Should use IP-based rate limiting
+		for i := 0; i < 2; i++ {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			req.RemoteAddr = "192.168.1.100:12345"
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != 200 {
+				t.Errorf("Request %d: expected status 200, got %d", i+1, w.Code)
+			}
+		}
+
+		// 3rd request should be rate limited
+		req, _ := http.NewRequest("GET", "/test", nil)
+		req.RemoteAddr = "192.168.1.100:12345"
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != 429 {
+			t.Errorf("Expected status 429 (rate limited), got %d", w.Code)
+		}
+	})
+
+	t.Run("different users are tracked separately", func(t *testing.T) {
+		// Create test server with rate limit of 2 requests per second
+		router := gin.New()
+		
+		// Track which user ID to use
+		var requestCount int
+		
+		router.Use(func(c *gin.Context) {
+			requestCount++
+			if requestCount <= 2 {
+				c.Set("user_id", uint(1))
+			} else {
+				c.Set("user_id", uint(2))
+			}
+			c.Next()
+		})
+		
+		router.Use(RateLimitByUser(2, 1*time.Second))
+		router.GET("/test", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "ok"})
+		})
+
+		// User 1: 2 requests should succeed
+		for i := 0; i < 2; i++ {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != 200 {
+				t.Errorf("User1 Request %d: expected status 200, got %d", i+1, w.Code)
+			}
+		}
+
+		// User 2: 2 requests should also succeed (independent tracking)
+		for i := 0; i < 2; i++ {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != 200 {
+				t.Errorf("User2 Request %d: expected status 200, got %d", i+1, w.Code)
+			}
+		}
+	})
 }
