@@ -20,6 +20,46 @@ Your primary responsibility is to develop, maintain, and enhance the go-voluntee
 4. **Design efficient database schemas** and relationships
 5. **Follow best practices** for code quality, testing, and maintainability
 
+## ⚠️ CRITICAL: Test-First Development Required
+
+**QA Assessment Finding:** The project currently has **0% backend test coverage** and **no frontend unit tests**. This is a CRITICAL gap that must be addressed.
+
+### Testing Requirements (NON-NEGOTIABLE)
+
+**For EVERY code change, you MUST:**
+
+1. **Backend (Go):**
+   - ✅ Write tests BEFORE implementing features (TDD)
+   - ✅ Achieve minimum 80% coverage for handlers
+   - ✅ Achieve minimum 90% coverage for auth/security code
+   - ✅ Use table-driven tests for comprehensive scenarios
+   - ✅ Test all error paths, not just happy paths
+
+2. **Frontend (React/TypeScript):**
+   - ✅ Fix all 135 linting errors (especially `any` types)
+   - ✅ Write component tests using Vitest + React Testing Library
+   - ✅ Test user interactions and edge cases
+   - ✅ Maintain strict TypeScript (no `any` types)
+   - ✅ Fix all React hook dependency warnings
+
+3. **Integration:**
+   - ✅ Write E2E tests for new user-facing features (Playwright)
+   - ✅ Test API integration points
+   - ✅ Verify security controls (auth, authorization)
+
+**Testing Priorities (from QA Assessment):**
+1. **Phase 1 (Immediate):** Auth handlers, JWT validation, password hashing
+2. **Phase 2 (Next):** Animal CRUD, Group management, User admin
+3. **Phase 3 (Then):** Middleware, utilities, edge cases
+
+### Code Quality Standards
+
+- ❌ **Pull requests without tests will be rejected**
+- ❌ **New `any` types in TypeScript are forbidden**
+- ❌ **Handlers over 500 lines must be refactored**
+- ✅ **Run `go test ./...` and `npm run lint` before committing**
+- ✅ **All tests must pass in CI/CD pipeline**
+
 ## Project Overview
 
 ### Technology Stack
@@ -160,6 +200,199 @@ api.Use(middleware.AuthMiddleware())
 admin := api.Group("/admin")
 admin.Use(middleware.AdminMiddleware())
 {
+    admin.POST("/users", handlers.CreateUser)
+}
+```
+
+## Backend Testing (CRITICAL - Currently 0% Coverage)
+
+### Test File Organization
+
+Create test files alongside implementation:
+```
+internal/
+  handlers/
+    auth.go
+    auth_test.go        ← Add this!
+    animal.go
+    animal_test.go      ← Add this!
+```
+
+### Table-Driven Tests (Preferred Pattern)
+
+```go
+func TestValidateUser(t *testing.T) {
+    tests := []struct {
+        name    string
+        user    models.User
+        wantErr bool
+        errMsg  string
+    }{
+        {
+            name: "valid user",
+            user: models.User{
+                Username: "validuser",
+                Email:    "valid@example.com",
+                Password: "securepass123",
+            },
+            wantErr: false,
+        },
+        {
+            name: "missing username",
+            user: models.User{
+                Email:    "valid@example.com",
+                Password: "securepass123",
+            },
+            wantErr: true,
+            errMsg:  "username is required",
+        },
+        {
+            name: "weak password",
+            user: models.User{
+                Username: "validuser",
+                Email:    "valid@example.com",
+                Password: "weak",
+            },
+            wantErr: true,
+            errMsg:  "password must be at least 8 characters",
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            err := ValidateUser(&tt.user)
+            
+            if (err != nil) != tt.wantErr {
+                t.Errorf("ValidateUser() error = %v, wantErr %v", err, tt.wantErr)
+                return
+            }
+            
+            if tt.wantErr && err.Error() != tt.errMsg {
+                t.Errorf("error message = %v, want %v", err.Error(), tt.errMsg)
+            }
+        })
+    }
+}
+```
+
+### Handler Testing Pattern
+
+```go
+func TestLogin(t *testing.T) {
+    // Setup test database
+    db := setupTestDB(t)
+    defer teardownTestDB(t, db)
+    
+    // Create test user
+    hashedPass, _ := bcrypt.GenerateFromPassword([]byte("testpass123"), bcrypt.DefaultCost)
+    user := models.User{
+        Username: "testuser",
+        Email:    "test@example.com",
+        Password: string(hashedPass),
+    }
+    db.Create(&user)
+    
+    // Create test server
+    router := gin.Default()
+    router.POST("/login", handlers.Login)
+    
+    tests := []struct {
+        name       string
+        body       map[string]string
+        wantStatus int
+        checkBody  func(t *testing.T, body map[string]interface{})
+    }{
+        {
+            name: "successful login",
+            body: map[string]string{
+                "username": "testuser",
+                "password": "testpass123",
+            },
+            wantStatus: http.StatusOK,
+            checkBody: func(t *testing.T, body map[string]interface{}) {
+                token, ok := body["token"].(string)
+                if !ok || token == "" {
+                    t.Error("expected token in response")
+                }
+            },
+        },
+        {
+            name: "invalid credentials",
+            body: map[string]string{
+                "username": "testuser",
+                "password": "wrongpass",
+            },
+            wantStatus: http.StatusUnauthorized,
+            checkBody: func(t *testing.T, body map[string]interface{}) {
+                if _, ok := body["error"]; !ok {
+                    t.Error("expected error message")
+                }
+            },
+        },
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            // Marshal request body
+            jsonBody, _ := json.Marshal(tt.body)
+            
+            // Create request
+            req := httptest.NewRequest("POST", "/login", bytes.NewBuffer(jsonBody))
+            req.Header.Set("Content-Type", "application/json")
+            
+            // Record response
+            w := httptest.NewRecorder()
+            router.ServeHTTP(w, req)
+            
+            // Check status code
+            if w.Code != tt.wantStatus {
+                t.Errorf("status = %v, want %v", w.Code, tt.wantStatus)
+            }
+            
+            // Check response body
+            if tt.checkBody != nil {
+                var response map[string]interface{}
+                json.Unmarshal(w.Body.Bytes(), &response)
+                tt.checkBody(t, response)
+            }
+        })
+    }
+}
+```
+
+### Test Coverage Requirements
+
+Run coverage checks:
+```bash
+# Generate coverage report
+go test -coverprofile=coverage.out ./...
+
+# View coverage by package
+go tool cover -func=coverage.out
+
+# Open HTML coverage report
+go tool cover -html=coverage.out
+```
+
+**Coverage Targets:**
+- **Handlers**: 80% minimum
+- **Auth/Security**: 90% minimum  
+- **Middleware**: 80% minimum
+- **Business Logic**: 85% minimum
+- **Overall Project**: 70% minimum
+
+### Testing Checklist for New Features
+
+Before submitting PR:
+- [ ] All new functions have tests
+- [ ] Happy path tested
+- [ ] Error paths tested (invalid input, not found, unauthorized)
+- [ ] Edge cases tested (empty strings, null values, max limits)
+- [ ] All tests pass: `go test ./...`
+- [ ] No race conditions: `go test -race ./...`
+- [ ] Coverage meets targets
+admin.Use(middleware.AdminMiddleware())
+{
     admin.GET("/users", handlers.GetUsers)
 }
 ```
@@ -237,6 +470,60 @@ r.Static("/uploads", "./public/uploads")
 ```
 
 ## Frontend Development (React + TypeScript)
+
+## ⚠️ CRITICAL: TypeScript Strictness & Linting (135 Errors to Fix)
+
+**QA Assessment Finding:** 135 linting errors including 48 `any` types that compromise type safety.
+
+### MANDATORY TypeScript Rules
+
+1. **NO `any` types allowed** - Use proper interfaces instead:
+   ```typescript
+   // ❌ BAD - compromises type safety
+   const data: any = response.data;
+   
+   // ✅ GOOD - explicit types
+   interface Animal {
+     id: number;
+     name: string;
+     species: string;
+     status: 'available' | 'foster' | 'adopted' | 'bite_quarantine';
+   }
+   const data: Animal = response.data;
+   ```
+
+2. **Fix React Hook dependencies** - All dependencies must be listed:
+   ```typescript
+   // ❌ BAD - missing dependency
+   useEffect(() => {
+     loadItems(); // loadItems not in dependency array
+   }, []);
+   
+   // ✅ GOOD - include all dependencies
+   useEffect(() => {
+     loadItems();
+   }, [loadItems]); // or use useCallback for loadItems
+   ```
+
+3. **No unused variables** - Clean up test files:
+   ```typescript
+   // ❌ BAD - page parameter unused
+   test('something', async ({ page }) => {
+     // test without using page
+   });
+   
+   // ✅ GOOD - remove unused parameter or use it
+   test('something', async () => {
+     // no page needed
+   });
+   ```
+
+4. **Run linting before every commit**:
+   ```bash
+   cd frontend
+   npm run lint        # Must show 0 errors
+   npm run lint -- --fix  # Auto-fix what's possible
+   ```
 
 ### Code Style & Conventions
 
