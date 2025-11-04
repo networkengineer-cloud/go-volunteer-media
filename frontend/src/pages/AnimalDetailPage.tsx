@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { animalsApi, animalCommentsApi, animalsApi as imageUploadApi, commentTagsApi, groupsApi } from '../api/client';
 import type { Animal, AnimalComment, CommentTag, Group } from '../api/client';
-import { useAuth } from '../contexts/AuthContext';
-import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
@@ -46,40 +46,34 @@ const AnimalDetailPage: React.FC = () => {
   const [error, setError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (groupId && id) {
-      loadAnimalData(Number(groupId), Number(id));
-      loadGroupData(Number(groupId));
-      loadTags();
+  const loadComments = useCallback(async (gId: number, animalId: number, filter: string) => {
+    try {
+      const commentsRes = await animalCommentsApi.getAll(gId, animalId, filter);
+      setComments(commentsRes.data);
+    } catch (error) {
+      console.error('Failed to load comments:', error);
     }
-  }, [groupId, id]);
+  }, []);
 
-  useEffect(() => {
-    if (groupId && id) {
-      const tagFilterString = filterTags.join(',');
-      loadComments(Number(groupId), Number(id), tagFilterString);
-    }
-  }, [filterTags, groupId, id]);
-
-  const loadTags = async () => {
+  const loadTags = useCallback(async () => {
     try {
       const res = await commentTagsApi.getAll();
       setAvailableTags(res.data);
     } catch (error) {
       console.error('Failed to load tags:', error);
     }
-  };
+  }, []);
 
-  const loadGroupData = async (gId: number) => {
+  const loadGroupData = useCallback(async (gId: number) => {
     try {
       const groupRes = await groupsApi.getById(gId);
       setGroup(groupRes.data);
     } catch (error) {
       console.error('Failed to load group data:', error);
     }
-  };
+  }, []);
 
-  const loadAnimalData = async (gId: number, animalId: number) => {
+  const loadAnimalData = useCallback(async (gId: number, animalId: number) => {
     try {
       setError('');
       const animalRes = await animalsApi.getById(gId, animalId);
@@ -87,20 +81,27 @@ const AnimalDetailPage: React.FC = () => {
       await loadComments(gId, animalId, '');
     } catch (error: unknown) {
       console.error('Failed to load animal data:', error);
-      setError(error.response?.data?.error || 'Failed to load animal information. Please try again.');
+      const errorMsg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to load animal information. Please try again.';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadComments]);
 
-  const loadComments = async (gId: number, animalId: number, filter: string) => {
-    try {
-      const commentsRes = await animalCommentsApi.getAll(gId, animalId, filter);
-      setComments(commentsRes.data);
-    } catch (error) {
-      console.error('Failed to load comments:', error);
+  useEffect(() => {
+    if (groupId && id) {
+      loadAnimalData(Number(groupId), Number(id));
+      loadGroupData(Number(groupId));
+      loadTags();
     }
-  };
+  }, [groupId, id, loadAnimalData, loadGroupData, loadTags]);
+
+  useEffect(() => {
+    if (groupId && id) {
+      const tagFilterString = filterTags.join(',');
+      loadComments(Number(groupId), Number(id), tagFilterString);
+    }
+  }, [filterTags, groupId, id, loadComments]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -125,7 +126,7 @@ const AnimalDetailPage: React.FC = () => {
       toast.showSuccess('Image uploaded successfully!');
     } catch (error: unknown) {
       console.error('Upload error:', error);
-      const errorMsg = error.response?.data?.error || 'Failed to upload image. Please try again.';
+      const errorMsg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setUploading(false);
@@ -158,7 +159,7 @@ const AnimalDetailPage: React.FC = () => {
       toast.showSuccess('Comment posted successfully!');
     } catch (error: unknown) {
       console.error('Failed to post comment:', error);
-      const errorMsg = error.response?.data?.error || 'Failed to post comment. Please try again.';
+      const errorMsg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to post comment. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setSubmitting(false);

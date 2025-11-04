@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { animalsApi, announcementsApi, animalTagsApi } from '../api/client';
 import type { AnimalTag } from '../api/client';
-import { useToast } from '../contexts/ToastContext';
+import { useToast } from '../hooks/useToast';
 import FormField from '../components/FormField';
 import Button from '../components/Button';
 import Modal from '../components/Modal';

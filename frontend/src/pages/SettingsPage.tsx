@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { settingsApi } from '../api/client';
-import { useToast } from '../contexts/ToastContext';
+import { useToast } from '../hooks/useToast';
 import Button from '../components/Button';
 import SkeletonLoader from '../components/SkeletonLoader';
 import './SettingsPage.css';

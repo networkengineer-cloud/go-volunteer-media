@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminDashboardApi } from '../api/client';
 import type { AdminDashboardStats } from '../api/client';
-import { useToast } from '../contexts/ToastContext';
+import { useToast } from '../hooks/useToast';
 import './AdminDashboard.css';
 
 const AdminDashboard: React.FC = () => {

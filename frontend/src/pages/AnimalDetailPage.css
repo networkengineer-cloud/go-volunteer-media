@@ -371,6 +371,18 @@
 .tag-multi-select option {
   padding: 0.4rem;
   cursor: pointer;
+  background: var(--bg);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .tag-multi-select option {
+  background: var(--neutral-800);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .tag-multi-select option:checked {
+  background: var(--brand);
+  color: white;
 }
 
 .tag-select-hint {

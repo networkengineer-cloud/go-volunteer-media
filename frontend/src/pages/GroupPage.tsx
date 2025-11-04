@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { groupsApi, animalsApi, authApi } from '../api/client';
 import type { Group, Animal } from '../api/client';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import ActivityFeed from '../components/ActivityFeed';
 import AnnouncementForm from '../components/AnnouncementForm';
 import EmptyState from '../components/EmptyState';

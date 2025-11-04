@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { animalsApi, groupsApi } from '../api/client';
 import type { Animal, Group } from '../api/client';
-import { useToast } from '../contexts/ToastContext';
+import { useToast } from '../hooks/useToast';
 import './BulkEditAnimalsPage.css';
 
 // Helper function to calculate days since a date

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { updatesApi, groupsApi } from '../api/client';
-import { useToast } from '../contexts/ToastContext';
+import { useToast } from '../hooks/useToast';
 import './AnnouncementForm.css';
 
 interface AnnouncementFormProps {
