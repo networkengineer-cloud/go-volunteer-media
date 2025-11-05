@@ -36,6 +36,41 @@ const GroupPage: React.FC = () => {
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [activityFeedKey, setActivityFeedKey] = useState(0);
 
+  // Load group data
+  const loadGroupData = async (groupId: number) => {
+    try {
+      setError('');
+      const groupRes = await groupsApi.getById(groupId);
+      setGroup(groupRes.data);
+    } catch (error) {
+      console.error('Failed to load group data:', error);
+      const err = error as { response?: { data?: { error?: string } } };
+      setError(err.response?.data?.error || 'Failed to load group information. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load all groups for the switcher
+  const loadAllGroups = async () => {
+    try {
+      const groupsRes = await groupsApi.getAll();
+      setGroups(groupsRes.data);
+    } catch (error) {
+      console.error('Failed to load groups:', error);
+    }
+  };
+
+  // Load animals with filters
+  const loadAnimals = useCallback(async (groupId: number) => {
+    try {
+      const animalsRes = await animalsApi.getAll(groupId, statusFilter, nameSearch);
+      setAnimals(animalsRes.data);
+    } catch (error) {
+      console.error('Failed to load animals:', error);
+    }
+  }, [statusFilter, nameSearch]);
+
   // Update view mode when URL search params change
   useEffect(() => {
     const viewParam = searchParams.get('view') as ViewMode;
@@ -54,53 +89,12 @@ const GroupPage: React.FC = () => {
     loadAllGroups();
   }, [id, loadAnimals]);
 
-  const loadAnimals = useCallback(async (groupId: number) => {
-    try {
-      const animalsRes = await animalsApi.getAll(groupId, statusFilter, nameSearch);
-      setAnimals(animalsRes.data);
-    } catch (error) {
-      console.error('Failed to load animals:', error);
-    }
-  }, [statusFilter, nameSearch]);
-
   useEffect(() => {
     // Reload animals when filters change
     if (id) {
       loadAnimals(Number(id));
     }
   }, [id, loadAnimals]);
-
-  const loadGroupData = async (groupId: number) => {
-    try {
-      setError('');
-      const groupRes = await groupsApi.getById(groupId);
-      setGroup(groupRes.data);
-    } catch (error) {
-      console.error('Failed to load group data:', error);
-      const err = error as { response?: { data?: { error?: string } } };
-      setError(err.response?.data?.error || 'Failed to load group information. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadAllGroups = async () => {
-    try {
-      const groupsRes = await groupsApi.getAll();
-      setGroups(groupsRes.data);
-    } catch (error) {
-      console.error('Failed to load groups:', error);
-    }
-  };
-
-  const loadAnimals = async (groupId: number) => {
-    try {
-      const animalsRes = await animalsApi.getAll(groupId, statusFilter, nameSearch);
-      setAnimals(animalsRes.data);
-    } catch (error) {
-      console.error('Failed to load animals:', error);
-    }
-  };
 
   const handleGroupSwitch = async (newGroupId: number) => {
     if (newGroupId !== Number(id)) {
