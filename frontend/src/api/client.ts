@@ -241,6 +241,13 @@ export const authApi = {
   setDefaultGroup: (groupId: number) => api.put('/default-group', { group_id: groupId }),
   
   getDefaultGroup: () => api.get<Group>('/default-group'),
+  
+  getEmailPreferences: () => api.get<{ email_notifications_enabled: boolean }>('/email-preferences'),
+  
+  updateEmailPreferences: (emailNotificationsEnabled: boolean) =>
+    api.put<{ message: string; email_notifications_enabled: boolean }>('/email-preferences', {
+      email_notifications_enabled: emailNotificationsEnabled,
+    }),
 };
 
 // Groups API

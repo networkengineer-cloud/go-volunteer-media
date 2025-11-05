@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { authApi } from '../api/client';
 import './Settings.css';
 
 const SUCCESS_MESSAGE_TIMEOUT = 3000; // milliseconds
@@ -19,7 +19,7 @@ const Settings: React.FC = () => {
 
   const loadPreferences = async () => {
     try {
-      const response = await axios.get('/api/email-preferences');
+      const response = await authApi.getEmailPreferences();
       setEmailNotificationsEnabled(response.data.email_notifications_enabled || false);
       setError('');
     } catch (err: unknown) {
@@ -36,14 +36,13 @@ const Settings: React.FC = () => {
     setSuccess('');
 
     try {
-      await axios.put('/api/email-preferences', {
-        email_notifications_enabled: emailNotificationsEnabled,
-      });
+      await authApi.updateEmailPreferences(emailNotificationsEnabled);
       setSuccess('Preferences saved successfully!');
       setTimeout(() => setSuccess(''), SUCCESS_MESSAGE_TIMEOUT);
     } catch (err: unknown) {
       console.error('Failed to save preferences:', err);
-      setError(err.response?.data?.error || 'Failed to save preferences');
+      const axiosError = err as { response?: { data?: { error?: string } } };
+      setError(axiosError.response?.data?.error || 'Failed to save preferences');
     } finally {
       setSaving(false);
     }
