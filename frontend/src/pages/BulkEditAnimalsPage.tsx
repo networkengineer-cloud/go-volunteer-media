@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { animalsApi, groupsApi } from '../api/client';
 import type { Animal, Group } from '../api/client';
 import { useToast } from '../hooks/useToast';
@@ -55,11 +55,7 @@ const BulkEditAnimalsPage: React.FC = () => {
   const [importResult, setImportResult] = useState<{ message: string; warnings?: string[] } | null>(null);
   const [updatingAnimal, setUpdatingAnimal] = useState<number | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, [filterStatus, filterGroup, filterName]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [animalsRes, groupsRes] = await Promise.all([
@@ -79,7 +75,11 @@ const BulkEditAnimalsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterStatus, filterGroup, filterName, toast]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleSelectAll = () => {
     if (selectedAnimalIds.size === animals.length) {

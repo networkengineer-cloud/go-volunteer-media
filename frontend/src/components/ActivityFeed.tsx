@@ -67,7 +67,7 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ groupId, filterType = 'all'
   useEffect(() => {
     setOffset(0);
     loadItems(false);
-  }, [groupId, filterType]);
+  }, [groupId, filterType, loadItems]);
 
   // Intersection Observer for infinite scroll
   useEffect(() => {

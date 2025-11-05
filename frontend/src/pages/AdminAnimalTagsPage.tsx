@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { animalTagsApi } from '../api/client';
 import type { AnimalTag } from '../api/client';
 import { useToast } from '../hooks/useToast';
@@ -19,11 +19,7 @@ const AdminAnimalTagsPage: React.FC = () => {
     color: '#6b7280',
   });
 
-  useEffect(() => {
-    loadTags();
-  }, []);
-
-  const loadTags = async () => {
+  const loadTags = useCallback(async () => {
     try {
       const response = await animalTagsApi.getAll();
       setTags(response.data);
@@ -33,7 +29,11 @@ const AdminAnimalTagsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    loadTags();
+  }, [loadTags]);
 
   const handleOpenCreate = () => {
     setEditingTag(null);

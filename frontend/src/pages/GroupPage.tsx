@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { groupsApi, animalsApi, authApi } from '../api/client';
 import type { Group, Animal } from '../api/client';
@@ -52,14 +52,23 @@ const GroupPage: React.FC = () => {
     }
     // Load all groups for the switcher
     loadAllGroups();
-  }, [id]);
+  }, [id, loadAnimals]);
+
+  const loadAnimals = useCallback(async (groupId: number) => {
+    try {
+      const animalsRes = await animalsApi.getAll(groupId, statusFilter, nameSearch);
+      setAnimals(animalsRes.data);
+    } catch (error) {
+      console.error('Failed to load animals:', error);
+    }
+  }, [statusFilter, nameSearch]);
 
   useEffect(() => {
     // Reload animals when filters change
     if (id) {
       loadAnimals(Number(id));
     }
-  }, [id, statusFilter, nameSearch]);
+  }, [id, loadAnimals]);
 
   const loadGroupData = async (groupId: number) => {
     try {

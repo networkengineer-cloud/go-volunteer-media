@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { animalsApi, announcementsApi, animalTagsApi } from '../api/client';
 import type { AnimalTag } from '../api/client';
@@ -34,23 +34,16 @@ const AnimalForm: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    loadAvailableTags();
-    if (id && groupId) {
-      loadAnimal(parseInt(groupId), parseInt(id));
-    }
-  }, [id, groupId]);
-
-  const loadAvailableTags = async () => {
+  const loadAvailableTags = useCallback(async () => {
     try {
       const response = await animalTagsApi.getAll();
       setAvailableTags(response.data);
     } catch (error) {
       console.error('Failed to load tags:', error);
     }
-  };
+  }, []);
 
-  const loadAnimal = async (gId: number, animalId: number) => {
+  const loadAnimal = useCallback(async (gId: number, animalId: number) => {
     try {
       const response = await animalsApi.getById(gId, animalId);
       const animal = response.data;
@@ -67,7 +60,14 @@ const AnimalForm: React.FC = () => {
       console.error('Failed to load animal:', error);
       toast.showError('Failed to load animal details');
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    loadAvailableTags();
+    if (id && groupId) {
+      loadAnimal(parseInt(groupId), parseInt(id));
+    }
+  }, [id, groupId, loadAvailableTags, loadAnimal]);
 
   const validateField = (name: string, value: string | number) => {
     switch (name) {
