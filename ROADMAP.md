@@ -79,7 +79,59 @@ To create a vibrant, easy-to-use platform that connects shelter volunteers with 
 
 ## 🔮 Next (Q1 2026)
 
-### 1. Real-Time Notifications (Priority: P1)
+### 1. Multiple Image Upload & Enhanced Gallery (Priority: P0)
+
+**As a** volunteer  
+**I want to** upload multiple images at once and view them in an organized gallery with comments  
+**So that** I can efficiently document and share animal activities and progress
+
+**Acceptance Criteria:**
+- [ ] Support multiple image uploads per comment/update
+- [ ] Drag-and-drop interface for uploading multiple files
+- [ ] Progress indicators for each file being uploaded
+- [ ] Image gallery with:
+  - Grid layout showing all animal images
+  - Click to view full size with navigation (left/right arrows)
+  - Display associated comment text with each image
+  - Show uploader name and timestamp
+  - Filter by date range or tags
+- [ ] Bulk image management for admins:
+  - Select multiple images for deletion
+  - Batch caption editing
+  - Move images between animals
+- [ ] Improved image viewing:
+  - Zoom in/out functionality
+  - Download original image
+  - Image metadata (upload date, size, dimensions)
+- [ ] Comment-image association improvements:
+  - Display thumbnail grid within comments
+  - Expandable image carousel in comment view
+  - Support for 1-10 images per comment
+
+**Success Metrics:** 80%+ of volunteers use multiple upload feature, 50% increase in photo sharing  
+**Target Release:** v1.2.0  
+**Status:** Planned (High Priority - Team Request)
+
+**Technical Requirements:**
+- Backend: New `animal_images` table with many-to-one relationship to animals and comments
+- Frontend: Multiple file input handling, drag-and-drop library (react-dropzone)
+- Storage: Batch upload API endpoint supporting multiple files
+- Database: Image metadata storage (filename, size, dimensions, upload_date)
+- UI: Enhanced gallery component with carousel/lightbox improvements
+
+**Current State Assessment:**
+- ✅ Single image upload working for comments
+- ✅ Basic photo gallery page exists (`PhotoGallery.tsx`)
+- ✅ Image validation and optimization in place (resize to 1200px, JPEG compression)
+- ✅ File upload infrastructure ready (`animal_upload.go`, `UploadAnimalImage` handler)
+- ❌ Multiple images per comment not supported
+- ❌ No drag-and-drop interface
+- ❌ Gallery lacks comment association and filtering
+- ❌ No bulk image management tools
+
+---
+
+### 2. Real-Time Notifications (Priority: P1)
 
 **As a** volunteer  
 **I want to** receive real-time notifications when someone interacts with my updates  
@@ -109,7 +161,7 @@ To create a vibrant, easy-to-use platform that connects shelter volunteers with 
 
 ---
 
-### 2. Advanced Animal Search & Filtering (Priority: P2)
+### 3. Advanced Animal Search & Filtering (Priority: P2)
 
 **As a** volunteer  
 **I want to** quickly find specific animals using search and filters  
@@ -138,30 +190,30 @@ To create a vibrant, easy-to-use platform that connects shelter volunteers with 
 
 ---
 
-### 3. Volunteer Activity Timeline (Priority: P2)
+## 💭 Later (Q2 2026 and Beyond)
+
+### 1. Volunteer Activity Timeline (Priority: P2)
 
 **As a** volunteer coordinator  
 **I want to** see a timeline of volunteer activities  
 **So that** I can recognize contributions and identify engagement patterns
 
-**Acceptance Criteria:**
-- [ ] Personal activity timeline for each volunteer
-- [ ] Shows:
+**Features:**
+- Personal activity timeline for each volunteer
+- Shows:
   - Comments posted
   - Photos uploaded
   - Updates created
   - Animals added/updated
-- [ ] Filter by date range
-- [ ] Export activity report (CSV)
-- [ ] Leaderboard for top contributors (optional)
+- Filter by date range
+- Export activity report (CSV)
+- Leaderboard for top contributors
 
+**Business Value:** Recognize volunteer contributions, identify engagement patterns  
 **Success Metrics:** 50%+ of coordinators use timeline weekly  
-**Target Release:** v1.2.0  
-**Status:** Planned
+**Status:** Backlog (Moved from Q1 to accommodate image gallery priority)
 
 ---
-
-## 💭 Later (Q2 2026 and Beyond)
 
 ### 1. Animal Adoption Workflow (Priority: P2)
 
@@ -259,6 +311,25 @@ To create a vibrant, easy-to-use platform that connects shelter volunteers with 
 ---
 
 ## ✅ Shipped
+
+### Basic Photo Gallery (v1.0.1)
+**Shipped:** October 10, 2025  
+**Impact:** Volunteers can view all photos shared for each animal in a dedicated gallery page with lightbox  
+**Current Capability:** 
+- Single image upload per comment
+- Gallery view showing all images with comments
+- Lightbox with prev/next navigation
+- Photo attribution (uploader name + timestamp)
+
+**Known Limitations:**
+- Only one image per comment (multiple upload feature planned for v1.2.0)
+- No drag-and-drop interface
+- Limited filtering options (no date/tag filters)
+- No bulk management tools
+
+**Learning:** Photo sharing increased engagement significantly. Users immediately requested ability to upload multiple images at once for documenting activities
+
+---
 
 ### Multi-Tag Comment Filtering (v1.0.8)
 **Shipped:** November 3, 2025  
