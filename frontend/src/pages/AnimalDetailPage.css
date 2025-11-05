@@ -231,8 +231,9 @@
 }
 
 [data-theme='dark'] .btn-toggle-form {
-  background: var(--neutral-800);
-  border-color: var(--neutral-700);
+  background: var(--neutral-100);
+  border-color: var(--neutral-200);
+  color: var(--text-primary);
 }
 
 .btn-toggle-form:hover {
@@ -241,7 +242,7 @@
 }
 
 [data-theme='dark'] .btn-toggle-form:hover {
-  background: var(--neutral-700);
+  background: var(--neutral-200);
   border-color: var(--brand);
 }
 
@@ -332,12 +333,17 @@
   flex-direction: column;
   gap: 0.5rem;
   margin-bottom: 1rem;
+  background: transparent;
 }
 
 .tag-select-label {
   font-weight: 500;
   color: var(--text-primary);
   font-size: 0.95rem;
+}
+
+[data-theme='dark'] .tag-select-label {
+  color: var(--text-primary);
 }
 
 .tag-multi-select {
@@ -354,8 +360,9 @@
 }
 
 [data-theme='dark'] .tag-multi-select {
-  background: var(--neutral-800);
-  border-color: var(--neutral-700);
+  background: var(--neutral-100);
+  border-color: var(--neutral-200);
+  color: var(--text-primary);
 }
 
 .tag-multi-select:focus {
@@ -376,7 +383,7 @@
 }
 
 [data-theme='dark'] .tag-multi-select option {
-  background: var(--neutral-800);
+  background: var(--neutral-100);
   color: var(--text-primary);
 }
 
@@ -389,6 +396,10 @@
   font-size: 0.85rem;
   color: var(--text-secondary);
   font-style: italic;
+}
+
+[data-theme='dark'] .tag-select-hint {
+  color: var(--text-secondary);
 }
 
 .selected-tags-preview {
@@ -449,8 +460,9 @@
 
 [data-theme='dark'] .comment-form {
   background: var(--surface);
-  border-color: var(--neutral-700);
+  border-color: var(--neutral-200);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color: var(--text-primary);
 }
 
 .comment-form textarea {
@@ -468,8 +480,8 @@
 }
 
 [data-theme='dark'] .comment-form textarea {
-  background: var(--neutral-800);
-  border-color: var(--neutral-700);
+  background: var(--neutral-100);
+  border-color: var(--neutral-200);
   color: var(--text-primary);
 }
 
@@ -533,11 +545,13 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  font-size: 0.95rem;
 }
 
 [data-theme='dark'] .btn-upload {
-  background: var(--neutral-800);
-  border-color: var(--neutral-700);
+  background: var(--neutral-100);
+  border-color: var(--neutral-200);
+  color: var(--text-primary);
 }
 
 .btn-upload:hover:not(:disabled) {
@@ -546,7 +560,7 @@
 }
 
 [data-theme='dark'] .btn-upload:hover:not(:disabled) {
-  background: var(--neutral-700);
+  background: var(--neutral-200);
   border-color: var(--brand);
 }
 
