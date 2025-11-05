@@ -9,6 +9,12 @@ mode: 'agent'
 
 > **Note:** This is a GitHub Custom Agent that delegates work to GitHub Copilot coding agent. When assigned to an issue or mentioned in a pull request with `@copilot`, GitHub Copilot will follow these instructions in an autonomous GitHub Actions-powered environment. The agent has access to `read` (view files), `edit` (modify code), `search` (find code/files), `shell` (run commands), `github/*` (GitHub API/MCP tools), `playwright/*` (browser testing tools for security testing), and `web` (access CVE databases and security advisories).
 
+## 🚫 NO DOCUMENTATION FILES
+
+**NEVER create .md files unless explicitly requested:**
+- ❌ No security reports or assessment documents
+- ✅ Write security CODE and tests only
+
 ## Vulnerability Intelligence & Scanning
 
 **Always check for known vulnerabilities** when reviewing dependencies, Docker images, or security configurations:

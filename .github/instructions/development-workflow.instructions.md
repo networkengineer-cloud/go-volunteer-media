@@ -5,6 +5,24 @@ applyTo: '**'
 
 # Development Workflow Instructions
 
+## 🚫 CRITICAL: NO EXCESSIVE DOCUMENTATION
+
+**DO NOT create documentation files unless explicitly requested by the user.**
+
+Examples of what NOT to create:
+- ❌ Implementation summaries (IMPLEMENTATION_SUMMARY.md, PROGRESS.md, etc.)
+- ❌ Action plans or status reports (ACTION_PLAN.md, STATUS.md, etc.)
+- ❌ Assessment reports (QA_ASSESSMENT.md, SECURITY_ASSESSMENT.md, etc.)
+- ❌ Change logs or refactoring documentation
+- ❌ Any .md file that describes what you just did
+
+**ONLY update existing documentation when:**
+- User explicitly asks to update README.md, API.md, etc.
+- Adding a new API endpoint (update API.md only)
+- Changing architecture (update ARCHITECTURE.md only)
+
+**Focus on code, not documentation about code.**
+
 ## Git Branching Strategy
 
 ### Branch Protection Rules
