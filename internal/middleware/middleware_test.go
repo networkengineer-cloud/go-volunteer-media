@@ -757,3 +757,58 @@ func TestRateLimitByUser(t *testing.T) {
 		}
 	})
 }
+
+func TestRequestID(t *testing.T) {
+t.Run("generates request ID when not provided", func(t *testing.T) {
+router := gin.New()
+router.Use(RequestID())
+router.GET("/test", func(c *gin.Context) {
+requestID := c.GetString("request_id")
+if requestID == "" {
+t.Error("Expected request_id to be set in context")
+}
+c.String(200, "ok")
+})
+
+req, _ := http.NewRequest("GET", "/test", nil)
+w := httptest.NewRecorder()
+router.ServeHTTP(w, req)
+
+if w.Code != 200 {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+
+// Check response header
+requestID := w.Header().Get(RequestIDKey)
+if requestID == "" {
+t.Error("Expected X-Request-ID header in response")
+}
+})
+
+t.Run("uses existing request ID from header", func(t *testing.T) {
+router := gin.New()
+router.Use(RequestID())
+router.GET("/test", func(c *gin.Context) {
+requestID := c.GetString("request_id")
+if requestID != "test-request-id-123" {
+t.Errorf("Expected request_id to be test-request-id-123, got %s", requestID)
+}
+c.String(200, "ok")
+})
+
+req, _ := http.NewRequest("GET", "/test", nil)
+req.Header.Set(RequestIDKey, "test-request-id-123")
+w := httptest.NewRecorder()
+router.ServeHTTP(w, req)
+
+if w.Code != 200 {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+
+// Check response header matches
+requestID := w.Header().Get(RequestIDKey)
+if requestID != "test-request-id-123" {
+t.Errorf("Expected X-Request-ID to be test-request-id-123, got %s", requestID)
+}
+})
+}
