@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { adminDashboardApi } from '../api/client';
 import type { AdminDashboardStats } from '../api/client';
@@ -10,11 +10,7 @@ const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       setLoading(true);
       const response = await adminDashboardApi.getStats();
@@ -25,7 +21,11 @@ const AdminDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);

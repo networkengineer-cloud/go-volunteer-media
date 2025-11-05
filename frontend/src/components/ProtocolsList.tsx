@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { protocolsApi } from '../api/client';
 import type { Protocol } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
@@ -26,15 +26,7 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
     protocol: null 
   });
 
-  useEffect(() => {
-    loadProtocols();
-  }, [groupId]);
-
-  useEffect(() => {
-    console.log('showForm changed to:', showForm);
-  }, [showForm]);
-
-  const loadProtocols = async () => {
+  const loadProtocols = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
@@ -47,7 +39,15 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId]);
+
+  useEffect(() => {
+    loadProtocols();
+  }, [loadProtocols]);
+
+  useEffect(() => {
+    console.log('showForm changed to:', showForm);
+  }, [showForm]);
 
   const handleDelete = async (protocolId: number) => {
     try {
