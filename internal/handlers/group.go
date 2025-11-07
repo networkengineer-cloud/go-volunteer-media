@@ -17,11 +17,13 @@ import (
 )
 
 type GroupRequest struct {
-	Name         string `json:"name" binding:"required,min=2,max=100"`
-	Description  string `json:"description" binding:"max=500"`
-	ImageURL     string `json:"image_url,omitempty"`
-	HeroImageURL string `json:"hero_image_url,omitempty"`
-	HasProtocols bool   `json:"has_protocols"`
+	Name           string `json:"name" binding:"required,min=2,max=100"`
+	Description    string `json:"description" binding:"max=500"`
+	ImageURL       string `json:"image_url,omitempty"`
+	HeroImageURL   string `json:"hero_image_url,omitempty"`
+	HasProtocols   bool   `json:"has_protocols"`
+	GroupMeBotID   string `json:"groupme_bot_id,omitempty"`
+	GroupMeEnabled bool   `json:"groupme_enabled"`
 }
 
 // UploadGroupImage handles secure group image uploads (admin only)
@@ -155,11 +157,13 @@ func CreateGroup(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		group := models.Group{
-			Name:         req.Name,
-			Description:  req.Description,
-			ImageURL:     req.ImageURL,
-			HeroImageURL: heroImageURL,
-			HasProtocols: req.HasProtocols,
+			Name:           req.Name,
+			Description:    req.Description,
+			ImageURL:       req.ImageURL,
+			HeroImageURL:   heroImageURL,
+			HasProtocols:   req.HasProtocols,
+			GroupMeBotID:   req.GroupMeBotID,
+			GroupMeEnabled: req.GroupMeEnabled,
 		}
 
 		if err := db.Create(&group).Error; err != nil {
@@ -192,6 +196,8 @@ func UpdateGroup(db *gorm.DB) gin.HandlerFunc {
 		group.ImageURL = req.ImageURL
 		group.HeroImageURL = req.HeroImageURL
 		group.HasProtocols = req.HasProtocols
+		group.GroupMeBotID = req.GroupMeBotID
+		group.GroupMeEnabled = req.GroupMeEnabled
 
 		if err := db.Save(&group).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update group"})

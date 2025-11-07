@@ -27,7 +27,9 @@ const GroupsPage: React.FC = () => {
     description: '', 
     image_url: '', 
     hero_image_url: '',
-    has_protocols: false
+    has_protocols: false,
+    groupme_bot_id: '',
+    groupme_enabled: false
   });
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
@@ -143,7 +145,9 @@ const GroupsPage: React.FC = () => {
       description: group.description, 
       image_url: group.image_url || '', 
       hero_image_url: group.hero_image_url || '',
-      has_protocols: group.has_protocols || false
+      has_protocols: group.has_protocols || false,
+      groupme_bot_id: group.groupme_bot_id || '',
+      groupme_enabled: group.groupme_enabled || false
     });
     setModalError(null);
     setShowModal(true);
@@ -162,7 +166,7 @@ const GroupsPage: React.FC = () => {
   const closeModal = () => {
     setShowModal(false);
     setEditingGroup(null);
-    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false });
+    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false, groupme_bot_id: '', groupme_enabled: false });
     setModalError(null);
     setAvailableAnimals([]);
     setShowAnimalSelector(false);
@@ -189,7 +193,9 @@ const GroupsPage: React.FC = () => {
           modalData.description, 
           modalData.image_url, 
           modalData.hero_image_url,
-          modalData.has_protocols
+          modalData.has_protocols,
+          modalData.groupme_bot_id,
+          modalData.groupme_enabled
         );
       } else {
         // Create new group
@@ -198,7 +204,9 @@ const GroupsPage: React.FC = () => {
           modalData.description, 
           modalData.image_url, 
           modalData.hero_image_url,
-          modalData.has_protocols
+          modalData.has_protocols,
+          modalData.groupme_bot_id,
+          modalData.groupme_enabled
         );
       }
       fetchGroups();
@@ -471,6 +479,45 @@ const GroupsPage: React.FC = () => {
                   Protocols allow you to document standardized procedures and workflows for this group.
                 </small>
               </div>
+
+              {/* GroupMe Integration Section */}
+              <div className="form-group" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
+                <h4 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>GroupMe Integration</h4>
+                <label htmlFor="groupme_enabled" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '1rem' }}>
+                  <input
+                    id="groupme_enabled"
+                    name="groupme_enabled"
+                    type="checkbox"
+                    checked={modalData.groupme_enabled}
+                    onChange={(e) => setModalData(d => ({ ...d, groupme_enabled: e.target.checked }))}
+                    style={{ width: 'auto', cursor: 'pointer' }}
+                  />
+                  <span>Enable GroupMe integration for this group</span>
+                </label>
+                <small style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem', display: 'block', marginLeft: '1.75rem' }}>
+                  Allow announcements to be automatically sent to this group's GroupMe chat.
+                </small>
+                
+                {modalData.groupme_enabled && (
+                  <div style={{ marginLeft: '1.75rem', marginTop: '1rem' }}>
+                    <label htmlFor="groupme_bot_id">GroupMe Bot ID</label>
+                    <input
+                      id="groupme_bot_id"
+                      name="groupme_bot_id"
+                      type="text"
+                      value={modalData.groupme_bot_id}
+                      onChange={handleModalChange}
+                      placeholder="Enter your GroupMe Bot ID"
+                      required={modalData.groupme_enabled}
+                      style={{ marginTop: '0.5rem' }}
+                    />
+                    <small style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.5rem', display: 'block' }}>
+                      Create a bot at <a href="https://dev.groupme.com/bots" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>dev.groupme.com/bots</a> and paste the Bot ID here.
+                    </small>
+                  </div>
+                )}
+              </div>
+
               <div className="form-group">
                 <label htmlFor="image_upload">Group Card Image</label>
                 <input

@@ -269,10 +269,10 @@ export const groupsApi = {
     if (options?.type && options.type !== 'all') params.type = options.type;
     return api.get<ActivityFeedResponse>('/groups/' + id + '/activity-feed', { params });
   },
-  create: (name: string, description: string, image_url?: string, hero_image_url?: string, has_protocols?: boolean) =>
-    api.post<Group>('/admin/groups', { name, description, image_url, hero_image_url, has_protocols }),
-  update: (id: number, name: string, description: string, image_url?: string, hero_image_url?: string, has_protocols?: boolean) =>
-    api.put<Group>('/admin/groups/' + id, { name, description, image_url, hero_image_url, has_protocols }),
+  create: (name: string, description: string, image_url?: string, hero_image_url?: string, has_protocols?: boolean, groupme_bot_id?: string, groupme_enabled?: boolean) =>
+    api.post<Group>('/admin/groups', { name, description, image_url, hero_image_url, has_protocols, groupme_bot_id, groupme_enabled }),
+  update: (id: number, name: string, description: string, image_url?: string, hero_image_url?: string, has_protocols?: boolean, groupme_bot_id?: string, groupme_enabled?: boolean) =>
+    api.put<Group>('/admin/groups/' + id, { name, description, image_url, hero_image_url, has_protocols, groupme_bot_id, groupme_enabled }),
   delete: (id: number) => api.delete('/admin/groups/' + id),
   uploadImage: (file: File) => {
     const formData = new FormData();
