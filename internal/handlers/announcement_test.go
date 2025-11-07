@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -354,3 +355,211 @@ func TestDeleteAnnouncement(t *testing.T) {
 		})
 	}
 }
+
+// TestSendAnnouncementEmails tests the sendAnnouncementEmails function directly
+func TestSendAnnouncementEmails(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupFunc     func(*gorm.DB)
+		emailService  *email.Service
+		title         string
+		content       string
+		expectedError bool
+	}{
+		{
+			name: "successfully send emails to opted-in users",
+			setupFunc: func(db *gorm.DB) {
+				// Create users with email notifications enabled
+				user1 := createAnnouncementTestUser(t, db, "user1", "user1@example.com", false)
+				db.Model(&models.User{}).Where("id = ?", user1.ID).Update("email_notifications_enabled", true)
+				
+				user2 := createAnnouncementTestUser(t, db, "user2", "user2@example.com", false)
+				db.Model(&models.User{}).Where("id = ?", user2.ID).Update("email_notifications_enabled", true)
+			},
+			emailService: &email.Service{
+				SMTPHost:     "smtp.example.com",
+				SMTPPort:     "587",
+				SMTPUsername: "user",
+				SMTPPassword: "pass",
+				FromEmail:    "noreply@example.com",
+				FromName:     "Test Service",
+			},
+			title:         "Test Announcement",
+			content:       "This is a test announcement content.",
+			expectedError: false,
+		},
+		{
+			name: "no users with email notifications enabled",
+			setupFunc: func(db *gorm.DB) {
+				// Create users but don't enable email notifications
+				createAnnouncementTestUser(t, db, "user3", "user3@example.com", false)
+				createAnnouncementTestUser(t, db, "user4", "user4@example.com", false)
+			},
+			emailService: &email.Service{
+				SMTPHost:     "smtp.example.com",
+				SMTPPort:     "587",
+				SMTPUsername: "user",
+				SMTPPassword: "pass",
+				FromEmail:    "noreply@example.com",
+				FromName:     "Test Service",
+			},
+			title:         "Test Announcement",
+			content:       "This is a test announcement content.",
+			expectedError: false,
+		},
+		{
+			name: "empty database",
+			setupFunc: func(db *gorm.DB) {
+				// No users
+			},
+			emailService: &email.Service{
+				SMTPHost:     "smtp.example.com",
+				SMTPPort:     "587",
+				SMTPUsername: "user",
+				SMTPPassword: "pass",
+				FromEmail:    "noreply@example.com",
+				FromName:     "Test Service",
+			},
+			title:         "Test Announcement",
+			content:       "This is a test announcement content.",
+			expectedError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupAnnouncementTestDB(t)
+			
+			if tt.setupFunc != nil {
+				tt.setupFunc(db)
+			}
+
+			ctx := context.Background()
+			err := sendAnnouncementEmails(ctx, db, tt.emailService, tt.title, tt.content)
+
+			if tt.expectedError && err == nil {
+				t.Error("Expected error but got nil")
+			}
+			if !tt.expectedError && err != nil {
+				t.Errorf("Expected no error but got: %v", err)
+			}
+		})
+	}
+}
+
+// TestCreateAnnouncementErrorPaths tests error handling in CreateAnnouncement
+func TestCreateAnnouncementErrorPaths(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupContext   func(*gin.Context)
+		payload        map[string]interface{}
+		expectedStatus int
+		expectedError  string
+	}{
+		{
+			name: "missing user_id context",
+			setupContext: func(c *gin.Context) {
+				// Don't set user_id
+				c.Set("is_admin", true)
+			},
+			payload: map[string]interface{}{
+				"title":   "Test Announcement",
+				"content": "This is test content that is long enough.",
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedError:  "User context not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupAnnouncementTestDB(t)
+			emailService := &email.Service{}
+
+			gin.SetMode(gin.TestMode)
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			jsonBytes, _ := json.Marshal(tt.payload)
+			c.Request = httptest.NewRequest("POST", "/api/v1/announcements", bytes.NewBuffer(jsonBytes))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			tt.setupContext(c)
+
+			handler := CreateAnnouncement(db, emailService)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
+
+			var response map[string]interface{}
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			if errorMsg, ok := response["error"].(string); ok {
+				if errorMsg != tt.expectedError {
+					t.Errorf("Expected error '%s', got '%s'", tt.expectedError, errorMsg)
+				}
+			} else {
+				t.Error("Expected error in response")
+			}
+		})
+	}
+}
+
+// TestCreateAnnouncementWithConfiguredEmail tests announcement creation with configured email service
+func TestCreateAnnouncementWithConfiguredEmail(t *testing.T) {
+	db := setupAnnouncementTestDB(t)
+	user := createAnnouncementTestUser(t, db, "admin", "admin@example.com", true)
+
+	// Create users with email notifications enabled for email sending test
+	user1 := createAnnouncementTestUser(t, db, "user1", "user1@example.com", false)
+	db.Model(&models.User{}).Where("id = ?", user1.ID).Update("email_notifications_enabled", true)
+
+	// Create a configured email service
+	emailService := &email.Service{
+		SMTPHost:     "smtp.example.com",
+		SMTPPort:     "587",
+		SMTPUsername: "user",
+		SMTPPassword: "pass",
+		FromEmail:    "noreply@example.com",
+		FromName:     "Test Service",
+	}
+
+	c, w := setupAnnouncementTestContext(user.ID, true)
+
+	payload := map[string]interface{}{
+		"title":      "Test Announcement",
+		"content":    "This is a test announcement that should trigger email sending.",
+		"send_email": true,
+	}
+
+	jsonBytes, _ := json.Marshal(payload)
+	c.Request = httptest.NewRequest("POST", "/api/v1/announcements", bytes.NewBuffer(jsonBytes))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := CreateAnnouncement(db, emailService)
+	handler(c)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	var announcement models.Announcement
+	if err := json.Unmarshal(w.Body.Bytes(), &announcement); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if !announcement.SendEmail {
+		t.Error("SendEmail should be true")
+	}
+
+	// Verify announcement was created in database
+	var dbAnnouncement models.Announcement
+	if err := db.First(&dbAnnouncement, announcement.ID).Error; err != nil {
+		t.Errorf("Announcement not found in database: %v", err)
+	}
+}
+

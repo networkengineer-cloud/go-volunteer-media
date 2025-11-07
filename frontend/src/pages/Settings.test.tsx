@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import Settings from './Settings';
 import { authApi } from '../api/client';
+import { AxiosResponse } from 'axios';
 
 // Mock the API client
 vi.mock('../api/client', () => ({
@@ -51,7 +52,7 @@ describe('Settings', () => {
     it('should load and display email preferences when enabled', async () => {
       vi.mocked(authApi.getEmailPreferences).mockResolvedValue({
         data: { email_notifications_enabled: true },
-      } as any);
+      } as AxiosResponse<{ email_notifications_enabled: boolean }>);
 
       renderSettings();
 
@@ -66,7 +67,7 @@ describe('Settings', () => {
     it('should load and display email preferences when disabled', async () => {
       vi.mocked(authApi.getEmailPreferences).mockResolvedValue({
         data: { email_notifications_enabled: false },
-      } as any);
+      } as AxiosResponse<{ email_notifications_enabled: boolean }>);
 
       renderSettings();
 
@@ -81,7 +82,7 @@ describe('Settings', () => {
     it('should call the correct API endpoint', async () => {
       vi.mocked(authApi.getEmailPreferences).mockResolvedValue({
         data: { email_notifications_enabled: true },
-      } as any);
+      } as AxiosResponse<{ email_notifications_enabled: boolean }>);
 
       renderSettings();
 
@@ -109,10 +110,10 @@ describe('Settings', () => {
     it('should save preferences when save button is clicked', async () => {
       vi.mocked(authApi.getEmailPreferences).mockResolvedValue({
         data: { email_notifications_enabled: false },
-      } as any);
+      } as AxiosResponse<{ email_notifications_enabled: boolean }>);
       vi.mocked(authApi.updateEmailPreferences).mockResolvedValue({
         data: { message: 'Success', email_notifications_enabled: true },
-      } as any);
+      } as AxiosResponse<{ message: string; email_notifications_enabled: boolean }>);
 
       const user = userEvent.setup();
       renderSettings();
@@ -136,7 +137,7 @@ describe('Settings', () => {
     it('should show error message when save fails', async () => {
       vi.mocked(authApi.getEmailPreferences).mockResolvedValue({
         data: { email_notifications_enabled: false },
-      } as any);
+      } as AxiosResponse<{ email_notifications_enabled: boolean }>);
       vi.mocked(authApi.updateEmailPreferences).mockRejectedValue({
         response: { data: { error: 'Failed to update' } },
       });
@@ -162,7 +163,7 @@ describe('Settings', () => {
     it('should disable save button while saving', async () => {
       vi.mocked(authApi.getEmailPreferences).mockResolvedValue({
         data: { email_notifications_enabled: false },
-      } as any);
+      } as AxiosResponse<{ email_notifications_enabled: boolean }>);
       vi.mocked(authApi.updateEmailPreferences).mockImplementation(
         () => new Promise(() => {}) // Never resolves
       );
@@ -190,7 +191,7 @@ describe('Settings', () => {
     it('should navigate to dashboard when back button is clicked', async () => {
       vi.mocked(authApi.getEmailPreferences).mockResolvedValue({
         data: { email_notifications_enabled: true },
-      } as any);
+      } as AxiosResponse<{ email_notifications_enabled: boolean }>);
 
       const user = userEvent.setup();
       renderSettings();
@@ -210,7 +211,7 @@ describe('Settings', () => {
     it('should have proper labels for checkbox', async () => {
       vi.mocked(authApi.getEmailPreferences).mockResolvedValue({
         data: { email_notifications_enabled: true },
-      } as any);
+      } as AxiosResponse<{ email_notifications_enabled: boolean }>);
 
       renderSettings();
 
