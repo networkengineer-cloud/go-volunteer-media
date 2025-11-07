@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +21,7 @@ import (
 func setupGroupTestDB(t *testing.T) *gorm.DB {
 	// Set JWT_SECRET for testing
 	os.Setenv("JWT_SECRET", "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1fG3hI5jK7lM9nO1pQ3")
-	
+
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
@@ -110,10 +111,10 @@ func TestGetGroups(t *testing.T) {
 			setupFunc: func(db *gorm.DB, user *models.User) []*models.Group {
 				group1 := createTestGroup(t, db, "User Group", "User's group")
 				group2 := createTestGroup(t, db, "Other Group", "Other group")
-				
+
 				// Associate user with only group1
 				db.Model(user).Association("Groups").Append(group1)
-				
+
 				return []*models.Group{group1, group2}
 			},
 			expectedStatus: http.StatusOK,
@@ -405,6 +406,57 @@ func TestCreateGroup(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 			checkFunc:      nil,
 		},
+		{
+			name: "validation error - invalid GroupMe bot id (too short)",
+			payload: map[string]interface{}{
+				"name":           "GroupMe Invalid",
+				"groupme_bot_id": "1234abcd",
+			},
+			expectedStatus: http.StatusBadRequest,
+			checkFunc: func(t *testing.T, db *gorm.DB, w *httptest.ResponseRecorder) {
+				var resp map[string]interface{}
+				if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("Failed to unmarshal response: %v", err)
+				}
+				if resp["error"] == nil || !strings.Contains(resp["error"].(string), "Invalid GroupMe bot ID") {
+					t.Errorf("Expected GroupMe bot ID validation error, got: %v", resp["error"])
+				}
+			},
+		},
+		{
+			name: "validation error - invalid GroupMe bot id (non-hex)",
+			payload: map[string]interface{}{
+				"name":           "GroupMe Invalid",
+				"groupme_bot_id": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+			},
+			expectedStatus: http.StatusBadRequest,
+			checkFunc: func(t *testing.T, db *gorm.DB, w *httptest.ResponseRecorder) {
+				var resp map[string]interface{}
+				if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("Failed to unmarshal response: %v", err)
+				}
+				if resp["error"] == nil || !strings.Contains(resp["error"].(string), "Invalid GroupMe bot ID") {
+					t.Errorf("Expected GroupMe bot ID validation error, got: %v", resp["error"])
+				}
+			},
+		},
+		{
+			name: "accepts valid GroupMe bot id",
+			payload: map[string]interface{}{
+				"name":           "GroupMe Valid",
+				"groupme_bot_id": "0123456789abcdef0123456789abcdef01234567",
+			},
+			expectedStatus: http.StatusCreated,
+			checkFunc: func(t *testing.T, db *gorm.DB, w *httptest.ResponseRecorder) {
+				var group models.Group
+				if err := json.Unmarshal(w.Body.Bytes(), &group); err != nil {
+					t.Fatalf("Failed to unmarshal response: %v", err)
+				}
+				if group.GroupMeBotID != "0123456789abcdef0123456789abcdef01234567" {
+					t.Errorf("Expected GroupMeBotID to be set, got '%s'", group.GroupMeBotID)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -413,7 +465,7 @@ func TestCreateGroup(t *testing.T) {
 			user := createGroupTestUser(t, db, "admin", "admin@example.com", true)
 
 			c, w := setupGroupTestContext(user.ID, true)
-			
+
 			jsonBytes, _ := json.Marshal(tt.payload)
 			c.Request = httptest.NewRequest("POST", "/api/v1/groups", bytes.NewBuffer(jsonBytes))
 			c.Request.Header.Set("Content-Type", "application/json")
@@ -495,6 +547,53 @@ func TestUpdateGroup(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 			checkFunc:      nil,
 		},
+		{
+			name: "validation error - invalid GroupMe bot id (too short)",
+			setupFunc: func(db *gorm.DB) uint {
+				group := createTestGroup(t, db, "GroupMe Update", "desc")
+				return group.ID
+			},
+			payload: map[string]interface{}{
+				"name":           "GroupMe Update",
+				"groupme_bot_id": "1234abcd",
+			},
+			expectedStatus: http.StatusBadRequest,
+			checkFunc:      nil,
+		},
+		{
+			name: "validation error - invalid GroupMe bot id (non-hex)",
+			setupFunc: func(db *gorm.DB) uint {
+				group := createTestGroup(t, db, "GroupMe Update", "desc")
+				return group.ID
+			},
+			payload: map[string]interface{}{
+				"name":           "GroupMe Update",
+				"groupme_bot_id": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+			},
+			expectedStatus: http.StatusBadRequest,
+			checkFunc:      nil,
+		},
+		{
+			name: "accepts valid GroupMe bot id",
+			setupFunc: func(db *gorm.DB) uint {
+				group := createTestGroup(t, db, "GroupMe Update", "desc")
+				return group.ID
+			},
+			payload: map[string]interface{}{
+				"name":           "GroupMe Update",
+				"groupme_bot_id": "0123456789abcdef0123456789abcdef01234567",
+			},
+			expectedStatus: http.StatusOK,
+			checkFunc: func(t *testing.T, db *gorm.DB, groupID uint) {
+				var group models.Group
+				if err := db.First(&group, groupID).Error; err != nil {
+					t.Fatalf("Failed to find updated group: %v", err)
+				}
+				if group.GroupMeBotID != "0123456789abcdef0123456789abcdef01234567" {
+					t.Errorf("Expected GroupMeBotID to be set, got '%s'", group.GroupMeBotID)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -506,7 +605,7 @@ func TestUpdateGroup(t *testing.T) {
 
 			c, w := setupGroupTestContext(user.ID, true)
 			c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", groupID)}}
-			
+
 			jsonBytes, _ := json.Marshal(tt.payload)
 			c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d", groupID), bytes.NewBuffer(jsonBytes))
 			c.Request.Header.Set("Content-Type", "application/json")
@@ -653,7 +752,7 @@ func TestAddUserToGroup(t *testing.T) {
 			userID, groupID := tt.setupFunc(db)
 
 			c, w := setupGroupTestContext(admin.ID, true)
-			
+
 			// Handle invalid ID test case specially
 			if tt.name == "invalid user ID" {
 				c.Params = gin.Params{
@@ -666,7 +765,7 @@ func TestAddUserToGroup(t *testing.T) {
 					{Key: "groupId", Value: fmt.Sprintf("%d", groupID)},
 				}
 			}
-			
+
 			c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/users/%d/groups/%d", userID, groupID), nil)
 
 			handler := AddUserToGroup(db)
@@ -696,10 +795,10 @@ func TestRemoveUserFromGroup(t *testing.T) {
 			setupFunc: func(db *gorm.DB) (uint, uint) {
 				user := createGroupTestUser(t, db, "regularuser", "user@example.com", false)
 				group := createTestGroup(t, db, "Test Group", "Description")
-				
+
 				// Add user to group first
 				db.Model(&user).Association("Groups").Append(group)
-				
+
 				return user.ID, group.ID
 			},
 			expectedStatus: http.StatusOK,
@@ -771,6 +870,31 @@ func TestRemoveUserFromGroup(t *testing.T) {
 
 			if tt.checkFunc != nil {
 				tt.checkFunc(t, db, userID, groupID)
+			}
+		})
+	}
+}
+
+// Unit tests for isValidGroupMeBotID
+func TestIsValidGroupMeBotID(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		want bool
+	}{
+		{"empty is valid", "", true},
+		{"valid lowercase hex", "0123456789abcdef0123456789abcdef01234567", true},
+		{"valid uppercase hex", "0123456789ABCDEF0123456789ABCDEF01234567", true},
+		{"too short", "0123456789abcdef", false},
+		{"too long", "0123456789abcdef0123456789abcdef0123456789abcdef", false},
+		{"non-hex char", "0123456789abcdef0123456789abcdef0123456g", false},
+		{"special chars", "0123456789abcdef0123456789abcdef0123456!", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isValidGroupMeBotID(tt.id); got != tt.want {
+				t.Errorf("isValidGroupMeBotID(%q) = %v, want %v", tt.id, got, tt.want)
 			}
 		})
 	}
