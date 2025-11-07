@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -14,9 +15,10 @@ import (
 )
 
 type AnnouncementRequest struct {
-	Title     string `json:"title" binding:"required,min=2,max=200"`
-	Content   string `json:"content" binding:"required,min=10"`
-	SendEmail bool   `json:"send_email"`
+	Title       string `json:"title" binding:"required,min=2,max=200"`
+	Content     string `json:"content" binding:"required,min=10"`
+	SendEmail   bool   `json:"send_email"`
+	SendGroupMe bool   `json:"send_groupme"`
 }
 
 // GetAnnouncements returns all announcements (accessible to all authenticated users)
@@ -34,8 +36,8 @@ func GetAnnouncements(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// CreateAnnouncement creates a new announcement and optionally sends emails (admin only)
-func CreateAnnouncement(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
+// CreateAnnouncement creates a new announcement and optionally sends emails and GroupMe messages (admin only)
+func CreateAnnouncement(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		userID, exists := c.Get("user_id")
@@ -51,10 +53,11 @@ func CreateAnnouncement(db *gorm.DB, emailService *email.Service) gin.HandlerFun
 		}
 
 		announcement := models.Announcement{
-			UserID:    userID.(uint),
-			Title:     req.Title,
-			Content:   req.Content,
-			SendEmail: req.SendEmail,
+			UserID:      userID.(uint),
+			Title:       req.Title,
+			Content:     req.Content,
+			SendEmail:   req.SendEmail,
+			SendGroupMe: req.SendGroupMe,
 		}
 
 		if err := db.WithContext(ctx).Create(&announcement).Error; err != nil {
@@ -75,6 +78,17 @@ func CreateAnnouncement(db *gorm.DB, emailService *email.Service) gin.HandlerFun
 				bgCtx := context.Background()
 				if err := sendAnnouncementEmails(bgCtx, db, emailService, announcement.Title, announcement.Content); err != nil {
 					logging.WithContext(bgCtx).Error("Error sending announcement emails", err)
+				}
+			}()
+		}
+
+		// Send GroupMe messages if requested
+		if req.SendGroupMe && groupMeService != nil {
+			// Use background context for async GroupMe sending
+			go func() {
+				bgCtx := context.Background()
+				if err := sendAnnouncementToGroupMe(bgCtx, db, groupMeService, announcement.Title, announcement.Content); err != nil {
+					logging.WithContext(bgCtx).Error("Error sending announcement to GroupMe", err)
 				}
 			}()
 		}
@@ -126,5 +140,35 @@ func sendAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService *emai
 		"success_count": successCount,
 		"total_count":   len(users),
 	}).Info("Announcement email sending completed")
+	return nil
+}
+
+// sendAnnouncementToGroupMe sends announcement to all GroupMe-enabled groups
+func sendAnnouncementToGroupMe(ctx context.Context, db *gorm.DB, groupMeService *groupme.Service, title, content string) error {
+	logger := logging.WithContext(ctx)
+
+	// Fetch all groups with GroupMe enabled
+	var groups []models.Group
+	if err := db.WithContext(ctx).Where("groupme_enabled = ? AND groupme_bot_id != ?", true, "").Find(&groups).Error; err != nil {
+		logger.Error("Failed to fetch GroupMe-enabled groups", err)
+		return err
+	}
+
+	logger.WithField("group_count", len(groups)).Info("Sending announcement to GroupMe groups")
+	successCount := 0
+	for _, group := range groups {
+		if err := groupMeService.SendAnnouncement(group.GroupMeBotID, title, content); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"group_id":   group.ID,
+				"group_name": group.Name,
+			}).Error("Failed to send announcement to GroupMe", err)
+		} else {
+			successCount++
+		}
+	}
+	logger.WithFields(map[string]interface{}{
+		"success_count": successCount,
+		"total_count":   len(groups),
+	}).Info("GroupMe announcement sending completed")
 	return nil
 }
