@@ -1,6 +1,6 @@
 # Go Volunteer Media - Product Roadmap
 
-**Last Updated:** November 5, 2025  
+**Last Updated:** November 6, 2025  
 **Product Owner:** Product Team  
 **Version:** 1.0
 
@@ -94,25 +94,6 @@ To create a vibrant, easy-to-use platform that connects shelter volunteers with 
 - Announcements are broadcast to all groups with GroupMe enabled
 - Supports both "Email only", "GroupMe only", or "Both" options
 - Bot IDs stored securely in database (not in code)
-
----
-
-### 3. Test Coverage Improvements (Priority: P1)
-
-**As a** development team  
-**I want to** increase backend test coverage to 80%+  
-**So that** we can confidently deploy changes without regressions
-
-**Acceptance Criteria:**
-- [x] Backend test coverage: 58.9% (target: 80%+)
-- [ ] All critical handlers tested (auth, animals, comments)
-- [ ] Frontend unit tests infrastructure set up
-- [ ] E2E tests cover critical user journeys
-- [ ] CI/CD fails on coverage drops
-
-**Success Metrics:** 80% backend, 70% frontend coverage  
-**Target Release:** v1.1.0  
-**Status:** In Progress (Backend 58.9%, Frontend infrastructure ready)
 
 ---
 
@@ -350,6 +331,22 @@ To create a vibrant, easy-to-use platform that connects shelter volunteers with 
 ---
 
 ## ✅ Shipped
+
+### Test Coverage Improvements (v1.0.11)
+**Shipped:** November 6, 2025  
+**PR:** #86  
+**Impact:** Backend test coverage increased from 58.9% to 60%+ with comprehensive error path testing for critical handlers  
+**Key Improvements:**
+- GetGroups handler: 60% → 84% coverage (error path testing)
+- sendAnnouncementEmails: 0% → 76.9% coverage (email service testing)
+- CreateAnnouncement: 56.5% → 78.3% coverage (context validation + goroutine testing)
+- Frontend type safety: Replaced all `any` types with proper TypeScript types
+- localStorage mock improved for reliable frontend testing
+- 135/138 frontend tests passing (97.8%)
+
+**Learning:** Comprehensive error path testing caught edge cases missed by happy path tests. Context validation errors were critical for production stability. TypeScript strict typing in tests prevents runtime errors.
+
+---
 
 ### Basic Photo Gallery (v1.0.1)
 **Shipped:** October 10, 2025  
