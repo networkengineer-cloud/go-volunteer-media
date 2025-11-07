@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { AuthProvider } from './AuthContext';
 import { useAuth } from '../hooks/useAuth';
-import { authApi } from '../api/client';
+import { authApi, User } from '../api/client';
+import { AxiosResponse } from 'axios';
 
 // Mock the API client
 vi.mock('../api/client', () => ({
@@ -223,7 +224,7 @@ describe('AuthContext', () => {
       // Set up localStorage with existing token
       localStorage.setItem('token', 'existing-token');
 
-      const mockUser = {
+      const mockUser: User = {
         id: 1,
         username: 'existinguser',
         email: 'existing@example.com',
@@ -232,7 +233,7 @@ describe('AuthContext', () => {
 
       vi.mocked(authApi.getCurrentUser).mockResolvedValue({
         data: mockUser,
-      } as any);
+      } as AxiosResponse<User>);
 
       const { result } = renderHook(() => useAuth(), {
         wrapper: AuthProvider,
