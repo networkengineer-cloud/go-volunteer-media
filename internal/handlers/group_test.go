@@ -164,6 +164,77 @@ func TestGetGroups(t *testing.T) {
 	}
 }
 
+// TestGetGroupsErrorPaths tests error handling in GetGroups
+func TestGetGroupsErrorPaths(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupContext   func(*gin.Context)
+		expectedStatus int
+		expectedError  string
+	}{
+		{
+			name: "missing user_id context",
+			setupContext: func(c *gin.Context) {
+				// Don't set user_id
+				c.Set("is_admin", false)
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedError:  "User context not found",
+		},
+		{
+			name: "missing is_admin context",
+			setupContext: func(c *gin.Context) {
+				c.Set("user_id", uint(1))
+				// Don't set is_admin
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedError:  "Admin context not found",
+		},
+		{
+			name: "invalid admin flag type",
+			setupContext: func(c *gin.Context) {
+				c.Set("user_id", uint(1))
+				c.Set("is_admin", "not_a_bool") // Invalid type
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedError:  "Invalid admin flag",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupGroupTestDB(t)
+
+			gin.SetMode(gin.TestMode)
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest("GET", "/api/v1/groups", nil)
+
+			tt.setupContext(c)
+
+			handler := GetGroups(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
+
+			var response map[string]interface{}
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			if errorMsg, ok := response["error"].(string); ok {
+				if errorMsg != tt.expectedError {
+					t.Errorf("Expected error '%s', got '%s'", tt.expectedError, errorMsg)
+				}
+			} else {
+				t.Error("Expected error in response")
+			}
+		})
+	}
+}
+
 // TestGetGroup tests retrieving a single group with access control
 func TestGetGroup(t *testing.T) {
 	tests := []struct {

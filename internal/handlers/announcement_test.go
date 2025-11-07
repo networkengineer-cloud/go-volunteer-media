@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -354,3 +355,95 @@ func TestDeleteAnnouncement(t *testing.T) {
 		})
 	}
 }
+
+// TestSendAnnouncementEmails tests the sendAnnouncementEmails function directly
+func TestSendAnnouncementEmails(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupFunc     func(*gorm.DB)
+		emailService  *email.Service
+		title         string
+		content       string
+		expectedError bool
+	}{
+		{
+			name: "successfully send emails to opted-in users",
+			setupFunc: func(db *gorm.DB) {
+				// Create users with email notifications enabled
+				user1 := createAnnouncementTestUser(t, db, "user1", "user1@example.com", false)
+				db.Model(&models.User{}).Where("id = ?", user1.ID).Update("email_notifications_enabled", true)
+				
+				user2 := createAnnouncementTestUser(t, db, "user2", "user2@example.com", false)
+				db.Model(&models.User{}).Where("id = ?", user2.ID).Update("email_notifications_enabled", true)
+			},
+			emailService: &email.Service{
+				SMTPHost:     "smtp.example.com",
+				SMTPPort:     "587",
+				SMTPUsername: "user",
+				SMTPPassword: "pass",
+				FromEmail:    "noreply@example.com",
+				FromName:     "Test Service",
+			},
+			title:         "Test Announcement",
+			content:       "This is a test announcement content.",
+			expectedError: false,
+		},
+		{
+			name: "no users with email notifications enabled",
+			setupFunc: func(db *gorm.DB) {
+				// Create users but don't enable email notifications
+				createAnnouncementTestUser(t, db, "user3", "user3@example.com", false)
+				createAnnouncementTestUser(t, db, "user4", "user4@example.com", false)
+			},
+			emailService: &email.Service{
+				SMTPHost:     "smtp.example.com",
+				SMTPPort:     "587",
+				SMTPUsername: "user",
+				SMTPPassword: "pass",
+				FromEmail:    "noreply@example.com",
+				FromName:     "Test Service",
+			},
+			title:         "Test Announcement",
+			content:       "This is a test announcement content.",
+			expectedError: false,
+		},
+		{
+			name: "empty database",
+			setupFunc: func(db *gorm.DB) {
+				// No users
+			},
+			emailService: &email.Service{
+				SMTPHost:     "smtp.example.com",
+				SMTPPort:     "587",
+				SMTPUsername: "user",
+				SMTPPassword: "pass",
+				FromEmail:    "noreply@example.com",
+				FromName:     "Test Service",
+			},
+			title:         "Test Announcement",
+			content:       "This is a test announcement content.",
+			expectedError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupAnnouncementTestDB(t)
+			
+			if tt.setupFunc != nil {
+				tt.setupFunc(db)
+			}
+
+			ctx := context.Background()
+			err := sendAnnouncementEmails(ctx, db, tt.emailService, tt.title, tt.content)
+
+			if tt.expectedError && err == nil {
+				t.Error("Expected error but got nil")
+			}
+			if !tt.expectedError && err != nil {
+				t.Errorf("Expected no error but got: %v", err)
+			}
+		})
+	}
+}
+
