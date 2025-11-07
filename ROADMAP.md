@@ -58,7 +58,46 @@ To create a vibrant, easy-to-use platform that connects shelter volunteers with 
 
 ---
 
-### 2. Test Coverage Improvements (Priority: P1)
+### 2. GroupMe Integration for Announcements (Priority: P1)
+
+**As a** group coordinator  
+**I want to** send announcements to GroupMe in addition to (or instead of) email  
+**So that** volunteers can receive notifications on their preferred communication channel
+
+**Acceptance Criteria:**
+- [ ] Add GroupMe bot ID configuration per group
+- [ ] Add "Send to GroupMe" checkbox on announcement creation form
+- [ ] Send announcement to configured GroupMe bot(s) when checkbox is selected
+- [ ] Support sending to both email AND GroupMe simultaneously
+- [ ] Admin UI to configure GroupMe bot IDs for each group
+- [ ] Error handling and logging for failed GroupMe sends
+- [ ] Display GroupMe send status in announcement history
+
+**Success Metrics:** 80%+ adoption by groups with active GroupMe chats  
+**Target Release:** v1.1.0  
+**Status:** In Progress (Branch: feature/groupme-integration)
+
+**Technical Requirements:**
+- Backend:
+  - Add `GroupMeBotID` and `GroupMeEnabled` fields to Group model
+  - Add `SendGroupMe` field to Announcement model
+  - Create GroupMe service with bot API integration
+  - Update announcement handler to support multi-channel delivery
+- Frontend:
+  - Add GroupMe checkbox to announcement creation form
+  - Add GroupMe bot configuration to admin group settings
+  - Display GroupMe status indicators
+
+**Implementation Notes:**
+- Uses GroupMe Bot API (POST to `https://api.groupme.com/v3/bots/post`)
+- Each group has its own GroupMe bot ID (configured per group)
+- Announcements are broadcast to all groups with GroupMe enabled
+- Supports both "Email only", "GroupMe only", or "Both" options
+- Bot IDs stored securely in database (not in code)
+
+---
+
+### 3. Test Coverage Improvements (Priority: P1)
 
 **As a** development team  
 **I want to** increase backend test coverage to 80%+  

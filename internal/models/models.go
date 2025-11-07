@@ -27,19 +27,21 @@ type User struct {
 
 // Group represents a volunteer group (dogs, cats, modsquad, etc.)
 type Group struct {
-	ID           uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
-	Name         string         `gorm:"uniqueIndex;not null" json:"name"`
-	Description  string         `json:"description"`
-	ImageURL     string         `json:"image_url"`
-	HeroImageURL string         `json:"hero_image_url"`
-	HasProtocols bool           `gorm:"default:false" json:"has_protocols"` // Enable protocols feature for this group
-	Users        []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
-	Animals      []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
-	Updates      []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
-	Protocols    []Protocol     `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
+	ID            uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
+	Name          string         `gorm:"uniqueIndex;not null" json:"name"`
+	Description   string         `json:"description"`
+	ImageURL      string         `json:"image_url"`
+	HeroImageURL  string         `json:"hero_image_url"`
+	HasProtocols  bool           `gorm:"default:false" json:"has_protocols"` // Enable protocols feature for this group
+	GroupMeBotID  string         `json:"groupme_bot_id"`                     // GroupMe Bot ID for sending messages
+	GroupMeEnabled bool          `gorm:"default:false" json:"groupme_enabled"` // Enable GroupMe integration for this group
+	Users         []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
+	Animals       []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
+	Updates       []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
+	Protocols     []Protocol     `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
 }
 
 // Animal represents an animal in a group
@@ -114,15 +116,16 @@ type Update struct {
 
 // Announcement represents a site-wide announcement/update
 type Announcement struct {
-	ID        uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt time.Time      `gorm:"index:idx_announcement_created" json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	UserID    uint           `gorm:"not null;index" json:"user_id"`
-	Title     string         `gorm:"not null" json:"title"`
-	Content   string         `gorm:"not null" json:"content"`
-	SendEmail bool           `gorm:"default:false" json:"send_email"`
-	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt   time.Time      `gorm:"index:idx_announcement_created" json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	UserID      uint           `gorm:"not null;index" json:"user_id"`
+	Title       string         `gorm:"not null" json:"title"`
+	Content     string         `gorm:"not null" json:"content"`
+	SendEmail   bool           `gorm:"default:false" json:"send_email"`
+	SendGroupMe bool           `gorm:"default:false" json:"send_groupme"`
+	User        User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
 // AnimalComment represents a comment on an animal (social media style)
