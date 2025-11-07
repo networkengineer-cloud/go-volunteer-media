@@ -21,6 +21,12 @@ Examples of what NOT to create:
 - Adding a new API endpoint (update API.md only)
 - Changing architecture (update ARCHITECTURE.md only)
 
+**ROADMAP.md is managed by Product Owner ONLY:**
+- ❌ DO NOT edit ROADMAP.md directly
+- ✅ DO report feature completions via GitHub issue (see `.github/instructions/roadmap-communication.instructions.md`)
+- ✅ DO add "Roadmap Impact" section to PR descriptions
+- Product Owner will update ROADMAP.md based on your reports
+
 **Focus on code, not documentation about code.**
 
 ## Git Branching Strategy
