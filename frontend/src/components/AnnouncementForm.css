@@ -302,3 +302,41 @@
     transform: none;
   }
 }
+
+/* GroupMe checkbox styling */
+.announcement-form__checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background-color: var(--hover-background, #f3f4f6);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.announcement-form__checkbox-label:hover {
+  background-color: var(--card-background, #ffffff);
+}
+
+.announcement-form__checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.announcement-form__checkbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+}
+
+.announcement-form__checkbox-description {
+  font-size: 0.875rem;
+  font-weight: normal;
+  color: var(--text-secondary, #6b7280);
+}

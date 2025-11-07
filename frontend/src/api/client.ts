@@ -44,6 +44,8 @@ export interface Group {
   image_url: string;
   hero_image_url: string;
   has_protocols: boolean;
+  groupme_bot_id: string;
+  groupme_enabled: boolean;
 }
 
 export interface Protocol {
@@ -82,6 +84,7 @@ export interface Update {
   title: string;
   content: string;
   image_url: string;
+  send_groupme: boolean;
   created_at: string;
   user?: User;
 }
@@ -92,6 +95,7 @@ export interface Announcement {
   title: string;
   content: string;
   send_email: boolean;
+  send_groupme: boolean;
   created_at: string;
   user?: User;
 }
@@ -392,15 +396,15 @@ export const protocolsApi = {
 // Updates API
 export const updatesApi = {
   getAll: (groupId: number) => api.get<Update[]>('/groups/' + groupId + '/updates'),
-  create: (groupId: number, title: string, content: string, image_url?: string) =>
-    api.post<Update>('/groups/' + groupId + '/updates', { title, content, image_url }),
+  create: (groupId: number, title: string, content: string, send_groupme: boolean, image_url?: string) =>
+    api.post<Update>('/groups/' + groupId + '/updates', { title, content, image_url, send_groupme }),
 };
 
 // Announcements API
 export const announcementsApi = {
   getAll: () => api.get<Announcement[]>('/announcements'),
-  create: (title: string, content: string, send_email: boolean) =>
-    api.post<Announcement>('/admin/announcements', { title, content, send_email }),
+  create: (title: string, content: string, send_email: boolean, send_groupme: boolean) =>
+    api.post<Announcement>('/admin/announcements', { title, content, send_email, send_groupme }),
   delete: (id: number) => api.delete('/admin/announcements/' + id),
 };
 

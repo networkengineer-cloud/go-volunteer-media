@@ -102,16 +102,17 @@ func (a *Animal) QuarantineEndDate() *time.Time {
 
 // Update represents a post/update in a group
 type Update struct {
-	ID        uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt time.Time      `gorm:"index:idx_update_group_created" json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	GroupID   uint           `gorm:"not null;index:idx_update_group_created" json:"group_id"`
-	UserID    uint           `gorm:"not null;index" json:"user_id"`
-	Title     string         `gorm:"not null" json:"title"`
-	Content   string         `gorm:"not null" json:"content"`
-	ImageURL  string         `json:"image_url"`
-	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt   time.Time      `gorm:"index:idx_update_group_created" json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	GroupID     uint           `gorm:"not null;index:idx_update_group_created" json:"group_id"`
+	UserID      uint           `gorm:"not null;index" json:"user_id"`
+	Title       string         `gorm:"not null" json:"title"`
+	Content     string         `gorm:"not null" json:"content"`
+	ImageURL    string         `json:"image_url"`
+	SendGroupMe bool           `gorm:"default:false" json:"send_groupme"`
+	User        User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
 // Announcement represents a site-wide announcement/update

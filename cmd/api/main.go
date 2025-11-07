@@ -226,7 +226,7 @@ func main() {
 
 			// Updates routes
 			group.GET("/updates", handlers.GetUpdates(db))
-			group.POST("/updates", handlers.CreateUpdate(db))
+			group.POST("/updates", handlers.CreateUpdate(db, groupMeService))
 
 			// Protocol routes - all group members can view
 			group.GET("/protocols", handlers.GetProtocols(db))
