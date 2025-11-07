@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { updatesApi, groupsApi } from '../api/client';
+import React, { useState, useRef, useEffect } from 'react';
+import { updatesApi, groupsApi, type Group } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import './AnnouncementForm.css';
 
@@ -13,10 +13,24 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [sendGroupMe, setSendGroupMe] = useState(false);
+  const [group, setGroup] = useState<Group | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+
+  useEffect(() => {
+    const loadGroup = async () => {
+      try {
+        const response = await groupsApi.getById(groupId);
+        setGroup(response.data);
+      } catch (error) {
+        console.error('Failed to load group:', error);
+      }
+    };
+    loadGroup();
+  }, [groupId]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -64,13 +78,14 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
 
     setSubmitting(true);
     try {
-      await updatesApi.create(groupId, title.trim(), content.trim(), imageUrl || undefined);
+      await updatesApi.create(groupId, title.trim(), content.trim(), sendGroupMe, imageUrl || undefined);
       toast.showSuccess('Announcement posted successfully!');
       
       // Reset form
       setTitle('');
       setContent('');
       setImageUrl('');
+      setSendGroupMe(false);
       
       if (onSuccess) {
         onSuccess();
@@ -201,6 +216,26 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
             </div>
           )}
         </div>
+
+        {/* GroupMe integration */}
+        {group && group.groupme_enabled && group.groupme_bot_id && (
+          <div className="announcement-form__field">
+            <label className="announcement-form__checkbox-label">
+              <input
+                type="checkbox"
+                checked={sendGroupMe}
+                onChange={(e) => setSendGroupMe(e.target.checked)}
+                disabled={submitting}
+              />
+              <span className="announcement-form__checkbox-text">
+                Also send to GroupMe
+                <span className="announcement-form__checkbox-description">
+                  This announcement will be posted to the {group.name} GroupMe chat
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
       </div>
 
       {/* Form actions */}

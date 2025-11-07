@@ -18,6 +18,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/handlers"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
@@ -73,6 +74,10 @@ func main() {
 	} else {
 		logger.Info("Email service not configured - password reset and email notifications will be disabled")
 	}
+
+	// Initialize GroupMe service
+	groupMeService := groupme.NewService()
+	logger.Info("GroupMe service initialized and ready")
 
 	// Set up Gin router
 	// Disable Gin's default logger since we're using our own
@@ -166,7 +171,7 @@ func main() {
 			admin.DELETE("/users/:userId/groups/:groupId", handlers.RemoveUserFromGroup(db))
 
 			// Announcement routes (admin only)
-			admin.POST("/announcements", handlers.CreateAnnouncement(db, emailService))
+			admin.POST("/announcements", handlers.CreateAnnouncement(db, emailService, groupMeService))
 			admin.DELETE("/announcements/:id", handlers.DeleteAnnouncement(db))
 
 			// Comment tag management (admin only)
@@ -221,7 +226,7 @@ func main() {
 
 			// Updates routes
 			group.GET("/updates", handlers.GetUpdates(db))
-			group.POST("/updates", handlers.CreateUpdate(db))
+			group.POST("/updates", handlers.CreateUpdate(db, groupMeService))
 
 			// Protocol routes - all group members can view
 			group.GET("/protocols", handlers.GetProtocols(db))

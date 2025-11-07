@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
@@ -199,7 +200,7 @@ func TestCreateUpdate(t *testing.T) {
 			tt.setupContext(c)
 
 			// Execute
-			handler := CreateUpdate(db)
+			handler := CreateUpdate(db, groupme.NewService())
 			handler(c)
 
 			// Assert

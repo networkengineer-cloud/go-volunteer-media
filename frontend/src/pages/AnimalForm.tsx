@@ -242,7 +242,7 @@ const AnimalForm: React.FC = () => {
         `Details:\n${quarantineContext}\n\n` +
         `#behavior`;
 
-      await announcementsApi.create(announcementTitle, announcementContent, true);
+      await announcementsApi.create(announcementTitle, announcementContent, true, false);
 
       toast.showSuccess('Animal updated and announcement created successfully!');
       setShowQuarantineModal(false);
