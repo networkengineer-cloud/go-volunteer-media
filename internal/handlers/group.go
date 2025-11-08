@@ -27,12 +27,12 @@ type GroupRequest struct {
 	GroupMeEnabled bool   `json:"groupme_enabled"`
 }
 
-// isValidGroupMeBotID validates the GroupMe bot ID format (40-char hex string)
+// isValidGroupMeBotID validates the GroupMe bot ID format (26-char hex string)
 func isValidGroupMeBotID(id string) bool {
 	if id == "" {
 		return true // allow empty (not configured)
 	}
-	if len(id) != 40 {
+	if len(id) != 26 {
 		return false
 	}
 	for _, c := range id {
@@ -175,7 +175,7 @@ func CreateGroup(db *gorm.DB) gin.HandlerFunc {
 
 		// Validate GroupMeBotID
 		if !isValidGroupMeBotID(req.GroupMeBotID) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid GroupMe bot ID. Must be a 40-character hexadecimal string."})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid GroupMe bot ID. Must be a 26-character hexadecimal string."})
 			return
 		}
 
@@ -221,7 +221,7 @@ func UpdateGroup(db *gorm.DB) gin.HandlerFunc {
 		group.HasProtocols = req.HasProtocols
 		// Validate GroupMeBotID
 		if !isValidGroupMeBotID(req.GroupMeBotID) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid GroupMe bot ID. Must be a 40-character hexadecimal string."})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid GroupMe bot ID. Must be a 26-character hexadecimal string."})
 			return
 		}
 		group.GroupMeBotID = req.GroupMeBotID
