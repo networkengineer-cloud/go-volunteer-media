@@ -444,7 +444,7 @@ func TestCreateGroup(t *testing.T) {
 			name: "accepts valid GroupMe bot id",
 			payload: map[string]interface{}{
 				"name":           "GroupMe Valid",
-				"groupme_bot_id": "0123456789abcdef0123456789abcdef01234567",
+				"groupme_bot_id": "abcdef0123456789abcdef0123",
 			},
 			expectedStatus: http.StatusCreated,
 			checkFunc: func(t *testing.T, db *gorm.DB, w *httptest.ResponseRecorder) {
@@ -452,7 +452,7 @@ func TestCreateGroup(t *testing.T) {
 				if err := json.Unmarshal(w.Body.Bytes(), &group); err != nil {
 					t.Fatalf("Failed to unmarshal response: %v", err)
 				}
-				if group.GroupMeBotID != "0123456789abcdef0123456789abcdef01234567" {
+				if group.GroupMeBotID != "abcdef0123456789abcdef0123" {
 					t.Errorf("Expected GroupMeBotID to be set, got '%s'", group.GroupMeBotID)
 				}
 			},
@@ -581,7 +581,7 @@ func TestUpdateGroup(t *testing.T) {
 			},
 			payload: map[string]interface{}{
 				"name":           "GroupMe Update",
-				"groupme_bot_id": "0123456789abcdef0123456789abcdef01234567",
+				"groupme_bot_id": "abcdef0123456789abcdef0123",
 			},
 			expectedStatus: http.StatusOK,
 			checkFunc: func(t *testing.T, db *gorm.DB, groupID uint) {
@@ -589,7 +589,7 @@ func TestUpdateGroup(t *testing.T) {
 				if err := db.First(&group, groupID).Error; err != nil {
 					t.Fatalf("Failed to find updated group: %v", err)
 				}
-				if group.GroupMeBotID != "0123456789abcdef0123456789abcdef01234567" {
+				if group.GroupMeBotID != "abcdef0123456789abcdef0123" {
 					t.Errorf("Expected GroupMeBotID to be set, got '%s'", group.GroupMeBotID)
 				}
 			},
@@ -883,12 +883,13 @@ func TestIsValidGroupMeBotID(t *testing.T) {
 		want bool
 	}{
 		{"empty is valid", "", true},
-		{"valid lowercase hex", "0123456789abcdef0123456789abcdef01234567", true},
-		{"valid uppercase hex", "0123456789ABCDEF0123456789ABCDEF01234567", true},
+		{"valid lowercase hex", "0123456789abcdef0123456789", true},
+		{"valid uppercase hex", "0123456789ABCDEF0123456789", true},
+		{"valid mixed case", "0123456789aBcDeF0123456789", true},
 		{"too short", "0123456789abcdef", false},
 		{"too long", "0123456789abcdef0123456789abcdef0123456789abcdef", false},
-		{"non-hex char", "0123456789abcdef0123456789abcdef0123456g", false},
-		{"special chars", "0123456789abcdef0123456789abcdef0123456!", false},
+		{"non-hex char", "0123456789abcdef012345678g", false},
+		{"special chars", "0123456789abcdef012345678!", false},
 	}
 
 	for _, tt := range tests {
