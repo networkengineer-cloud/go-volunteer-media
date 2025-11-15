@@ -46,25 +46,27 @@ type Group struct {
 
 // Animal represents an animal in a group
 type Animal struct {
-	ID                  uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt           time.Time      `json:"created_at"`
-	UpdatedAt           time.Time      `json:"updated_at"`
-	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`
-	GroupID             uint           `gorm:"not null;index:idx_animal_group_status" json:"group_id"`
-	Name                string         `gorm:"not null" json:"name"`
-	Species             string         `json:"species"`
-	Breed               string         `json:"breed"`
-	Age                 int            `json:"age"`
-	Description         string         `json:"description"`
-	ImageURL            string         `json:"image_url"`
-	Status              string         `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, foster, bite_quarantine, archived
-	ArrivalDate         *time.Time     `json:"arrival_date"`                                                     // When animal first became available
-	FosterStartDate     *time.Time     `json:"foster_start_date"`                                                // When animal went to foster
-	QuarantineStartDate *time.Time     `json:"quarantine_start_date"`                                            // When bite quarantine started
-	ArchivedDate        *time.Time     `json:"archived_date"`                                                    // When animal was archived
-	LastStatusChange    *time.Time     `json:"last_status_change"`                                               // Timestamp of last status change
-	ReturnCount         int            `gorm:"default:0" json:"return_count"`                                    // Number of times animal has returned to shelter after being archived
-	Tags                []AnimalTag    `gorm:"many2many:animal_animal_tags;" json:"tags,omitempty"`              // Tags associated with this animal
+	ID                  uint                `gorm:"primaryKey" json:"id"`
+	CreatedAt           time.Time           `json:"created_at"`
+	UpdatedAt           time.Time           `json:"updated_at"`
+	DeletedAt           gorm.DeletedAt      `gorm:"index" json:"-"`
+	GroupID             uint                `gorm:"not null;index:idx_animal_group_status" json:"group_id"`
+	Name                string              `gorm:"not null" json:"name"`
+	Species             string              `json:"species"`
+	Breed               string              `json:"breed"`
+	Age                 int                 `json:"age"`
+	Description         string              `json:"description"`
+	ImageURL            string              `json:"image_url"`
+	Status              string              `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, foster, bite_quarantine, archived
+	ArrivalDate         *time.Time          `json:"arrival_date"`                                                     // When animal first became available
+	FosterStartDate     *time.Time          `json:"foster_start_date"`                                                // When animal went to foster
+	QuarantineStartDate *time.Time          `json:"quarantine_start_date"`                                            // When bite quarantine started
+	ArchivedDate        *time.Time          `json:"archived_date"`                                                    // When animal was archived
+	LastStatusChange    *time.Time          `json:"last_status_change"`                                               // Timestamp of last status change
+	ReturnCount         int                 `gorm:"default:0" json:"return_count"`                                    // Number of times animal has returned to shelter after being archived
+	IsReturned          bool                `gorm:"default:false" json:"is_returned"`                                 // Indicates if archived animal is a return (not all archived animals are returns)
+	Tags                []AnimalTag         `gorm:"many2many:animal_animal_tags;" json:"tags,omitempty"`              // Tags associated with this animal
+	NameHistory         []AnimalNameHistory `gorm:"foreignKey:AnimalID" json:"name_history,omitempty"`                // History of name changes for this animal
 }
 
 // LengthOfStay returns the number of days since the animal's arrival date
@@ -186,4 +188,14 @@ type AnimalTag struct {
 	Name      string         `gorm:"uniqueIndex;not null" json:"name"`
 	Category  string         `gorm:"not null" json:"category"` // "behavior" or "walker_status"
 	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
+}
+
+// AnimalNameHistory tracks name changes for an animal
+type AnimalNameHistory struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time `gorm:"index:idx_name_history_animal" json:"created_at"`
+	AnimalID  uint      `gorm:"not null;index:idx_name_history_animal" json:"animal_id"`
+	OldName   string    `gorm:"not null" json:"old_name"`
+	NewName   string    `gorm:"not null" json:"new_name"`
+	ChangedBy uint      `gorm:"not null" json:"changed_by"` // User ID who made the change
 }

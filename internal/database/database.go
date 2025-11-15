@@ -106,6 +106,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.SiteSetting{},
 		&models.Protocol{},
 		&models.AnimalTag{},
+		&models.AnimalNameHistory{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

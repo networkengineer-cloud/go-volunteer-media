@@ -59,6 +59,15 @@ export interface Protocol {
   updated_at: string;
 }
 
+export interface AnimalNameHistory {
+  id: number;
+  created_at: string;
+  animal_id: number;
+  old_name: string;
+  new_name: string;
+  changed_by: number;
+}
+
 export interface Animal {
   id: number;
   group_id: number;
@@ -75,7 +84,9 @@ export interface Animal {
   archived_date?: string;
   last_status_change?: string;
   return_count: number;
+  is_returned: boolean;
   tags?: AnimalTag[];
+  name_history?: AnimalNameHistory[];
 }
 
 export interface Update {

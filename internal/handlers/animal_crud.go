@@ -73,7 +73,7 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animal models.Animal
-		if err := db.Preload("Tags").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+		if err := db.Preload("Tags").Preload("NameHistory").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}
@@ -138,6 +138,12 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 			}
 		case "archived":
 			animal.ArchivedDate = &now
+			// Set is_returned based on request, default to false
+			if req.IsReturned != nil {
+				animal.IsReturned = *req.IsReturned
+			} else {
+				animal.IsReturned = false
+			}
 		}
 
 		if err := db.Create(&animal).Error; err != nil {
@@ -175,6 +181,22 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Track name changes
+		oldName := animal.Name
+		if req.Name != oldName {
+			// Create name history record
+			nameHistory := models.AnimalNameHistory{
+				AnimalID:  animal.ID,
+				OldName:   oldName,
+				NewName:   req.Name,
+				ChangedBy: userID.(uint),
+			}
+			if err := db.Create(&nameHistory).Error; err != nil {
+				// Log error but don't fail the update
+				c.Error(err)
+			}
+		}
+
 		// Track status changes
 		oldStatus := animal.Status
 		newStatus := req.Status
@@ -193,6 +215,7 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.FosterStartDate = nil
 				animal.QuarantineStartDate = nil
 				animal.ArchivedDate = nil
+				animal.IsReturned = false // Clear is_returned flag when no longer archived
 			case "foster":
 				animal.FosterStartDate = &now
 				animal.QuarantineStartDate = nil
@@ -208,12 +231,21 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.ArchivedDate = nil
 			case "archived":
 				animal.ArchivedDate = &now
+				// Set is_returned based on request, default to false
+				if req.IsReturned != nil {
+					animal.IsReturned = *req.IsReturned
+				} else {
+					animal.IsReturned = false
+				}
 			}
 			animal.Status = newStatus
 		} else if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil && animal.Status == "bite_quarantine" {
 			// Update quarantine start date if provided and animal is already in quarantine status
 			// This handles the case where only the date is being updated without status change
 			animal.QuarantineStartDate = req.QuarantineStartDate.Time
+		} else if animal.Status == "archived" && req.IsReturned != nil {
+			// Update is_returned flag when editing an archived animal
+			animal.IsReturned = *req.IsReturned
 		}
 
 		// Update other fields

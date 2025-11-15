@@ -398,6 +398,29 @@ const AnimalDetailPage: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Name History Section */}
+              {animal.name_history && animal.name_history.length > 0 && (
+                <div className="name-history-section">
+                  <h3>Previous Names</h3>
+                  <div className="name-history-list">
+                    {animal.name_history.map((history) => (
+                      <div key={history.id} className="name-history-item">
+                        <span className="name-history-old">{history.old_name}</span>
+                        <span className="name-history-arrow">→</span>
+                        <span className="name-history-new">{history.new_name}</span>
+                        <span className="name-history-date">
+                          {new Date(history.created_at).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric', 
+                            year: 'numeric' 
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               {isAdmin && (
                 <button onClick={handleEdit} className="btn-edit">
