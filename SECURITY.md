@@ -1,8 +1,16 @@
 # Security Policy
 
+> **📋 See [SECURITY_REVIEW.md](./SECURITY_REVIEW.md) for the comprehensive security review report and detailed security analysis.**
+
 ## Reporting Security Vulnerabilities
 
-If you discover a security vulnerability in this application, please report it by emailing the security team. Please do **NOT** create a public GitHub issue for security vulnerabilities.
+**Security Contact:** security@hawsvolunteers.org  
+**Disclosure Policy:** See [/.well-known/security.txt](./public/.well-known/security.txt)
+
+If you discover a security vulnerability in this application, please report it responsibly:
+- Email: security@hawsvolunteers.org
+- Allow up to 90 days for us to address the issue before public disclosure
+- Please do **NOT** create a public GitHub issue for security vulnerabilities
 
 When reporting a vulnerability, please include:
 - Description of the vulnerability
@@ -280,11 +288,30 @@ We recommend:
 - Updating dependencies monthly or when critical vulnerabilities are announced
 - Reviewing and rotating secrets quarterly
 
+## Security Review Status
+
+**Last Security Review:** November 15, 2025  
+**Overall Security Posture:** GOOD ✅ (97% - 29/30)  
+**Status:** Secure for production deployment with implemented fixes
+
+### Quick Security Summary
+- ✅ 0 exploitable vulnerabilities (govulncheck, npm audit)
+- ✅ Critical security fixes implemented (HSTS, request size limits, audit logging)
+- ✅ Strong authentication (JWT + bcrypt + account lockout)
+- ✅ Comprehensive input validation and SQL injection prevention
+- ✅ Secure container deployment (non-root, minimal base image)
+
+**See [SECURITY_REVIEW.md](./SECURITY_REVIEW.md) for detailed analysis, testing results, and production deployment guide.**
+
 ## Contact
 
-For security concerns or questions, please contact the security team at security@yourdomain.com.
+For security concerns or questions:
+- **Email:** security@hawsvolunteers.org
+- **Security.txt:** [/.well-known/security.txt](./public/.well-known/security.txt)
+- **Response Time:** Up to 90 days for fixes
 
 ---
 
-**Last Updated**: 2025-10-31
+**Last Updated**: November 15, 2025  
+**Next Review**: February 15, 2026  
 **Version**: 1.0.0

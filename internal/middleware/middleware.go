@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 )
 
 // CORS middleware to handle cross-origin requests
@@ -54,8 +55,16 @@ func contains(slice []string, str string) bool {
 // AuthRequired middleware to protect routes
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
+			// Log unauthorized access attempt
+			logger := GetLogger(c)
+			logger.WithFields(map[string]interface{}{
+				"ip":       c.ClientIP(),
+				"endpoint": c.Request.URL.Path,
+				"method":   c.Request.Method,
+			}).Warn("Authorization header missing")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
 			c.Abort()
 			return
@@ -64,6 +73,12 @@ func AuthRequired() gin.HandlerFunc {
 		// Extract token from "Bearer <token>"
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
+			logger := GetLogger(c)
+			logger.WithFields(map[string]interface{}{
+				"ip":       c.ClientIP(),
+				"endpoint": c.Request.URL.Path,
+				"method":   c.Request.Method,
+			}).Warn("Invalid authorization format")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization format"})
 			c.Abort()
 			return
@@ -72,6 +87,18 @@ func AuthRequired() gin.HandlerFunc {
 		token := parts[1]
 		claims, err := auth.ValidateToken(token)
 		if err != nil {
+			// Log invalid token attempt
+			logger := GetLogger(c)
+			logger.WithFields(map[string]interface{}{
+				"ip":       c.ClientIP(),
+				"endpoint": c.Request.URL.Path,
+				"method":   c.Request.Method,
+				"error":    err.Error(),
+			}).Warn("Invalid or expired token")
+			
+			// Use audit logger for security event
+			logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "invalid_token")
+			
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
 			return
@@ -87,8 +114,22 @@ func AuthRequired() gin.HandlerFunc {
 // AdminRequired middleware to restrict access to admin users only
 func AdminRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		isAdmin, exists := c.Get("is_admin")
 		if !exists || !isAdmin.(bool) {
+			// Log unauthorized admin access attempt
+			logger := GetLogger(c)
+			userID, _ := c.Get("user_id")
+			logger.WithFields(map[string]interface{}{
+				"ip":       c.ClientIP(),
+				"endpoint": c.Request.URL.Path,
+				"method":   c.Request.Method,
+				"user_id":  userID,
+			}).Warn("Admin access denied - insufficient privileges")
+			
+			// Use audit logger for security event
+			logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "insufficient_privileges")
+			
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			c.Abort()
 			return

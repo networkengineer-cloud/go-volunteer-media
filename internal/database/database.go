@@ -83,6 +83,10 @@ func Initialize() (*gorm.DB, error) {
 	// SetConnMaxIdleTime sets the maximum amount of time a connection may be idle
 	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 
+	// Add statement timeout for query security (prevent long-running queries)
+	// This is a PostgreSQL-specific setting that prevents queries from running indefinitely
+	db.Exec("SET statement_timeout = '30s'")
+
 	logging.Info("Database connection established")
 	return db, nil
 }

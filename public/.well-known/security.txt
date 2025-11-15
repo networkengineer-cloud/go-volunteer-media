@@ -1,0 +1,30 @@
+Contact: mailto:security@hawsvolunteers.org
+Expires: 2026-12-31T23:59:59.000Z
+Preferred-Languages: en
+Canonical: https://hawsvolunteers.org/.well-known/security.txt
+
+# Security Policy
+
+If you discover a security vulnerability in this application, please report it responsibly:
+
+1. Email security@hawsvolunteers.org with details of the vulnerability
+2. Include steps to reproduce the issue
+3. Do not publicly disclose the vulnerability until we've had a chance to address it
+4. Allow up to 90 days for us to address the issue before public disclosure
+
+We appreciate responsible disclosure and will acknowledge security researchers who help us improve the security of our application.
+
+# Scope
+
+This security policy applies to:
+- The go-volunteer-media web application
+- API endpoints at /api/*
+- Authentication and authorization mechanisms
+- Data storage and handling
+
+Out of scope:
+- Third-party dependencies (unless the vulnerability is in our configuration)
+- Social engineering attacks
+- Physical security
+
+Thank you for helping keep our application secure!
