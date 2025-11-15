@@ -289,9 +289,20 @@ const AnimalDetailPage: React.FC = () => {
             <div className="animal-details">
               <h1>{animal.name}</h1>
               <p className="animal-meta">
-                {animal.breed && `${animal.breed} • `}{animal.age} years old
+                {animal.breed && `${animal.breed} • `}{animal.age} years old • ID: {animal.id}
               </p>
-              <span className={`status ${animal.status}`}>{animal.status}</span>
+              <div className="status-badges">
+                <span className={`status ${animal.status}`}>{animal.status}</span>
+                {animal.return_count > 0 && (
+                  <span 
+                    className="badge badge-returning" 
+                    title={`This animal has returned to the shelter ${animal.return_count} time${animal.return_count > 1 ? 's' : ''} after being previously archived`}
+                    aria-label={`Returning animal - ${animal.return_count} return${animal.return_count > 1 ? 's' : ''}`}
+                  >
+                    ↩ Returned {animal.return_count}×
+                  </span>
+                )}
+              </div>
               {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
                 <div className="quarantine-info">
                   <p className="quarantine-notice">

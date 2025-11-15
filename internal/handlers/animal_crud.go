@@ -185,7 +185,11 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			// Update status-specific dates
 			switch newStatus {
 			case "available":
-				// When moving back to available, clear specific status dates
+				// When moving back to available from archived, increment return count
+				if oldStatus == "archived" {
+					animal.ReturnCount++
+				}
+				// Clear specific status dates
 				animal.FosterStartDate = nil
 				animal.QuarantineStartDate = nil
 				animal.ArchivedDate = nil

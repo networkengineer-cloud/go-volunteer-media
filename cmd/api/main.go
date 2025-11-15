@@ -213,6 +213,7 @@ func main() {
 			// Animal routes - viewing accessible to all group members
 			group.GET("/animals", handlers.GetAnimals(db))
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
+			group.GET("/animals/check-duplicates", handlers.CheckDuplicateNames(db))
 
 			// Animal comments - all group members can view and add comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
