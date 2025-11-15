@@ -988,10 +988,13 @@ func TestUpdateAnimal_CustomQuarantineDate(t *testing.T) {
 
 	customDate := time.Now().AddDate(0, 0, -7) // 7 days ago
 	updateReq := AnimalRequest{
-		Name:                "Rex",
-		Species:             "Dog",
-		Status:              "bite_quarantine",
-		QuarantineStartDate: &customDate,
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &customDate,
+			Valid: true,
+		},
 	}
 
 	jsonData, _ := json.Marshal(updateReq)
@@ -1312,5 +1315,73 @@ func TestBulkUpdateAnimals_PartialSuccess(t *testing.T) {
 
 	if animal2Updated.Status != "foster" {
 		t.Errorf("Expected animal2 status 'foster', got '%s'", animal2Updated.Status)
+	}
+}
+
+// TestUpdateAnimal_EmptyQuarantineDateString tests that empty string for quarantine_start_date doesn't cause parsing error
+// This reproduces the bug where frontend sends "" instead of null
+func TestUpdateAnimal_EmptyQuarantineDateString(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	animal := createTestAnimal(t, db, group.ID, "Daisy", "Dog")
+
+	tests := []struct {
+		name       string
+		jsonBody   string
+		wantStatus int
+		wantError  bool
+	}{
+		{
+			name:       "empty string for quarantine_start_date",
+			jsonBody:   `{"name":"Daisy","species":"Dog","breed":"Border Collie","age":3,"description":"Smart dog","status":"foster","quarantine_start_date":""}`,
+			wantStatus: http.StatusOK,
+			wantError:  false,
+		},
+		{
+			name:       "null for quarantine_start_date",
+			jsonBody:   `{"name":"Daisy","species":"Dog","breed":"Border Collie","age":3,"description":"Smart dog","status":"available","quarantine_start_date":null}`,
+			wantStatus: http.StatusOK,
+			wantError:  false,
+		},
+		{
+			name:       "omitted quarantine_start_date",
+			jsonBody:   `{"name":"Daisy","species":"Dog","breed":"Border Collie","age":3,"description":"Smart dog","status":"available"}`,
+			wantStatus: http.StatusOK,
+			wantError:  false,
+		},
+		{
+			name:       "valid quarantine_start_date with quarantine status",
+			jsonBody:   `{"name":"Daisy","species":"Dog","breed":"Border Collie","age":3,"description":"Smart dog","status":"bite_quarantine","quarantine_start_date":"2024-01-15T10:00:00Z"}`,
+			wantStatus: http.StatusOK,
+			wantError:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, w := setupAnimalTestContext(user.ID, false)
+			c.Params = gin.Params{
+				{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+				{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+			}
+			c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBufferString(tt.jsonBody))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			handler := UpdateAnimal(db)
+			handler(c)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.wantStatus, w.Code, w.Body.String())
+			}
+
+			if tt.wantError && w.Code == http.StatusOK {
+				t.Error("Expected an error but got success")
+			}
+
+			if !tt.wantError && w.Code != http.StatusOK {
+				t.Errorf("Expected success but got error: %s", w.Body.String())
+			}
+		})
 	}
 }

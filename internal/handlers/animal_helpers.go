@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -10,17 +11,65 @@ import (
 	"gorm.io/gorm"
 )
 
+// NullableTime is a custom type that handles empty strings from JSON
+// Empty strings are treated as nil, while valid timestamps are parsed normally
+type NullableTime struct {
+	Time  *time.Time
+	Valid bool
+}
+
+// UnmarshalJSON implements custom unmarshaling for NullableTime
+// It handles empty strings ("") by treating them as null values
+func (nt *NullableTime) UnmarshalJSON(data []byte) error {
+	// Handle null explicitly
+	if string(data) == "null" {
+		nt.Time = nil
+		nt.Valid = false
+		return nil
+	}
+
+	// Handle empty string by treating it as null
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	
+	if s == "" {
+		nt.Time = nil
+		nt.Valid = false
+		return nil
+	}
+
+	// Parse the time string
+	var t time.Time
+	if err := json.Unmarshal(data, &t); err != nil {
+		return err
+	}
+
+	nt.Time = &t
+	nt.Valid = true
+	return nil
+}
+
+// MarshalJSON implements custom marshaling for NullableTime
+func (nt NullableTime) MarshalJSON() ([]byte, error) {
+	if !nt.Valid || nt.Time == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(nt.Time)
+}
+
 // AnimalRequest represents the request structure for creating/updating animals
 type AnimalRequest struct {
-	Name                string     `json:"name" binding:"required"`
-	Species             string     `json:"species"`
-	Breed               string     `json:"breed"`
-	Age                 int        `json:"age"`
-	Description         string     `json:"description"`
-	ImageURL            string     `json:"image_url,omitempty"`
-	Status              string     `json:"status"`
-	GroupID             uint       `json:"group_id,omitempty"`
-	QuarantineStartDate *time.Time `json:"quarantine_start_date,omitempty"`
+	Name                string       `json:"name" binding:"required"`
+	Species             string       `json:"species"`
+	Breed               string       `json:"breed"`
+	Age                 int          `json:"age"`
+	Description         string       `json:"description"`
+	ImageURL            string       `json:"image_url,omitempty"`
+	Status              string       `json:"status"`
+	GroupID             uint         `json:"group_id,omitempty"`
+	QuarantineStartDate NullableTime `json:"quarantine_start_date,omitempty"`
 }
 
 // DuplicateNameInfo represents information about animals with duplicate names

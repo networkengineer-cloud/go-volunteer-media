@@ -217,11 +217,17 @@ const AnimalForm: React.FC = () => {
     try {
       let animalId = id ? parseInt(id) : null;
       
+      // Clean up formData: convert empty quarantine_start_date to null
+      const cleanedFormData = {
+        ...formData,
+        quarantine_start_date: formData.quarantine_start_date || null,
+      };
+      
       if (id && groupId) {
-        await animalsApi.update(parseInt(groupId), parseInt(id), formData);
+        await animalsApi.update(parseInt(groupId), parseInt(id), cleanedFormData);
         toast.showSuccess('Animal updated successfully!');
       } else if (groupId) {
-        const response = await animalsApi.create(parseInt(groupId), formData);
+        const response = await animalsApi.create(parseInt(groupId), cleanedFormData);
         animalId = response.data.id;
         toast.showSuccess('Animal added successfully!');
       }
