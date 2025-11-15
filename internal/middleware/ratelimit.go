@@ -105,6 +105,14 @@ func RateLimit(rate int, window time.Duration) gin.HandlerFunc {
 		clientIP := c.ClientIP()
 
 		if !limiter.Allow(clientIP) {
+			// Log rate limit exceeded with request ID for tracing
+			logger := GetLogger(c)
+			logger.WithFields(map[string]interface{}{
+				"ip":       clientIP,
+				"endpoint": c.Request.URL.Path,
+				"method":   c.Request.Method,
+			}).Warn("Rate limit exceeded")
+			
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"error": "Too many requests. Please try again later.",
 			})
@@ -127,6 +135,13 @@ func RateLimitByUser(rate int, window time.Duration) gin.HandlerFunc {
 			// If no user context, fall back to IP-based rate limiting
 			clientIP := c.ClientIP()
 			if !limiter.Allow(clientIP) {
+				logger := GetLogger(c)
+				logger.WithFields(map[string]interface{}{
+					"ip":       clientIP,
+					"endpoint": c.Request.URL.Path,
+					"method":   c.Request.Method,
+				}).Warn("Rate limit exceeded (unauthenticated)")
+				
 				c.JSON(http.StatusTooManyRequests, gin.H{
 					"error": "Too many requests. Please try again later.",
 				})
@@ -137,6 +152,13 @@ func RateLimitByUser(rate int, window time.Duration) gin.HandlerFunc {
 			// Use user ID as the key
 			key := fmt.Sprintf("user_%d", userID.(uint))
 			if !limiter.Allow(key) {
+				logger := GetLogger(c)
+				logger.WithFields(map[string]interface{}{
+					"user_id":  userID,
+					"endpoint": c.Request.URL.Path,
+					"method":   c.Request.Method,
+				}).Warn("Rate limit exceeded (authenticated)")
+				
 				c.JSON(http.StatusTooManyRequests, gin.H{
 					"error": "Too many requests. Please try again later.",
 				})

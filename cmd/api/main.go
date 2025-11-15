@@ -96,6 +96,9 @@ func main() {
 	// Structured logging middleware
 	router.Use(middleware.LoggingMiddleware())
 
+	// Max request body size middleware (10MB default, prevents DOS attacks)
+	router.Use(middleware.MaxRequestBodySize(10 * 1024 * 1024))
+
 	// CORS middleware
 	router.Use(middleware.CORS())
 
@@ -107,6 +110,9 @@ func main() {
 	// Serve uploaded images and default assets
 	router.Static("/uploads", "./public/uploads")
 	router.StaticFile("/default-hero.svg", "./public/default-hero.svg")
+	
+	// Serve security.txt for responsible vulnerability disclosure
+	router.StaticFile("/.well-known/security.txt", "./public/.well-known/security.txt")
 
 	// API routes
 	api := router.Group("/api")

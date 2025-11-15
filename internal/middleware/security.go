@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"os"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -35,9 +37,11 @@ func SecurityHeaders() gin.HandlerFunc {
 		// Permissions policy - restrict feature access
 		c.Header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 
-		// HSTS - only over HTTPS in production
-		// Note: Only enable this if you have HTTPS configured
-		// c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		// HSTS - enable in production when HTTPS is configured
+		// Check if running in production and enable HSTS
+		if os.Getenv("ENV") == "production" || os.Getenv("ENABLE_HSTS") == "true" {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+		}
 
 		c.Next()
 	}
