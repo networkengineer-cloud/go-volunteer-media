@@ -210,10 +210,9 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.ArchivedDate = &now
 			}
 			animal.Status = newStatus
-		}
-
-		// Update quarantine start date if provided and animal is in quarantine status
-		if req.QuarantineStartDate != nil && animal.Status == "bite_quarantine" {
+		} else if req.QuarantineStartDate != nil && animal.Status == "bite_quarantine" {
+			// Update quarantine start date if provided and animal is already in quarantine status
+			// This handles the case where only the date is being updated without status change
 			animal.QuarantineStartDate = req.QuarantineStartDate
 		}
 

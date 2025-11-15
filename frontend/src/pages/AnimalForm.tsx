@@ -19,11 +19,9 @@ const AnimalForm: React.FC = () => {
   const [quarantineContext, setQuarantineContext] = useState('');
   const [quarantineDate, setQuarantineDate] = useState('');
   const [originalStatus, setOriginalStatus] = useState('');
-  const [originalName, setOriginalName] = useState('');
   const [availableTags, setAvailableTags] = useState<AnimalTag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [duplicateInfo, setDuplicateInfo] = useState<DuplicateNameInfo | null>(null);
-  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     species: '',
@@ -52,7 +50,6 @@ const AnimalForm: React.FC = () => {
       return;
     }
 
-    setCheckingDuplicates(true);
     try {
       const response = await animalsApi.checkDuplicates(parseInt(groupId), name.trim());
       // Filter out the current animal if editing
@@ -69,8 +66,6 @@ const AnimalForm: React.FC = () => {
     } catch (error) {
       console.error('Failed to check for duplicates:', error);
       setDuplicateInfo(null);
-    } finally {
-      setCheckingDuplicates(false);
     }
   }, [groupId]);
 
@@ -83,7 +78,6 @@ const AnimalForm: React.FC = () => {
         quarantine_start_date: animal.quarantine_start_date || '',
       });
       setOriginalStatus(animal.status);
-      setOriginalName(animal.name);
       // Set selected tags
       if (animal.tags) {
         setSelectedTagIds(animal.tags.map(tag => tag.id));
