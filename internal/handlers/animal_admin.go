@@ -68,8 +68,8 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				updates["archived_date"] = nil
 			case "bite_quarantine":
 				// Use provided quarantine start date if available, otherwise use current time
-				if req.QuarantineStartDate != nil {
-					updates["quarantine_start_date"] = *req.QuarantineStartDate
+				if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
+					updates["quarantine_start_date"] = *req.QuarantineStartDate.Time
 				} else {
 					updates["quarantine_start_date"] = now
 				}
@@ -83,8 +83,8 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 			updates["group_id"] = req.GroupID
 		}
 		// Update quarantine start date if provided and status is quarantine
-		if req.QuarantineStartDate != nil && (req.Status == "bite_quarantine" || animal.Status == "bite_quarantine") {
-			updates["quarantine_start_date"] = *req.QuarantineStartDate
+		if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil && (req.Status == "bite_quarantine" || animal.Status == "bite_quarantine") {
+			updates["quarantine_start_date"] = *req.QuarantineStartDate.Time
 		}
 
 		if len(updates) == 0 {
