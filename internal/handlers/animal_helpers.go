@@ -70,6 +70,7 @@ type AnimalRequest struct {
 	Status              string       `json:"status"`
 	GroupID             uint         `json:"group_id,omitempty"`
 	QuarantineStartDate NullableTime `json:"quarantine_start_date,omitempty"`
+	IsReturned          *bool        `json:"is_returned,omitempty"` // Pointer to distinguish null from false
 }
 
 // DuplicateNameInfo represents information about animals with duplicate names

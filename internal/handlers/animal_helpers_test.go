@@ -25,7 +25,7 @@ func setupAnimalTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Run migrations
-	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.Animal{}, &models.AnimalTag{})
+	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.Animal{}, &models.AnimalTag{}, &models.AnimalNameHistory{})
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
 	}

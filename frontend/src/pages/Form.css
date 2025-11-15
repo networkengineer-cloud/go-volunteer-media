@@ -378,3 +378,25 @@
 [data-theme='dark'] .duplicate-warning-footer {
   border-top-color: rgba(180, 83, 9, 0.4);
 }
+
+/* Simple checkbox label for returned status */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 1.125rem;
+  height: 1.125rem;
+  cursor: pointer;
+  accent-color: var(--brand, #0e6c55);
+}
+
+.checkbox-label:hover {
+  color: var(--brand, #0e6c55);
+}
