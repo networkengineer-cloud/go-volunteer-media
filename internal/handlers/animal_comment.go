@@ -16,7 +16,7 @@ type AnimalCommentRequest struct {
 	TagIDs   []uint `json:"tag_ids"` // Array of tag IDs to attach
 }
 
-// GetAnimalComments returns all comments for an animal
+// GetAnimalComments returns comments for an animal with pagination support
 func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupID := c.Param("id")
@@ -37,32 +37,81 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-	// Get filter parameter (comma-separated tag names)
-	tagFilter := c.Query("tags")
-
-	query := db.Preload("User").Preload("Tags").Where("animal_id = ?", animalID)
-
-	// Apply tag filter if provided (multiple tags = OR logic)
-	if tagFilter != "" {
-		tagNames := strings.Split(tagFilter, ",")
-		// Trim whitespace from tag names
-		for i, name := range tagNames {
-			tagNames[i] = strings.TrimSpace(name)
+		// Get pagination parameters
+		limit := 10 // Default limit
+		if limitParam := c.Query("limit"); limitParam != "" {
+			if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+				if limit > 100 {
+					limit = 100 // Max 100 per page
+				}
+			}
 		}
-		
-		query = query.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
-			Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
-			Where("comment_tags.name IN ?", tagNames).
-			Group("animal_comments.id")
-	}
 
-	var comments []models.AnimalComment
-		if err := query.Order("created_at DESC").Find(&comments).Error; err != nil {
+		offset := 0
+		if offsetParam := c.Query("offset"); offsetParam != "" {
+			if parsedOffset, err := strconv.Atoi(offsetParam); err == nil && parsedOffset >= 0 {
+				offset = parsedOffset
+			}
+		}
+
+		// Get sort order (default: DESC for newest first)
+		sortOrder := "DESC"
+		if order := c.Query("order"); order == "asc" || order == "ASC" {
+			sortOrder = "ASC"
+		}
+
+		// Get filter parameter (comma-separated tag names)
+		tagFilter := c.Query("tags")
+
+		query := db.Preload("User").Preload("Tags").Where("animal_id = ?", animalID)
+
+		// Apply tag filter if provided (multiple tags = OR logic)
+		if tagFilter != "" {
+			tagNames := strings.Split(tagFilter, ",")
+			// Trim whitespace from tag names
+			for i, name := range tagNames {
+				tagNames[i] = strings.TrimSpace(name)
+			}
+
+			query = query.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
+				Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
+				Where("comment_tags.name IN ?", tagNames).
+				Group("animal_comments.id")
+		}
+
+		// Get total count
+		var total int64
+		countQuery := db.Model(&models.AnimalComment{}).Where("animal_id = ?", animalID)
+		if tagFilter != "" {
+			tagNames := strings.Split(tagFilter, ",")
+			for i, name := range tagNames {
+				tagNames[i] = strings.TrimSpace(name)
+			}
+			countQuery = countQuery.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
+				Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
+				Where("comment_tags.name IN ?", tagNames).
+				Group("animal_comments.id")
+		}
+		if err := countQuery.Count(&total).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count comments"})
+			return
+		}
+
+		var comments []models.AnimalComment
+		if err := query.Order("created_at " + sortOrder).Limit(limit).Offset(offset).Find(&comments).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
 			return
 		}
 
-		c.JSON(http.StatusOK, comments)
+		// Return paginated response
+		c.JSON(http.StatusOK, gin.H{
+			"comments": comments,
+			"total":    total,
+			"limit":    limit,
+			"offset":   offset,
+			"hasMore":  offset+len(comments) < int(total),
+		})
 	}
 }
 

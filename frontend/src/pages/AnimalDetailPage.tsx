@@ -45,15 +45,43 @@ const AnimalDetailPage: React.FC = () => {
   const [showCommentForm, setShowCommentForm] = useState(true);
   const [error, setError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Pagination state
+  const [totalComments, setTotalComments] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
+  const COMMENTS_PER_PAGE = 10;
 
-  const loadComments = useCallback(async (gId: number, animalId: number, filter: string) => {
+  const loadComments = useCallback(async (
+    gId: number, 
+    animalId: number, 
+    filter: string, 
+    offset: number = 0,
+    order: 'asc' | 'desc' = 'desc',
+    append: boolean = false
+  ) => {
     try {
-      const commentsRes = await animalCommentsApi.getAll(gId, animalId, filter);
-      setComments(commentsRes.data);
+      const commentsRes = await animalCommentsApi.getAll(gId, animalId, {
+        tagFilter: filter || undefined,
+        limit: COMMENTS_PER_PAGE,
+        offset,
+        order
+      });
+      
+      if (append) {
+        setComments(prev => [...prev, ...commentsRes.data.comments]);
+      } else {
+        setComments(commentsRes.data.comments);
+      }
+      
+      setTotalComments(commentsRes.data.total);
+      setHasMore(commentsRes.data.hasMore);
     } catch (error) {
       console.error('Failed to load comments:', error);
+      toast.showError('Failed to load comments. Please try again.');
     }
-  }, []);
+  }, [toast, COMMENTS_PER_PAGE]);
 
   const loadTags = useCallback(async () => {
     try {
@@ -78,7 +106,7 @@ const AnimalDetailPage: React.FC = () => {
       setError('');
       const animalRes = await animalsApi.getById(gId, animalId);
       setAnimal(animalRes.data);
-      await loadComments(gId, animalId, '');
+      await loadComments(gId, animalId, '', 0, sortOrder);
     } catch (error: unknown) {
       console.error('Failed to load animal data:', error);
       const errorMsg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to load animal information. Please try again.';
@@ -86,7 +114,7 @@ const AnimalDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [loadComments]);
+  }, [loadComments, sortOrder]);
 
   useEffect(() => {
     if (groupId && id) {
@@ -99,9 +127,9 @@ const AnimalDetailPage: React.FC = () => {
   useEffect(() => {
     if (groupId && id) {
       const tagFilterString = filterTags.join(',');
-      loadComments(Number(groupId), Number(id), tagFilterString);
+      loadComments(Number(groupId), Number(id), tagFilterString, 0, sortOrder);
     }
-  }, [filterTags, groupId, id, loadComments]);
+  }, [filterTags, groupId, id, loadComments, sortOrder]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -152,7 +180,15 @@ const AnimalDetailPage: React.FC = () => {
         commentImage,
         selectedTags.length > 0 ? selectedTags : undefined
       );
-      setComments([newComment.data, ...comments]);
+      
+      // Add new comment to the beginning or end based on sort order
+      if (sortOrder === 'desc') {
+        setComments([newComment.data, ...comments]);
+      } else {
+        setComments([...comments, newComment.data]);
+      }
+      
+      setTotalComments(prev => prev + 1);
       setCommentText('');
       setCommentImage('');
       setSelectedTags([]);
@@ -168,6 +204,30 @@ const AnimalDetailPage: React.FC = () => {
 
   const handleEdit = () => {
     navigate(`/groups/${groupId}/animals/${id}`);
+  };
+
+  const handleLoadMore = async () => {
+    if (!groupId || !id || loadingMore || !hasMore) return;
+    
+    setLoadingMore(true);
+    try {
+      const tagFilterString = filterTags.join(',');
+      await loadComments(
+        Number(groupId), 
+        Number(id), 
+        tagFilterString, 
+        comments.length,
+        sortOrder,
+        true // append
+      );
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const handleSortChange = () => {
+    const newOrder = sortOrder === 'desc' ? 'asc' : 'desc';
+    setSortOrder(newOrder);
   };
 
   const handleExportComments = async () => {
@@ -460,43 +520,62 @@ const AnimalDetailPage: React.FC = () => {
             </form>
           )}
 
-          <div className="tag-filters">
-            <button
-              className={filterTags.length === 0 ? 'tag-filter active' : 'tag-filter'}
-              onClick={() => setFilterTags([])}
-            >
-              All {filterTags.length === 0 && `(${comments.length})`}
-            </button>
-            {availableTags.map((tag) => {
-              const isActive = filterTags.includes(tag.name);
-              return (
-                <button
-                  key={tag.id}
-                  className={isActive ? 'tag-filter active' : 'tag-filter'}
-                  style={{ 
-                    borderColor: tag.color,
-                    backgroundColor: isActive ? tag.color : 'transparent',
-                    color: isActive ? 'white' : 'inherit'
-                  }}
-                  onClick={() => {
-                    if (isActive) {
-                      // Remove tag from filter
-                      setFilterTags(filterTags.filter(t => t !== tag.name));
-                    } else {
-                      // Add tag to filter
-                      setFilterTags([...filterTags, tag.name]);
-                    }
-                  }}
-                >
-                  {tag.name}
-                </button>
-              );
-            })}
-            {filterTags.length > 0 && (
-              <span className="filter-hint">
-                Showing comments with: {filterTags.join(' OR ')}
+          <div className="comments-controls">
+            <div className="comments-count-and-sort">
+              <span className="comments-count" aria-live="polite">
+                Showing {comments.length} of {totalComments} comment{totalComments !== 1 ? 's' : ''}
               </span>
-            )}
+              <button
+                onClick={handleSortChange}
+                className="btn-sort"
+                aria-label={`Sort comments ${sortOrder === 'desc' ? 'oldest first' : 'newest first'}`}
+                title={`Currently showing ${sortOrder === 'desc' ? 'newest' : 'oldest'} first. Click to reverse`}
+              >
+                {sortOrder === 'desc' ? '↓ Newest First' : '↑ Oldest First'}
+              </button>
+            </div>
+
+            <div className="tag-filters">
+              <button
+                className={filterTags.length === 0 ? 'tag-filter active' : 'tag-filter'}
+                onClick={() => setFilterTags([])}
+                aria-label="Show all comments"
+              >
+                All {filterTags.length === 0 && `(${totalComments})`}
+              </button>
+              {availableTags.map((tag) => {
+                const isActive = filterTags.includes(tag.name);
+                return (
+                  <button
+                    key={tag.id}
+                    className={isActive ? 'tag-filter active' : 'tag-filter'}
+                    style={{ 
+                      borderColor: tag.color,
+                      backgroundColor: isActive ? tag.color : 'transparent',
+                      color: isActive ? 'white' : 'inherit'
+                    }}
+                    onClick={() => {
+                      if (isActive) {
+                        // Remove tag from filter
+                        setFilterTags(filterTags.filter(t => t !== tag.name));
+                      } else {
+                        // Add tag to filter
+                        setFilterTags([...filterTags, tag.name]);
+                      }
+                    }}
+                    aria-label={`Filter by ${tag.name}`}
+                    aria-pressed={isActive}
+                  >
+                    {tag.name}
+                  </button>
+                );
+              })}
+              {filterTags.length > 0 && (
+                <span className="filter-hint">
+                  Showing comments with: {filterTags.join(' OR ')}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="comments-list">
@@ -517,37 +596,70 @@ const AnimalDetailPage: React.FC = () => {
                 }}
               />
             ) : (
-              comments.map((comment) => (
-                <div key={comment.id} className="comment-card">
-                  <div className="comment-header">
-                    <span className="comment-author">{comment.user?.username}</span>
-                    <span className="comment-date">
-                      {new Date(comment.created_at).toLocaleDateString()} at{' '}
-                      {new Date(comment.created_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                  </div>
-                  {comment.tags && comment.tags.length > 0 && (
-                    <div className="comment-tags">
-                      {comment.tags.map((tag) => (
-                        <span key={tag.id} className="tag-badge" style={{ backgroundColor: tag.color }}>
-                          {tag.name}
-                        </span>
-                      ))}
+              <>
+                {comments.map((comment) => (
+                  <div key={comment.id} className="comment-card">
+                    <div className="comment-header">
+                      <span className="comment-author">{comment.user?.username}</span>
+                      <span className="comment-date">
+                        {new Date(comment.created_at).toLocaleDateString()} at{' '}
+                        {new Date(comment.created_at).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
                     </div>
-                  )}
-                  <p className="comment-content">{comment.content}</p>
-                  {comment.image_url && (
-                    <img
-                      src={comment.image_url}
-                      alt="Comment"
-                      className="comment-image"
-                    />
-                  )}
-                </div>
-              ))
+                    {comment.tags && comment.tags.length > 0 && (
+                      <div className="comment-tags">
+                        {comment.tags.map((tag) => (
+                          <span key={tag.id} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="comment-content">{comment.content}</p>
+                    {comment.image_url && (
+                      <img
+                        src={comment.image_url}
+                        alt="Comment"
+                        className="comment-image"
+                      />
+                    )}
+                  </div>
+                ))}
+
+                {hasMore && (
+                  <div className="load-more-container">
+                    <button
+                      onClick={handleLoadMore}
+                      disabled={loadingMore}
+                      className="btn-load-more"
+                      aria-label="Load more comments"
+                    >
+                      {loadingMore ? (
+                        <>
+                          <span className="loading-spinner" aria-hidden="true"></span>
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          Load More Comments
+                          <span className="remaining-count">
+                            ({totalComments - comments.length} remaining)
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {!hasMore && comments.length > 0 && comments.length < totalComments && (
+                  <div className="end-of-comments">
+                    <span>🎉 You've reached the end of all comments</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

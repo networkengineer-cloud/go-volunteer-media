@@ -112,6 +112,14 @@ export interface AnimalComment {
   user?: User;
 }
 
+export interface PaginatedCommentsResponse {
+  comments: AnimalComment[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export interface CommentWithAnimal extends AnimalComment {
   animal: Animal;
 }
@@ -355,9 +363,18 @@ export const animalsApi = {
 
 // Animal Comments API
 export const animalCommentsApi = {
-  getAll: (groupId: number, animalId: number, tagFilter?: string) => {
-    const params = tagFilter ? { tags: tagFilter } : {};
-    return api.get<AnimalComment[]>('/groups/' + groupId + '/animals/' + animalId + '/comments', { params });
+  getAll: (groupId: number, animalId: number, options?: {
+    tagFilter?: string;
+    limit?: number;
+    offset?: number;
+    order?: 'asc' | 'desc';
+  }) => {
+    const params: Record<string, string | number> = {};
+    if (options?.tagFilter) params.tags = options.tagFilter;
+    if (options?.limit) params.limit = options.limit;
+    if (options?.offset) params.offset = options.offset;
+    if (options?.order) params.order = options.order;
+    return api.get<PaginatedCommentsResponse>('/groups/' + groupId + '/animals/' + animalId + '/comments', { params });
   },
   create: (groupId: number, animalId: number, content: string, image_url?: string, tag_ids?: number[]) =>
     api.post<AnimalComment>('/groups/' + groupId + '/animals/' + animalId + '/comments', {
