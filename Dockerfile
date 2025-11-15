@@ -53,6 +53,9 @@ COPY --from=backend-builder /app/api /api
 # Copy frontend build if it exists
 COPY --from=frontend-builder /app/frontend/dist /frontend/dist
 
+# Copy public directory for uploads and static assets
+COPY --from=backend-builder /app/public /public
+
 # Use non-root user
 USER appuser
 
