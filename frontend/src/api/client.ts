@@ -74,6 +74,7 @@ export interface Animal {
   quarantine_start_date?: string;
   archived_date?: string;
   last_status_change?: string;
+  return_count: number;
   tags?: AnimalTag[];
 }
 
@@ -129,6 +130,13 @@ export interface AnimalTag {
   category: string; // 'behavior' or 'walker_status'
   color: string;
   created_at: string;
+}
+
+export interface DuplicateNameInfo {
+  name: string;
+  count: number;
+  animals: Animal[];
+  has_duplicates: boolean;
 }
 
 export interface ActivityItem {
@@ -291,6 +299,8 @@ export const animalsApi = {
   },
   getById: (groupId: number, id: number) =>
     api.get<Animal>('/groups/' + groupId + '/animals/' + id),
+  checkDuplicates: (groupId: number, name: string) =>
+    api.get<DuplicateNameInfo>('/groups/' + groupId + '/animals/check-duplicates', { params: { name } }),
   create: (groupId: number, data: Partial<Animal>) =>
     api.post<Animal>('/groups/' + groupId + '/animals', data),
   update: (groupId: number, id: number, data: Partial<Animal>) =>

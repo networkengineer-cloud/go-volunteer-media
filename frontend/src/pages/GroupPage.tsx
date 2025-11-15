@@ -369,40 +369,71 @@ const GroupPage: React.FC = () => {
               />
             ) : (
               <div className="animals-grid">
-                {animals.map((animal) => (
-                  <Link
-                    key={animal.id}
-                    to={`/groups/${id}/animals/${animal.id}/view`}
-                    className="animal-card"
-                  >
-                    {animal.image_url && (
-                      <img
-                        src={animal.image_url}
-                        alt={animal.name}
-                        className="animal-card-image"
-                      />
-                    )}
-                    <div className="animal-info">
-                      <h3>{animal.name}</h3>
-                      {animal.breed && <p className="breed">{animal.breed}</p>}
-                      <p className="age">{animal.age} years old</p>
-                      <span className={`status ${animal.status}`}>{animal.status}</span>
-                      {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
-                        <p className="quarantine-end-date">
-                          Ends: {(() => {
-                            const startDate = new Date(animal.quarantine_start_date);
-                            const endDate = new Date(startDate);
-                            endDate.setDate(endDate.getDate() + 10);
-                            while (endDate.getDay() === 0 || endDate.getDay() === 6) {
-                              endDate.setDate(endDate.getDate() + 1);
-                            }
-                            return endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                          })()}
-                        </p>
+                {animals.map((animal) => {
+                  // Calculate duplicate name info
+                  const duplicates = animals.filter(a => 
+                    a.name.toLowerCase() === animal.name.toLowerCase()
+                  );
+                  const hasDuplicates = duplicates.length > 1;
+                  const duplicateIndex = hasDuplicates 
+                    ? duplicates.sort((a, b) => a.id - b.id).findIndex(a => a.id === animal.id) + 1
+                    : 0;
+                  
+                  return (
+                    <Link
+                      key={animal.id}
+                      to={`/groups/${id}/animals/${animal.id}/view`}
+                      className="animal-card"
+                    >
+                      {animal.image_url && (
+                        <img
+                          src={animal.image_url}
+                          alt={animal.name}
+                          className="animal-card-image"
+                        />
                       )}
-                    </div>
-                  </Link>
-                ))}
+                      <div className="animal-info">
+                        <div className="animal-header-badges">
+                          <h3>{animal.name}</h3>
+                          {hasDuplicates && (
+                            <span 
+                              className="badge badge-duplicate" 
+                              title={`${duplicates.length} animals named "${animal.name}"`}
+                              aria-label={`${duplicateIndex} of ${duplicates.length} animals named ${animal.name}`}
+                            >
+                              {duplicateIndex} of {duplicates.length}
+                            </span>
+                          )}
+                          {animal.return_count > 0 && (
+                            <span 
+                              className="badge badge-returning" 
+                              title={`This animal has returned to the shelter ${animal.return_count} time${animal.return_count > 1 ? 's' : ''}`}
+                              aria-label={`Returning animal - ${animal.return_count} return${animal.return_count > 1 ? 's' : ''}`}
+                            >
+                              ↩ Returned {animal.return_count}×
+                            </span>
+                          )}
+                        </div>
+                        {animal.breed && <p className="breed">{animal.breed}</p>}
+                        <p className="age">{animal.age} years old</p>
+                        <span className={`status ${animal.status}`}>{animal.status}</span>
+                        {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
+                          <p className="quarantine-end-date">
+                            Ends: {(() => {
+                              const startDate = new Date(animal.quarantine_start_date);
+                              const endDate = new Date(startDate);
+                              endDate.setDate(endDate.getDate() + 10);
+                              while (endDate.getDay() === 0 || endDate.getDay() === 6) {
+                                endDate.setDate(endDate.getDate() + 1);
+                              }
+                              return endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                            })()}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>

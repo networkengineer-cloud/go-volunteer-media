@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { animalsApi, announcementsApi, animalTagsApi } from '../api/client';
-import type { AnimalTag } from '../api/client';
+import type { AnimalTag, Animal, DuplicateNameInfo } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import FormField from '../components/FormField';
 import Button from '../components/Button';
@@ -19,8 +19,11 @@ const AnimalForm: React.FC = () => {
   const [quarantineContext, setQuarantineContext] = useState('');
   const [quarantineDate, setQuarantineDate] = useState('');
   const [originalStatus, setOriginalStatus] = useState('');
+  const [originalName, setOriginalName] = useState('');
   const [availableTags, setAvailableTags] = useState<AnimalTag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  const [duplicateInfo, setDuplicateInfo] = useState<DuplicateNameInfo | null>(null);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     species: '',
@@ -43,6 +46,34 @@ const AnimalForm: React.FC = () => {
     }
   }, []);
 
+  const checkForDuplicateNames = useCallback(async (name: string, currentAnimalId?: number) => {
+    if (!groupId || !name.trim()) {
+      setDuplicateInfo(null);
+      return;
+    }
+
+    setCheckingDuplicates(true);
+    try {
+      const response = await animalsApi.checkDuplicates(parseInt(groupId), name.trim());
+      // Filter out the current animal if editing
+      const filteredAnimals = currentAnimalId 
+        ? response.data.animals.filter(a => a.id !== currentAnimalId)
+        : response.data.animals;
+      
+      setDuplicateInfo({
+        ...response.data,
+        animals: filteredAnimals,
+        has_duplicates: filteredAnimals.length > 0,
+        count: filteredAnimals.length,
+      });
+    } catch (error) {
+      console.error('Failed to check for duplicates:', error);
+      setDuplicateInfo(null);
+    } finally {
+      setCheckingDuplicates(false);
+    }
+  }, [groupId]);
+
   const loadAnimal = useCallback(async (gId: number, animalId: number) => {
     try {
       const response = await animalsApi.getById(gId, animalId);
@@ -52,15 +83,18 @@ const AnimalForm: React.FC = () => {
         quarantine_start_date: animal.quarantine_start_date || '',
       });
       setOriginalStatus(animal.status);
+      setOriginalName(animal.name);
       // Set selected tags
       if (animal.tags) {
         setSelectedTagIds(animal.tags.map(tag => tag.id));
       }
+      // Check for duplicates with current animal excluded
+      await checkForDuplicateNames(animal.name, animalId);
     } catch (error) {
       console.error('Failed to load animal:', error);
       toast.showError('Failed to load animal details');
     }
-  }, [toast]);
+  }, [toast, checkForDuplicateNames]);
 
   useEffect(() => {
     loadAvailableTags();
@@ -111,6 +145,12 @@ const AnimalForm: React.FC = () => {
     if (touched[field]) {
       const error = validateField(field, value);
       setErrors({ ...errors, [field]: error });
+    }
+    
+    // Check for duplicate names when name field changes
+    if (field === 'name' && typeof value === 'string' && value.trim().length >= 2) {
+      const currentId = id ? parseInt(id) : undefined;
+      checkForDuplicateNames(value, currentId);
     }
   };
 
@@ -304,6 +344,41 @@ const AnimalForm: React.FC = () => {
             autoComplete="off"
             minLength={2}
           />
+
+          {/* Duplicate Name Warning */}
+          {duplicateInfo && duplicateInfo.has_duplicates && (
+            <div className="duplicate-warning" role="alert">
+              <div className="duplicate-warning-header">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <strong>Name Collision Detected</strong>
+              </div>
+              <p>
+                There {duplicateInfo.count === 1 ? 'is' : 'are'} already <strong>{duplicateInfo.count}</strong> other animal{duplicateInfo.count > 1 ? 's' : ''} named "{formData.name}" in this group.
+              </p>
+              <div className="duplicate-animals-list">
+                {duplicateInfo.animals.slice(0, 3).map((animal: Animal) => (
+                  <div key={animal.id} className="duplicate-animal-item">
+                    <span className="duplicate-animal-name">
+                      {animal.name} (ID: {animal.id})
+                    </span>
+                    <span className="duplicate-animal-details">
+                      {animal.breed || 'Unknown breed'} • {animal.age} years • {animal.status}
+                    </span>
+                  </div>
+                ))}
+                {duplicateInfo.count > 3 && (
+                  <p className="duplicate-more">+ {duplicateInfo.count - 3} more</p>
+                )}
+              </div>
+              <p className="duplicate-warning-footer">
+                💡 <strong>Tip:</strong> Consider adding breed, color, or other identifying details to help volunteers distinguish between animals.
+              </p>
+            </div>
+          )}
 
           <div className="form-row">
             <FormField
