@@ -64,9 +64,9 @@ func CheckDuplicateNames(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animals []models.Animal
-		// Case-insensitive search for animals with the same name in the group (not archived)
+		// Case-insensitive search for animals with the same name in the group
+		// Includes all statuses (available, foster, quarantine, archived) to properly detect duplicates
 		query := db.Where("group_id = ? AND LOWER(name) = ?", groupID, strings.ToLower(name))
-		// Include all statuses except deleted
 		if err := query.Find(&animals).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check for duplicates"})
 			return
