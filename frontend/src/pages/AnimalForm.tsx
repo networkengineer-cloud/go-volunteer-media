@@ -448,25 +448,6 @@ const AnimalForm: React.FC = () => {
             </div>
           </div>
 
-          {/* Returned checkbox - only show when status is archived */}
-          {formData.status === 'archived' && (
-            <div className="form-field">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  id="is_returned"
-                  checked={formData.is_returned}
-                  onChange={(e) => setFormData({ ...formData, is_returned: e.target.checked })}
-                />
-                <span>This is a returned animal</span>
-              </label>
-              <p className="form-field__helper">
-                Check this box if this animal previously left the shelter and has now returned. 
-                Not all archived animals are returns (e.g., adopted, transferred, etc.).
-              </p>
-            </div>
-          )}
-
           <div className="form-field">
             <label htmlFor="image_upload" className="form-field__label">
               Animal Image
