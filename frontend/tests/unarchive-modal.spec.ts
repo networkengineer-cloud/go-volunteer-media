@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 
 /**
  * E2E Tests for Unarchive Modal Workflow
@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Unarchive Modal UX', () => {
-  test.skip('should show confirmation modal when changing from archived to available', async ({ page }) => {
+  test.skip('should show confirmation modal when changing from archived to available', async () => {
     // This test verifies that when editing an archived animal and changing status to available,
     // a confirmation modal appears asking if the animal is returning
     
@@ -23,7 +23,7 @@ test.describe('Unarchive Modal UX', () => {
     console.log('  - If confirmed, status changes and form can be saved');
   });
 
-  test.skip('should show confirmation modal when changing from archived to foster', async ({ page }) => {
+  test.skip('should show confirmation modal when changing from archived to foster', async () => {
     // This test verifies the modal appears for archived -> foster transitions
     
     console.log('✓ Unarchive to Foster Modal Test:');
@@ -35,7 +35,7 @@ test.describe('Unarchive Modal UX', () => {
     console.log('  - User can confirm or cancel');
   });
 
-  test.skip('should show confirmation modal when changing from archived to bite_quarantine', async ({ page }) => {
+  test.skip('should show confirmation modal when changing from archived to bite_quarantine', async () => {
     // This test verifies the modal appears for archived -> bite_quarantine transitions
     
     console.log('✓ Unarchive to Quarantine Modal Test:');
@@ -47,7 +47,7 @@ test.describe('Unarchive Modal UX', () => {
     console.log('  - User can confirm or cancel');
   });
 
-  test.skip('should preserve is_returned value from checkbox in modal', async ({ page }) => {
+  test.skip('should preserve is_returned value from checkbox in modal', async () => {
     // This test verifies that the is_returned checkbox value is preserved in the modal
     
     console.log('✓ Preserve is_returned Value Test:');
@@ -58,7 +58,7 @@ test.describe('Unarchive Modal UX', () => {
     console.log('  - When confirmed, the selected value is used for is_returned');
   });
 
-  test.skip('should allow canceling the status change', async ({ page }) => {
+  test.skip('should allow canceling the status change', async () => {
     // This test verifies that users can cancel the status change
     
     console.log('✓ Cancel Status Change Test:');
@@ -71,7 +71,7 @@ test.describe('Unarchive Modal UX', () => {
     console.log('  - Form remains editable');
   });
 
-  test.skip('should not show modal when initially creating an archived animal', async ({ page }) => {
+  test.skip('should not show modal when initially creating an archived animal', async () => {
     // This test verifies the modal only appears when EDITING, not creating
     
     console.log('✓ No Modal on Create Test:');
@@ -82,7 +82,7 @@ test.describe('Unarchive Modal UX', () => {
     console.log('  - Modal logic only applies when originalStatus === "archived"');
   });
 
-  test.skip('should not show modal when changing to archived from another status', async ({ page }) => {
+  test.skip('should not show modal when changing to archived from another status', async () => {
     // This test verifies the modal only appears when leaving archived, not entering it
     
     console.log('✓ No Modal When Archiving Test:');
@@ -93,7 +93,7 @@ test.describe('Unarchive Modal UX', () => {
     console.log('  - User can check/uncheck and save normally');
   });
 
-  test.skip('should correctly handle returning animal flow end-to-end', async ({ page }) => {
+  test.skip('should correctly handle returning animal flow end-to-end', async () => {
     // This test verifies the complete workflow for a returning animal
     
     console.log('✓ Complete Returning Animal Flow:');
@@ -111,7 +111,7 @@ test.describe('Unarchive Modal UX', () => {
 });
 
 test.describe('Modal UI/UX Details', () => {
-  test.skip('should have clear, accessible modal design', async ({ page }) => {
+  test.skip('should have clear, accessible modal design', async () => {
     console.log('✓ Modal Accessibility & Design:');
     console.log('  - Modal title: "Confirm Status Change"');
     console.log('  - Clear description showing animal name and status transition');
@@ -124,7 +124,7 @@ test.describe('Modal UI/UX Details', () => {
     console.log('  - ARIA attributes: role="dialog", aria-modal="true", aria-labelledby');
   });
 
-  test.skip('should have appropriate styling for the return question section', async ({ page }) => {
+  test.skip('should have appropriate styling for the return question section', async () => {
     console.log('✓ Return Question Styling:');
     console.log('  - Highlighted background (var(--neutral-100))');
     console.log('  - Rounded corners (8px border-radius)');
@@ -134,7 +134,7 @@ test.describe('Modal UI/UX Details', () => {
     console.log('  - Cursor pointer on labels for better UX');
   });
 
-  test.skip('should have proper responsive behavior', async ({ page }) => {
+  test.skip('should have proper responsive behavior', async () => {
     console.log('✓ Responsive Modal Design:');
     console.log('  - Modal size: "medium" for better readability');
     console.log('  - Text wraps properly on narrow screens');
@@ -145,7 +145,7 @@ test.describe('Modal UI/UX Details', () => {
 });
 
 test.describe('Edge Cases & Error Handling', () => {
-  test.skip('should handle rapid status changes correctly', async ({ page }) => {
+  test.skip('should handle rapid status changes correctly', async () => {
     console.log('✓ Rapid Status Change Test:');
     console.log('  - User changes from archived to available (modal appears)');
     console.log('  - User cancels modal');
@@ -154,7 +154,7 @@ test.describe('Edge Cases & Error Handling', () => {
     console.log('  - No race conditions or duplicate modals');
   });
 
-  test.skip('should maintain form state when modal is open', async ({ page }) => {
+  test.skip('should maintain form state when modal is open', async () => {
     console.log('✓ Form State Preservation:');
     console.log('  - User edits animal details (name, breed, etc.)');
     console.log('  - User changes status from archived to available');
@@ -164,7 +164,7 @@ test.describe('Edge Cases & Error Handling', () => {
     console.log('  - User can successfully save the form');
   });
 
-  test.skip('should handle backend errors gracefully', async ({ page }) => {
+  test.skip('should handle backend errors gracefully', async () => {
     console.log('✓ Error Handling:');
     console.log('  - User confirms status change in modal');
     console.log('  - User saves form');
