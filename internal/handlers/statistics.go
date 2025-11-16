@@ -177,7 +177,7 @@ func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			// Get most tagged animal for this tag
-			var mostTaggedAnimal struct {
+			var mostTaggedAnimals []struct {
 				AnimalID   uint
 				AnimalName string
 				Count      int64
@@ -189,11 +189,12 @@ func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 				Where("animal_comment_tags.comment_tag_id = ?", tag.ID).
 				Group("animals.id, animals.name").
 				Order("count DESC").
-				First(&mostTaggedAnimal).Error
+				Limit(1).
+				Find(&mostTaggedAnimals).Error
 			
-			if err == nil && mostTaggedAnimal.Count > 0 {
-				stats.MostTaggedAnimalID = &mostTaggedAnimal.AnimalID
-				stats.MostTaggedAnimalName = &mostTaggedAnimal.AnimalName
+			if err == nil && len(mostTaggedAnimals) > 0 && mostTaggedAnimals[0].Count > 0 {
+				stats.MostTaggedAnimalID = &mostTaggedAnimals[0].AnimalID
+				stats.MostTaggedAnimalName = &mostTaggedAnimals[0].AnimalName
 			}
 
 			statistics[i] = stats

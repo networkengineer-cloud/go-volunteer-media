@@ -8,27 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 func setupStatisticsTestDB(t *testing.T) *gorm.DB {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
-	}
-
-	// Migrate models
-	err = db.AutoMigrate(
-		&models.User{},
-		&models.Group{},
-		&models.Animal{},
-		&models.AnimalComment{},
-		&models.CommentTag{},
-	)
-	if err != nil {
-		t.Fatalf("Failed to migrate database: %v", err)
-	}
+	db := SetupTestDB(t)
 
 	// Create test data
 	user := models.User{

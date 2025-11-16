@@ -7,56 +7,23 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 // setupAnnouncementTestDB creates an in-memory SQLite database for announcement testing
 func setupAnnouncementTestDB(t *testing.T) *gorm.DB {
-	// Set JWT_SECRET for testing
-	os.Setenv("JWT_SECRET", "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1fG3hI5jK7lM9nO1pQ3")
-	
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
-	}
-
-	// Run migrations
-	err = db.AutoMigrate(&models.User{}, &models.Announcement{}, &models.Group{})
-	if err != nil {
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
-
-	return db
+	return SetupTestDB(t)
 }
 
 // createAnnouncementTestUser creates a user for testing
 func createAnnouncementTestUser(t *testing.T, db *gorm.DB, username, email string, isAdmin bool) *models.User {
-	hashedPassword, err := auth.HashPassword("password123")
-	if err != nil {
-		t.Fatalf("Failed to hash password: %v", err)
-	}
-
-	user := &models.User{
-		Username: username,
-		Email:    email,
-		Password: hashedPassword,
-		IsAdmin:  isAdmin,
-	}
-
-	if err := db.Create(user).Error; err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	return user
+	return CreateTestUser(t, db, username, email, "password123", isAdmin)
 }
 
 // setupAnnouncementTestContext creates a Gin context with authenticated user

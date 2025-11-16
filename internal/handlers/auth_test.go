@@ -5,55 +5,24 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 // setupTestDB creates an in-memory SQLite database for testing
+// This is a wrapper around the shared SetupTestDB for backward compatibility
 func setupTestDB(t *testing.T) *gorm.DB {
-	// Set JWT_SECRET for testing - must be random and secure for validation to pass
-	os.Setenv("JWT_SECRET", "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1fG3hI5jK7lM9nO1pQ3")
-	
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
-	}
-
-	// Run migrations
-	err = db.AutoMigrate(&models.User{}, &models.Group{})
-	if err != nil {
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
-
-	return db
+	return SetupTestDB(t)
 }
 
 // createTestUser creates a user in the test database
+// This is a wrapper around the shared CreateTestUser for backward compatibility
 func createTestUser(t *testing.T, db *gorm.DB, username, email, password string, isAdmin bool) *models.User {
-	hashedPassword, err := auth.HashPassword(password)
-	if err != nil {
-		t.Fatalf("Failed to hash password: %v", err)
-	}
-
-	user := &models.User{
-		Username: username,
-		Email:    email,
-		Password: hashedPassword,
-		IsAdmin:  isAdmin,
-	}
-
-	if err := db.Create(user).Error; err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
-
-	return user
+	return CreateTestUser(t, db, username, email, password, isAdmin)
 }
 
 func TestRegister(t *testing.T) {
