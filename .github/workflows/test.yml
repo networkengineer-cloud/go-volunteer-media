@@ -181,7 +181,12 @@ jobs:
     
     - name: Start backend API
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/volunteer_media_test?sslmode=disable
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USER: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: volunteer_media_test
+        DB_SSLMODE: disable
         JWT_SECRET: L5WTt6D+6R55YfKzwqPRAEX5bR0bkNo4i58jYKL0wsk=
         ENV: test
         FRONTEND_URL: http://localhost:5173
