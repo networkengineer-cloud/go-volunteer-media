@@ -35,9 +35,9 @@ type Group struct {
 	Description   string         `json:"description"`
 	ImageURL      string         `json:"image_url"`
 	HeroImageURL  string         `json:"hero_image_url"`
-	HasProtocols  bool           `gorm:"default:false" json:"has_protocols"` // Enable protocols feature for this group
-	GroupMeBotID  string         `json:"groupme_bot_id"`                     // GroupMe Bot ID for sending messages
-	GroupMeEnabled bool          `gorm:"default:false" json:"groupme_enabled"` // Enable GroupMe integration for this group
+	HasProtocols  bool           `gorm:"column:has_protocols;default:false" json:"has_protocols"` // Enable protocols feature for this group
+	GroupMeBotID  string         `gorm:"column:groupme_bot_id" json:"groupme_bot_id"`                     // GroupMe Bot ID for sending messages
+	GroupMeEnabled bool          `gorm:"column:groupme_enabled;default:false" json:"groupme_enabled"` // Enable GroupMe integration for this group
 	Users         []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
 	Animals       []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
 	Updates       []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
