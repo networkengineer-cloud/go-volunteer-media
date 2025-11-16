@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 
 /**
  * E2E Tests for UX Improvements
@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('UX Improvements: Animal Form and Announcement Form', () => {
-  test.skip('should not show is_returned checkbox when editing archived animal', async ({ page }) => {
+  test.skip('should not show is_returned checkbox when editing archived animal', async () => {
     // This test verifies that the is_returned checkbox has been removed from the animal form
     // The modal now handles this functionality when changing status away from archived
     
@@ -21,7 +21,7 @@ test.describe('UX Improvements: Animal Form and Announcement Form', () => {
     console.log('  - Modal appears when changing from archived to another status');
   });
 
-  test.skip('announcement form should have proper dark mode styling', async ({ page }) => {
+  test.skip('announcement form should have proper dark mode styling', async () => {
     // This test verifies that the announcement form uses the correct CSS variables
     // and responds to the [data-theme='dark'] attribute
     
