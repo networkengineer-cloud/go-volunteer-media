@@ -50,11 +50,12 @@ terraform/
 ### 1. Create HCP Terraform Account
 
 1. Sign up at https://app.terraform.io
-2. Create a new organization (e.g., `volunteer-media`)
-3. Create a new workspace:
-   - Name: `volunteer-media-prod`
-   - Execution Mode: **Remote** (recommended) or **Local**
-   - VCS Integration: Connect to your GitHub repository (optional)
+2. Create a new organization: `Networkengineer` (already exists)
+3. Create workspaces:
+   - Production: `volunteer-app`
+   - Development: `volunteer-app-dev`
+   - Execution Mode: **Remote** (API-driven workflow)
+   - VCS Integration: Not used (GitHub Actions manages deployments)
 
 ### 2. Configure Federated Credentials for Azure
 
@@ -150,16 +151,26 @@ Add these secrets to your GitHub repository:
 # 3. Add API key to HCP Terraform workspace variables
 ```
 
-### 5. Update Backend Configuration
+### 5. Verify Backend Configuration
 
-Edit `terraform/environments/prod/backend.tf` and update the organization name:
+The backend is already configured for HCP Terraform:
 
+**Production** (`terraform/environments/prod/backend.tf`):
 ```hcl
 cloud {
-  organization = "your-org-name"  # Replace with your HCP Terraform org
-  
+  organization = "Networkengineer"
   workspaces {
-    name = "volunteer-media-prod"
+    name = "volunteer-app"
+  }
+}
+```
+
+**Development** (`terraform/environments/dev/backend.tf`):
+```hcl
+cloud {
+  organization = "Networkengineer"
+  workspaces {
+    name = "volunteer-app-dev"
   }
 }
 ```

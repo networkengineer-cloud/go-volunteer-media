@@ -19,10 +19,10 @@ terraform {
   # HCP Terraform backend configuration
   # Sign up at https://app.terraform.io and create an organization
   cloud {
-    organization = "volunteer-media"  # Replace with your HCP Terraform organization name
+    organization = "Networkengineer"  # HCP Terraform organization name
     
     workspaces {
-      name = "volunteer-media-prod"
+      name = "volunteer-app"  # Production workspace
     }
   }
 }
