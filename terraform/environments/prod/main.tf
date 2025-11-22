@@ -1,11 +1,6 @@
 # Main Terraform configuration for Volunteer Media Platform - Production Environment
 # This configures all Azure resources needed to run the application
 
-# Reference shared configuration
-module "naming" {
-  source = "../../shared"
-}
-
 # Get current Azure client configuration
 data "azurerm_client_config" "current" {}
 
@@ -193,8 +188,8 @@ resource "azurerm_storage_account" "main" {
 
 # Blob container for animal images
 resource "azurerm_storage_container" "uploads" {
-  name                 = "uploads"
-  storage_account_id   = azurerm_storage_account.main.id
+  name                  = "uploads"
+  storage_account_name  = azurerm_storage_account.main.name
   container_access_type = "private"
 }
 
