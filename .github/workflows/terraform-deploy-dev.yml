@@ -1,0 +1,282 @@
+name: Terraform Deploy - Development
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'terraform/environments/dev/**'
+      - '.github/workflows/terraform-deploy-dev.yml'
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      action:
+        description: 'Terraform action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+permissions:
+  id-token: write  # Required for OIDC authentication with HCP Terraform and Azure
+  contents: read
+  pull-requests: write
+
+env:
+  TERRAFORM_VERSION: '1.5.7'
+  WORKING_DIRECTORY: './terraform/environments/dev'
+  TF_CLOUD_ORGANIZATION: 'Networkengineer'
+  TF_WORKSPACE: 'volunteer-app-dev'
+
+jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: terraform/environments/dev
+          soft_fail: false
+          format: sarif
+          output: tfsec-results.sarif
+      
+      - name: Upload tfsec results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: tfsec-results.sarif
+      
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/environments/dev/
+          framework: terraform
+          quiet: false
+          soft_fail: false
+  
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: security-scan
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      
+      - name: Run Go Tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+        working-directory: .
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install Frontend Dependencies
+        run: npm ci
+        working-directory: frontend
+      
+      - name: Run Frontend Tests
+        run: npm test
+        working-directory: frontend
+      
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+        working-directory: frontend
+      
+      - name: Run E2E Tests
+        run: npx playwright test
+        working-directory: frontend
+        continue-on-error: true  # Don't fail deploy on E2E test failures
+  
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: test
+    environment: development
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: terraform/environments/dev
+        continue-on-error: true
+      
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+      
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+      
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        env:
+          # Azure credentials via OIDC (federated) - DEV APP
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_DEV }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_USE_OIDC: true
+          # Sensitive variables for dev environment
+          TF_VAR_resend_api_key: ${{ secrets.DEV_RESEND_API_KEY }}
+          TF_VAR_jwt_secret: ${{ secrets.DEV_JWT_SECRET }}
+          TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
+        continue-on-error: true
+      
+      - name: Create Plan Summary
+        if: always()
+        run: |
+          echo "## Terraform Plan - Development Environment 🏗️" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workspace:** \`${{ env.TF_WORKSPACE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** \`centralus\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Format Check: \`${{ steps.fmt.outcome || 'N/A' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Validation: \`${{ steps.validate.outcome || 'N/A' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Plan: \`${{ steps.plan.outcome }}\`" >> $GITHUB_STEP_SUMMARY
+  
+  terraform-apply:
+    name: Terraform Apply
+    needs: terraform-plan
+    runs-on: ubuntu-latest
+    environment: development
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/develop')
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+      
+      - name: Terraform Apply
+        id: apply
+        run: terraform apply -auto-approve
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        env:
+          # Azure credentials via OIDC (federated) - DEV APP
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_DEV }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_USE_OIDC: true
+          # Sensitive variables for dev environment
+          TF_VAR_resend_api_key: ${{ secrets.DEV_RESEND_API_KEY }}
+          TF_VAR_jwt_secret: ${{ secrets.DEV_JWT_SECRET }}
+          TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
+      
+      - name: Get Outputs
+        id: outputs
+        run: |
+          echo "container_app_url=$(terraform output -raw container_app_url)" >> $GITHUB_OUTPUT
+          echo "postgresql_fqdn=$(terraform output -raw postgresql_server_fqdn)" >> $GITHUB_OUTPUT
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        continue-on-error: true
+      
+      - name: Create Deployment Summary
+        if: steps.outputs.outcome == 'success'
+        run: |
+          echo "## Deployment Successful ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Development Environment" >> $GITHUB_STEP_SUMMARY
+          echo "**🌐 Application URL:** ${{ steps.outputs.outputs.container_app_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**🗄️  Database Server:** ${{ steps.outputs.outputs.postgresql_fqdn }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cost Optimization Features" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Container Apps: Scale to zero when not in use" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ PostgreSQL: Auto-pause after 60 minutes of inactivity" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Budget: $20/month with alerts at 80% and 100%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Test application at the URL above" >> $GITHUB_STEP_SUMMARY
+          echo "2. Check Application Insights for logs and metrics" >> $GITHUB_STEP_SUMMARY
+          echo "3. Verify email sending via Resend" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Comment on Commit
+        if: steps.outputs.outcome == 'success' && github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.outputs.outputs.container_app_url }}';
+            const db = '${{ steps.outputs.outputs.postgresql_fqdn }}';
+            
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: `## Dev Environment Deployed ✅\n\n**Application:** ${url}\n**Database:** ${db}\n\n*Auto-pause enabled for cost savings*`
+            });
+  
+  terraform-destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    environment: development
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+      
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_DEV }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_USE_OIDC: true
+          TF_VAR_resend_api_key: ${{ secrets.DEV_RESEND_API_KEY }}
+          TF_VAR_jwt_secret: ${{ secrets.DEV_JWT_SECRET }}
+          TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
+      
+      - name: Create Destroy Summary
+        run: |
+          echo "## Development Environment Destroyed 🗑️" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All resources have been removed from Azure." >> $GITHUB_STEP_SUMMARY
+          echo "You can redeploy by running this workflow again with 'apply'." >> $GITHUB_STEP_SUMMARY

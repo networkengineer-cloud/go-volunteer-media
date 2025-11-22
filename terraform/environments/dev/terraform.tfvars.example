@@ -1,0 +1,39 @@
+# Example Terraform variables for development environment
+# Copy this file to terraform.tfvars and fill in your values
+# DO NOT commit terraform.tfvars to version control
+
+# Project Configuration
+project_name = "volunteer-media"
+environment  = "dev"
+location     = "centralus"
+owner_email  = "terence.wallace@gmail.com"
+
+# Container Configuration
+container_image = "ghcr.io/networkengineer-cloud/go-volunteer-media:develop"
+container_cpu   = 0.25  # Smaller for dev
+container_memory = "0.5Gi"
+min_replicas    = 0     # Scale to zero when not in use
+max_replicas    = 2
+
+# Database Configuration
+db_admin_username        = "pgadmin"
+db_sku_name             = "B_Standard_B1ms"  # Burstable with auto-pause
+db_storage_mb           = 32768              # 32 GB
+db_backup_retention_days = 7                 # Minimum for dev
+db_auto_grow_enabled    = true
+
+# Email Configuration (Resend)
+resend_api_key    = "re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # Get from Resend dashboard
+resend_from_email = "dev@volunteermedia.app"
+
+# Security
+jwt_secret = "generate-with-openssl-rand-base64-32"  # Separate from prod!
+
+# Monitoring
+log_retention_days     = 7
+monthly_budget_amount  = 20
+budget_alert_emails    = ["terence.wallace@gmail.com"]
+
+# Optional: GHCR Authentication (usually not needed for public images)
+# github_container_registry_username = "your-github-username"
+# github_container_registry_password = "ghp_your_github_pat"
