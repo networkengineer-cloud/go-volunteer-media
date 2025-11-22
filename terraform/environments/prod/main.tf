@@ -128,8 +128,12 @@ resource "azurerm_postgresql_flexible_server" "main" {
   backup_retention_days        = var.db_backup_retention_days
   geo_redundant_backup_enabled = false  # Disabled for cost savings
   
-  high_availability {
-    mode = var.db_high_availability_enabled ? "ZoneRedundant" : "Disabled"
+  # High availability - use dynamic block to conditionally enable
+  dynamic "high_availability" {
+    for_each = var.db_high_availability_enabled ? [1] : []
+    content {
+      mode = "ZoneRedundant"
+    }
   }
   
   # Lifecycle protection

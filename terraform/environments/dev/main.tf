@@ -131,9 +131,10 @@ resource "azurerm_postgresql_flexible_server" "main" {
   geo_redundant_backup_enabled = false  # Disabled for cost savings
   auto_grow_enabled            = var.db_auto_grow_enabled
   
-  high_availability {
-    mode = "Disabled"  # Always disabled for dev
-  }
+  # High availability disabled for dev (omit block entirely to disable)
+  # high_availability {
+  #   mode = "ZoneRedundant"  # Only valid values: "ZoneRedundant" or "SameZone"
+  # }
   
   # Lifecycle protection (relaxed for dev)
   lifecycle {
