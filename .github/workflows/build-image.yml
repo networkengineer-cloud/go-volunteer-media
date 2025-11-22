@@ -6,15 +6,8 @@ on:
       - main
       - develop
     paths:
-      - 'cmd/**'
-      - 'internal/**'
-      - 'frontend/**'
       - 'Dockerfile'
       - '.github/workflows/build-image.yml'
-  pull_request:
-    branches:
-      - main
-      - develop
   workflow_dispatch:
     inputs:
       environment:
