@@ -28,7 +28,8 @@ terraform {
 }
 
 # Configure the Azure Provider
-# Uses federated credentials (OIDC) for authentication
+# Uses HCP Terraform Dynamic Provider Credentials (workload identity federation)
+# Docs: https://developer.hashicorp.com/terraform/cloud-docs/dynamic-provider-credentials/azure-configuration
 provider "azurerm" {
   features {
     key_vault {
@@ -41,7 +42,9 @@ provider "azurerm" {
     }
   }
   
-  # Use OIDC authentication - no client secrets needed
-  # Configured automatically when running in GitHub Actions or HCP Terraform
-  use_oidc = true
+  # HCP Terraform will automatically inject OIDC credentials via TFC_AZURE_* environment variables
+  # Do NOT set: client_id, use_oidc, oidc_token, ARM_CLIENT_ID, ARM_USE_OIDC
+  # Required HCP Terraform env vars: TFC_AZURE_PROVIDER_AUTH=true, TFC_AZURE_RUN_CLIENT_ID
+  # Required provider args: subscription_id, tenant_id (set via ARM_SUBSCRIPTION_ID, ARM_TENANT_ID)
+  use_cli = false  # Disable Azure CLI fallback for clearer error messages
 }
