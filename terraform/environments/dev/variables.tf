@@ -200,11 +200,11 @@ variable "resend_from_email" {
 variable "log_retention_days" {
   type        = number
   description = "Number of days to retain logs"
-  default     = 7  # Shorter retention for dev
+  default     = 30  # Minimum for Azure Log Analytics free tier
   
   validation {
-    condition     = var.log_retention_days >= 7 && var.log_retention_days <= 730
-    error_message = "Log retention must be between 7 and 730 days."
+    condition     = var.log_retention_days >= 30 && var.log_retention_days <= 730
+    error_message = "Log retention must be between 30 and 730 days (Azure requirement)."
   }
 }
 

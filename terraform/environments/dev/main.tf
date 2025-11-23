@@ -153,12 +153,12 @@ resource "azurerm_postgresql_flexible_server" "main" {
   tags = azurerm_resource_group.main.tags
 }
 
-# PostgreSQL Configuration - Enable auto-pause for cost savings
-resource "azurerm_postgresql_flexible_server_configuration" "auto_pause" {
-  name      = "auto_pause_delay"
-  server_id = azurerm_postgresql_flexible_server.main.id
-  value     = "60"  # Auto-pause after 60 minutes of inactivity
-}
+# Note: PostgreSQL Flexible Server does not support auto-pause like Azure SQL Database.
+# Cost savings achieved through:
+# - Burstable B_Standard_B1ms SKU (pay only for compute used)
+# - Storage auto-grow enabled
+# - No high availability (single zone)
+# - Minimal backup retention (7 days)
 
 # PostgreSQL Firewall Rule - Allow Azure Services
 resource "azurerm_postgresql_flexible_server_firewall_rule" "azure_services" {
@@ -384,25 +384,12 @@ resource "azurerm_container_app" "main" {
     value = azurerm_storage_account.main.primary_access_key
   }
   
-  # Registry configuration for GHCR (if credentials provided)
-  dynamic "registry" {
-    for_each = var.github_container_registry_username != "" ? [1] : []
-    
-    content {
-      server               = var.container_registry_url
-      username             = var.github_container_registry_username
-      password_secret_name = "ghcr-password"
-    }
-  }
-  
-  dynamic "secret" {
-    for_each = var.github_container_registry_password != "" ? [1] : []
-    
-    content {
-      name  = "ghcr-password"
-      value = var.github_container_registry_password
-    }
-  }
+  # Note: No registry configuration needed - GHCR image is public
+  # If the image was private, you would need to add:
+  # - github_container_registry_username variable
+  # - github_container_registry_password variable (sensitive)
+  # - registry block with server, username, and password_secret_name
+  # - Additional secret block for ghcr-password
   
   # Managed Identity
   identity {
