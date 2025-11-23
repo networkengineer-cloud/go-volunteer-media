@@ -110,7 +110,7 @@ func main() {
 	// Serve uploaded images and default assets
 	router.Static("/uploads", "./public/uploads")
 	router.StaticFile("/default-hero.svg", "./public/default-hero.svg")
-	
+
 	// Serve security.txt for responsible vulnerability disclosure
 	router.StaticFile("/.well-known/security.txt", "./public/.well-known/security.txt")
 
@@ -206,7 +206,7 @@ func main() {
 			admin.GET("/statistics/groups", handlers.GetGroupStatistics(db))
 			admin.GET("/statistics/users", handlers.GetUserStatistics(db))
 			admin.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
-			
+
 			// Admin dashboard
 			admin.GET("/dashboard/stats", handlers.GetAdminDashboardStats(db))
 		}
@@ -224,7 +224,7 @@ func main() {
 			// Animal comments - all group members can view and add comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
 			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
-			
+
 			// Latest comments across the group
 			group.GET("/latest-comments", handlers.GetGroupLatestComments(db))
 
@@ -260,17 +260,15 @@ func main() {
 		}
 	}
 
-	// Serve frontend in production
-	if os.Getenv("ENV") == "production" {
-		// Serve static files
-		router.StaticFile("/", "./frontend/dist/index.html")
-		router.Static("/assets", "./frontend/dist/assets")
+	// Serve frontend (both development and production environments)
+	// Serve static files
+	router.StaticFile("/", "./frontend/dist/index.html")
+	router.Static("/assets", "./frontend/dist/assets")
 
-		// Serve index.html for all non-API routes (SPA routing)
-		router.NoRoute(func(c *gin.Context) {
-			c.File("./frontend/dist/index.html")
-		})
-	}
+	// Serve index.html for all non-API routes (SPA routing)
+	router.NoRoute(func(c *gin.Context) {
+		c.File("./frontend/dist/index.html")
+	})
 
 	port := os.Getenv("PORT")
 	if port == "" {
