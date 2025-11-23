@@ -5,9 +5,18 @@
 data "azurerm_client_config" "current" {}
 
 # Generate a random password for PostgreSQL admin
+# Note: Password is stored in Terraform state. State is encrypted in HCP Terraform Cloud.
+# For production, consider external secret generation and rotation strategy.
 resource "random_password" "db_password" {
   length  = 32
   special = true
+  
+  lifecycle {
+    ignore_changes = [
+      length,
+      special
+    ]
+  }
 }
 
 # Resource Group

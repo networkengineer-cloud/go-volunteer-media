@@ -3,26 +3,28 @@
 # This file configures remote state management for the development environment
 
 terraform {
-  required_version = ">= 1.5.0"
+  # Require Terraform 1.5 or later for cloud block with project support
+  required_version = ">= 1.5.0, < 2.0.0"
   
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 3.117"  # Require 3.117+ for latest security patches
     }
     random = {
       source  = "hashicorp/random"
-      version = "~> 3.6"
+      version = "~> 3.7"  # Require 3.7+ for latest features
     }
   }
   
-  # HCP Terraform backend configuration
-  # Sign up at https://app.terraform.io and create an organization
+  # HCP Terraform backend configuration with remote execution
+  # Docs: https://developer.hashicorp.com/terraform/language/settings/terraform-cloud
   cloud {
     organization = "Networkengineer"  # HCP Terraform organization name
     
     workspaces {
-      name = "volunteer-app-dev"  # Development workspace
+      name    = "volunteer-app-dev"  # Development workspace
+      project = "HAWS"                # Project for workspace grouping
     }
   }
 }
