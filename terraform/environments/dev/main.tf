@@ -148,6 +148,9 @@ resource "azurerm_postgresql_flexible_server" "main" {
   # Lifecycle protection (relaxed for dev)
   lifecycle {
     prevent_destroy = false  # Allow deletion in dev
+    ignore_changes  = [
+      zone  # Azure may assign zone automatically, ignore changes to prevent errors
+    ]
   }
   
   tags = azurerm_resource_group.main.tags
