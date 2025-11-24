@@ -34,7 +34,7 @@ func (nt *NullableTime) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-	
+
 	if s == "" {
 		nt.Time = nil
 		nt.Valid = false
