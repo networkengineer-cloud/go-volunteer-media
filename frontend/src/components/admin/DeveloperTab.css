@@ -1,0 +1,188 @@
+.developer-tab {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.developer-section {
+  margin-bottom: 2rem;
+}
+
+.section-description {
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+}
+
+.developer-card {
+  background: var(--card-bg);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border-color);
+}
+
+.developer-card.danger-zone {
+  border-color: var(--danger-color);
+  border-width: 2px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.card-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.dev-only-badge {
+  background: var(--warning-color);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.card-description {
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.seed-info-list {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+  color: var(--text-secondary);
+}
+
+.seed-info-list li {
+  margin: 0.5rem 0;
+}
+
+.demo-accounts-info {
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.demo-accounts-info strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.demo-accounts-info ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.demo-accounts-info li {
+  padding: 0.25rem 0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.demo-accounts-info code {
+  background: var(--bg-primary);
+  padding: 0.125rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.85rem;
+}
+
+.seed-button {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 1rem;
+}
+
+.danger-button {
+  background: var(--danger-color);
+  color: white;
+  border: none;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: var(--danger-hover);
+  transform: translateY(-1px);
+}
+
+.danger-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Confirmation Modal */
+.seed-confirm-modal {
+  max-width: 500px;
+}
+
+.seed-confirm-modal h2 {
+  margin-bottom: 1rem;
+  color: var(--danger-color);
+}
+
+.confirm-warning {
+  background: var(--danger-bg, rgba(239, 68, 68, 0.1));
+  border-left: 3px solid var(--danger-color);
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+  color: var(--danger-color);
+}
+
+.confirm-warning strong {
+  font-weight: 700;
+}
+
+.confirm-info {
+  color: var(--text-secondary);
+  margin: 1rem 0;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.modal-actions button {
+  flex: 1;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancel-button {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.cancel-button:hover:not(:disabled) {
+  background: var(--bg-tertiary, #f3f4f6);
+}
+
+.cancel-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.confirm-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

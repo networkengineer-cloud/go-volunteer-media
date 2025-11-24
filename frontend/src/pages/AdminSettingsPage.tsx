@@ -3,9 +3,10 @@ import './AdminSettingsPage.css';
 import SiteSettingsTab from '../components/admin/SiteSettingsTab';
 import CommentTagsTab from '../components/admin/CommentTagsTab';
 import AnnouncementsTab from '../components/admin/AnnouncementsTab';
+import DeveloperTab from '../components/admin/DeveloperTab';
 
 const AdminSettingsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'site' | 'tags' | 'announcements'>('site');
+  const [activeTab, setActiveTab] = useState<'site' | 'tags' | 'announcements' | 'developer'>('site');
 
   return (
     <div className="admin-settings-page">
@@ -32,12 +33,21 @@ const AdminSettingsPage: React.FC = () => {
           >
             Announcements
           </button>
+          {import.meta.env.DEV && (
+            <button
+              className={`tab-button ${activeTab === 'developer' ? 'active' : ''}`}
+              onClick={() => setActiveTab('developer')}
+            >
+              Developer
+            </button>
+          )}
         </div>
 
         <div className="tab-content">
           {activeTab === 'site' && <SiteSettingsTab />}
           {activeTab === 'tags' && <CommentTagsTab />}
           {activeTab === 'announcements' && <AnnouncementsTab />}
+          {activeTab === 'developer' && import.meta.env.DEV && <DeveloperTab />}
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
@@ -9,10 +10,18 @@ import (
 	"gorm.io/gorm"
 )
 
-// SeedDatabase re-seeds the database (admin only, dangerous operation)
+// SeedDatabase re-seeds the database (admin only, dangerous operation, dev only)
 func SeedDatabase(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := logging.GetDefaultLogger()
+		
+		// Only allow in development environment
+		env := os.Getenv("ENV")
+		if env != "development" {
+			logger.Warn("Database seed attempted in non-development environment: " + env)
+			c.JSON(http.StatusForbidden, gin.H{"error": "Database seeding is only available in development environments"})
+			return
+		}
 		
 		logger.Info("Admin initiated database re-seed")
 		
