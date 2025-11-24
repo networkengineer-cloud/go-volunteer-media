@@ -134,7 +134,7 @@ func main() {
 	{
 		// Environment info (authenticated users can check environment)
 		protected.GET("/environment", handlers.GetEnvironment())
-		
+
 		// User routes
 		protected.GET("/me", handlers.GetCurrentUser(db))
 		protected.GET("/users/:id/profile", handlers.GetUserProfile(db))

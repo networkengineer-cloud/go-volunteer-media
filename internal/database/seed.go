@@ -23,6 +23,45 @@ func SeedData(db *gorm.DB, force bool) error {
 		return nil
 	}
 
+	// If force is true, delete existing data
+	if force && userCount > 0 {
+		logging.Info("Force flag set - deleting existing data...")
+		
+		// Delete in reverse order of foreign key dependencies
+		if err := db.Exec("DELETE FROM animal_comment_tags").Error; err != nil {
+			return fmt.Errorf("failed to delete animal_comment_tags: %w", err)
+		}
+		if err := db.Exec("DELETE FROM animal_animal_tags").Error; err != nil {
+			return fmt.Errorf("failed to delete animal_animal_tags: %w", err)
+		}
+		if err := db.Exec("DELETE FROM animal_name_histories").Error; err != nil {
+			return fmt.Errorf("failed to delete animal_name_histories: %w", err)
+		}
+		if err := db.Exec("DELETE FROM animal_comments").Error; err != nil {
+			return fmt.Errorf("failed to delete animal_comments: %w", err)
+		}
+		if err := db.Exec("DELETE FROM animals").Error; err != nil {
+			return fmt.Errorf("failed to delete animals: %w", err)
+		}
+		if err := db.Exec("DELETE FROM updates").Error; err != nil {
+			return fmt.Errorf("failed to delete updates: %w", err)
+		}
+		if err := db.Exec("DELETE FROM announcements").Error; err != nil {
+			return fmt.Errorf("failed to delete announcements: %w", err)
+		}
+		if err := db.Exec("DELETE FROM protocols").Error; err != nil {
+			return fmt.Errorf("failed to delete protocols: %w", err)
+		}
+		if err := db.Exec("DELETE FROM user_groups").Error; err != nil {
+			return fmt.Errorf("failed to delete user_groups: %w", err)
+		}
+		if err := db.Exec("DELETE FROM users").Error; err != nil {
+			return fmt.Errorf("failed to delete users: %w", err)
+		}
+		
+		logging.Info("Existing data deleted successfully")
+	}
+
 	// Seed users
 	users, err := seedUsers(db)
 	if err != nil {
