@@ -132,6 +132,9 @@ func main() {
 	protected := api.Group("/")
 	protected.Use(middleware.AuthRequired())
 	{
+		// Environment info (authenticated users can check environment)
+		protected.GET("/environment", handlers.GetEnvironment())
+		
 		// User routes
 		protected.GET("/me", handlers.GetCurrentUser(db))
 		protected.GET("/users/:id/profile", handlers.GetUserProfile(db))
@@ -194,14 +197,14 @@ func main() {
 			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))
 			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage())
 
-						// Bulk animal management (admin only)
+			// Bulk animal management (admin only)
 			admin.GET("/animals", handlers.GetAllAnimals(db))
 			admin.POST("/animals/bulk-update", handlers.BulkUpdateAnimals(db))
 			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db))
 			admin.POST("/animals/export-csv", handlers.ExportAnimalsCSV(db))
 			admin.GET("/animals/export-comments-csv", handlers.ExportAnimalCommentsCSV(db))
 			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db))
-			
+
 			// Database seeding (admin only, dangerous operation)
 			admin.POST("/seed-database", handlers.SeedDatabase(db))
 

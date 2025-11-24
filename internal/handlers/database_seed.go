@@ -14,7 +14,7 @@ import (
 func SeedDatabase(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := logging.GetDefaultLogger()
-		
+
 		// Only allow in development environment
 		env := os.Getenv("ENV")
 		if env != "development" {
@@ -22,9 +22,9 @@ func SeedDatabase(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Database seeding is only available in development environments"})
 			return
 		}
-		
+
 		logger.Info("Admin initiated database re-seed")
-		
+
 		// Force seed the database
 		if err := database.SeedData(db, true); err != nil {
 			logger.Error("Failed to seed database", err)

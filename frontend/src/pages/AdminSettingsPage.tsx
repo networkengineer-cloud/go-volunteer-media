@@ -1,12 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './AdminSettingsPage.css';
 import SiteSettingsTab from '../components/admin/SiteSettingsTab';
 import CommentTagsTab from '../components/admin/CommentTagsTab';
 import AnnouncementsTab from '../components/admin/AnnouncementsTab';
 import DeveloperTab from '../components/admin/DeveloperTab';
+import api from '../api/client';
 
 const AdminSettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'site' | 'tags' | 'announcements' | 'developer'>('site');
+  const [isDevelopment, setIsDevelopment] = useState(false);
+
+  useEffect(() => {
+    // Check environment from backend
+    const checkEnvironment = async () => {
+      try {
+        const response = await api.get('/environment');
+        setIsDevelopment(response.data.is_development);
+      } catch (error) {
+        console.error('Failed to check environment:', error);
+      }
+    };
+    checkEnvironment();
+  }, []);
 
   return (
     <div className="admin-settings-page">
@@ -33,7 +48,7 @@ const AdminSettingsPage: React.FC = () => {
           >
             Announcements
           </button>
-          {import.meta.env.DEV && (
+          {isDevelopment && (
             <button
               className={`tab-button ${activeTab === 'developer' ? 'active' : ''}`}
               onClick={() => setActiveTab('developer')}
@@ -47,7 +62,7 @@ const AdminSettingsPage: React.FC = () => {
           {activeTab === 'site' && <SiteSettingsTab />}
           {activeTab === 'tags' && <CommentTagsTab />}
           {activeTab === 'announcements' && <AnnouncementsTab />}
-          {activeTab === 'developer' && import.meta.env.DEV && <DeveloperTab />}
+          {activeTab === 'developer' && isDevelopment && <DeveloperTab />}
         </div>
       </div>
     </div>
