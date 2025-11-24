@@ -285,9 +285,15 @@ const AnimalForm: React.FC = () => {
       let animalId: number | null = null;
       if (id && groupId) {
         const response = await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
+        console.log('Update response:', response);
+        console.log('Response data:', response.data);
+        console.log('Animal ID from response:', response.data.id);
         animalId = response.data.id;
       } else if (groupId) {
         const response = await animalsApi.create(parseInt(groupId), updatedFormData);
+        console.log('Create response:', response);
+        console.log('Response data:', response.data);
+        console.log('Animal ID from response:', response.data.id);
         animalId = response.data.id;
       }
 
