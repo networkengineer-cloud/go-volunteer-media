@@ -26,7 +26,7 @@ func SeedData(db *gorm.DB, force bool) error {
 	// If force is true, delete existing data
 	if force && userCount > 0 {
 		logging.Info("Force flag set - deleting existing data...")
-		
+
 		// Delete in reverse order of foreign key dependencies
 		if err := db.Exec("DELETE FROM animal_comment_tags").Error; err != nil {
 			return fmt.Errorf("failed to delete animal_comment_tags: %w", err)
@@ -58,7 +58,7 @@ func SeedData(db *gorm.DB, force bool) error {
 		if err := db.Exec("DELETE FROM users").Error; err != nil {
 			return fmt.Errorf("failed to delete users: %w", err)
 		}
-		
+
 		logging.Info("Existing data deleted successfully")
 	}
 
@@ -390,16 +390,16 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 
 	// Assign tags to animals based on their characteristics
 	animalTags := map[int][]models.AnimalTag{
-		0: {friendlyTag},                           // Buddy - friendly golden retriever
-		1: {experiencedOnly, walker20Tag},          // Luna - needs experienced owner
-		2: {friendlyTag},                           // Charlie - calm and friendly beagle
-		3: {friendlyTag},                           // Max - high-energy but friendly lab
-		4: {reactiveTag, experiencedOnly},          // Rocky - in bite quarantine
-		5: {friendlyTag},                           // Daisy - intelligent and eager border collie
-		6: {walker20Tag},                           // Cooper - energetic aussie shepherd
-		7: {experiencedOnly},                       // Bella - independent husky
-		8: {friendlyTag},                           // Zeus - gentle giant
-		9: {friendlyTag},                           // Rosie - playful corgi
+		0: {friendlyTag},                  // Buddy - friendly golden retriever
+		1: {experiencedOnly, walker20Tag}, // Luna - needs experienced owner
+		2: {friendlyTag},                  // Charlie - calm and friendly beagle
+		3: {friendlyTag},                  // Max - high-energy but friendly lab
+		4: {reactiveTag, experiencedOnly}, // Rocky - in bite quarantine
+		5: {friendlyTag},                  // Daisy - intelligent and eager border collie
+		6: {walker20Tag},                  // Cooper - energetic aussie shepherd
+		7: {experiencedOnly},              // Bella - independent husky
+		8: {friendlyTag},                  // Zeus - gentle giant
+		9: {friendlyTag},                  // Rosie - playful corgi
 	}
 
 	for i := range animals {

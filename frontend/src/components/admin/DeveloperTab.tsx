@@ -75,7 +75,7 @@ const DeveloperTab: React.FC = () => {
             onClick={() => setShowConfirmModal(true)}
             disabled={isSeeding}
           >
-            {isSeeding ? '🔄 Seeding Database...' : '🌱 Reset Database Now'}
+            {isSeeding ? 'Resetting Database...' : 'Reset Database'}
           </button>
         </div>
       </div>
@@ -83,45 +83,14 @@ const DeveloperTab: React.FC = () => {
       {showConfirmModal && (
         <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>⚠️ Confirm Database Reset</h2>
+            <h2>Confirm Database Reset</h2>
             
             <div className="modal-warning">
-              <p><strong>⚠️ This action will permanently delete ALL existing data!</strong></p>
+              <p>This will permanently delete all data and create fresh demo data.</p>
             </div>
 
             <div className="modal-body">
-              <div className="modal-section">
-                <p><strong>What will be deleted:</strong></p>
-                <ul>
-                  <li>All users (current accounts will be removed)</li>
-                  <li>All animals and their photos</li>
-                  <li>All comments, updates, and activity feed items</li>
-                  <li>All groups (including ModSquad)</li>
-                  <li>All tags, protocols, and announcements</li>
-                </ul>
-              </div>
-
-              <div className="modal-section">
-                <p><strong>What will be created:</strong></p>
-                <ul>
-                  <li><strong>5 demo user accounts</strong> (password: <code>demo1234</code>):
-                    <ul>
-                      <li>admin</li>
-                      <li>sarah_modsquad</li>
-                      <li>mike_modsquad</li>
-                      <li>jake_modsquad</li>
-                      <li>lisa_modsquad</li>
-                    </ul>
-                  </li>
-                  <li><strong>ModSquad group</strong> with 10 sample dogs</li>
-                  <li><strong>Animal tags</strong> and <strong>comment tags</strong></li>
-                  <li><strong>Default protocols</strong></li>
-                </ul>
-              </div>
-
-              <p className="modal-final-warning"><strong>⚠️ This action cannot be undone!</strong></p>
-
-              <p className="modal-instruction">Choose an option below:</p>
+              <p>This action cannot be undone.</p>
             </div>
 
             <div className="modal-actions">
@@ -130,14 +99,14 @@ const DeveloperTab: React.FC = () => {
                 onClick={() => setShowConfirmModal(false)}
                 disabled={isSeeding}
               >
-                ← Cancel (Keep Current Data)
+                Cancel
               </button>
               <button
                 className="confirm-button danger-button"
                 onClick={handleSeedDatabase}
                 disabled={isSeeding}
               >
-                {isSeeding ? '🔄 Deleting & Resetting...' : '🗑️ Yes, Delete Everything & Reset'}
+                {isSeeding ? 'Resetting...' : 'Reset Database'}
               </button>
             </div>
           </div>

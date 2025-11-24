@@ -138,7 +138,7 @@
 
 /* Confirmation Modal */
 .modal-overlay .modal-content {
-  max-width: 600px;
+  max-width: 400px;
 }
 
 .modal-overlay .modal-content h2 {
