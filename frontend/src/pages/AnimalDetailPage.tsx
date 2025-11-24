@@ -51,6 +51,8 @@ const AnimalDetailPage: React.FC = () => {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
 
   const loadComments = useCallback(async (
@@ -130,6 +132,14 @@ const AnimalDetailPage: React.FC = () => {
       loadComments(Number(groupId), Number(id), tagFilterString, 0, sortOrder);
     }
   }, [filterTags, groupId, id, loadComments, sortOrder]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollToTop(window.scrollY > 500);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -228,6 +238,22 @@ const AnimalDetailPage: React.FC = () => {
   const handleSortChange = () => {
     const newOrder = sortOrder === 'desc' ? 'asc' : 'desc';
     setSortOrder(newOrder);
+  };
+
+  const getCommentDateRange = () => {
+    if (comments.length === 0) return null;
+    const dates = comments.map(c => new Date(c.created_at));
+    const oldest = new Date(Math.min(...dates.map(d => d.getTime())));
+    const newest = new Date(Math.max(...dates.map(d => d.getTime())));
+    return { oldest, newest };
+  };
+
+  const scrollToComments = (position: 'top' | 'bottom') => {
+    if (position === 'top' && commentsTopRef.current) {
+      commentsTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
   };
 
   const handleExportComments = async () => {
@@ -431,9 +457,16 @@ const AnimalDetailPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="comments-section">
+        <div className="comments-section" ref={commentsTopRef}>
           <div className="comments-header">
-            <h2>Comments & Photos</h2>
+            <div className="comments-header-title">
+              <h2>Comments & Photos</h2>
+              {totalComments > 20 && getCommentDateRange() && (
+                <span className="date-range-info">
+                  Showing activity from {getCommentDateRange()?.oldest.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} to {getCommentDateRange()?.newest.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                </span>
+              )}
+            </div>
             <div className="comments-header-actions">
               {isAdmin && (
                 <button
@@ -546,7 +579,14 @@ const AnimalDetailPage: React.FC = () => {
           <div className="comments-controls">
             <div className="comments-count-and-sort">
               <span className="comments-count" aria-live="polite">
-                Showing {comments.length} of {totalComments} comment{totalComments !== 1 ? 's' : ''}
+                {totalComments > 50 ? (
+                  <>
+                    <strong>{comments.length}</strong> of <strong>{totalComments}</strong> comments loaded
+                    {hasMore && <span className="load-more-hint"> • Scroll down to load more</span>}
+                  </>
+                ) : (
+                  <>Showing {comments.length} of {totalComments} comment{totalComments !== 1 ? 's' : ''}</>
+                )}
               </span>
               <button
                 onClick={handleSortChange}
@@ -654,6 +694,15 @@ const AnimalDetailPage: React.FC = () => {
 
                 {hasMore && (
                   <div className="load-more-container">
+                    {comments.length > 20 && (
+                      <button
+                        onClick={() => scrollToComments('top')}
+                        className="btn-scroll-to-top-inline"
+                        aria-label="Jump to top of comments"
+                      >
+                        ↑ Back to Top
+                      </button>
+                    )}
                     <button
                       onClick={handleLoadMore}
                       disabled={loadingMore}
@@ -669,7 +718,7 @@ const AnimalDetailPage: React.FC = () => {
                         <>
                           Load More Comments
                           <span className="remaining-count">
-                            ({totalComments - comments.length} remaining)
+                            ({totalComments - comments.length} more • {Math.ceil((totalComments - comments.length) / COMMENTS_PER_PAGE)} pages)
                           </span>
                         </>
                       )}
@@ -686,6 +735,18 @@ const AnimalDetailPage: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Floating scroll to top button */}
+        {showScrollToTop && totalComments > 20 && (
+          <button
+            onClick={() => scrollToComments('top')}
+            className="btn-scroll-to-top-floating"
+            aria-label="Scroll to top of comments"
+            title="Jump to top of comments"
+          >
+            ↑
+          </button>
+        )}
       </div>
     </div>
   );
