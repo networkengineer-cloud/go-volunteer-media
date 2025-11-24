@@ -145,9 +145,10 @@ const AnimalDetailPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.showError('Please select an image file (JPG, PNG, or GIF)');
+    // Validate file type - be permissive for mobile uploads
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/heic', 'image/heif', 'image/webp'];
+    if (!file.type.startsWith('image/') && !validTypes.includes(file.type.toLowerCase())) {
+      toast.showError('Please select a valid image file');
       return;
     }
 
@@ -177,7 +178,7 @@ const AnimalDetailPage: React.FC = () => {
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim() && !commentImage) {
-      toast.showWarning('Please enter a comment or upload an image');
+      toast.showWarning('Please add a photo or write a comment');
       return;
     }
 
@@ -493,8 +494,11 @@ const AnimalDetailPage: React.FC = () => {
 
           {showCommentForm && (
             <form onSubmit={handleSubmitComment} className="comment-form">
+              <div className="form-section-header">
+                <span className="form-hint">📷 Add a photo or write a comment (or both!)</span>
+              </div>
               <textarea
-                placeholder="Share an update or comment about this animal..."
+                placeholder="Add a comment (optional if uploading photo)..."
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 rows={3}
@@ -557,20 +561,27 @@ const AnimalDetailPage: React.FC = () => {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".jpg,.jpeg,.png,.gif"
+                  accept="image/*"
+                  capture="environment"
                   onChange={handleImageUpload}
                   style={{ display: 'none' }}
                 />
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="btn-upload"
+                  className="btn-upload btn-upload-primary"
                   disabled={uploading || submitting}
+                  title="Add a photo (comment optional)"
                 >
-                  {uploading ? 'Uploading...' : '📷 Add Photo'}
+                  {uploading ? '⏳ Uploading...' : '📷 Add Photo'}
                 </button>
-                <button type="submit" className="btn-post" disabled={submitting || (!commentText.trim() && !commentImage)}>
-                  {submitting ? 'Posting...' : 'Post'}
+                <button 
+                  type="submit" 
+                  className="btn-post" 
+                  disabled={submitting || (!commentText.trim() && !commentImage)}
+                  title={!commentText.trim() && !commentImage ? 'Add a comment or photo first' : 'Post comment'}
+                >
+                  {submitting ? 'Posting...' : 'Post Comment'}
                 </button>
               </div>
             </form>

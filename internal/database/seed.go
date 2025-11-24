@@ -432,7 +432,7 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 		daysAgo := 180 - (i * 5) // Spread over 6 months
 		userIdx := (i % 3) + 1   // Rotate between merry, sophia, terry
 		commentDate := now.AddDate(0, 0, -daysAgo)
-		
+
 		commentTexts := []string{
 			"Buddy had a great walk today! He's so friendly with everyone we meet.",
 			"Worked on recall training with Buddy. He's making excellent progress!",
@@ -445,20 +445,20 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 			"Buddy's favorite toy is the tennis ball. He could fetch all day!",
 			"Another wonderful day with Buddy. He deserves a loving forever home.",
 		}
-		
+
 		comment := models.AnimalComment{
 			AnimalID:  animals[0].ID,
 			UserID:    users[userIdx].ID,
 			Content:   commentTexts[i%len(commentTexts)],
 			CreatedAt: commentDate,
 		}
-		
+
 		if i%7 == 0 {
 			comment.Tags = []models.CommentTag{behaviorTag}
 		} else if i%11 == 0 {
 			comment.Tags = []models.CommentTag{medicalTag}
 		}
-		
+
 		allComments = append(allComments, comment)
 	}
 
@@ -467,7 +467,7 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 		daysAgo := 200 - (i * 5) // Spread over ~7 months
 		userIdx := (i % 3) + 1
 		commentDate := now.AddDate(0, 0, -daysAgo)
-		
+
 		commentTexts := []string{
 			"Rocky showed great improvement in today's training session.",
 			"Behavioral eval: Rocky is responding well to positive reinforcement.",
@@ -480,18 +480,18 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 			"Rocky's gentle nature is really shining through now.",
 			"So proud of Rocky's progress. He's ready for a patient, experienced home.",
 		}
-		
+
 		comment := models.AnimalComment{
 			AnimalID:  animals[4].ID, // Rocky
 			UserID:    users[userIdx].ID,
 			Content:   commentTexts[i%len(commentTexts)],
 			CreatedAt: commentDate,
 		}
-		
+
 		if i%5 == 0 {
 			comment.Tags = []models.CommentTag{behaviorTag}
 		}
-		
+
 		allComments = append(allComments, comment)
 	}
 

@@ -31,12 +31,15 @@ var (
 )
 
 // AllowedImageTypes maps file extensions to their MIME types
+// Note: Browsers often convert HEIC to JPEG automatically
 var AllowedImageTypes = map[string][]string{
-	".jpg":  {"image/jpeg"},
-	".jpeg": {"image/jpeg"},
+	".jpg":  {"image/jpeg", "image/jpg"},
+	".jpeg": {"image/jpeg", "image/jpg"},
 	".png":  {"image/png"},
 	".gif":  {"image/gif"},
 	".webp": {"image/webp"},
+	".heic": {"image/heic", "image/heif"},
+	".heif": {"image/heic", "image/heif"},
 }
 
 // ValidateImageUpload validates an uploaded image file
@@ -71,18 +74,25 @@ func ValidateImageUpload(file *multipart.FileHeader, maxSize int64) error {
 	// Detect content type from file content
 	contentType := http.DetectContentType(buffer[:n])
 
-	// Verify content type matches allowed types for this extension
-	validContentType := false
-	for _, allowedType := range allowedMimeTypes {
-		if contentType == allowedType {
-			validContentType = true
-			break
+	// Be permissive with content type validation for mobile uploads
+	// Many mobile browsers convert images automatically (e.g., HEIC to JPEG)
+	// Just ensure it's some kind of image
+	if !strings.HasPrefix(contentType, "image/") && contentType != "application/octet-stream" {
+		// Only reject if it's clearly not an image
+		// Note: application/octet-stream is allowed because some mobile browsers
+		// don't send proper MIME types for converted images
+		validContentType := false
+		for _, allowedType := range allowedMimeTypes {
+			if contentType == allowedType {
+				validContentType = true
+				break
+			}
 		}
-	}
-
-	if !validContentType {
-		return fmt.Errorf("%w: file content type is %s, expected one of %v",
-			ErrInvalidFileType, contentType, allowedMimeTypes)
+		
+		if !validContentType {
+			return fmt.Errorf("%w: file does not appear to be a valid image (detected: %s)",
+				ErrInvalidFileType, contentType)
+		}
 	}
 
 	return nil
