@@ -238,6 +238,18 @@ variable "allowed_origins" {
   default     = ["*"]  # More permissive for dev
 }
 
+variable "custom_domain" {
+  type        = string
+  description = "Custom domain name for the Container App (e.g., dev.t-wallace.com)"
+  default     = ""
+}
+
+variable "custom_domain_certificate_id" {
+  type        = string
+  description = "Resource ID of the managed certificate for custom domain (leave empty to create managed certificate)"
+  default     = ""
+}
+
 variable "github_container_registry_username" {
   type        = string
   description = "GitHub username for GHCR authentication"

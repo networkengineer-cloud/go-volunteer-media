@@ -136,3 +136,24 @@ output "database_auto_pause_config" {
     sku           = var.db_sku_name
   }
 }
+
+# Custom domain configuration
+output "custom_domain_setup" {
+  description = "Instructions for setting up custom domain with managed certificate"
+  value = var.custom_domain != "" ? {
+    step_1_dns = "Add CNAME record in your DNS provider:"
+    cname_record = "${var.custom_domain} -> ${azurerm_container_app.main.ingress[0].fqdn}"
+    
+    step_2_verify = "Wait for DNS propagation (use: dig ${var.custom_domain})"
+    
+    step_3_add_domain = "Add custom domain with managed certificate using Azure CLI:"
+    cli_command = "az containerapp hostname add --hostname ${var.custom_domain} --resource-group ${azurerm_resource_group.main.name} --name ${azurerm_container_app.main.name} --location ${azurerm_resource_group.main.location}"
+    
+    step_4_bind_cert = "Bind managed certificate (Azure will auto-provision a free certificate):"
+    bind_command = "az containerapp hostname bind --hostname ${var.custom_domain} --resource-group ${azurerm_resource_group.main.name} --name ${azurerm_container_app.main.name} --environment ${azurerm_container_app_environment.main.name} --validation-method CNAME"
+    
+    note = "Azure will automatically provision a free managed certificate after DNS validation completes"
+  } : {
+    message = "No custom domain configured. Set 'custom_domain' variable to enable."
+  }
+}

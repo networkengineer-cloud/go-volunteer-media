@@ -178,11 +178,12 @@ test.describe('Animal Form UX Improvements', () => {
         // Focus on the textarea
         await textarea.focus();
 
-        // Type a multi-character string
+        // Type a multi-character string character by character to test focus retention
+        // This simulates real user typing and catches the bug where focus was lost on each keystroke
         const testText = 'This is a test of focus preservation during typing.';
-        await textarea.type(testText);
+        await textarea.type(testText, { delay: 50 }); // Add delay to simulate real typing
 
-        // Verify the full text was entered (proves focus was maintained)
+        // Verify the full text was entered (proves focus was maintained throughout)
         const enteredText = await textarea.inputValue();
         expect(enteredText).toBe(testText);
 
@@ -190,7 +191,13 @@ test.describe('Animal Form UX Improvements', () => {
         const focusedElement = await page.evaluate(() => document.activeElement?.id);
         expect(focusedElement).toBe('quarantine-context');
 
-        console.log('✅ Focus is preserved while typing in modal textarea');
+        // Additional check: Type more text to ensure continued focus
+        const additionalText = ' More text.';
+        await textarea.type(additionalText, { delay: 50 });
+        const finalText = await textarea.inputValue();
+        expect(finalText).toBe(testText + additionalText);
+
+        console.log('✅ Focus is preserved while typing in modal textarea (no focus loss on keystroke)');
       }
     }
   });

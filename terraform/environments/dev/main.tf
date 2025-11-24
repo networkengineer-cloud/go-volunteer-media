@@ -255,8 +255,9 @@ resource "azurerm_container_app" "main" {
         value = "8080"
       }
       
+      # Environment identifier for logging and monitoring
       env {
-        name  = "ENVIRONMENT"
+        name  = "ENV"
         value = "development"
       }
       
@@ -366,6 +367,9 @@ resource "azurerm_container_app" "main" {
     transport = "auto"
   }
   
+  # Note: Custom domain with managed certificate must be added via Azure CLI after DNS validation
+  # See outputs for step-by-step instructions
+  
   # Secrets
   secret {
     name  = "db-password"
@@ -388,11 +392,6 @@ resource "azurerm_container_app" "main" {
   }
   
   # Note: No registry configuration needed - GHCR image is public
-  # If the image was private, you would need to add:
-  # - github_container_registry_username variable
-  # - github_container_registry_password variable (sensitive)
-  # - registry block with server, username, and password_secret_name
-  # - Additional secret block for ghcr-password
   
   # Managed Identity
   identity {
@@ -413,29 +412,28 @@ resource "azurerm_key_vault_access_policy" "container_app" {
   ]
 }
 
-# Grant Container App managed identity access to Storage Account
-resource "azurerm_role_assignment" "container_app_storage" {
-  principal_id         = azurerm_container_app.main.identity[0].principal_id
-  role_definition_name = "Storage Blob Data Contributor"
-  scope                = azurerm_storage_account.main.id
-}
+# Note: Role assignments require elevated permissions.
+# For dev environment, we use storage account key directly in secrets.
+# For production, use Managed Identity with pre-configured role assignments.
+# Uncomment below if your service principal has Microsoft.Authorization/roleAssignments/write permission:
+#
+# resource "azurerm_role_assignment" "container_app_storage" {
+#   principal_id         = azurerm_container_app.main.identity[0].principal_id
+#   role_definition_name = "Storage Blob Data Contributor"
+#   scope                = azurerm_storage_account.main.id
+# }
 
 # Diagnostic settings for Container App
+# Note: Azure Container Apps only support metrics, not log categories
+# Logs are automatically sent to the Container App Environment's Log Analytics workspace
 resource "azurerm_monitor_diagnostic_setting" "container_app" {
   name                       = "diag-container-app"
   target_resource_id         = azurerm_container_app.main.id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   
-  enabled_log {
-    category = "ContainerAppConsoleLogs"
-  }
-  
-  enabled_log {
-    category = "ContainerAppSystemLogs"
-  }
-  
   metric {
     category = "AllMetrics"
+    enabled  = true
   }
 }
 

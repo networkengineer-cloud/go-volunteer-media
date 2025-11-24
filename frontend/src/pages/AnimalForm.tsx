@@ -48,6 +48,17 @@ const AnimalForm: React.FC = () => {
     }
   }, []);
 
+  // Memoize modal close handlers to prevent unnecessary re-renders
+  const handleQuarantineModalClose = useCallback(() => {
+    setShowQuarantineModal(false);
+    setQuarantineContext('');
+  }, []);
+
+  const handleUnarchiveModalClose = useCallback(() => {
+    setShowUnarchiveModal(false);
+    setPendingStatusChange('');
+  }, []);
+
   const checkForDuplicateNames = useCallback(async (name: string, currentAnimalId?: number) => {
     if (!groupId || !name.trim()) {
       setDuplicateInfo(null);
@@ -612,10 +623,7 @@ const AnimalForm: React.FC = () => {
       {/* Bite Quarantine Context Modal */}
       <Modal
         isOpen={showQuarantineModal}
-        onClose={() => {
-          setShowQuarantineModal(false);
-          setQuarantineContext('');
-        }}
+        onClose={handleQuarantineModalClose}
         title="🚨 Bite Quarantine Information"
         size="medium"
       >
@@ -671,10 +679,7 @@ const AnimalForm: React.FC = () => {
         <div className="modal__actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
           <Button
             variant="secondary"
-            onClick={() => {
-              setShowQuarantineModal(false);
-              setQuarantineContext('');
-            }}
+            onClick={handleQuarantineModalClose}
             disabled={loading}
           >
             Cancel
@@ -693,10 +698,7 @@ const AnimalForm: React.FC = () => {
       {/* Unarchive Confirmation Modal */}
       <Modal
         isOpen={showUnarchiveModal}
-        onClose={() => {
-          setShowUnarchiveModal(false);
-          setPendingStatusChange('');
-        }}
+        onClose={handleUnarchiveModalClose}
         title="Confirm Status Change"
         size="medium"
       >
