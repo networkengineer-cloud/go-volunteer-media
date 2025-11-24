@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { animalsApi, announcementsApi, animalTagsApi } from '../api/client';
+import { animalsApi, updatesApi, animalTagsApi } from '../api/client';
 import type { AnimalTag, Animal, DuplicateNameInfo } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import FormField from '../components/FormField';
@@ -288,19 +288,20 @@ const AnimalForm: React.FC = () => {
         await animalsApi.create(parseInt(groupId), updatedFormData);
       }
 
-      // Create announcement with behavior tag context
+      // Create group update (post) with behavior tag context
       const endDate = calculateQuarantineEndDate(quarantineDate);
-      const announcementTitle = `🚨 Bite Quarantine: ${formData.name}`;
-      const announcementContent = `${formData.name} has been placed in bite quarantine.\n\n` +
+      const updateTitle = `🚨 Bite Quarantine: ${formData.name}`;
+      const updateContent = `${formData.name} has been placed in bite quarantine.\n\n` +
         `Quarantine Start: ${new Date(quarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
         `Quarantine End: ${endDate}\n\n` +
         `Details:\n${quarantineContext}\n\n` +
         `#behavior`;
 
-      // Parameters: (title, content, send_email, send_groupme)
-      await announcementsApi.create(announcementTitle, announcementContent, false, true);
+      // Create group update (shows in activity feed) with GroupMe notification
+      // Parameters: (groupId, title, content, send_groupme, image_url?)
+      await updatesApi.create(parseInt(groupId), updateTitle, updateContent, true);
 
-      toast.showSuccess('Animal updated and announcement created successfully!');
+      toast.showSuccess('Animal updated and announcement posted successfully!');
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
