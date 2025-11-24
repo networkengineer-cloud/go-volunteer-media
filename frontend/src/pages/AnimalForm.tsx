@@ -297,7 +297,8 @@ const AnimalForm: React.FC = () => {
       if (animalId && groupId) {
         try {
           // Fetch comment tags to find the behavior tag
-          const commentTags = await commentTagsApi.getAll();
+          const commentTagsResponse = await commentTagsApi.getAll();
+          const commentTags = commentTagsResponse.data;
           const behaviorTag = commentTags.find(tag => tag.name.toLowerCase() === 'behavior');
           
           // Create comment with bite quarantine details
@@ -307,7 +308,7 @@ const AnimalForm: React.FC = () => {
             `Incident Details:\n${quarantineContext}`;
           
           console.log('Creating comment for animal ID:', animalId, 'in group:', groupId);
-          console.log('Comment content:', commentContent);
+          console.log('Comment tags:', commentTags);
           console.log('Behavior tag:', behaviorTag);
           
           await animalCommentsApi.create(
