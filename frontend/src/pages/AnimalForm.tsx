@@ -284,11 +284,11 @@ const AnimalForm: React.FC = () => {
       // Save the animal first (and get the animal ID for comments)
       let animalId: number | null = null;
       if (id && groupId) {
-        const updatedAnimal = await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
-        animalId = updatedAnimal.id;
+        const response = await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
+        animalId = response.data.id;
       } else if (groupId) {
-        const createdAnimal = await animalsApi.create(parseInt(groupId), updatedFormData);
-        animalId = createdAnimal.id;
+        const response = await animalsApi.create(parseInt(groupId), updatedFormData);
+        animalId = response.data.id;
       }
 
       const endDate = calculateQuarantineEndDate(quarantineDate);
