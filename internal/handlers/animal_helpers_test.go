@@ -102,3 +102,98 @@ func setupAnimalTestContext(userID uint, isAdmin bool) (*gin.Context, *httptest.
 
 	return c, w
 }
+
+// TestNullableTime_UnmarshalJSON tests the NullableTime unmarshaling
+func TestNullableTime_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		expectNil bool
+		expectErr bool
+		checkDate bool // Only check date part, not time
+	}{
+		{
+			name:      "null value",
+			input:     `null`,
+			expectNil: true,
+			expectErr: false,
+		},
+		{
+			name:      "empty string",
+			input:     `""`,
+			expectNil: true,
+			expectErr: false,
+		},
+		{
+			name:      "date only format (YYYY-MM-DD)",
+			input:     `"2025-11-24"`,
+			expectNil: false,
+			expectErr: false,
+			checkDate: true,
+		},
+		{
+			name:      "RFC3339 timestamp",
+			input:     `"2025-11-24T10:30:00Z"`,
+			expectNil: false,
+			expectErr: false,
+		},
+		{
+			name:      "RFC3339 timestamp with timezone",
+			input:     `"2025-11-24T10:30:00-05:00"`,
+			expectNil: false,
+			expectErr: false,
+		},
+		{
+			name:      "invalid format",
+			input:     `"not a date"`,
+			expectNil: false,
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var nt NullableTime
+			err := nt.UnmarshalJSON([]byte(tt.input))
+
+			if tt.expectErr {
+				if err == nil {
+					t.Error("Expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+
+			if tt.expectNil {
+				if nt.Valid {
+					t.Error("Expected Valid to be false for nil value")
+				}
+				if nt.Time != nil {
+					t.Error("Expected Time to be nil")
+				}
+			} else {
+				if !nt.Valid {
+					t.Error("Expected Valid to be true")
+				}
+				if nt.Time == nil {
+					t.Error("Expected Time to be set")
+					return
+				}
+
+				// For date-only inputs, verify the date part matches
+				if tt.checkDate {
+					expected := time.Date(2025, 11, 24, 0, 0, 0, 0, time.UTC)
+					if nt.Time.Year() != expected.Year() ||
+						nt.Time.Month() != expected.Month() ||
+						nt.Time.Day() != expected.Day() {
+						t.Errorf("Date mismatch: got %v, expected date to be 2025-11-24", nt.Time)
+					}
+				}
+			}
+		})
+	}
+}

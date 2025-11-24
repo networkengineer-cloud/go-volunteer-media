@@ -20,6 +20,7 @@ type NullableTime struct {
 
 // UnmarshalJSON implements custom unmarshaling for NullableTime
 // It handles empty strings ("") by treating them as null values
+// It also handles date-only strings (YYYY-MM-DD) from HTML date inputs
 func (nt *NullableTime) UnmarshalJSON(data []byte) error {
 	// Handle null explicitly
 	if string(data) == "null" {
@@ -40,9 +41,16 @@ func (nt *NullableTime) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// Parse the time string
+	// Try parsing as full RFC3339 timestamp first
 	var t time.Time
 	if err := json.Unmarshal(data, &t); err != nil {
+		// If that fails, try parsing as date-only (YYYY-MM-DD) from HTML date input
+		if parsedDate, parseErr := time.Parse("2006-01-02", s); parseErr == nil {
+			nt.Time = &parsedDate
+			nt.Valid = true
+			return nil
+		}
+		// If both fail, return the original error
 		return err
 	}
 
