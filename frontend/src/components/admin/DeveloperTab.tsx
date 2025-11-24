@@ -59,10 +59,9 @@ const DeveloperTab: React.FC = () => {
             <strong>New Demo Accounts (all with password: demo1234):</strong>
             <ul>
               <li><code>admin</code> - Administrator</li>
-              <li><code>sarah_modsquad</code> - Volunteer</li>
-              <li><code>mike_modsquad</code> - Volunteer</li>
-              <li><code>jake_modsquad</code> - Volunteer</li>
-              <li><code>lisa_modsquad</code> - Volunteer</li>
+              <li><code>merry</code> - Volunteer</li>
+              <li><code>sophia</code> - Volunteer</li>
+              <li><code>terry</code> - Volunteer</li>
             </ul>
           </div>
 
