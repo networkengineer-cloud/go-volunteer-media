@@ -96,6 +96,19 @@
   font-size: 0.85rem;
 }
 
+.button-instructions {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  border-left: 3px solid var(--primary-color);
+}
+
+.button-instructions p {
+  margin: 0;
+  color: var(--text-primary);
+}
+
 .seed-button {
   width: 100%;
   padding: 0.75rem 1.5rem;
@@ -124,31 +137,90 @@
 }
 
 /* Confirmation Modal */
-.seed-confirm-modal {
-  max-width: 500px;
+.modal-overlay .modal-content {
+  max-width: 600px;
 }
 
-.seed-confirm-modal h2 {
+.modal-overlay .modal-content h2 {
   margin-bottom: 1rem;
   color: var(--danger-color);
 }
 
-.confirm-warning {
+.modal-warning {
   background: var(--danger-bg, rgba(239, 68, 68, 0.1));
   border-left: 3px solid var(--danger-color);
   padding: 0.75rem 1rem;
   margin: 1rem 0;
   border-radius: 4px;
+}
+
+.modal-warning p {
+  margin: 0;
   color: var(--danger-color);
 }
 
-.confirm-warning strong {
+.modal-warning strong {
   font-weight: 700;
 }
 
-.confirm-info {
+.modal-body {
   color: var(--text-secondary);
   margin: 1rem 0;
+}
+
+.modal-section {
+  margin: 1.5rem 0;
+}
+
+.modal-section p {
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.modal-section ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.modal-section li {
+  margin: 0.4rem 0;
+  color: var(--text-secondary);
+}
+
+.modal-section ul ul {
+  list-style-type: circle;
+  margin-top: 0.25rem;
+}
+
+.modal-section code {
+  background: var(--bg-secondary);
+  padding: 0.125rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.9rem;
+  font-family: 'Courier New', monospace;
+}
+
+.modal-final-warning {
+  background: var(--danger-bg, rgba(239, 68, 68, 0.1));
+  border: 2px solid var(--danger-color);
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.modal-final-warning strong {
+  color: var(--danger-color);
+  font-size: 1.1rem;
+}
+
+.modal-instruction {
+  margin-top: 1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: center;
 }
 
 .modal-actions {
