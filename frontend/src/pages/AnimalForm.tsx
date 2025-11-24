@@ -282,9 +282,10 @@ const AnimalForm: React.FC = () => {
     setLoading(true);
     try {
       // Save the animal first (and get the animal ID for comments)
-      let animalId = id ? parseInt(id) : null;
+      let animalId: number | null = null;
       if (id && groupId) {
-        await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
+        const updatedAnimal = await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
+        animalId = updatedAnimal.id;
       } else if (groupId) {
         const createdAnimal = await animalsApi.create(parseInt(groupId), updatedFormData);
         animalId = createdAnimal.id;
@@ -305,6 +306,10 @@ const AnimalForm: React.FC = () => {
             `Quarantine End: ${endDate}\n\n` +
             `Incident Details:\n${quarantineContext}`;
           
+          console.log('Creating comment for animal ID:', animalId, 'in group:', groupId);
+          console.log('Comment content:', commentContent);
+          console.log('Behavior tag:', behaviorTag);
+          
           await animalCommentsApi.create(
             parseInt(groupId),
             animalId,
@@ -312,10 +317,15 @@ const AnimalForm: React.FC = () => {
             undefined, // no image
             behaviorTag ? [behaviorTag.id] : [] // attach behavior tag if found
           );
+          
+          console.log('Comment created successfully');
         } catch (commentError) {
           console.error('Failed to create comment:', commentError);
           // Don't fail the whole operation if comment creation fails
+          toast.showWarning('Animal updated but comment creation failed');
         }
+      } else {
+        console.warn('Missing animalId or groupId, skipping comment creation:', { animalId, groupId });
       }
 
       // Create group update (post) with behavior tag context for activity feed
