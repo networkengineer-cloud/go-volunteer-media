@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { animalsApi, updatesApi, animalTagsApi } from '../api/client';
+import { animalsApi, updatesApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
 import type { AnimalTag, Animal, DuplicateNameInfo } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import FormField from '../components/FormField';
@@ -281,15 +281,44 @@ const AnimalForm: React.FC = () => {
 
     setLoading(true);
     try {
-      // Save the animal first
+      // Save the animal first (and get the animal ID for comments)
+      let animalId = id ? parseInt(id) : null;
       if (id && groupId) {
         await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
       } else if (groupId) {
-        await animalsApi.create(parseInt(groupId), updatedFormData);
+        const createdAnimal = await animalsApi.create(parseInt(groupId), updatedFormData);
+        animalId = createdAnimal.id;
       }
 
-      // Create group update (post) with behavior tag context
       const endDate = calculateQuarantineEndDate(quarantineDate);
+      
+      // Create a comment on the animal with behavior tag
+      if (animalId && groupId) {
+        try {
+          // Fetch comment tags to find the behavior tag
+          const commentTags = await commentTagsApi.getAll();
+          const behaviorTag = commentTags.find(tag => tag.name.toLowerCase() === 'behavior');
+          
+          // Create comment with bite quarantine details
+          const commentContent = `🚨 BITE QUARANTINE\n\n` +
+            `Quarantine Start: ${new Date(quarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
+            `Quarantine End: ${endDate}\n\n` +
+            `Incident Details:\n${quarantineContext}`;
+          
+          await animalCommentsApi.create(
+            parseInt(groupId),
+            animalId,
+            commentContent,
+            undefined, // no image
+            behaviorTag ? [behaviorTag.id] : [] // attach behavior tag if found
+          );
+        } catch (commentError) {
+          console.error('Failed to create comment:', commentError);
+          // Don't fail the whole operation if comment creation fails
+        }
+      }
+
+      // Create group update (post) with behavior tag context for activity feed
       const updateTitle = `🚨 Bite Quarantine: ${formData.name}`;
       const updateContent = `${formData.name} has been placed in bite quarantine.\n\n` +
         `Quarantine Start: ${new Date(quarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
@@ -301,7 +330,7 @@ const AnimalForm: React.FC = () => {
       // Parameters: (groupId, title, content, send_groupme, image_url?)
       await updatesApi.create(parseInt(groupId), updateTitle, updateContent, true);
 
-      toast.showSuccess('Animal updated and announcement posted successfully!');
+      toast.showSuccess('Animal updated, comment added, and announcement posted successfully!');
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
