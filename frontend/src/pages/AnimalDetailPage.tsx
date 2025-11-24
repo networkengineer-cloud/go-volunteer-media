@@ -562,7 +562,6 @@ const AnimalDetailPage: React.FC = () => {
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   onChange={handleImageUpload}
                   style={{ display: 'none' }}
                 />

@@ -88,7 +88,7 @@ func ValidateImageUpload(file *multipart.FileHeader, maxSize int64) error {
 				break
 			}
 		}
-		
+
 		if !validContentType {
 			return fmt.Errorf("%w: file does not appear to be a valid image (detected: %s)",
 				ErrInvalidFileType, contentType)
