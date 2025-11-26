@@ -565,6 +565,36 @@
   background: rgba(239, 68, 68, 0.15);
 }
 
+/* Animal Tags */
+.animal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.animal-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid;
+  white-space: nowrap;
+  transition: transform 0.15s;
+}
+
+.animal-tag:hover {
+  transform: scale(1.05);
+}
+
+.tag-icon {
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .group-page {

@@ -417,6 +417,25 @@ const GroupPage: React.FC = () => {
                         {animal.breed && <p className="breed">{animal.breed}</p>}
                         <p className="age">{animal.age} years old</p>
                         <span className={`status ${animal.status}`}>{animal.status}</span>
+                        {animal.tags && animal.tags.length > 0 && (
+                          <div className="animal-tags">
+                            {animal.tags.map((tag) => (
+                              <span
+                                key={tag.id}
+                                className="animal-tag"
+                                style={{ 
+                                  backgroundColor: `${tag.color}15`,
+                                  color: tag.color,
+                                  borderColor: tag.color
+                                }}
+                                title={tag.name}
+                              >
+                                {tag.icon && <span className="tag-icon">{tag.icon}</span>}
+                                {tag.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
                           <p className="quarantine-end-date">
                             Ends: {(() => {
