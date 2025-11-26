@@ -13,8 +13,8 @@ REPO="${REPO:-ghcr.io/networkengineer-cloud/go-volunteer-media}"
 APP_NAME="${APP_NAME:-ca-volunteer-media-dev}"
 RG="${RG:-rg-volunteer-media-dev}"
 
-echo "Building image ${REPO}:${IMAGE_TAG}..."
-docker build -t "${REPO}:${IMAGE_TAG}" .
+echo "Building image ${REPO}:${IMAGE_TAG} for linux/amd64..."
+docker build --platform linux/amd64 -t "${REPO}:${IMAGE_TAG}" .
 
 echo "Pushing image to registry..."
 docker push "${REPO}:${IMAGE_TAG}"
