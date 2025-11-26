@@ -400,3 +400,56 @@
 .checkbox-label:hover {
   color: var(--brand, #0e6c55);
 }
+
+/* Image Upload Options */
+.image-upload-options {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.label-badge {
+  display: inline-block;
+  background: var(--brand);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-left: 0.5rem;
+}
+
+/* Image Selector Grid */
+.image-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+  padding: 1rem 0;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.selectable-image {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.selectable-image:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.selectable-image.current {
+  box-shadow: 0 4px 16px rgba(14, 108, 85, 0.3);
+}
+
+@media (max-width: 768px) {
+  .image-upload-options {
+    flex-direction: column;
+  }
+  
+  .image-selector-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+  }
+}

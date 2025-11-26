@@ -112,6 +112,21 @@ export interface Announcement {
   user?: User;
 }
 
+export interface AnimalImage {
+  id: number;
+  animal_id: number;
+  user_id: number;
+  image_url: string;
+  caption: string;
+  is_profile_picture: boolean;
+  width: number;
+  height: number;
+  file_size: number;
+  created_at: string;
+  deleted_at?: string | null;
+  user?: User;
+}
+
 export interface AnimalComment {
   id: number;
   animal_id: number;
@@ -119,6 +134,7 @@ export interface AnimalComment {
   content: string;
   image_url: string;
   created_at: string;
+  deleted_at?: string | null;
   tags?: CommentTag[];
   user?: User;
 }
@@ -331,6 +347,21 @@ export const animalsApi = {
     formData.append('image', file);
     return api.post<{ url: string }>('/animals/upload-image', formData);
   },
+  // Image gallery API
+  getImages: (groupId: number, animalId: number) =>
+    api.get<AnimalImage[]>('/groups/' + groupId + '/animals/' + animalId + '/images'),
+  uploadImageToGallery: (groupId: number, animalId: number, file: File, caption?: string) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    if (caption) formData.append('caption', caption);
+    return api.post<AnimalImage>('/groups/' + groupId + '/animals/' + animalId + '/images', formData);
+  },
+  deleteImage: (groupId: number, animalId: number, imageId: number) =>
+    api.delete('/groups/' + groupId + '/animals/' + animalId + '/images/' + imageId),
+  getDeletedImages: (groupId: number) =>
+    api.get<AnimalImage[]>('/admin/groups/' + groupId + '/deleted-images'),
+  setProfilePicture: (animalId: number, imageId: number) =>
+    api.put<AnimalImage>('/admin/animals/' + animalId + '/images/' + imageId + '/set-profile'),
   // Admin bulk operations
   getAllForAdmin: (status?: string, groupId?: number, name?: string) => {
     const params: Record<string, unknown> = {};
@@ -393,6 +424,10 @@ export const animalCommentsApi = {
       image_url,
       tag_ids,
     }),
+  delete: (groupId: number, animalId: number, commentId: number) =>
+    api.delete('/groups/' + groupId + '/animals/' + animalId + '/comments/' + commentId),
+  getDeleted: (groupId: number) =>
+    api.get<AnimalComment[]>('/admin/groups/' + groupId + '/deleted-comments'),
 };
 
 // Comment Tags API

@@ -29,11 +29,13 @@ const calculateQuarantineEndDate = (startDateString?: string): string => {
 const AnimalDetailPage: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const toast = useToast();
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
   const [comments, setComments] = useState<AnimalComment[]>([]);
+  const [deletedComments, setDeletedComments] = useState<AnimalComment[]>([]);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [availableTags, setAvailableTags] = useState<CommentTag[]>([]);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [filterTags, setFilterTags] = useState<string[]>([]); // Tags selected for filtering
@@ -94,6 +96,42 @@ const AnimalDetailPage: React.FC = () => {
     }
   }, []);
 
+  const loadDeletedComments = useCallback(async (gId: number) => {
+    if (!isAdmin) return;
+    try {
+      const res = await animalCommentsApi.getDeleted(gId);
+      console.log('Deleted comments loaded:', res.data);
+      setDeletedComments(res.data || []);
+    } catch (error) {
+      console.error('Failed to load deleted comments:', error);
+      setDeletedComments([]);
+    }
+  }, [isAdmin]);
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!groupId || !id) return;
+    
+    if (!window.confirm('Are you sure you want to delete this comment?')) {
+      return;
+    }
+
+    try {
+      await animalCommentsApi.delete(Number(groupId), Number(id), commentId);
+      toast.showSuccess('Comment deleted successfully');
+      
+      // Reload comments
+      await loadComments(Number(groupId), Number(id), filterTags.join(','), 0, sortOrder, false);
+      
+      // Reload deleted comments if admin
+      if (isAdmin) {
+        await loadDeletedComments(Number(groupId));
+      }
+    } catch (error) {
+      console.error('Failed to delete comment:', error);
+      toast.showError('Failed to delete comment. Please try again.');
+    }
+  };
+
   const loadGroupData = useCallback(async (gId: number) => {
     try {
       const groupRes = await groupsApi.getById(gId);
@@ -123,8 +161,11 @@ const AnimalDetailPage: React.FC = () => {
       loadAnimalData(Number(groupId), Number(id));
       loadGroupData(Number(groupId));
       loadTags();
+      if (isAdmin) {
+        loadDeletedComments(Number(groupId));
+      }
     }
-  }, [groupId, id, loadAnimalData, loadGroupData, loadTags]);
+  }, [groupId, id, loadAnimalData, loadGroupData, loadTags, isAdmin, loadDeletedComments]);
 
   useEffect(() => {
     if (groupId && id) {
@@ -449,11 +490,21 @@ const AnimalDetailPage: React.FC = () => {
                 </div>
               )}
               
-              {isAdmin && (
-                <button onClick={handleEdit} className="btn-edit">
-                  Edit Animal Details
-                </button>
-              )}
+              <div className="animal-action-buttons">
+                <Link 
+                  to={`/groups/${groupId}/animals/${id}/photos`} 
+                  className="btn-view-gallery-large"
+                  title="View and manage animal photos"
+                >
+                  📷 Photo Gallery
+                </Link>
+                
+                {isAdmin && (
+                  <button onClick={handleEdit} className="btn-edit">
+                    Edit Animal Details
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -558,22 +609,6 @@ const AnimalDetailPage: React.FC = () => {
                 )}
               </div>
               <div className="comment-form-actions">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  style={{ display: 'none' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="btn-upload btn-upload-primary"
-                  disabled={uploading || submitting}
-                  title="Add a photo (comment optional)"
-                >
-                  {uploading ? '⏳ Uploading...' : '📷 Add Photo'}
-                </button>
                 <button 
                   type="submit" 
                   className="btn-post" 
@@ -584,6 +619,73 @@ const AnimalDetailPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          )}
+
+          {/* Admin: Show Deleted Comments Toggle - HIGH VISIBILITY */}
+          {isAdmin && deletedComments && deletedComments.length > 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.04) 100%)',
+              border: '2px solid #ef4444',
+              padding: '1rem',
+              borderRadius: '8px',
+              marginBottom: '1.5rem',
+              marginTop: '1rem'
+            }}>
+              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.75rem' }}>
+                <input
+                  id="show-deleted-comments"
+                  type="checkbox"
+                  checked={showDeleted}
+                  onChange={() => setShowDeleted(!showDeleted)}
+                  style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#ef4444' }}
+                />
+                <span style={{ fontWeight: 700, color: '#ef4444', fontSize: '1.05rem' }}>
+                  🗑️ Show Deleted Comments ({deletedComments.length})
+                </span>
+              </label>
+            </div>
+          )}
+
+          {/* Deleted Comments Section */}
+          {showDeleted && deletedComments && deletedComments.length > 0 && (
+            <div className="deleted-comments-section">
+              <h3>🗑️ Deleted Comments (Admin Review)</h3>
+              {deletedComments.filter(dc => dc.animal_id === Number(id)).map((comment) => (
+                <div key={comment.id} className="comment-card deleted-comment">
+                  <div className="deleted-badge">🗑️ DELETED</div>
+                  <div className="comment-header">
+                    <span className="comment-author">{comment.user?.username}</span>
+                    <span className="comment-date">
+                      {new Date(comment.created_at).toLocaleDateString()} at{' '}
+                      {new Date(comment.created_at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                  {comment.tags && comment.tags.length > 0 && (
+                    <div className="comment-tags">
+                      {comment.tags.map((tag) => (
+                        <span key={tag.id} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="comment-content">{comment.content}</p>
+                  {comment.image_url && (
+                    <img
+                      src={comment.image_url}
+                      alt="Comment"
+                      className="comment-image"
+                    />
+                  )}
+                  <div className="comment-meta">
+                    Deleted: {new Date(comment.deleted_at!).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
 
           <div className="comments-controls">
@@ -681,6 +783,15 @@ const AnimalDetailPage: React.FC = () => {
                           minute: '2-digit',
                         })}
                       </span>
+                      {(isAdmin || comment.user?.id === user?.id) && (
+                        <button
+                          className="btn-delete-comment"
+                          onClick={() => handleDeleteComment(comment.id)}
+                          title="Delete comment"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </div>
                     {comment.tags && comment.tags.length > 0 && (
                       <div className="comment-tags">

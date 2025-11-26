@@ -110,7 +110,7 @@
 .animal-main-image {
   width: 100%;
   max-height: 400px;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .animal-details {
@@ -207,8 +207,34 @@
   color: #7c2d12;
 }
 
-.btn-edit {
+.animal-action-buttons {
+  display: flex;
+  gap: 1rem;
   margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.btn-view-gallery-large {
+  padding: 0.7rem 1.5rem;
+  background: var(--brand);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-view-gallery-large:hover {
+  background: var(--brand-600);
+  color: white;
+}
+
+.btn-edit {
   padding: 0.7rem 1.5rem;
   background: var(--brand);
   color: white;
@@ -664,37 +690,6 @@
   margin-top: 1rem;
 }
 
-.btn-upload {
-  padding: 0.75rem 1.5rem;
-  background: #f59e0b;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 0.95rem;
-  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
-}
-
-.btn-upload-primary {
-  background: #f59e0b;
-  color: white;
-  border: none;
-}
-
-.btn-upload:hover:not(:disabled) {
-  background: #d97706;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
-}
-
-.btn-upload:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-}
-
 .btn-post {
   padding: 0.7rem 2rem;
   background: var(--brand);
@@ -748,6 +743,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.75rem;
+  gap: 0.5rem;
 }
 
 .comment-author {
@@ -759,6 +755,28 @@
 .comment-date {
   color: var(--text-secondary);
   font-size: 0.9rem;
+  flex-grow: 1;
+}
+
+.btn-delete-comment {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  opacity: 0.6;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+.btn-delete-comment:hover {
+  opacity: 1;
+  background: rgba(255, 0, 0, 0.1);
+  transform: scale(1.1);
+}
+
+.btn-delete-comment:active {
+  transform: scale(0.95);
 }
 
 .comment-content {
@@ -1125,6 +1143,112 @@
   background: var(--bg-primary);
   border-radius: 6px;
   font-size: 0.875rem;
+}
+
+/* Deleted Comments Section */
+.admin-section {
+  margin-bottom: 1.5rem;
+}
+
+.btn-toggle-deleted {
+  background: var(--neutral-200);
+  border: 1px solid var(--neutral-300);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  transition: all 0.2s;
+  width: 100%;
+  text-align: left;
+}
+
+.btn-toggle-deleted:hover {
+  background: var(--neutral-300);
+  border-color: var(--neutral-400);
+}
+
+[data-theme='dark'] .btn-toggle-deleted {
+  background: var(--neutral-700);
+  border-color: var(--neutral-600);
+}
+
+[data-theme='dark'] .btn-toggle-deleted:hover {
+  background: var(--neutral-600);
+  border-color: var(--neutral-500);
+}
+
+.deleted-comments-section {
+  background: var(--neutral-100);
+  border: 2px solid var(--neutral-300);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.deleted-comments-section h3 {
+  margin: 0 0 1rem 0;
+  color: var(--text-primary);
+  font-size: 1.1rem;
+}
+
+[data-theme='dark'] .deleted-comments-section {
+  background: rgba(31, 41, 55, 0.8);
+  border-color: #ef4444;
+}
+
+.deleted-comment {
+  position: relative;
+  opacity: 0.85;
+  border: 2px solid #fca5a5 !important;
+  background: #fef2f2 !important;
+}
+
+[data-theme='dark'] .deleted-comment {
+  opacity: 1;
+  background: rgba(127, 29, 29, 0.2) !important;
+  border-color: #ef4444 !important;
+}
+
+[data-theme='dark'] .deleted-comment .comment-author {
+  color: #f3f4f6;
+}
+
+[data-theme='dark'] .deleted-comment .comment-content {
+  color: #e5e7eb;
+}
+
+[data-theme='dark'] .deleted-comment .comment-date {
+  color: #d1d5db;
+}
+
+.deleted-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: #ef4444;
+  color: white;
+  padding: 0.35rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+}
+
+.comment-meta {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--neutral-300);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+[data-theme='dark'] .comment-meta {
+  border-top-color: #374151;
+  color: #9ca3af;
 }
 
 .name-history-old {

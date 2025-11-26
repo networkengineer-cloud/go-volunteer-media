@@ -205,6 +205,9 @@ func main() {
 			admin.GET("/animals/export-comments-csv", handlers.ExportAnimalCommentsCSV(db))
 			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db))
 
+			// Animal image management (admin only)
+			admin.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePicture(db))
+
 			// Database seeding (admin only, dangerous operation)
 			admin.POST("/seed-database", handlers.SeedDatabase(db))
 
@@ -215,6 +218,10 @@ func main() {
 
 			// Admin dashboard
 			admin.GET("/dashboard/stats", handlers.GetAdminDashboardStats(db))
+
+			// Admin content moderation - view deleted content
+			admin.GET("/groups/:id/deleted-comments", handlers.GetDeletedComments(db))
+			admin.GET("/groups/:id/deleted-images", handlers.GetDeletedImages(db))
 		}
 
 		// Group-specific routes
@@ -227,9 +234,15 @@ func main() {
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
 			group.GET("/animals/check-duplicates", handlers.CheckDuplicateNames(db))
 
+			// Animal images - all group members can view and upload
+			group.GET("/animals/:animalId/images", handlers.GetAnimalImages(db))
+			group.POST("/animals/:animalId/images", handlers.UploadAnimalImageToGallery(db))
+			group.DELETE("/animals/:animalId/images/:imageId", handlers.DeleteAnimalImage(db))
+
 			// Animal comments - all group members can view and add comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
 			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
+			group.DELETE("/animals/:animalId/comments/:commentId", handlers.DeleteAnimalComment(db))
 
 			// Latest comments across the group
 			group.GET("/latest-comments", handlers.GetGroupLatestComments(db))

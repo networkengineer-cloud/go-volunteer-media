@@ -27,21 +27,21 @@ type User struct {
 
 // Group represents a volunteer group (dogs, cats, modsquad, etc.)
 type Group struct {
-	ID            uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
-	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
-	Name          string         `gorm:"uniqueIndex;not null" json:"name"`
-	Description   string         `json:"description"`
-	ImageURL      string         `json:"image_url"`
-	HeroImageURL  string         `json:"hero_image_url"`
-	HasProtocols  bool           `gorm:"column:has_protocols;default:false" json:"has_protocols"` // Enable protocols feature for this group
-	GroupMeBotID  string         `gorm:"column:groupme_bot_id" json:"groupme_bot_id"`                     // GroupMe Bot ID for sending messages
-	GroupMeEnabled bool          `gorm:"column:groupme_enabled;default:false" json:"groupme_enabled"` // Enable GroupMe integration for this group
-	Users         []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
-	Animals       []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
-	Updates       []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
-	Protocols     []Protocol     `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
+	ID             uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`
+	Name           string         `gorm:"uniqueIndex;not null" json:"name"`
+	Description    string         `json:"description"`
+	ImageURL       string         `json:"image_url"`
+	HeroImageURL   string         `json:"hero_image_url"`
+	HasProtocols   bool           `gorm:"column:has_protocols;default:false" json:"has_protocols"`     // Enable protocols feature for this group
+	GroupMeBotID   string         `gorm:"column:groupme_bot_id" json:"groupme_bot_id"`                 // GroupMe Bot ID for sending messages
+	GroupMeEnabled bool           `gorm:"column:groupme_enabled;default:false" json:"groupme_enabled"` // Enable GroupMe integration for this group
+	Users          []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
+	Animals        []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
+	Updates        []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
+	Protocols      []Protocol     `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
 }
 
 // Animal represents an animal in a group
@@ -58,15 +58,16 @@ type Animal struct {
 	Description         string              `json:"description"`
 	ImageURL            string              `json:"image_url"`
 	Status              string              `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, foster, bite_quarantine, archived
-	ArrivalDate         *time.Time          `json:"arrival_date"`                                                     // When animal first became available
-	FosterStartDate     *time.Time          `json:"foster_start_date"`                                                // When animal went to foster
-	QuarantineStartDate *time.Time          `json:"quarantine_start_date"`                                            // When bite quarantine started
-	ArchivedDate        *time.Time          `json:"archived_date"`                                                    // When animal was archived
-	LastStatusChange    *time.Time          `json:"last_status_change"`                                               // Timestamp of last status change
-	ReturnCount         int                 `gorm:"default:0" json:"return_count"`                                    // Number of times animal has returned to shelter after being archived
-	IsReturned          bool                `gorm:"default:false" json:"is_returned"`                                 // Indicates if archived animal is a return (not all archived animals are returns)
-	Tags                []AnimalTag         `gorm:"many2many:animal_animal_tags;" json:"tags,omitempty"`              // Tags associated with this animal
-	NameHistory         []AnimalNameHistory `gorm:"foreignKey:AnimalID" json:"name_history,omitempty"`                // History of name changes for this animal
+	ArrivalDate         *time.Time          `json:"arrival_date"`                                                    // When animal first became available
+	FosterStartDate     *time.Time          `json:"foster_start_date"`                                               // When animal went to foster
+	QuarantineStartDate *time.Time          `json:"quarantine_start_date"`                                           // When bite quarantine started
+	ArchivedDate        *time.Time          `json:"archived_date"`                                                   // When animal was archived
+	LastStatusChange    *time.Time          `json:"last_status_change"`                                              // Timestamp of last status change
+	ReturnCount         int                 `gorm:"default:0" json:"return_count"`                                   // Number of times animal has returned to shelter after being archived
+	IsReturned          bool                `gorm:"default:false" json:"is_returned"`                                // Indicates if archived animal is a return (not all archived animals are returns)
+	Tags                []AnimalTag         `gorm:"many2many:animal_animal_tags;" json:"tags,omitempty"`             // Tags associated with this animal
+	NameHistory         []AnimalNameHistory `gorm:"foreignKey:AnimalID" json:"name_history,omitempty"`               // History of name changes for this animal
+	Images              []AnimalImage       `gorm:"foreignKey:AnimalID" json:"images,omitempty"`                     // Images uploaded for this animal
 }
 
 // LengthOfStay returns the number of days since the animal's arrival date
@@ -91,15 +92,15 @@ func (a *Animal) QuarantineEndDate() *time.Time {
 	if a.QuarantineStartDate == nil {
 		return nil
 	}
-	
+
 	// Calculate 10 days from start date
 	endDate := a.QuarantineStartDate.AddDate(0, 0, 10)
-	
+
 	// Check if end date falls on weekend and adjust to next Monday
 	for endDate.Weekday() == time.Saturday || endDate.Weekday() == time.Sunday {
 		endDate = endDate.AddDate(0, 0, 1)
 	}
-	
+
 	return &endDate
 }
 
@@ -186,8 +187,26 @@ type AnimalTag struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	Name      string         `gorm:"uniqueIndex;not null" json:"name"`
-	Category  string         `gorm:"not null" json:"category"` // "behavior" or "walker_status"
+	Category  string         `gorm:"not null" json:"category"`       // "behavior" or "walker_status"
 	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
+}
+
+// AnimalImage represents an image uploaded for an animal
+type AnimalImage struct {
+	ID               uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	DeletedAt        gorm.DeletedAt `gorm:"index" json:"-"`
+	AnimalID         uint           `gorm:"not null;index:idx_animal_image_animal" json:"animal_id"`
+	UserID           uint           `gorm:"not null;index" json:"user_id"`
+	ImageURL         string         `gorm:"not null" json:"image_url"`
+	Caption          string         `json:"caption"`
+	IsProfilePicture bool           `gorm:"default:false" json:"is_profile_picture"`
+	Width            int            `json:"width"`
+	Height           int            `json:"height"`
+	FileSize         int            `json:"file_size"` // in bytes
+	User             User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Animal           Animal         `gorm:"foreignKey:AnimalID" json:"animal,omitempty"`
 }
 
 // AnimalNameHistory tracks name changes for an animal

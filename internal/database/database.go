@@ -71,15 +71,15 @@ func Initialize() (*gorm.DB, error) {
 	// Configure connection pool for security and performance
 	// SetMaxIdleConns sets the maximum number of connections in the idle connection pool
 	sqlDB.SetMaxIdleConns(10)
-	
+
 	// SetMaxOpenConns sets the maximum number of open connections to the database
 	// This prevents resource exhaustion attacks
 	sqlDB.SetMaxOpenConns(100)
-	
+
 	// SetConnMaxLifetime sets the maximum amount of time a connection may be reused
 	// This helps with database connection rotation and security
 	sqlDB.SetConnMaxLifetime(1 * time.Hour)
-	
+
 	// SetConnMaxIdleTime sets the maximum amount of time a connection may be idle
 	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 
@@ -106,6 +106,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.SiteSetting{},
 		&models.Protocol{},
 		&models.AnimalTag{},
+		&models.AnimalImage{},
 		&models.AnimalNameHistory{},
 	)
 	if err != nil {

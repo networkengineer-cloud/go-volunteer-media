@@ -260,3 +260,121 @@ func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, results)
 	}
 }
+
+// DeleteAnimalComment deletes a comment (soft delete)
+// Users can delete their own comments, admins can delete any comment
+func DeleteAnimalComment(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		groupID := c.Param("id")
+		animalID := c.Param("animalId")
+		commentID := c.Param("commentId")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check group access
+		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		// Verify animal exists and belongs to group
+		var animal models.Animal
+		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
+			return
+		}
+
+		// Get the comment
+		var comment models.AnimalComment
+		if err := db.Where("id = ? AND animal_id = ?", commentID, animalID).First(&comment).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})
+			return
+		}
+
+		// Check if user owns the comment or is admin
+		if comment.UserID != userID.(uint) && !isAdmin.(bool) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own comments"})
+			return
+		}
+
+		// Soft delete the comment
+		if err := db.Delete(&comment).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete comment"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Comment deleted successfully"})
+	}
+}
+
+// GetDeletedComments returns all soft-deleted comments (admin only)
+func GetDeletedComments(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		groupID := c.Param("id")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Admin only
+		if !isAdmin.(bool) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		// Check group access
+		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		// Get animals in this group
+		var animals []models.Animal
+		if err := db.Where("group_id = ?", groupID).Find(&animals).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
+			return
+		}
+
+		var animalIDs []uint
+		animalMap := make(map[uint]models.Animal)
+		for _, animal := range animals {
+			animalIDs = append(animalIDs, animal.ID)
+			animalMap[animal.ID] = animal
+		}
+
+		if len(animalIDs) == 0 {
+			c.JSON(http.StatusOK, []interface{}{})
+			return
+		}
+
+		// Get deleted comments (unscoped to include soft-deleted)
+		var comments []models.AnimalComment
+		err := db.Unscoped().
+			Where("animal_id IN ? AND deleted_at IS NOT NULL", animalIDs).
+			Preload("User").
+			Preload("Tags").
+			Order("deleted_at DESC").
+			Find(&comments).Error
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch deleted comments"})
+			return
+		}
+
+		// Build response with animal information
+		type DeletedCommentWithAnimal struct {
+			models.AnimalComment
+			Animal models.Animal `json:"animal"`
+		}
+
+		var results []DeletedCommentWithAnimal
+		for _, comment := range comments {
+			if animal, ok := animalMap[comment.AnimalID]; ok {
+				results = append(results, DeletedCommentWithAnimal{
+					AnimalComment: comment,
+					Animal:        animal,
+				})
+			}
+		}
+
+		c.JSON(http.StatusOK, results)
+	}
+}
