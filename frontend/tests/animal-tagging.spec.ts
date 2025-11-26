@@ -44,10 +44,10 @@ test.describe('Animal Tagging System', () => {
     // Verify some default tags exist
     const resourceGuarding = page.locator('.tag-preview:has-text("resource guarding")');
     const shy = page.locator('.tag-preview:has-text("shy")');
-    const walker20 = page.locator('.tag-preview:has-text("2.0 walker")');
+    const availableForWalking = page.locator('.tag-preview:has-text("available for walking")');
     
     await expect(resourceGuarding.or(shy)).toBeVisible();
-    await expect(walker20).toBeVisible();
+    await expect(availableForWalking).toBeVisible();
   });
 
   test('should create a new animal tag', async () => {
