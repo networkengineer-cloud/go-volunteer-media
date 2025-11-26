@@ -368,7 +368,7 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 		shyTag           models.AnimalTag
 		reactiveTag      models.AnimalTag
 		resourceGuarding models.AnimalTag
-		walker20Tag      models.AnimalTag
+		availableWalking models.AnimalTag
 		dualWalkerTag    models.AnimalTag
 		experiencedOnly  models.AnimalTag
 	)
@@ -377,19 +377,19 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 	db.Where("name = ?", "shy").First(&shyTag)
 	db.Where("name = ?", "reactive").First(&reactiveTag)
 	db.Where("name = ?", "resource guarding").First(&resourceGuarding)
-	db.Where("name = ?", "2.0 walker").First(&walker20Tag)
+	db.Where("name = ?", "available for walking").First(&availableWalking)
 	db.Where("name = ?", "dual walker").First(&dualWalkerTag)
 	db.Where("name = ?", "experienced only").First(&experiencedOnly)
 
 	// Assign tags to animals based on their characteristics
 	animalTags := map[int][]models.AnimalTag{
 		0: {friendlyTag},                  // Buddy - friendly golden retriever
-		1: {experiencedOnly, walker20Tag}, // Luna - needs experienced owner
+		1: {experiencedOnly, availableWalking}, // Luna - needs experienced walker
 		2: {friendlyTag},                  // Charlie - calm and friendly beagle
 		3: {friendlyTag},                  // Max - high-energy but friendly lab
 		4: {reactiveTag, experiencedOnly}, // Rocky - in bite quarantine
 		5: {friendlyTag},                  // Daisy - intelligent and eager border collie
-		6: {walker20Tag},                  // Cooper - energetic aussie shepherd
+		6: {availableWalking},             // Cooper - energetic aussie shepherd
 		7: {experiencedOnly},              // Bella - independent husky
 		8: {friendlyTag},                  // Zeus - gentle giant
 		9: {friendlyTag},                  // Rosie - playful corgi

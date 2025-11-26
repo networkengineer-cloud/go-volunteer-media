@@ -189,6 +189,7 @@ type AnimalTag struct {
 	Name      string         `gorm:"uniqueIndex;not null" json:"name"`
 	Category  string         `gorm:"not null" json:"category"`       // "behavior" or "walker_status"
 	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
+	Icon      string         `gorm:"default:''" json:"icon"`         // Unicode emoji or icon identifier
 }
 
 // AnimalImage represents an image uploaded for an animal

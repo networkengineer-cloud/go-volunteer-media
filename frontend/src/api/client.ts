@@ -164,6 +164,7 @@ export interface AnimalTag {
   name: string;
   category: string; // 'behavior' or 'walker_status'
   color: string;
+  icon: string; // Unicode emoji
   created_at: string;
 }
 
@@ -441,9 +442,9 @@ export const commentTagsApi = {
 // Animal Tags API
 export const animalTagsApi = {
   getAll: () => api.get<AnimalTag[]>('/animal-tags'),
-  create: (data: { name: string; category: string; color: string }) =>
+  create: (data: { name: string; category: string; color: string; icon: string }) =>
     api.post<AnimalTag>('/admin/animal-tags', data),
-  update: (tagId: number, data: { name: string; category: string; color: string }) =>
+  update: (tagId: number, data: { name: string; category: string; color: string; icon: string }) =>
     api.put<AnimalTag>('/admin/animal-tags/' + tagId, data),
   delete: (tagId: number) => api.delete('/admin/animal-tags/' + tagId),
   assignToAnimal: (animalId: number, tagIds: number[]) =>

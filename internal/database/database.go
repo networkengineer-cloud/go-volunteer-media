@@ -193,14 +193,16 @@ func createDefaultCommentTags(db *gorm.DB) error {
 func createDefaultAnimalTags(db *gorm.DB) error {
 	defaultTags := []models.AnimalTag{
 		// Behavior tags
-		{Name: "resource guarding", Category: "behavior", Color: "#ef4444"},
-		{Name: "shy", Category: "behavior", Color: "#a855f7"},
-		{Name: "reactive", Category: "behavior", Color: "#f97316"},
-		{Name: "friendly", Category: "behavior", Color: "#22c55e"},
+		{Name: "resource guarding", Category: "behavior", Color: "#ef4444", Icon: "🛡️"},
+		{Name: "shy", Category: "behavior", Color: "#a855f7", Icon: "😳"},
+		{Name: "reactive", Category: "behavior", Color: "#f97316", Icon: "⚠️"},
+		{Name: "friendly", Category: "behavior", Color: "#22c55e", Icon: "😊"},
 		// Walker status tags
-		{Name: "2.0 walker", Category: "walker_status", Color: "#3b82f6"},
-		{Name: "dual walker", Category: "walker_status", Color: "#06b6d4"},
-		{Name: "experienced only", Category: "walker_status", Color: "#8b5cf6"},
+		{Name: "available for walking", Category: "walker_status", Color: "#3b82f6", Icon: "🚶"},
+		{Name: "dual walker", Category: "walker_status", Color: "#06b6d4", Icon: "👥"},
+		{Name: "experienced only", Category: "walker_status", Color: "#8b5cf6", Icon: "🎓"},
+		{Name: "iso", Category: "walker_status", Color: "#ef4444", Icon: "🏥"},
+		{Name: "needs exercise", Category: "walker_status", Color: "#f59e0b", Icon: "🏋️"},
 	}
 
 	for _, tag := range defaultTags {
