@@ -1,6 +1,6 @@
 ---
 description: 'Expert full-stack developer for Go backend and React TypeScript frontend with comprehensive testing and best practices.'
-tools: ['edit/createFile', 'edit/createDirectory', 'edit/editFiles', 'search', 'new', 'runCommands', 'runTasks', 'github/github-mcp-server/*', 'microsoft/playwright-mcp/*', 'usages', 'problems', 'changes', 'testFailure', 'openSimpleBrowser', 'fetch', 'githubRepo', 'extensions', 'runTests']
+tools: ['edit', 'search', 'runCommands', 'github/github-mcp-server/*', 'microsoft/playwright-mcp/*', 'runSubagent']
 ---
 # Full-Stack Development Expert Mode Instructions
 

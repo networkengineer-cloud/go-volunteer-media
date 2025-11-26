@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { animalsApi, animalCommentsApi, animalsApi as imageUploadApi, commentTagsApi, groupsApi } from '../api/client';
+import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi } from '../api/client';
 import type { Animal, AnimalComment, CommentTag, Group } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -42,11 +42,9 @@ const AnimalDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [commentImage, setCommentImage] = useState('');
-  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showCommentForm, setShowCommentForm] = useState(true);
   const [error, setError] = useState<string>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Pagination state
   const [totalComments, setTotalComments] = useState(0);
@@ -181,40 +179,6 @@ const AnimalDetailPage: React.FC = () => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type - be permissive for mobile uploads
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/heic', 'image/heif', 'image/webp'];
-    if (!file.type.startsWith('image/') && !validTypes.includes(file.type.toLowerCase())) {
-      toast.showError('Please select a valid image file');
-      return;
-    }
-
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const res = await imageUploadApi.uploadImage(file);
-      setCommentImage(res.data.url);
-      toast.showSuccess('Image uploaded successfully!');
-    } catch (error: unknown) {
-      console.error('Upload error:', error);
-      const errorMsg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to upload image. Please try again.';
-      toast.showError(errorMsg);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { animalsApi } from '../api/client';
 import type { Animal, AnimalImage } from '../api/client';
@@ -32,9 +32,9 @@ const PhotoGallery: React.FC = () => {
     if (groupId && id) {
       loadData(Number(groupId), Number(id));
     }
-  }, [groupId, id]);
+  }, [groupId, id, loadData]);
 
-  const loadData = async (gId: number, animalId: number) => {
+  const loadData = useCallback(async (gId: number, animalId: number) => {
     try {
       const promises = [
         animalsApi.getById(gId, animalId),
@@ -60,7 +60,7 @@ const PhotoGallery: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin, showToast]);
 
   const handleDeleteImage = async (imageId: number) => {
     if (!groupId || !id) return;
@@ -134,21 +134,6 @@ const PhotoGallery: React.FC = () => {
     if (editingImageUrl) {
       URL.revokeObjectURL(editingImageUrl);
       setEditingImageUrl('');
-    }
-  };
-
-  const handleDelete = async (imageId: number) => {
-    if (!groupId || !id) return;
-    if (!confirm('Are you sure you want to delete this photo?')) return;
-
-    try {
-      await animalsApi.deleteImage(Number(groupId), Number(id), imageId);
-      showToast('Photo deleted successfully', 'success');
-      loadData(Number(groupId), Number(id)); // Reload images
-      closeLightbox();
-    } catch (error) {
-      console.error('Delete failed:', error);
-      showToast('Failed to delete photo', 'error');
     }
   };
 
