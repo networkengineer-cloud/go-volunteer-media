@@ -70,7 +70,7 @@ func TestGetAnimalTags(t *testing.T) {
 
 			// Assert
 			assert.Equal(t, tt.expectedStatus, w.Code)
-			
+
 			var tags []models.AnimalTag
 			json.Unmarshal(w.Body.Bytes(), &tags)
 			assert.Equal(t, tt.expectedCount, len(tags))

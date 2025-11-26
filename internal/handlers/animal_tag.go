@@ -34,7 +34,7 @@ func GetAnimalTags(db *gorm.DB) gin.HandlerFunc {
 func CreateAnimalTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := middleware.GetLogger(c)
-		
+
 		var req AnimalTagRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
