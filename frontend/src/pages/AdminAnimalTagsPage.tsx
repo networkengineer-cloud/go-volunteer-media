@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { animalTagsApi } from '../api/client';
 import type { AnimalTag } from '../api/client';
 import Modal from '../components/Modal';
@@ -11,6 +11,25 @@ interface TagFormData {
   color: string;
   icon: string;
 }
+
+const EMOJI_PRESETS = [
+  { icon: '✏️', label: 'Pencil' },
+  { icon: '😊', label: 'Friendly' },
+  { icon: '😳', label: 'Shy' },
+  { icon: '⚠️', label: 'Warning' },
+  { icon: '🛡️', label: 'Shield' },
+  { icon: '🚶', label: 'Walking' },
+  { icon: '👥', label: 'People' },
+  { icon: '🎓', label: 'Education' },
+  { icon: '🏥', label: 'Hospital' },
+  { icon: '🏋️', label: 'Exercise' },
+  { icon: '⚡', label: 'Energy' },
+  { icon: '❤️', label: 'Heart' },
+  { icon: '🐕', label: 'Dog' },
+  { icon: '🦴', label: 'Bone' },
+  { icon: '🎾', label: 'Ball' },
+  { icon: '🚗', label: 'Car' },
+];
 
 const AdminAnimalTagsPage: React.FC = () => {
   const [tags, setTags] = useState<AnimalTag[]>([]);
@@ -45,6 +64,27 @@ const AdminAnimalTagsPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Memoized form change handlers to prevent focus loss
+  const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, name: e.target.value }));
+  }, []);
+
+  const handleCategoryChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFormData(prev => ({ ...prev, category: e.target.value as 'behavior' | 'walker_status' }));
+  }, []);
+
+  const handleIconChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, icon: e.target.value }));
+  }, []);
+
+  const handleIconSelect = useCallback((icon: string) => {
+    setFormData(prev => ({ ...prev, icon }));
+  }, []);
+
+  const handleColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, color: e.target.value }));
+  }, []);
 
   const handleOpenForm = (tag?: AnimalTag) => {
     if (tag) {
@@ -123,25 +163,6 @@ const AdminAnimalTagsPage: React.FC = () => {
 
   const behaviorTags = tags.filter(t => t.category === 'behavior');
   const walkerStatusTags = tags.filter(t => t.category === 'walker_status');
-
-  const EMOJI_PRESETS = [
-    { icon: '✏️', label: 'Pencil' },
-    { icon: '😊', label: 'Friendly' },
-    { icon: '😳', label: 'Shy' },
-    { icon: '⚠️', label: 'Warning' },
-    { icon: '🛡️', label: 'Shield' },
-    { icon: '🚶', label: 'Walking' },
-    { icon: '👥', label: 'People' },
-    { icon: '🎓', label: 'Education' },
-    { icon: '🏥', label: 'Hospital' },
-    { icon: '🏋️', label: 'Exercise' },
-    { icon: '⚡', label: 'Energy' },
-    { icon: '❤️', label: 'Heart' },
-    { icon: '🐕', label: 'Dog' },
-    { icon: '🦴', label: 'Bone' },
-    { icon: '🎾', label: 'Ball' },
-    { icon: '🚗', label: 'Car' },
-  ];
 
   if (loading) {
     return (
@@ -298,7 +319,7 @@ const AdminAnimalTagsPage: React.FC = () => {
               id="tag-name"
               type="text"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={handleNameChange}
               placeholder="e.g., Friendly, Needs Walker"
               required
               disabled={submitting}
@@ -310,7 +331,7 @@ const AdminAnimalTagsPage: React.FC = () => {
             <select
               id="tag-category"
               value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value as 'behavior' | 'walker_status' })}
+              onChange={handleCategoryChange}
               disabled={submitting}
             >
               <option value="behavior">Behavior</option>
@@ -325,7 +346,7 @@ const AdminAnimalTagsPage: React.FC = () => {
                 id="tag-icon"
                 type="text"
                 value={formData.icon}
-                onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
+                onChange={handleIconChange}
                 placeholder="Enter emoji"
                 maxLength={10}
                 disabled={submitting}
@@ -336,7 +357,7 @@ const AdminAnimalTagsPage: React.FC = () => {
                     key={preset.icon}
                     type="button"
                     className={`emoji-button ${formData.icon === preset.icon ? 'selected' : ''}`}
-                    onClick={() => setFormData({ ...formData, icon: preset.icon })}
+                    onClick={() => handleIconSelect(preset.icon)}
                     disabled={submitting}
                   >
                     {preset.icon}
@@ -353,7 +374,7 @@ const AdminAnimalTagsPage: React.FC = () => {
                 id="tag-color"
                 type="color"
                 value={formData.color}
-                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                onChange={handleColorChange}
                 disabled={submitting}
               />
               <span className="color-value">{formData.color}</span>
