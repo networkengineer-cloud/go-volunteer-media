@@ -20,6 +20,13 @@ const Modal: React.FC<ModalProps> = ({
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
+  const onCloseRef = useRef(onClose);
+  
+  // Keep the ref updated with the latest onClose
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (isOpen) {
       // Store the currently focused element
@@ -31,7 +38,7 @@ const Modal: React.FC<ModalProps> = ({
       // Handle escape key
       const handleEscape = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
-          onClose();
+          onCloseRef.current();
         }
       };
 
@@ -48,7 +55,7 @@ const Modal: React.FC<ModalProps> = ({
         previousFocusRef.current?.focus();
       };
     }
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   // Focus trap implementation - only handle Tab key to trap focus
   // Don't interfere with normal typing in input fields
