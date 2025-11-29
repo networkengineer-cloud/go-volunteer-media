@@ -200,6 +200,8 @@ type AnimalImage struct {
 	AnimalID         uint           `gorm:"not null;index:idx_animal_image_animal" json:"animal_id"`
 	UserID           uint           `gorm:"not null;index" json:"user_id"`
 	ImageURL         string         `gorm:"not null" json:"image_url"`
+	ImageData        []byte         `gorm:"type:bytea" json:"-"`           // Binary image data stored in DB
+	MimeType         string         `gorm:"default:'image/jpeg'" json:"-"` // MIME type of the image
 	Caption          string         `json:"caption"`
 	IsProfilePicture bool           `gorm:"default:false" json:"is_profile_picture"`
 	Width            int            `json:"width"`

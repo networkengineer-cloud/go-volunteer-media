@@ -28,8 +28,8 @@ func setupAnimalTagTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Create test tags
-	tag1 := models.AnimalTag{Name: "friendly", Category: "behavior", Color: "#00FF00", Icon: "😊"}
-	tag2 := models.AnimalTag{Name: "needs-walker", Category: "walker_status", Color: "#FF0000", Icon: "🚶"}
+	tag1 := models.AnimalTag{Name: "friendly", Category: "behavior", Color: "#00FF00"}
+	tag2 := models.AnimalTag{Name: "needs-walker", Category: "walker_status", Color: "#FF0000"}
 	db.Create(&tag1)
 	db.Create(&tag2)
 
@@ -96,7 +96,6 @@ func TestCreateAnimalTag(t *testing.T) {
 				Name:     "energetic",
 				Category: "behavior",
 				Color:    "#FFFF00",
-				Icon:     "⚡",
 			},
 			expectedStatus: http.StatusCreated,
 		},
@@ -105,7 +104,6 @@ func TestCreateAnimalTag(t *testing.T) {
 			requestBody: AnimalTagRequest{
 				Category: "behavior",
 				Color:    "#FFFF00",
-				Icon:     "⚡",
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
@@ -115,7 +113,6 @@ func TestCreateAnimalTag(t *testing.T) {
 				Name:     "test",
 				Category: "invalid_category",
 				Color:    "#FFFF00",
-				Icon:     "⚡",
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
@@ -124,7 +121,6 @@ func TestCreateAnimalTag(t *testing.T) {
 			requestBody: AnimalTagRequest{
 				Name:     "test",
 				Category: "behavior",
-				Icon:     "⚡",
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
@@ -180,7 +176,6 @@ func TestUpdateAnimalTag(t *testing.T) {
 				Name:     "very-friendly",
 				Category: "behavior",
 				Color:    "#00FFFF",
-				Icon:     "😄",
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -191,7 +186,6 @@ func TestUpdateAnimalTag(t *testing.T) {
 				Name:     "test",
 				Category: "behavior",
 				Color:    "#FFFFFF",
-				Icon:     "❓",
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedError:  "Animal tag not found",
@@ -203,7 +197,6 @@ func TestUpdateAnimalTag(t *testing.T) {
 				Name:     "",
 				Category: "behavior",
 				Color:    "#FFFFFF",
-				Icon:     "❓",
 			},
 			expectedStatus: http.StatusBadRequest,
 		},

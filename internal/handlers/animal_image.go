@@ -1,14 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -44,9 +43,10 @@ func GetAnimalImages(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get all images for this animal
+		// Get all images for this animal (exclude the binary data for listing)
 		var images []models.AnimalImage
 		if err := db.Preload("User").
+			Select("id, created_at, updated_at, animal_id, user_id, image_url, caption, is_profile_picture, width, height, file_size").
 			Where("animal_id = ?", animalID).
 			Order("is_profile_picture DESC, created_at DESC").
 			Find(&images).Error; err != nil {
@@ -61,6 +61,7 @@ func GetAnimalImages(db *gorm.DB) gin.HandlerFunc {
 
 // UploadAnimalImageToGallery handles image uploads to animal gallery (authenticated users)
 // POST /api/groups/:id/animals/:animalId/images
+// Images are stored in the database for persistence
 func UploadAnimalImageToGallery(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := middleware.GetLogger(c)
@@ -146,62 +147,58 @@ func UploadAnimalImageToGallery(db *gorm.DB) gin.HandlerFunc {
 			logger.Debug("Image dimensions acceptable, no resizing needed")
 		}
 
-		// Generate unique filename
-		fname := fmt.Sprintf("%d_%s.jpg", time.Now().UnixNano(), uuid.New().String())
-		uploadPath := filepath.Join("public", "uploads", fname)
-
-		logger.WithField("path", uploadPath).Debug("Saving optimized image")
-
-		// Create the output file
-		outFile, err := os.Create(uploadPath)
-		if err != nil {
-			logger.Error("Failed to create output file", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
-			return
-		}
-		defer outFile.Close()
-
-		// Encode as JPEG with quality 85
-		if err := jpeg.Encode(outFile, resizedImg, &jpeg.Options{Quality: 85}); err != nil {
+		// Encode image to JPEG bytes
+		var buf bytes.Buffer
+		if err := jpeg.Encode(&buf, resizedImg, &jpeg.Options{Quality: 85}); err != nil {
 			logger.Error("Failed to encode image", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process image"})
 			return
 		}
 
-		// Get file size
-		fileInfo, _ := outFile.Stat()
-		fileSize := int(fileInfo.Size())
+		imageData := buf.Bytes()
+		finalBounds := resizedImg.Bounds()
+
+		// Generate unique image identifier
+		imageUUID := uuid.New().String()
+		imageURL := fmt.Sprintf("/api/images/%s", imageUUID)
 
 		// Get caption from form (optional)
 		caption := c.PostForm("caption")
 
 		// Create database record
-		imageURL := "/uploads/" + fname
 		animalIDUint, _ := strconv.ParseUint(animalID, 10, 32)
 		userIDUint := userID.(uint)
 
 		animalImage := models.AnimalImage{
-			AnimalID: uint(animalIDUint),
-			UserID:   userIDUint,
-			ImageURL: imageURL,
-			Caption:  caption,
-			Width:    resizedImg.Bounds().Dx(),
-			Height:   resizedImg.Bounds().Dy(),
-			FileSize: fileSize,
+			AnimalID:  uint(animalIDUint),
+			UserID:    userIDUint,
+			ImageURL:  imageURL,
+			ImageData: imageData,
+			MimeType:  "image/jpeg",
+			Caption:   caption,
+			Width:     finalBounds.Dx(),
+			Height:    finalBounds.Dy(),
+			FileSize:  len(imageData),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 
 		if err := db.Create(&animalImage).Error; err != nil {
-			logger.Error("Failed to save image record", err)
-			// Try to delete the uploaded file
-			os.Remove(uploadPath)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image record"})
+			logger.Error("Failed to save image to database", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
 			return
 		}
 
 		// Preload user for response
 		db.Preload("User").First(&animalImage, animalImage.ID)
 
-		logger.WithField("url", imageURL).Info("Image uploaded and saved to gallery successfully")
+		logger.WithFields(map[string]interface{}{
+			"image_id":  animalImage.ID,
+			"animal_id": animalID,
+			"url":       imageURL,
+			"size":      len(imageData),
+		}).Info("Image uploaded and stored in database")
+
 		c.JSON(http.StatusOK, animalImage)
 	}
 }
@@ -354,9 +351,10 @@ func GetDeletedImages(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get all soft-deleted images for this group
+		// Get all soft-deleted images for this group (exclude binary data)
 		var images []models.AnimalImage
 		if err := db.Unscoped().
+			Select("animal_images.id, animal_images.created_at, animal_images.updated_at, animal_images.deleted_at, animal_images.animal_id, animal_images.user_id, animal_images.image_url, animal_images.caption, animal_images.is_profile_picture, animal_images.width, animal_images.height, animal_images.file_size").
 			Preload("User").
 			Preload("Animal").
 			Joins("JOIN animals ON animals.id = animal_images.animal_id").

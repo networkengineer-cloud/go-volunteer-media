@@ -107,7 +107,8 @@ func main() {
 	router.GET("/healthz", handlers.HealthCheck())
 	router.GET("/ready", handlers.ReadinessCheck(db))
 
-	// Serve uploaded images and default assets
+	// Serve uploaded images from database (public, cached)
+	// Legacy: also serve from filesystem for backwards compatibility
 	router.Static("/uploads", "./public/uploads")
 	router.StaticFile("/default-hero.svg", "./public/default-hero.svg")
 
@@ -116,6 +117,9 @@ func main() {
 
 	// API routes
 	api := router.Group("/api")
+
+	// Serve images from database (public endpoint, no auth required)
+	api.GET("/images/:uuid", handlers.ServeImage(db))
 
 	// Public routes (with rate limiting for auth endpoints)
 	authLimiter := middleware.RateLimit(5, 1*time.Minute) // 5 requests per minute
@@ -155,8 +159,8 @@ func main() {
 		// Animal tags (all authenticated users can view)
 		protected.GET("/animal-tags", handlers.GetAnimalTags(db))
 
-		// Image upload (authenticated users only)
-		protected.POST("/animals/upload-image", handlers.UploadAnimalImage())
+		// Image upload (authenticated users only) - stores in database
+		protected.POST("/animals/upload-image", handlers.UploadAnimalImageSimple(db))
 
 		// Admin only routes
 		admin := protected.Group("/admin")
