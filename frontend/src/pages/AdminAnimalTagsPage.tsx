@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { animalTagsApi } from '../api/client';
 import type { AnimalTag } from '../api/client';
 import Modal from '../components/Modal';
@@ -11,25 +11,6 @@ interface TagFormData {
   color: string;
   icon: string;
 }
-
-const EMOJI_PRESETS = [
-  { icon: '✏️', label: 'Pencil' },
-  { icon: '😊', label: 'Friendly' },
-  { icon: '😳', label: 'Shy' },
-  { icon: '⚠️', label: 'Warning' },
-  { icon: '🛡️', label: 'Shield' },
-  { icon: '🚶', label: 'Walking' },
-  { icon: '👥', label: 'People' },
-  { icon: '🎓', label: 'Education' },
-  { icon: '🏥', label: 'Hospital' },
-  { icon: '🏋️', label: 'Exercise' },
-  { icon: '⚡', label: 'Energy' },
-  { icon: '❤️', label: 'Heart' },
-  { icon: '🐕', label: 'Dog' },
-  { icon: '🦴', label: 'Bone' },
-  { icon: '🎾', label: 'Ball' },
-  { icon: '🚗', label: 'Car' },
-];
 
 const AdminAnimalTagsPage: React.FC = () => {
   const [tags, setTags] = useState<AnimalTag[]>([]);
@@ -86,7 +67,7 @@ const AdminAnimalTagsPage: React.FC = () => {
     setFormData(prev => ({ ...prev, color: e.target.value }));
   }, []);
 
-  const handleOpenForm = (tag?: AnimalTag) => {
+  const handleOpenForm = useCallback((tag?: AnimalTag) => {
     if (tag) {
       setEditingTag(tag);
       setFormData({
@@ -101,16 +82,16 @@ const AdminAnimalTagsPage: React.FC = () => {
         name: '',
         category: 'behavior',
         color: '#6b7280',
-        icon: '✏️',
+        icon: '',
       });
     }
     setShowForm(true);
-  };
+  }, []);
 
-  const handleCloseForm = () => {
+  const handleCloseForm = useCallback(() => {
     setShowForm(false);
     setEditingTag(null);
-  };
+  }, []);
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,6 +144,8 @@ const AdminAnimalTagsPage: React.FC = () => {
 
   const behaviorTags = tags.filter(t => t.category === 'behavior');
   const walkerStatusTags = tags.filter(t => t.category === 'walker_status');
+
+  const modalTitle = useMemo(() => editingTag ? 'Edit Tag' : 'Create New Tag', [editingTag]);
 
   if (loading) {
     return (
@@ -309,7 +292,7 @@ const AdminAnimalTagsPage: React.FC = () => {
       <Modal
         isOpen={showForm}
         onClose={handleCloseForm}
-        title={editingTag ? 'Edit Tag' : 'Create New Tag'}
+        title={modalTitle}
         size="medium"
       >
         <form onSubmit={handleSubmitForm} className="tag-form">
@@ -320,9 +303,10 @@ const AdminAnimalTagsPage: React.FC = () => {
               type="text"
               value={formData.name}
               onChange={handleNameChange}
-              placeholder="e.g., Friendly, Needs Walker"
+              placeholder="e.g., Friendly, ISO, Dual Walker"
               required
               disabled={submitting}
+              autoComplete="off"
             />
           </div>
 
@@ -340,31 +324,17 @@ const AdminAnimalTagsPage: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="tag-icon">Icon *</label>
-            <div className="icon-selector">
-              <input
-                id="tag-icon"
-                type="text"
-                value={formData.icon}
-                onChange={handleIconChange}
-                placeholder="Enter emoji"
-                maxLength={10}
-                disabled={submitting}
-              />
-              <div className="emoji-presets">
-                {EMOJI_PRESETS.map((preset) => (
-                  <button
-                    key={preset.icon}
-                    type="button"
-                    className={`emoji-button ${formData.icon === preset.icon ? 'selected' : ''}`}
-                    onClick={() => handleIconSelect(preset.icon)}
-                    disabled={submitting}
-                  >
-                    {preset.icon}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <label htmlFor="tag-icon">Icon (optional)</label>
+            <input
+              id="tag-icon"
+              type="text"
+              value={formData.icon}
+              onChange={handleIconChange}
+              placeholder="Optional emoji or symbol"
+              maxLength={10}
+              disabled={submitting}
+              autoComplete="off"
+            />
           </div>
 
           <div className="form-group">
@@ -384,7 +354,8 @@ const AdminAnimalTagsPage: React.FC = () => {
           <div className="form-preview">
             <div className="preview-label">Preview:</div>
             <span className="preview-tag" style={{ backgroundColor: formData.color }}>
-              {formData.icon} {formData.name || 'Your Tag Name'}
+              {formData.icon && <span className="tag-icon">{formData.icon}</span>}
+              {formData.name || 'Your Tag Name'}
             </span>
           </div>
 
