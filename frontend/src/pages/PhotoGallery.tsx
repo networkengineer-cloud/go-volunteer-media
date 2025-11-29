@@ -28,31 +28,25 @@ const PhotoGallery: React.FC = () => {
   const [previewWidth, setPreviewWidth] = useState<number | null>(null);
   const [previewHeight, setPreviewHeight] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (groupId && id) {
-      loadData(Number(groupId), Number(id));
-    }
-  }, [groupId, id, loadData]);
-
   const loadData = useCallback(async (gId: number, animalId: number) => {
     try {
       const promises = [
         animalsApi.getById(gId, animalId),
         animalsApi.getImages(gId, animalId),
       ];
-      
+
       if (isAdmin) {
         promises.push(animalsApi.getDeletedImages(gId));
       }
-      
+
       const results = await Promise.all(promises);
       const [animalRes, imagesRes, deletedRes] = results;
-      
+
       setAnimal(animalRes.data);
       setImages(imagesRes.data);
-      
+
       if (isAdmin && deletedRes) {
-        setDeletedImages(deletedRes.data);
+        setDeletedImages(deletedRes.data.data || deletedRes.data);
       }
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -61,6 +55,12 @@ const PhotoGallery: React.FC = () => {
       setLoading(false);
     }
   }, [isAdmin, showToast]);
+
+  useEffect(() => {
+    if (groupId && id) {
+      loadData(Number(groupId), Number(id));
+    }
+  }, [groupId, id, loadData]);
 
   const handleDeleteImage = async (imageId: number) => {
     if (!groupId || !id) return;
