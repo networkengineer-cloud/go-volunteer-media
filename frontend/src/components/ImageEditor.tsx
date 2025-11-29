@@ -32,17 +32,21 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
 
     return new Promise((resolve, reject) => {
       const image = new Image();
-      image.crossOrigin = 'anonymous';
+      // Only set crossOrigin for external URLs, not for blob URLs or data URLs
+      if (imageSrc.startsWith('http://') || imageSrc.startsWith('https://')) {
+        image.crossOrigin = 'anonymous';
+      }
       image.src = imageSrc;
 
       image.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
 
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
-          return;
-        }
+          if (!ctx) {
+            reject(new Error('Failed to get canvas context'));
+            return;
+          }
 
         const { width, height, x, y } = croppedAreaPixels;
         const radians = (rotation * Math.PI) / 180;
@@ -78,24 +82,29 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
           height
         );
 
-        ctx.restore();
+          ctx.restore();
 
-        // Convert to blob
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('Failed to create blob'));
-            }
-          },
-          'image/jpeg',
-          0.9
-        );
+          // Convert to blob
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(blob);
+              } else {
+                reject(new Error('Failed to create blob'));
+              }
+            },
+            'image/jpeg',
+            0.9
+          );
+        } catch (error) {
+          console.error('Error in image onload handler:', error);
+          reject(error instanceof Error ? error : new Error('Failed to process image'));
+        }
       };
 
-      image.onerror = () => {
-        reject(new Error('Failed to load image'));
+      image.onerror = (error) => {
+        console.error('Failed to load image:', error);
+        reject(new Error('Failed to load image. Please check the file format and try again.'));
       };
     });
   };
