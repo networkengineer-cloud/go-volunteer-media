@@ -14,7 +14,6 @@ type AnimalTagRequest struct {
 	Name     string `json:"name" binding:"required,min=1,max=50"`
 	Category string `json:"category" binding:"required,oneof=behavior walker_status"`
 	Color    string `json:"color" binding:"required"`
-	Icon     string `json:"icon" binding:"required,max=10"` // Unicode emoji or icon identifier
 }
 
 // GetAnimalTags returns all animal tags
@@ -45,7 +44,6 @@ func CreateAnimalTag(db *gorm.DB) gin.HandlerFunc {
 			Name:     req.Name,
 			Category: req.Category,
 			Color:    req.Color,
-			Icon:     req.Icon,
 		}
 
 		if err := db.Create(&tag).Error; err != nil {
@@ -84,7 +82,6 @@ func UpdateAnimalTag(db *gorm.DB) gin.HandlerFunc {
 		tag.Name = req.Name
 		tag.Category = req.Category
 		tag.Color = req.Color
-		tag.Icon = req.Icon
 
 		if err := db.Save(&tag).Error; err != nil {
 			logger.Error("Failed to update animal tag", err)

@@ -430,7 +430,6 @@ const GroupPage: React.FC = () => {
                                 }}
                                 title={tag.name}
                               >
-                                {tag.icon && <span className="tag-icon">{tag.icon}</span>}
                                 {tag.name}
                               </span>
                             ))}

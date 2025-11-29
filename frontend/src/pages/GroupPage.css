@@ -590,11 +590,6 @@
   transform: scale(1.05);
 }
 
-.tag-icon {
-  font-size: 0.875rem;
-  line-height: 1;
-}
-
 /* Responsive */
 @media (max-width: 768px) {
   .group-page {
