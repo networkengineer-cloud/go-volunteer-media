@@ -127,7 +127,6 @@ The platform has three distinct permission levels:
 
 ### ❌ Restrictions
 
-- Cannot create or delete animal tags (site-wide)
 - Cannot access other groups' data (unless also a member)
 - Cannot access site-wide admin dashboard
 - Cannot manage users across the platform
@@ -175,8 +174,7 @@ The platform has three distinct permission levels:
 
 #### Tag Management
 
-- **Manage site-wide tags**: create, edit, delete (affects all groups)
-- **Manage group-specific tags across all groups**
+- **Manage tags for any group**: create, edit, delete
 - **View** tag usage and adoption statistics
 
 #### Site Settings
@@ -205,7 +203,6 @@ The platform has three distinct permission levels:
 
 **With great power comes great responsibility:**
 - Site admins can access ALL data across ALL groups
-- Site-wide tag changes propagate to every group
 - Deleting groups or users has platform-wide impact
 - Always verify group context before bulk operations
 - Prefer least-privilege workflows; defer to group admins where possible
@@ -223,10 +220,9 @@ The platform has three distinct permission levels:
 | Delete animals | ❌ | ✅ (own groups) | ✅ (all groups) |
 | Bulk edit animals | ❌ | ✅ (own groups) | ✅ (all groups) |
 | **Tags** |
-| View tags | ✅ | ✅ | ✅ |
+| View tags | ✅ (own groups) | ✅ (own groups) | ✅ (all groups) |
 | Assign tags to animals | ❌ | ✅ (own groups) | ✅ (all groups) |
-| Create/edit/delete group-specific tags | ❌ | ✅ (own groups) | ✅ (all groups) |
-| Create/edit/delete site-wide tags | ❌ | ❌ | ✅ |
+| Create/edit/delete tags | ❌ | ✅ (own groups) | ✅ (all groups) |
 | **Protocols** |
 | View protocols | ✅ | ✅ | ✅ |
 | Create protocols | ❌ | ✅ (own groups) | ✅ (all groups) |
