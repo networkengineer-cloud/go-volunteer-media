@@ -196,6 +196,7 @@ func updateGroupImages(db *gorm.DB, groups []models.Group) error {
 }
 
 // assignUsersToGroups assigns demo users to ModSquad group (primary focus)
+// It also sets group admin status for merry and sophia
 func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group) error {
 	// Find ModSquad group (primary group for demo)
 	var modsquadGroup models.Group
@@ -207,9 +208,21 @@ func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group
 	}
 
 	// All users get access to ModSquad (primary group for first few months)
+	// merry and sophia are group admins
 	for i := range users {
 		if err := db.Model(&users[i]).Association("Groups").Append(&modsquadGroup); err != nil {
 			return err
+		}
+
+		// Set group admin status for merry and sophia
+		if users[i].Username == "merry" || users[i].Username == "sophia" {
+			// Update the UserGroup record to set IsGroupAdmin = true
+			if err := db.Model(&models.UserGroup{}).
+				Where("user_id = ? AND group_id = ?", users[i].ID, modsquadGroup.ID).
+				Update("is_group_admin", true).Error; err != nil {
+				return fmt.Errorf("failed to set group admin for %s: %w", users[i].Username, err)
+			}
+			logging.WithField("username", users[i].Username).Info("Set user as group admin for ModSquad")
 		}
 	}
 

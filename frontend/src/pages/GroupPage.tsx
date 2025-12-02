@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { groupsApi, animalsApi, authApi } from '../api/client';
-import type { Group, Animal } from '../api/client';
+import type { Group, Animal, GroupMembership } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import ActivityFeed from '../components/ActivityFeed';
 import AnnouncementForm from '../components/AnnouncementForm';
@@ -17,7 +17,7 @@ type FilterType = 'all' | 'comments' | 'announcements';
 
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { isAdmin } = useAuth();
+  useAuth(); // Ensure user is authenticated
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
@@ -27,6 +27,7 @@ const GroupPage: React.FC = () => {
   const [group, setGroup] = useState<Group | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [animals, setAnimals] = useState<Animal[]>([]);
+  const [membership, setMembership] = useState<GroupMembership | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
@@ -36,12 +37,16 @@ const GroupPage: React.FC = () => {
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [activityFeedKey, setActivityFeedKey] = useState(0);
 
-  // Load group data
+  // Load group data and membership info
   const loadGroupData = async (groupId: number) => {
     try {
       setError('');
-      const groupRes = await groupsApi.getById(groupId);
+      const [groupRes, membershipRes] = await Promise.all([
+        groupsApi.getById(groupId),
+        groupsApi.getMembership(groupId)
+      ]);
       setGroup(groupRes.data);
+      setMembership(membershipRes.data);
     } catch (error) {
       console.error('Failed to load group data:', error);
       const err = error as { response?: { data?: { error?: string } } };
@@ -234,6 +239,50 @@ const GroupPage: React.FC = () => {
         )}
       </div>
 
+      {/* Group Admin Quick Links - shown to group admins and site admins */}
+      {(membership?.is_group_admin || membership?.is_site_admin) && (
+        <div className="group-admin-links" role="navigation" aria-label="Group administration links">
+          <span className="group-admin-links__title">Quick Links:</span>
+          <Link to={`/groups/${id}/animals/new`} className="group-admin-link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="16" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+            </svg>
+            <span>Add Animal</span>
+          </Link>
+          {group?.name === 'modsquad' && (
+            <Link to="/admin/animal-tags" className="group-admin-link">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                <line x1="7" y1="7" x2="7.01" y2="7" />
+              </svg>
+              <span>Manage Tags</span>
+            </Link>
+          )}
+          {membership?.is_site_admin && (
+            <>
+              <Link to="/admin/users" className="group-admin-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                </svg>
+                <span>Manage Users</span>
+              </Link>
+              <Link to="/admin/groups" className="group-admin-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <rect x="3" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="14" width="7" height="7" rx="1" />
+                  <rect x="3" y="14" width="7" height="7" rx="1" />
+                </svg>
+                <span>Manage Groups</span>
+              </Link>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Activity Feed View */}
       {viewMode === 'activity' && (
         <div 
@@ -293,7 +342,7 @@ const GroupPage: React.FC = () => {
           <div className="animals-section">
             <div className="section-header">
               <h2>Animals</h2>
-              {isAdmin && (
+              {(membership?.is_group_admin || membership?.is_site_admin) && (
                 <Link to={`/groups/${id}/animals/new`} className="btn-primary">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                     <path d="M12 5v14M5 12h14" />
@@ -346,7 +395,7 @@ const GroupPage: React.FC = () => {
                 description={
                   statusFilter || nameSearch
                     ? 'Try adjusting your search or filter to see more results.'
-                    : isAdmin
+                    : (membership?.is_group_admin || membership?.is_site_admin)
                       ? `Get started by adding your first animal to ${group.name}. Animals added here will be visible to all group members.`
                       : `This group doesn't have any animals yet. An admin will need to add animals before volunteers can share updates.`
                 }
@@ -359,7 +408,7 @@ const GroupPage: React.FC = () => {
                           setNameSearch('');
                         },
                       }
-                    : isAdmin
+                    : (membership?.is_group_admin || membership?.is_site_admin)
                       ? {
                           label: 'Add First Animal',
                           onClick: () => navigate(`/groups/${id}/animals/new`),

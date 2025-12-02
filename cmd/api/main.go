@@ -237,6 +237,7 @@ func main() {
 		group := protected.Group("/groups/:id")
 		{
 			group.GET("", handlers.GetGroup(db))
+			group.GET("/membership", handlers.GetGroupMembership(db))
 
 			// Animal routes - viewing accessible to all group members
 			group.GET("/animals", handlers.GetAnimals(db))
