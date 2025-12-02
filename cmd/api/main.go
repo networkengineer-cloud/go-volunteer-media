@@ -153,12 +153,6 @@ func main() {
 		// Group routes
 		protected.GET("/groups", handlers.GetGroups(db))
 
-		// Comment tags (all authenticated users can view)
-		protected.GET("/comment-tags", handlers.GetCommentTags(db))
-
-		// Animal tags (all authenticated users can view)
-		protected.GET("/animal-tags", handlers.GetAnimalTags(db))
-
 		// Image upload (authenticated users only) - stores in database
 		protected.POST("/animals/upload-image", handlers.UploadAnimalImageSimple(db))
 
@@ -191,16 +185,6 @@ func main() {
 			// Announcement routes (admin only)
 			admin.POST("/announcements", handlers.CreateAnnouncement(db, emailService, groupMeService))
 			admin.DELETE("/announcements/:id", handlers.DeleteAnnouncement(db))
-
-			// Comment tag management (admin only)
-			admin.POST("/comment-tags", handlers.CreateCommentTag(db))
-			admin.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
-
-			// Animal tag management (admin only)
-			admin.POST("/animal-tags", handlers.CreateAnimalTag(db))
-			admin.PUT("/animal-tags/:tagId", handlers.UpdateAnimalTag(db))
-			admin.DELETE("/animal-tags/:tagId", handlers.DeleteAnimalTag(db))
-			admin.POST("/animals/:animalId/tags", handlers.AssignTagsToAnimal(db))
 
 			// Site settings management (admin only)
 			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))
@@ -267,6 +251,17 @@ func main() {
 			// Protocol routes - all group members can view
 			group.GET("/protocols", handlers.GetProtocols(db))
 			group.GET("/protocols/:protocolId", handlers.GetProtocol(db))
+
+			// Group-specific tag routes - viewing accessible to all group members
+			// Tag management (create/update/delete) requires group admin or site admin
+			group.GET("/animal-tags", handlers.GetAnimalTags(db))
+			group.POST("/animal-tags", handlers.CreateAnimalTag(db))
+			group.PUT("/animal-tags/:tagId", handlers.UpdateAnimalTag(db))
+			group.DELETE("/animal-tags/:tagId", handlers.DeleteAnimalTag(db))
+
+			group.GET("/comment-tags", handlers.GetCommentTags(db))
+			group.POST("/comment-tags", handlers.CreateCommentTag(db))
+			group.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
 		}
 
 		// Group admin or site admin animal management routes
@@ -276,6 +271,8 @@ func main() {
 			groupAdminAnimals.POST("", handlers.CreateAnimal(db))
 			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db))
 			groupAdminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
+			// Tag assignment for animals
+			groupAdminAnimals.POST("/:animalId/tags", handlers.AssignTagsToAnimal(db))
 		}
 
 		// Group admin or site admin protocol management routes

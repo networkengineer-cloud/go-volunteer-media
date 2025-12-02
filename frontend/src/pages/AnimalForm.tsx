@@ -46,13 +46,14 @@ const AnimalForm: React.FC = () => {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const loadAvailableTags = useCallback(async () => {
+    if (!groupId) return;
     try {
-      const response = await animalTagsApi.getAll();
+      const response = await animalTagsApi.getAll(parseInt(groupId));
       setAvailableTags(response.data);
     } catch (error) {
       console.error('Failed to load tags:', error);
     }
-  }, []);
+  }, [groupId]);
 
   // Memoize modal close handlers to prevent unnecessary re-renders
   const handleQuarantineModalClose = useCallback(() => {
@@ -319,9 +320,9 @@ const AnimalForm: React.FC = () => {
       }
       
       // Assign tags to the animal
-      if (animalId && selectedTagIds.length >= 0) {
+      if (animalId && selectedTagIds.length >= 0 && groupId) {
         try {
-          await animalTagsApi.assignToAnimal(animalId, selectedTagIds);
+          await animalTagsApi.assignToAnimal(parseInt(groupId), animalId, selectedTagIds);
         } catch (error) {
           console.error('Failed to assign tags:', error);
           // Don't fail the whole operation if tag assignment fails
@@ -374,7 +375,7 @@ const AnimalForm: React.FC = () => {
       if (animalId && groupId) {
         try {
           // Fetch comment tags to find the behavior tag
-          const commentTagsResponse = await commentTagsApi.getAll();
+          const commentTagsResponse = await commentTagsApi.getAll(parseInt(groupId));
           const commentTags = commentTagsResponse.data;
           const behaviorTag = commentTags.find(tag => tag.name.toLowerCase() === 'behavior');
           

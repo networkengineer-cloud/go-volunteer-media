@@ -85,9 +85,9 @@ const AnimalDetailPage: React.FC = () => {
     }
   }, [toast, COMMENTS_PER_PAGE]);
 
-  const loadTags = useCallback(async () => {
+  const loadTags = useCallback(async (gId: number) => {
     try {
-      const res = await commentTagsApi.getAll();
+      const res = await commentTagsApi.getAll(gId);
       setAvailableTags(res.data);
     } catch (error) {
       console.error('Failed to load tags:', error);
@@ -158,7 +158,7 @@ const AnimalDetailPage: React.FC = () => {
     if (groupId && id) {
       loadAnimalData(Number(groupId), Number(id));
       loadGroupData(Number(groupId));
-      loadTags();
+      loadTags(Number(groupId));
       if (isAdmin) {
         loadDeletedComments(Number(groupId));
       }
