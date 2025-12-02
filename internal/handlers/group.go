@@ -355,7 +355,7 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 			return
 		}
-		groupID, err := strconv.ParseUint(c.Param("groupId"), 10, 32)
+		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
 			return
@@ -407,7 +407,7 @@ func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 			return
 		}
-		groupID, err := strconv.ParseUint(c.Param("groupId"), 10, 32)
+		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
 			return
@@ -499,5 +499,53 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, members)
+	}
+}
+
+// GetGroupMembership returns the current user's membership info for a specific group
+// including whether they are a group admin
+func GetGroupMembership(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		isSiteAdmin := middleware.IsSiteAdmin(c)
+
+		// Get user's membership in this group
+		var userGroup models.UserGroup
+		err = db.WithContext(ctx).Where("user_id = ? AND group_id = ?", userID, groupID).First(&userGroup).Error
+		if err != nil {
+			// If not a member but is site admin, still return info
+			if isSiteAdmin {
+				c.JSON(http.StatusOK, gin.H{
+					"user_id":        userID,
+					"group_id":       groupID,
+					"is_member":      false,
+					"is_group_admin": false,
+					"is_site_admin":  true,
+				})
+				return
+			}
+			c.JSON(http.StatusForbidden, gin.H{"error": "Not a member of this group"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"user_id":        userID,
+			"group_id":       groupID,
+			"is_member":      true,
+			"is_group_admin": userGroup.IsGroupAdmin,
+			"is_site_admin":  isSiteAdmin,
+		})
 	}
 }

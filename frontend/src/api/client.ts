@@ -89,6 +89,15 @@ export interface Group {
   groupme_enabled: boolean;
 }
 
+// GroupMembership represents the current user's membership status in a group
+export interface GroupMembership {
+  user_id: number;
+  group_id: number;
+  is_member: boolean;
+  is_group_admin: boolean;
+  is_site_admin: boolean;
+}
+
 export interface Protocol {
   id: number;
   group_id: number;
@@ -343,6 +352,7 @@ export const authApi = {
 export const groupsApi = {
   getAll: () => api.get<Group[]>('/groups'),
   getById: (id: number) => api.get<Group>('/groups/' + id),
+  getMembership: (id: number) => api.get<GroupMembership>('/groups/' + id + '/membership'),
   getLatestComments: (id: number, limit?: number) => {
     const params = limit ? { limit } : {};
     return api.get<CommentWithAnimal[]>('/groups/' + id + '/latest-comments', { params });

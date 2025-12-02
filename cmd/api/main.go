@@ -184,8 +184,8 @@ func main() {
 			admin.DELETE("/users/:userId/groups/:groupId", handlers.RemoveUserFromGroup(db))
 
 			// Group admin management (site admin only)
-			admin.POST("/groups/:groupId/admins/:userId", handlers.PromoteGroupAdmin(db))
-			admin.DELETE("/groups/:groupId/admins/:userId", handlers.DemoteGroupAdmin(db))
+			admin.POST("/groups/:id/admins/:userId", handlers.PromoteGroupAdmin(db))
+			admin.DELETE("/groups/:id/admins/:userId", handlers.DemoteGroupAdmin(db))
 			admin.GET("/groups/:id/members", handlers.GetGroupMembers(db))
 
 			// Announcement routes (admin only)
@@ -237,6 +237,7 @@ func main() {
 		group := protected.Group("/groups/:id")
 		{
 			group.GET("", handlers.GetGroup(db))
+			group.GET("/membership", handlers.GetGroupMembership(db))
 
 			// Animal routes - viewing accessible to all group members
 			group.GET("/animals", handlers.GetAnimals(db))
