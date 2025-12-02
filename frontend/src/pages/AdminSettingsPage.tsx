@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import './AdminSettingsPage.css';
 import SiteSettingsTab from '../components/admin/SiteSettingsTab';
-import CommentTagsTab from '../components/admin/CommentTagsTab';
 import AnnouncementsTab from '../components/admin/AnnouncementsTab';
 import DeveloperTab from '../components/admin/DeveloperTab';
 import api from '../api/client';
 
 const AdminSettingsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'site' | 'tags' | 'announcements' | 'developer'>('site');
+  const [activeTab, setActiveTab] = useState<'site' | 'announcements' | 'developer'>('site');
   const [isDevelopment, setIsDevelopment] = useState(false);
 
   useEffect(() => {
@@ -37,12 +37,6 @@ const AdminSettingsPage: React.FC = () => {
             Site Settings
           </button>
           <button
-            className={`tab-button ${activeTab === 'tags' ? 'active' : ''}`}
-            onClick={() => setActiveTab('tags')}
-          >
-            Comment Tags
-          </button>
-          <button
             className={`tab-button ${activeTab === 'announcements' ? 'active' : ''}`}
             onClick={() => setActiveTab('announcements')}
           >
@@ -60,9 +54,22 @@ const AdminSettingsPage: React.FC = () => {
 
         <div className="tab-content">
           {activeTab === 'site' && <SiteSettingsTab />}
-          {activeTab === 'tags' && <CommentTagsTab />}
           {activeTab === 'announcements' && <AnnouncementsTab />}
           {activeTab === 'developer' && isDevelopment && <DeveloperTab />}
+        </div>
+
+        {/* Link to Tag Management */}
+        <div className="settings-link-card">
+          <div className="link-card-content">
+            <span className="link-card-icon">🏷️</span>
+            <div className="link-card-text">
+              <h3>Tag Management</h3>
+              <p>Manage animal tags and comment tags in one place</p>
+            </div>
+          </div>
+          <Link to="/admin/animal-tags" className="link-card-button">
+            Go to Tags →
+          </Link>
         </div>
       </div>
     </div>
