@@ -72,4 +72,4 @@ crash.log
 crash.*.log
 
 # Claude
-.claude/
+.claude/.env

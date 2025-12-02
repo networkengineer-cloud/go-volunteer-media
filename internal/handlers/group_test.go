@@ -983,7 +983,7 @@ func TestPromoteGroupAdmin(t *testing.T) {
 			c, w := setupGroupTestContext(admin.ID, true)
 			c.Params = gin.Params{
 				{Key: "userId", Value: fmt.Sprintf("%d", userID)},
-				{Key: "groupId", Value: fmt.Sprintf("%d", groupID)},
+				{Key: "id", Value: fmt.Sprintf("%d", groupID)},
 			}
 			c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/admins/%d", groupID, userID), nil)
 
@@ -1063,7 +1063,7 @@ func TestDemoteGroupAdmin(t *testing.T) {
 			c, w := setupGroupTestContext(admin.ID, true)
 			c.Params = gin.Params{
 				{Key: "userId", Value: fmt.Sprintf("%d", userID)},
-				{Key: "groupId", Value: fmt.Sprintf("%d", groupID)},
+				{Key: "id", Value: fmt.Sprintf("%d", groupID)},
 			}
 			c.Request = httptest.NewRequest("DELETE", fmt.Sprintf("/api/v1/groups/%d/admins/%d", groupID, userID), nil)
 

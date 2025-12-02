@@ -355,7 +355,7 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 			return
 		}
-		groupID, err := strconv.ParseUint(c.Param("groupId"), 10, 32)
+		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
 			return
@@ -407,7 +407,7 @@ func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 			return
 		}
-		groupID, err := strconv.ParseUint(c.Param("groupId"), 10, 32)
+		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
 			return
