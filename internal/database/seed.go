@@ -394,16 +394,16 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 
 	// Assign tags to animals based on their characteristics
 	animalTags := map[int][]models.AnimalTag{
-		0: {friendlyTag},                      // Buddy - friendly golden retriever
-		1: {experiencedOnly, dualWalkerTag},   // Luna - needs experienced walker, dual walker
-		2: {friendlyTag},                      // Charlie - calm and friendly beagle
-		3: {friendlyTag},                      // Max - high-energy but friendly lab
-		4: {reactiveTag, experiencedOnly},     // Rocky - in bite quarantine
-		5: {friendlyTag},                      // Daisy - intelligent and eager border collie
-		6: {dualWalkerTag},                    // Cooper - energetic aussie shepherd
-		7: {experiencedOnly},                  // Bella - independent husky
-		8: {friendlyTag},                      // Zeus - gentle giant
-		9: {friendlyTag},                      // Rosie - playful corgi
+		0: {friendlyTag},                    // Buddy - friendly golden retriever
+		1: {experiencedOnly, dualWalkerTag}, // Luna - needs experienced walker, dual walker
+		2: {friendlyTag},                    // Charlie - calm and friendly beagle
+		3: {friendlyTag},                    // Max - high-energy but friendly lab
+		4: {reactiveTag, experiencedOnly},   // Rocky - in bite quarantine
+		5: {friendlyTag},                    // Daisy - intelligent and eager border collie
+		6: {dualWalkerTag},                  // Cooper - energetic aussie shepherd
+		7: {experiencedOnly},                // Bella - independent husky
+		8: {friendlyTag},                    // Zeus - gentle giant
+		9: {friendlyTag},                    // Rosie - playful corgi
 	}
 
 	for i := range animals {

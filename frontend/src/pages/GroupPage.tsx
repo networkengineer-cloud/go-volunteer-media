@@ -251,29 +251,22 @@ const GroupPage: React.FC = () => {
             </svg>
             <span>Add Animal</span>
           </Link>
-          <Link to={`/admin/animals?group=${id}`} className="group-admin-link">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-            <span>Edit Animals</span>
-          </Link>
-          <Link to="/admin/animal-tags" className="group-admin-link">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-              <line x1="7" y1="7" x2="7.01" y2="7" />
-            </svg>
-            <span>Manage Tags</span>
-          </Link>
-          <Link to="/admin/users" className="group-admin-link">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-            <span>View Members</span>
-          </Link>
+          {group.has_protocols && (
+            <button 
+              type="button"
+              className="group-admin-link"
+              onClick={() => {
+                setViewMode('protocols');
+                // The ProtocolsList component has an "Add Protocol" button
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+              </svg>
+              <span>View Protocols</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -509,7 +502,10 @@ const GroupPage: React.FC = () => {
           aria-labelledby="protocols-tab"
           className="group-content"
         >
-          <ProtocolsList groupId={Number(id)} />
+          <ProtocolsList 
+            groupId={Number(id)} 
+            isGroupAdmin={membership?.is_group_admin || membership?.is_site_admin}
+          />
         </div>
       )}
 

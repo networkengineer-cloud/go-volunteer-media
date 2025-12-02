@@ -11,10 +11,13 @@ import './ProtocolsList.css';
 
 interface ProtocolsListProps {
   groupId: number;
+  isGroupAdmin?: boolean; // True if user is a group admin for this group
 }
 
-const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
+const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId, isGroupAdmin = false }) => {
   const { isAdmin } = useAuth();
+  // Allow editing if user is site admin OR group admin
+  const canEdit = isAdmin || isGroupAdmin;
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -110,12 +113,12 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
           }
           title="No Protocols Yet"
           description={
-            isAdmin
+            canEdit
               ? 'Get started by adding your first protocol. Protocols help volunteers follow standardized procedures.'
               : 'No protocols have been added to this group yet. Protocols will appear here once an admin adds them.'
           }
           primaryAction={
-            isAdmin
+            canEdit
               ? {
                   label: 'Add First Protocol',
                   onClick: () => setShowForm(true),
@@ -127,7 +130,7 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
         <>
       <div className="protocols-header">
         <h2>Protocols</h2>
-        {isAdmin && (
+        {canEdit && (
           <button
             className="btn-primary"
             onClick={() => {
@@ -179,7 +182,7 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
                 </div>
               </div>
             </div>
-            {isAdmin && (
+            {canEdit && (
               <div className="protocol-actions">
                 <button
                   className="btn-secondary"
@@ -251,7 +254,7 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId }) => {
             <div className="protocol-view-content">
               <p>{viewingProtocol.content}</p>
             </div>
-            {isAdmin && (
+            {canEdit && (
               <div className="protocol-view-actions">
                 <button
                   className="btn-secondary"
