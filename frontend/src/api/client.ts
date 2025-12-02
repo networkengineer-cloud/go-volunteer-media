@@ -27,6 +27,28 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Handle 401 responses (expired/invalid token)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear invalid token
+      localStorage.removeItem('token');
+      
+      // Redirect to login if not already there
+      if (window.location.pathname !== '/login') {
+        // Store the current path to redirect back after login
+        const currentPath = window.location.pathname + window.location.search;
+        if (currentPath !== '/' && currentPath !== '/login') {
+          sessionStorage.setItem('redirectAfterLogin', currentPath);
+        }
+        window.location.href = '/login?expired=true';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export interface User {
   id: number;
   username: string;
