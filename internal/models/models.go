@@ -220,3 +220,14 @@ type AnimalNameHistory struct {
 	NewName   string    `gorm:"not null" json:"new_name"`
 	ChangedBy uint      `gorm:"not null" json:"changed_by"` // User ID who made the change
 }
+
+// UserGroup represents the many-to-many relationship between users and groups
+// with additional fields for group-level permissions
+type UserGroup struct {
+	UserID       uint      `gorm:"primaryKey" json:"user_id"`
+	GroupID      uint      `gorm:"primaryKey" json:"group_id"`
+	CreatedAt    time.Time `json:"created_at"`
+	IsGroupAdmin bool      `gorm:"default:false" json:"is_group_admin"` // User has admin privileges for this specific group
+	User         User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Group        Group     `gorm:"foreignKey:GroupID" json:"group,omitempty"`
+}

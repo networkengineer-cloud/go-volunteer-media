@@ -102,6 +102,29 @@ func checkGroupAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, grou
 	return len(user.Groups) > 0
 }
 
+// checkGroupAdminAccess verifies if the user has admin access to a specific group
+// Returns true if:
+// - User is a site-wide admin, OR
+// - User is a group admin for the specified group
+func checkGroupAdminAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, groupID string) bool {
+	// Site admins have access to all groups
+	if isAdmin.(bool) {
+		return true
+	}
+
+	// Check if user is a group admin for this specific group
+	userIDUint, ok := userID.(uint)
+	if !ok {
+		return false
+	}
+
+	var userGroup models.UserGroup
+	if err := db.Where("user_id = ? AND group_id = ?", userIDUint, groupID).First(&userGroup).Error; err != nil {
+		return false
+	}
+	return userGroup.IsGroupAdmin
+}
+
 // CheckDuplicateNames checks if any animals in a group have duplicate names
 func CheckDuplicateNames(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {

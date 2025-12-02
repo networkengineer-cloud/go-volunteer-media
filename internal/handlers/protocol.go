@@ -23,10 +23,19 @@ type ProtocolRequest struct {
 	OrderIndex int    `json:"order_index"`
 }
 
-// UploadProtocolImage handles secure protocol image uploads (admin only)
-func UploadProtocolImage() gin.HandlerFunc {
+// UploadProtocolImage handles secure protocol image uploads (group admin or site admin)
+func UploadProtocolImage(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := middleware.GetLogger(c)
+		groupID := c.Param("id")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
 
 		file, err := c.FormFile("image")
 		if err != nil {
@@ -128,10 +137,18 @@ func GetProtocol(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// CreateProtocol creates a new protocol (admin only)
+// CreateProtocol creates a new protocol (group admin or site admin)
 func CreateProtocol(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupID := c.Param("id")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
 
 		var req ProtocolRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -174,11 +191,19 @@ func CreateProtocol(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// UpdateProtocol updates an existing protocol (admin only)
+// UpdateProtocol updates an existing protocol (group admin or site admin)
 func UpdateProtocol(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupID := c.Param("id")
 		protocolID := c.Param("protocolId")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
 
 		var req ProtocolRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -206,11 +231,19 @@ func UpdateProtocol(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// DeleteProtocol deletes a protocol (admin only)
+// DeleteProtocol deletes a protocol (group admin or site admin)
 func DeleteProtocol(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupID := c.Param("id")
 		protocolID := c.Param("protocolId")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
 
 		var protocol models.Protocol
 		if err := db.Where("id = ? AND group_id = ?", protocolID, groupID).First(&protocol).Error; err != nil {

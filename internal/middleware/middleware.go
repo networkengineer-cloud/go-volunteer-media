@@ -137,3 +137,9 @@ func AdminRequired() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// IsSiteAdmin checks if the current user is a site-wide admin
+func IsSiteAdmin(c *gin.Context) bool {
+	isAdmin, exists := c.Get("is_admin")
+	return exists && isAdmin.(bool)
+}

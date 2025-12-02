@@ -24,6 +24,7 @@ func SetupTestDB(t *testing.T) *gorm.DB {
 	err = db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
+		&models.UserGroup{},
 		&models.Animal{},
 		&models.Update{},
 		&models.Announcement{},
@@ -90,4 +91,17 @@ func CreateTestAnimal(t *testing.T, db *gorm.DB, groupID uint, name, species str
 	}
 
 	return animal
+}
+
+// AddUserToGroupWithAdmin adds a user to a group and optionally makes them a group admin
+func AddUserToGroupWithAdmin(t *testing.T, db *gorm.DB, userID, groupID uint, isGroupAdmin bool) {
+	userGroup := &models.UserGroup{
+		UserID:       userID,
+		GroupID:      groupID,
+		IsGroupAdmin: isGroupAdmin,
+	}
+
+	if err := db.Create(userGroup).Error; err != nil {
+		t.Fatalf("Failed to add user to group: %v", err)
+	}
 }

@@ -89,9 +89,9 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
-		// Check access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
 
@@ -163,9 +163,9 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
-		// Check access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
 
@@ -273,9 +273,9 @@ func DeleteAnimal(db *gorm.DB) gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
-		// Check access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
 
