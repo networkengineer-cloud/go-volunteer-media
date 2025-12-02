@@ -25,7 +25,7 @@ func setupAnimalTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Run migrations
-	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.Animal{}, &models.AnimalTag{}, &models.AnimalNameHistory{})
+	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{}, &models.Animal{}, &models.AnimalTag{}, &models.AnimalNameHistory{})
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -34,6 +34,7 @@ func setupAnimalTestDB(t *testing.T) *gorm.DB {
 }
 
 // createAnimalTestUser creates a user with a group for testing
+// The user is automatically made a group admin for the created group (for backward compatibility with existing tests)
 func createAnimalTestUser(t *testing.T, db *gorm.DB, username, email string, isAdmin bool) (*models.User, *models.Group) {
 	hashedPassword, err := auth.HashPassword("password123")
 	if err != nil {
@@ -60,9 +61,16 @@ func createAnimalTestUser(t *testing.T, db *gorm.DB, username, email string, isA
 		t.Fatalf("Failed to create group: %v", err)
 	}
 
-	// Associate user with group
-	if err := db.Model(user).Association("Groups").Append(group); err != nil {
-		t.Fatalf("Failed to associate user with group: %v", err)
+	// Create UserGroup entry with group admin privileges
+	// This maintains backward compatibility with existing tests that assume
+	// group members can perform admin operations on their groups
+	userGroup := &models.UserGroup{
+		UserID:       user.ID,
+		GroupID:      group.ID,
+		IsGroupAdmin: true, // Make user a group admin by default for test backward compatibility
+	}
+	if err := db.Create(userGroup).Error; err != nil {
+		t.Fatalf("Failed to create user group association: %v", err)
 	}
 
 	return user, group

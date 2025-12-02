@@ -98,6 +98,7 @@ func RunMigrations(db *gorm.DB) error {
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
+		&models.UserGroup{},
 		&models.Animal{},
 		&models.Update{},
 		&models.Announcement{},

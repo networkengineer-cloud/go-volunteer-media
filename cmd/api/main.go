@@ -183,6 +183,11 @@ func main() {
 			admin.POST("/users/:userId/groups/:groupId", handlers.AddUserToGroup(db))
 			admin.DELETE("/users/:userId/groups/:groupId", handlers.RemoveUserFromGroup(db))
 
+			// Group admin management (site admin only)
+			admin.POST("/groups/:groupId/admins/:userId", handlers.PromoteGroupAdmin(db))
+			admin.DELETE("/groups/:groupId/admins/:userId", handlers.DemoteGroupAdmin(db))
+			admin.GET("/groups/:id/members", handlers.GetGroupMembers(db))
+
 			// Announcement routes (admin only)
 			admin.POST("/announcements", handlers.CreateAnnouncement(db, emailService, groupMeService))
 			admin.DELETE("/announcements/:id", handlers.DeleteAnnouncement(db))
@@ -263,23 +268,23 @@ func main() {
 			group.GET("/protocols/:protocolId", handlers.GetProtocol(db))
 		}
 
-		// Admin-only animal management routes
-		adminAnimals := protected.Group("/groups/:id/animals")
-		adminAnimals.Use(middleware.AdminRequired())
+		// Group admin or site admin animal management routes
+		// These routes check for site admin OR group admin access within the handlers
+		groupAdminAnimals := protected.Group("/groups/:id/animals")
 		{
-			adminAnimals.POST("", handlers.CreateAnimal(db))
-			adminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db))
-			adminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
+			groupAdminAnimals.POST("", handlers.CreateAnimal(db))
+			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db))
+			groupAdminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
 		}
 
-		// Admin-only protocol management routes
-		adminProtocols := protected.Group("/groups/:id/protocols")
-		adminProtocols.Use(middleware.AdminRequired())
+		// Group admin or site admin protocol management routes
+		// These routes check for site admin OR group admin access within the handlers
+		groupAdminProtocols := protected.Group("/groups/:id/protocols")
 		{
-			adminProtocols.POST("/upload-image", handlers.UploadProtocolImage())
-			adminProtocols.POST("", handlers.CreateProtocol(db))
-			adminProtocols.PUT("/:protocolId", handlers.UpdateProtocol(db))
-			adminProtocols.DELETE("/:protocolId", handlers.DeleteProtocol(db))
+			groupAdminProtocols.POST("/upload-image", handlers.UploadProtocolImage(db))
+			groupAdminProtocols.POST("", handlers.CreateProtocol(db))
+			groupAdminProtocols.PUT("/:protocolId", handlers.UpdateProtocol(db))
+			groupAdminProtocols.DELETE("/:protocolId", handlers.DeleteProtocol(db))
 		}
 	}
 
