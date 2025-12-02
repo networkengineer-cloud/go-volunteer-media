@@ -148,12 +148,14 @@ type AnimalComment struct {
 }
 
 // CommentTag represents a tag that can be applied to comments
+// Tags are group-specific - each group has its own set of tags
 type CommentTag struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	Name      string         `gorm:"uniqueIndex;not null" json:"name"`
+	GroupID   uint           `gorm:"not null;index;uniqueIndex:idx_comment_tag_group_name" json:"group_id"` // Group this tag belongs to
+	Name      string         `gorm:"not null;uniqueIndex:idx_comment_tag_group_name" json:"name"`
 	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
 	IsSystem  bool           `gorm:"default:false" json:"is_system"` // True for behavior/medical tags
 }
@@ -181,12 +183,14 @@ type Protocol struct {
 }
 
 // AnimalTag represents a tag that can be applied to animals
+// Tags are group-specific - each group has its own set of tags
 type AnimalTag struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	Name      string         `gorm:"uniqueIndex;not null" json:"name"`
+	GroupID   uint           `gorm:"not null;index;uniqueIndex:idx_animal_tag_group_name" json:"group_id"` // Group this tag belongs to
+	Name      string         `gorm:"not null;uniqueIndex:idx_animal_tag_group_name" json:"name"`
 	Category  string         `gorm:"not null" json:"category"`       // "behavior" or "walker_status"
 	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
 }

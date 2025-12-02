@@ -482,24 +482,24 @@ export const animalCommentsApi = {
     api.get<AnimalComment[]>('/admin/groups/' + groupId + '/deleted-comments'),
 };
 
-// Comment Tags API
+// Comment Tags API - Group-specific tags
 export const commentTagsApi = {
-  getAll: () => api.get<CommentTag[]>('/comment-tags'),
-  create: (name: string, color: string) =>
-    api.post<CommentTag>('/admin/comment-tags', { name, color }),
-  delete: (tagId: number) => api.delete('/admin/comment-tags/' + tagId),
+  getAll: (groupId: number) => api.get<CommentTag[]>('/groups/' + groupId + '/comment-tags'),
+  create: (groupId: number, name: string, color: string) =>
+    api.post<CommentTag>('/groups/' + groupId + '/comment-tags', { name, color }),
+  delete: (groupId: number, tagId: number) => api.delete('/groups/' + groupId + '/comment-tags/' + tagId),
 };
 
-// Animal Tags API
+// Animal Tags API - Group-specific tags
 export const animalTagsApi = {
-  getAll: () => api.get<AnimalTag[]>('/animal-tags'),
-  create: (data: { name: string; category: string; color: string; icon: string }) =>
-    api.post<AnimalTag>('/admin/animal-tags', data),
-  update: (tagId: number, data: { name: string; category: string; color: string; icon: string }) =>
-    api.put<AnimalTag>('/admin/animal-tags/' + tagId, data),
-  delete: (tagId: number) => api.delete('/admin/animal-tags/' + tagId),
-  assignToAnimal: (animalId: number, tagIds: number[]) =>
-    api.post<Animal>('/admin/animals/' + animalId + '/tags', { tag_ids: tagIds }),
+  getAll: (groupId: number) => api.get<AnimalTag[]>('/groups/' + groupId + '/animal-tags'),
+  create: (groupId: number, data: { name: string; category: string; color: string }) =>
+    api.post<AnimalTag>('/groups/' + groupId + '/animal-tags', data),
+  update: (groupId: number, tagId: number, data: { name: string; category: string; color: string }) =>
+    api.put<AnimalTag>('/groups/' + groupId + '/animal-tags/' + tagId, data),
+  delete: (groupId: number, tagId: number) => api.delete('/groups/' + groupId + '/animal-tags/' + tagId),
+  assignToAnimal: (groupId: number, animalId: number, tagIds: number[]) =>
+    api.post<Animal>('/groups/' + groupId + '/animals/' + animalId + '/tags', { tag_ids: tagIds }),
 };
 
 // Protocols API

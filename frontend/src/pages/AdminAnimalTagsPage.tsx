@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import apiClient, { commentTagsApi, statisticsApi, type CommentTag, type CommentTagStatistics } from '../api/client';
+import { commentTagsApi, animalTagsApi, statisticsApi, groupsApi, type CommentTag, type CommentTagStatistics, type Group } from '../api/client';
 import Modal from '../components/Modal';
 import './AdminAnimalTagsPage.css';
 
 interface AnimalTag {
   id: number;
+  group_id: number;
   name: string;
   category: string;
   color: string;
@@ -258,9 +259,14 @@ const CommentTagFormModal: React.FC<CommentTagFormModalProps> = ({ isOpen, onClo
 };
 
 const AdminAnimalTagsPage: React.FC = () => {
+  // Groups state
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [loadingGroups, setLoadingGroups] = useState(true);
+
   // Animal Tags state
   const [animalTags, setAnimalTags] = useState<AnimalTag[]>([]);
-  const [loadingAnimalTags, setLoadingAnimalTags] = useState(true);
+  const [loadingAnimalTags, setLoadingAnimalTags] = useState(false);
   const [animalTagError, setAnimalTagError] = useState<string | null>(null);
   const [isAnimalTagModalOpen, setIsAnimalTagModalOpen] = useState(false);
   const [editingAnimalTag, setEditingAnimalTag] = useState<AnimalTag | null>(null);
@@ -268,18 +274,36 @@ const AdminAnimalTagsPage: React.FC = () => {
   // Comment Tags state
   const [commentTags, setCommentTags] = useState<CommentTag[]>([]);
   const [commentTagStats, setCommentTagStats] = useState<Record<number, CommentTagStatistics>>({});
-  const [loadingCommentTags, setLoadingCommentTags] = useState(true);
+  const [loadingCommentTags, setLoadingCommentTags] = useState(false);
   const [commentTagError, setCommentTagError] = useState<string | null>(null);
   const [isCommentTagModalOpen, setIsCommentTagModalOpen] = useState(false);
 
   // Active section for mobile
   const [activeSection, setActiveSection] = useState<'animal' | 'comment'>('animal');
 
-  // Fetch Animal Tags
+  // Fetch Groups
+  const fetchGroups = useCallback(async () => {
+    try {
+      setLoadingGroups(true);
+      const response = await groupsApi.getAll();
+      setGroups(response.data);
+      // Auto-select first group if none selected
+      if (response.data.length > 0 && !selectedGroupId) {
+        setSelectedGroupId(response.data[0].id);
+      }
+    } catch (err) {
+      console.error('Error fetching groups:', err);
+    } finally {
+      setLoadingGroups(false);
+    }
+  }, [selectedGroupId]);
+
+  // Fetch Animal Tags for selected group
   const fetchAnimalTags = useCallback(async () => {
+    if (!selectedGroupId) return;
     try {
       setLoadingAnimalTags(true);
-      const response = await apiClient.get('/animal-tags');
+      const response = await animalTagsApi.getAll(selectedGroupId);
       setAnimalTags(response.data);
       setAnimalTagError(null);
     } catch (err) {
@@ -288,14 +312,15 @@ const AdminAnimalTagsPage: React.FC = () => {
     } finally {
       setLoadingAnimalTags(false);
     }
-  }, []);
+  }, [selectedGroupId]);
 
-  // Fetch Comment Tags
+  // Fetch Comment Tags for selected group
   const fetchCommentTags = useCallback(async () => {
+    if (!selectedGroupId) return;
     try {
       setLoadingCommentTags(true);
       const [tagsRes, statsRes] = await Promise.all([
-        commentTagsApi.getAll(),
+        commentTagsApi.getAll(selectedGroupId),
         statisticsApi.getCommentTagStatistics()
       ]);
       
@@ -313,12 +338,18 @@ const AdminAnimalTagsPage: React.FC = () => {
     } finally {
       setLoadingCommentTags(false);
     }
-  }, []);
+  }, [selectedGroupId]);
 
   useEffect(() => {
-    fetchAnimalTags();
-    fetchCommentTags();
-  }, [fetchAnimalTags, fetchCommentTags]);
+    fetchGroups();
+  }, [fetchGroups]);
+
+  useEffect(() => {
+    if (selectedGroupId) {
+      fetchAnimalTags();
+      fetchCommentTags();
+    }
+  }, [selectedGroupId, fetchAnimalTags, fetchCommentTags]);
 
   // Animal Tag handlers
   const handleCreateAnimalTag = useCallback(() => {
@@ -337,11 +368,12 @@ const AdminAnimalTagsPage: React.FC = () => {
   }, []);
 
   const handleSubmitAnimalTag = useCallback(async (data: { name: string; category: string; color: string }) => {
+    if (!selectedGroupId) return;
     try {
       if (editingAnimalTag) {
-        await apiClient.put(`/animal-tags/${editingAnimalTag.id}`, data);
+        await animalTagsApi.update(selectedGroupId, editingAnimalTag.id, data);
       } else {
-        await apiClient.post('/animal-tags', data);
+        await animalTagsApi.create(selectedGroupId, data);
       }
       await fetchAnimalTags();
       handleCloseAnimalTagModal();
@@ -349,50 +381,66 @@ const AdminAnimalTagsPage: React.FC = () => {
       console.error('Error saving animal tag:', err);
       throw err;
     }
-  }, [editingAnimalTag, fetchAnimalTags, handleCloseAnimalTagModal]);
+  }, [selectedGroupId, editingAnimalTag, fetchAnimalTags, handleCloseAnimalTagModal]);
 
   const handleDeleteAnimalTag = useCallback(async (tagId: number) => {
+    if (!selectedGroupId) return;
     if (!window.confirm('Are you sure you want to delete this animal tag?')) return;
     
     try {
-      await apiClient.delete(`/animal-tags/${tagId}`);
+      await animalTagsApi.delete(selectedGroupId, tagId);
       await fetchAnimalTags();
     } catch (err) {
       console.error('Error deleting animal tag:', err);
       setAnimalTagError('Failed to delete tag');
     }
-  }, [fetchAnimalTags]);
+  }, [selectedGroupId, fetchAnimalTags]);
 
   // Comment Tag handlers
   const handleCreateCommentTag = useCallback(async (name: string, color: string) => {
+    if (!selectedGroupId) return;
     try {
-      await commentTagsApi.create(name, color);
+      await commentTagsApi.create(selectedGroupId, name, color);
       await fetchCommentTags();
     } catch (err) {
       console.error('Error creating comment tag:', err);
       throw err;
     }
-  }, [fetchCommentTags]);
+  }, [selectedGroupId, fetchCommentTags]);
 
   const handleDeleteCommentTag = useCallback(async (tagId: number) => {
+    if (!selectedGroupId) return;
     if (!window.confirm('Are you sure you want to delete this comment tag?')) return;
     
     try {
-      await commentTagsApi.delete(tagId);
+      await commentTagsApi.delete(selectedGroupId, tagId);
       await fetchCommentTags();
     } catch (err) {
       console.error('Error deleting comment tag:', err);
       setCommentTagError('Failed to delete tag');
     }
-  }, [fetchCommentTags]);
+  }, [selectedGroupId, fetchCommentTags]);
 
   const behaviorTags = animalTags.filter(tag => tag.category === 'behavior');
   const walkerStatusTags = animalTags.filter(tag => tag.category === 'walker_status');
 
-  const isLoading = loadingAnimalTags || loadingCommentTags;
+  const isLoading = loadingGroups || loadingAnimalTags || loadingCommentTags;
 
-  if (isLoading) {
-    return <div className="admin-tags-page loading">Loading tags...</div>;
+  if (loadingGroups) {
+    return <div className="admin-tags-page loading">Loading groups...</div>;
+  }
+
+  if (groups.length === 0) {
+    return (
+      <div className="admin-tags-page">
+        <div className="page-header">
+          <div className="page-header-content">
+            <h1>🏷️ Tag Management</h1>
+            <p className="page-subtitle">No groups available. Tags are group-specific.</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -401,10 +449,29 @@ const AdminAnimalTagsPage: React.FC = () => {
         <div className="page-header-content">
           <h1>🏷️ Tag Management</h1>
           <p className="page-subtitle">
-            Manage tags used to organize animals and comments. Tags help volunteers quickly understand important information.
+            Manage tags used to organize animals and comments. Tags are group-specific and help volunteers quickly understand important information.
           </p>
         </div>
       </div>
+
+      {/* Group Selector */}
+      <div className="group-selector">
+        <label htmlFor="group-select">Select Group:</label>
+        <select
+          id="group-select"
+          value={selectedGroupId || ''}
+          onChange={(e) => setSelectedGroupId(Number(e.target.value))}
+          className="group-select"
+        >
+          {groups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {isLoading && <div className="loading-indicator">Loading tags for selected group...</div>}
 
       {/* Section Tabs for mobile */}
       <div className="section-tabs" role="tablist">

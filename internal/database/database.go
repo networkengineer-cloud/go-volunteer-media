@@ -169,30 +169,61 @@ func createDefaultGroups(db *gorm.DB) error {
 	return nil
 }
 
-// createDefaultCommentTags creates the default comment tags if they don't exist
+// createDefaultCommentTags creates the default comment tags for each group if they don't exist
 func createDefaultCommentTags(db *gorm.DB) error {
-	defaultTags := []models.CommentTag{
+	// Get all groups
+	var groups []models.Group
+	if err := db.Find(&groups).Error; err != nil {
+		return fmt.Errorf("failed to fetch groups: %w", err)
+	}
+
+	defaultTagTemplates := []struct {
+		Name     string
+		Color    string
+		IsSystem bool
+	}{
 		{Name: "behavior", Color: "#3b82f6", IsSystem: true},
 		{Name: "medical", Color: "#ef4444", IsSystem: true},
 	}
 
-	for _, tag := range defaultTags {
-		var existing models.CommentTag
-		result := db.Where("name = ?", tag.Name).First(&existing)
-		if result.Error == gorm.ErrRecordNotFound {
-			if err := db.Create(&tag).Error; err != nil {
-				return fmt.Errorf("failed to create default tag %s: %w", tag.Name, err)
+	for _, group := range groups {
+		for _, template := range defaultTagTemplates {
+			var existing models.CommentTag
+			result := db.Where("name = ? AND group_id = ?", template.Name, group.ID).First(&existing)
+			if result.Error == gorm.ErrRecordNotFound {
+				tag := models.CommentTag{
+					GroupID:  group.ID,
+					Name:     template.Name,
+					Color:    template.Color,
+					IsSystem: template.IsSystem,
+				}
+				if err := db.Create(&tag).Error; err != nil {
+					return fmt.Errorf("failed to create default tag %s for group %s: %w", template.Name, group.Name, err)
+				}
+				logging.WithFields(map[string]interface{}{
+					"tag_name":   template.Name,
+					"group_name": group.Name,
+				}).Info("Created default comment tag for group")
 			}
-			logging.WithField("tag_name", tag.Name).Info("Created default comment tag")
 		}
 	}
 
 	return nil
 }
 
-// createDefaultAnimalTags creates the default animal tags if they don't exist
+// createDefaultAnimalTags creates the default animal tags for each group if they don't exist
 func createDefaultAnimalTags(db *gorm.DB) error {
-	defaultTags := []models.AnimalTag{
+	// Get all groups
+	var groups []models.Group
+	if err := db.Find(&groups).Error; err != nil {
+		return fmt.Errorf("failed to fetch groups: %w", err)
+	}
+
+	defaultTagTemplates := []struct {
+		Name     string
+		Category string
+		Color    string
+	}{
 		// Behavior tags
 		{Name: "resource guarding", Category: "behavior", Color: "#ef4444"},
 		{Name: "shy", Category: "behavior", Color: "#a855f7"},
@@ -204,14 +235,25 @@ func createDefaultAnimalTags(db *gorm.DB) error {
 		{Name: "dual walker", Category: "walker_status", Color: "#06b6d4"},
 	}
 
-	for _, tag := range defaultTags {
-		var existing models.AnimalTag
-		result := db.Where("name = ?", tag.Name).First(&existing)
-		if result.Error == gorm.ErrRecordNotFound {
-			if err := db.Create(&tag).Error; err != nil {
-				return fmt.Errorf("failed to create default animal tag %s: %w", tag.Name, err)
+	for _, group := range groups {
+		for _, template := range defaultTagTemplates {
+			var existing models.AnimalTag
+			result := db.Where("name = ? AND group_id = ?", template.Name, group.ID).First(&existing)
+			if result.Error == gorm.ErrRecordNotFound {
+				tag := models.AnimalTag{
+					GroupID:  group.ID,
+					Name:     template.Name,
+					Category: template.Category,
+					Color:    template.Color,
+				}
+				if err := db.Create(&tag).Error; err != nil {
+					return fmt.Errorf("failed to create default animal tag %s for group %s: %w", template.Name, group.Name, err)
+				}
+				logging.WithFields(map[string]interface{}{
+					"tag_name":   template.Name,
+					"group_name": group.Name,
+				}).Info("Created default animal tag for group")
 			}
-			logging.WithField("tag_name", tag.Name).Info("Created default animal tag")
 		}
 	}
 
