@@ -73,7 +73,7 @@ func TestGetUserProfile(t *testing.T) {
 			},
 			userID:         "1",
 			expectedStatus: http.StatusForbidden,
-			expectedError:  "You can only view your own profile",
+			expectedError:  "You can only view profiles of users in your groups",
 		},
 		{
 			name: "not found when user doesn't exist",

@@ -549,3 +549,269 @@ func GetGroupMembership(db *gorm.DB) gin.HandlerFunc {
 		})
 	}
 }
+
+// AddMemberToGroup adds a user to a group (group admin or site admin)
+// This allows group admins to add new members to their group
+func AddMemberToGroup(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		groupID := c.Param("id")
+		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		// Verify target user exists
+		var targetUser models.User
+		if err := db.WithContext(ctx).First(&targetUser, uint(targetUserID)).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// Verify group exists
+		var group models.Group
+		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+
+		// Check if user is already a member
+		var existingMembership models.UserGroup
+		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&existingMembership).Error; err == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already a member of this group"})
+			return
+		}
+
+		// Add user to group
+		if err := db.WithContext(ctx).Model(&targetUser).Association("Groups").Append(&group); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add user to group"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User added to group successfully"})
+	}
+}
+
+// RemoveMemberFromGroup removes a user from a group (group admin or site admin)
+// This allows group admins to remove members from their group
+func RemoveMemberFromGroup(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		groupID := c.Param("id")
+		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		// Verify target user exists
+		var targetUser models.User
+		if err := db.WithContext(ctx).First(&targetUser, uint(targetUserID)).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// Verify group exists
+		var group models.Group
+		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+
+		// Check if user is a member
+		var existingMembership models.UserGroup
+		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&existingMembership).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not a member of this group"})
+			return
+		}
+
+		// Remove user from group
+		if err := db.WithContext(ctx).Model(&targetUser).Association("Groups").Delete(&group); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove user from group"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User removed from group successfully"})
+	}
+}
+
+// PromoteMemberToGroupAdmin promotes a user to group admin status (group admin or site admin)
+func PromoteMemberToGroupAdmin(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		groupID := c.Param("id")
+		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		// Verify target user exists
+		var targetUser models.User
+		if err := db.WithContext(ctx).First(&targetUser, uint(targetUserID)).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// Verify group exists
+		var group models.Group
+		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+
+		// Check if user is a member of the group
+		var userGroup models.UserGroup
+		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&userGroup).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not a member of this group"})
+			return
+		}
+
+		// Check if already a group admin
+		if userGroup.IsGroupAdmin {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already a group admin"})
+			return
+		}
+
+		// Promote to group admin
+		if err := db.WithContext(ctx).Model(&userGroup).Update("is_group_admin", true).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to promote user to group admin"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User promoted to group admin"})
+	}
+}
+
+// DemoteMemberFromGroupAdmin removes group admin status from a user (group admin or site admin)
+func DemoteMemberFromGroupAdmin(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		groupID := c.Param("id")
+		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		// Verify target user exists
+		var targetUser models.User
+		if err := db.WithContext(ctx).First(&targetUser, uint(targetUserID)).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// Verify group exists
+		var group models.Group
+		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+
+		// Check if user is a member of the group
+		var userGroup models.UserGroup
+		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&userGroup).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not a member of this group"})
+			return
+		}
+
+		// Check if user is a group admin
+		if !userGroup.IsGroupAdmin {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not a group admin"})
+			return
+		}
+
+		// Demote from group admin
+		if err := db.WithContext(ctx).Model(&userGroup).Update("is_group_admin", false).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to demote user from group admin"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User demoted from group admin"})
+	}
+}
+
+// UpdateGroupSettings updates group settings (group admin or site admin)
+// Group admins can update settings for their own group
+func UpdateGroupSettings(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		groupID := c.Param("id")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		var req GroupRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		var group models.Group
+		if err := db.First(&group, groupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+
+		group.Name = req.Name
+		group.Description = req.Description
+		group.ImageURL = req.ImageURL
+		group.HeroImageURL = req.HeroImageURL
+		group.HasProtocols = req.HasProtocols
+		// Validate GroupMeBotID
+		if !isValidGroupMeBotID(req.GroupMeBotID) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid GroupMe bot ID. Must be a 26-character hexadecimal string."})
+			return
+		}
+		group.GroupMeBotID = req.GroupMeBotID
+		group.GroupMeEnabled = req.GroupMeEnabled
+
+		if err := db.Save(&group).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update group"})
+			return
+		}
+
+		c.JSON(http.StatusOK, group)
+	}
+}
