@@ -233,9 +233,10 @@ func main() {
 			group.POST("/animals/:animalId/images", handlers.UploadAnimalImageToGallery(db))
 			group.DELETE("/animals/:animalId/images/:imageId", handlers.DeleteAnimalImage(db))
 
-			// Animal comments - all group members can view and add comments
+			// Animal comments - all group members can view, add, and edit own comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
 			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
+			group.PUT("/animals/:animalId/comments/:commentId", handlers.UpdateAnimalComment(db))
 			group.DELETE("/animals/:animalId/comments/:commentId", handlers.DeleteAnimalComment(db))
 
 			// Latest comments across the group
@@ -262,6 +263,23 @@ func main() {
 			group.GET("/comment-tags", handlers.GetCommentTags(db))
 			group.POST("/comment-tags", handlers.CreateCommentTag(db))
 			group.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
+
+			// Group settings - group admin or site admin can update
+			group.PUT("/settings", handlers.UpdateGroupSettings(db))
+
+			// Member management - group admin or site admin (checks access within handlers)
+			group.GET("/members", handlers.GetGroupMembers(db))
+			group.POST("/members/:userId", handlers.AddMemberToGroup(db))
+			group.DELETE("/members/:userId", handlers.RemoveMemberFromGroup(db))
+			group.POST("/members/:userId/promote", handlers.PromoteMemberToGroupAdmin(db))
+			group.POST("/members/:userId/demote", handlers.DemoteMemberFromGroupAdmin(db))
+
+			// Content moderation - group admin or site admin can view deleted content
+			group.GET("/deleted-comments", handlers.GetDeletedComments(db))
+			group.GET("/deleted-images", handlers.GetDeletedImages(db))
+
+			// Group announcements - group admin or site admin can create announcements for their group
+			group.POST("/announcements", handlers.CreateGroupAnnouncement(db, emailService, groupMeService))
 		}
 
 		// Group admin or site admin animal management routes

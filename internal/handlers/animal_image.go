@@ -339,15 +339,9 @@ func GetDeletedImages(db *gorm.DB) gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
-		// Only admins can view deleted images
-		if !isAdmin.(bool) {
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			return
-		}
-
-		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
 

@@ -73,7 +73,9 @@ type AnimalInteraction struct {
 }
 
 // GetUserProfile returns detailed profile information for a user
-// Accessible by the user themselves or admins
+// - Users can view their own profile with full details
+// - Site admins can view any profile with full details
+// - Group members can view limited profile info (username only) for members in their shared groups
 func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
@@ -90,9 +92,26 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 		currentUserID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
-		// Check authorization: users can only view their own profile unless they're admin
-		if !isAdmin.(bool) && currentUserID.(uint) != uint(targetUserID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "You can only view your own profile"})
+		// Determine access level
+		isOwnProfile := currentUserID.(uint) == uint(targetUserID)
+		isSiteAdmin := isAdmin.(bool)
+
+		// For non-admins viewing other profiles, check if they share a group
+		var hasSharedGroup bool
+		if !isSiteAdmin && !isOwnProfile {
+			var sharedCount int64
+			err := db.WithContext(ctx).Table("user_groups AS ug1").
+				Joins("JOIN user_groups AS ug2 ON ug1.group_id = ug2.group_id").
+				Where("ug1.user_id = ? AND ug2.user_id = ?", currentUserID, targetUserID).
+				Count(&sharedCount).Error
+			if err == nil && sharedCount > 0 {
+				hasSharedGroup = true
+			}
+		}
+
+		// If not own profile, not admin, and no shared group, deny access
+		if !isOwnProfile && !isSiteAdmin && !hasSharedGroup {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You can only view profiles of users in your groups"})
 			return
 		}
 
@@ -107,7 +126,21 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Build profile response
+		// For group members viewing limited profile (not own profile, not admin)
+		if !isOwnProfile && !isSiteAdmin {
+			// Return limited profile info
+			type LimitedProfileResponse struct {
+				ID       uint   `json:"id"`
+				Username string `json:"username"`
+			}
+			c.JSON(http.StatusOK, LimitedProfileResponse{
+				ID:       user.ID,
+				Username: user.Username,
+			})
+			return
+		}
+
+		// Build full profile response for own profile or admin viewing
 		profile := UserProfileResponse{
 			ID:             user.ID,
 			Username:       user.Username,

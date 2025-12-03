@@ -343,9 +343,9 @@ Group admins are users who have admin privileges for a specific group. They can 
 
 Get all members of a group with their admin status.
 
-**Endpoint:** `GET /admin/groups/:id/members`
+**Endpoint:** `GET /groups/:id/members`
 
-**Authentication:** Required (Site Admin or Group Member)
+**Authentication:** Required (Site Admin, Group Admin, or Group Member)
 
 **URL Parameters:**
 - `id` (integer): Group ID
@@ -375,16 +375,66 @@ Get all members of a group with their admin status.
 - `401 Unauthorized`: Invalid or missing token
 - `403 Forbidden`: User is not a member of the group
 
-#### Promote User to Group Admin
+#### Add Member to Group
+
+Add a user to a group (Group Admin or Site Admin only).
+
+**Endpoint:** `POST /groups/:id/members/:userId`
+
+**Authentication:** Required (Site Admin or Group Admin)
+
+**URL Parameters:**
+- `id` (integer): Group ID
+- `userId` (integer): User ID to add
+
+**Response:** `200 OK`
+```json
+{
+  "message": "User added to group successfully"
+}
+```
+
+**Errors:**
+- `400 Bad Request`: Invalid user or group ID, or user already in group
+- `401 Unauthorized`: Invalid or missing token
+- `403 Forbidden`: User is not a site admin or group admin for this group
+- `404 Not Found`: User or group not found
+
+#### Remove Member from Group
+
+Remove a user from a group (Group Admin or Site Admin only).
+
+**Endpoint:** `DELETE /groups/:id/members/:userId`
+
+**Authentication:** Required (Site Admin or Group Admin)
+
+**URL Parameters:**
+- `id` (integer): Group ID
+- `userId` (integer): User ID to remove
+
+**Response:** `200 OK`
+```json
+{
+  "message": "User removed from group successfully"
+}
+```
+
+**Errors:**
+- `400 Bad Request`: Invalid user or group ID, or user not in group
+- `401 Unauthorized`: Invalid or missing token
+- `403 Forbidden`: User is not a site admin or group admin for this group
+- `404 Not Found`: User or group not found
+
+#### Promote Member to Group Admin
 
 Promote a user to group admin for a specific group.
 
-**Endpoint:** `POST /admin/groups/:groupId/admins/:userId`
+**Endpoint:** `POST /groups/:id/members/:userId/promote`
 
-**Authentication:** Required (Site Admin)
+**Authentication:** Required (Site Admin or Group Admin)
 
 **URL Parameters:**
-- `groupId` (integer): Group ID
+- `id` (integer): Group ID
 - `userId` (integer): User ID
 
 **Response:** `200 OK`
@@ -397,19 +447,19 @@ Promote a user to group admin for a specific group.
 **Errors:**
 - `400 Bad Request`: Invalid user or group ID, user not a member of group, or user already a group admin
 - `401 Unauthorized`: Invalid or missing token
-- `403 Forbidden`: User is not site admin
+- `403 Forbidden`: User is not site admin or group admin for this group
 - `404 Not Found`: User or group not found
 
-#### Demote User from Group Admin
+#### Demote Member from Group Admin
 
 Remove group admin privileges from a user for a specific group.
 
-**Endpoint:** `DELETE /admin/groups/:groupId/admins/:userId`
+**Endpoint:** `POST /groups/:id/members/:userId/demote`
 
-**Authentication:** Required (Site Admin)
+**Authentication:** Required (Site Admin or Group Admin)
 
 **URL Parameters:**
-- `groupId` (integer): Group ID
+- `id` (integer): Group ID
 - `userId` (integer): User ID
 
 **Response:** `200 OK`
@@ -422,8 +472,146 @@ Remove group admin privileges from a user for a specific group.
 **Errors:**
 - `400 Bad Request`: Invalid user or group ID, user not a member of group, or user not a group admin
 - `401 Unauthorized`: Invalid or missing token
-- `403 Forbidden`: User is not site admin
+- `403 Forbidden`: User is not site admin or group admin for this group
 - `404 Not Found`: User or group not found
+
+#### Update Group Settings
+
+Update settings for a group (Group Admin or Site Admin only).
+
+**Endpoint:** `PUT /groups/:id/settings`
+
+**Authentication:** Required (Site Admin or Group Admin)
+
+**URL Parameters:**
+- `id` (integer): Group ID
+
+**Request Body:**
+```json
+{
+  "name": "Group Name",
+  "description": "Group description",
+  "image_url": "/uploads/group-image.jpg",
+  "hero_image_url": "/uploads/hero.jpg",
+  "has_protocols": true,
+  "groupme_bot_id": "",
+  "groupme_enabled": false
+}
+```
+
+**Response:** `200 OK`
+Returns the updated group object.
+
+**Errors:**
+- `400 Bad Request`: Invalid request body or group ID
+- `401 Unauthorized`: Invalid or missing token
+- `403 Forbidden`: User is not site admin or group admin for this group
+- `404 Not Found`: Group not found
+
+#### Create Group Announcement
+
+Create an announcement for a specific group with optional email and GroupMe notifications.
+
+**Endpoint:** `POST /groups/:id/announcements`
+
+**Authentication:** Required (Site Admin or Group Admin)
+
+**URL Parameters:**
+- `id` (integer): Group ID
+
+**Request Body:**
+```json
+{
+  "title": "Important Update",
+  "content": "This is an important announcement for the group.",
+  "send_email": true,
+  "send_groupme": true
+}
+```
+
+**Response:** `201 Created`
+Returns the created announcement object.
+
+**Errors:**
+- `400 Bad Request`: Invalid request body
+- `401 Unauthorized`: Invalid or missing token
+- `403 Forbidden`: User is not site admin or group admin for this group
+- `404 Not Found`: Group not found
+
+---
+
+### Content Moderation
+
+#### View Deleted Comments
+
+View soft-deleted comments for a group (Group Admin or Site Admin only).
+
+**Endpoint:** `GET /groups/:id/deleted-comments`
+
+**Authentication:** Required (Site Admin or Group Admin)
+
+**URL Parameters:**
+- `id` (integer): Group ID
+
+**Response:** `200 OK`
+Returns a list of deleted comments with animal information.
+
+**Errors:**
+- `401 Unauthorized`: Invalid or missing token
+- `403 Forbidden`: User is not site admin or group admin for this group
+
+#### View Deleted Images
+
+View soft-deleted images for a group (Group Admin or Site Admin only).
+
+**Endpoint:** `GET /groups/:id/deleted-images`
+
+**Authentication:** Required (Site Admin or Group Admin)
+
+**URL Parameters:**
+- `id` (integer): Group ID
+
+**Response:** `200 OK`
+Returns a list of deleted images.
+
+**Errors:**
+- `401 Unauthorized`: Invalid or missing token
+- `403 Forbidden`: User is not site admin or group admin for this group
+
+---
+
+### Comments
+
+#### Update Comment
+
+Update a comment on an animal (can only edit your own comments).
+
+**Endpoint:** `PUT /groups/:id/animals/:animalId/comments/:commentId`
+
+**Authentication:** Required
+
+**URL Parameters:**
+- `id` (integer): Group ID
+- `animalId` (integer): Animal ID
+- `commentId` (integer): Comment ID
+
+**Request Body:**
+```json
+{
+  "content": "Updated comment content",
+  "image_url": "/uploads/image.jpg",
+  "tag_ids": [1, 2]
+}
+```
+
+**Response:** `200 OK`
+Returns the updated comment.
+
+**Errors:**
+- `400 Bad Request`: Invalid request body
+- `401 Unauthorized`: Invalid or missing token
+- `403 Forbidden`: User is not the comment owner or not a member of the group
+- `404 Not Found`: Animal or comment not found
 
 ---
 
