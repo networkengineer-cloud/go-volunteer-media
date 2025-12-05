@@ -134,6 +134,9 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			Password:                  string(hashedPassword),
 			IsAdmin:                   true,
 			EmailNotificationsEnabled: true,
+			PhoneNumber:               "(555) 100-0001",
+			HideEmail:                 false,
+			HidePhoneNumber:           false,
 		},
 		{
 			Username:                  "merry",
@@ -141,6 +144,9 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			Password:                  string(hashedPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: true,
+			PhoneNumber:               "(555) 100-0002",
+			HideEmail:                 false,
+			HidePhoneNumber:           true, // Merry has hidden phone number
 		},
 		{
 			Username:                  "sophia",
@@ -148,6 +154,9 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			Password:                  string(hashedPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: true,
+			PhoneNumber:               "(555) 100-0003",
+			HideEmail:                 true, // Sophia has hidden email
+			HidePhoneNumber:           false,
 		},
 		{
 			Username:                  "terry",
@@ -155,6 +164,9 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			Password:                  string(hashedPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: true,
+			PhoneNumber:               "(555) 100-0004",
+			HideEmail:                 false,
+			HidePhoneNumber:           false,
 		},
 	}
 

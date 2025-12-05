@@ -14,6 +14,7 @@ import PhotoGallery from './pages/PhotoGallery';
 import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
 import UsersPage from './pages/UsersPage';
+import UsersListPage from './pages/UsersListPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
 import AdminAnimalTagsPage from './pages/AdminAnimalTagsPage';
 import GroupsPage from './pages/GroupsPage';
@@ -79,6 +80,17 @@ const GroupAdminRouteInner: React.FC<{ children: React.ReactNode }> = ({ childre
 
 const GroupAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <GroupAdminRouteInner>{children}</GroupAdminRouteInner>;
+};
+
+// UsersRoute - allows access if user is site admin or group admin
+const UsersRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isAdmin, user } = useAuth();
+  // Check if user is a group admin (has group membership or is admin)
+  const isGroupAdmin = isAuthenticated && user ? (user.groups?.length ?? 0) > 0 : false;
+
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (!isAdmin && !isGroupAdmin) return <Navigate to="/dashboard" />;
+  return <>{children}</>;
 };
 
 function App() {
@@ -186,6 +198,14 @@ function App() {
             }
           />
           <Route
+            path="/users"
+            element={
+              <UsersRoute>
+                <UsersListPage />
+              </UsersRoute>
+            }
+          />
+          <Route
             path="/admin/dashboard"
             element={
               <AdminRoute>
@@ -220,9 +240,9 @@ function App() {
           <Route
             path="/admin/animal-tags"
             element={
-              <AdminRoute>
+              <PrivateRoute>
                 <AdminAnimalTagsPage />
-              </AdminRoute>
+              </PrivateRoute>
             }
           />
           <Route

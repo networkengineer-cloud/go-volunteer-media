@@ -65,15 +65,14 @@ func TestGetUserProfile(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name: "forbidden when trying to view another user's profile",
+			name: "user can view another user's profile (privacy settings respected)",
 			setupContext: func(c *gin.Context) {
 				c.Set("user_id", uint(2))
 				c.Set("is_admin", false)
 				c.Params = gin.Params{{Key: "id", Value: "1"}}
 			},
 			userID:         "1",
-			expectedStatus: http.StatusForbidden,
-			expectedError:  "You can only view profiles of users in your groups",
+			expectedStatus: http.StatusOK,
 		},
 		{
 			name: "not found when user doesn't exist",

@@ -16,6 +16,9 @@ type User struct {
 	Email                     string         `gorm:"uniqueIndex;not null" json:"email"`
 	Password                  string         `gorm:"not null" json:"-"`
 	IsAdmin                   bool           `gorm:"default:false" json:"is_admin"`
+	PhoneNumber               string         `gorm:"default:''" json:"phone_number"`
+	HideEmail                 bool           `gorm:"default:false" json:"hide_email"`        // User can hide email from non-admins
+	HidePhoneNumber           bool           `gorm:"default:false" json:"hide_phone_number"` // User can hide phone from non-admins
 	DefaultGroupID            *uint          `gorm:"index" json:"default_group_id"`
 	Groups                    []Group        `gorm:"many2many:user_groups;" json:"groups,omitempty"`
 	FailedLoginAttempts       int            `gorm:"default:0" json:"-"`
@@ -201,7 +204,7 @@ type AnimalImage struct {
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`
 	DeletedAt        gorm.DeletedAt `gorm:"index" json:"-"`
-	AnimalID         uint           `gorm:"not null;index:idx_animal_image_animal" json:"animal_id"`
+	AnimalID         *uint          `gorm:"index:idx_animal_image_animal" json:"animal_id"` // Nullable for unlinked images
 	UserID           uint           `gorm:"not null;index" json:"user_id"`
 	ImageURL         string         `gorm:"not null" json:"image_url"`
 	ImageData        []byte         `gorm:"type:bytea" json:"-"`           // Binary image data stored in DB

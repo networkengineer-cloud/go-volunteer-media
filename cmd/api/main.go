@@ -142,6 +142,7 @@ func main() {
 		// User routes
 		protected.GET("/me", handlers.GetCurrentUser(db))
 		protected.GET("/users/:id/profile", handlers.GetUserProfile(db))
+		protected.PUT("/me/profile", handlers.UpdateCurrentUserProfile(db))
 		protected.GET("/email-preferences", handlers.GetEmailPreferences(db))
 		protected.PUT("/email-preferences", handlers.UpdateEmailPreferences(db))
 		protected.PUT("/default-group", handlers.SetDefaultGroup(db))
@@ -155,6 +156,9 @@ func main() {
 
 		// Image upload (authenticated users only) - stores in database
 		protected.POST("/animals/upload-image", handlers.UploadAnimalImageSimple(db))
+
+		// Statistics routes (accessible by authenticated users, filtered by permissions)
+		protected.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
 
 		// Admin only routes
 		admin := protected.Group("/admin")
@@ -207,7 +211,6 @@ func main() {
 			// Statistics routes (admin only)
 			admin.GET("/statistics/groups", handlers.GetGroupStatistics(db))
 			admin.GET("/statistics/users", handlers.GetUserStatistics(db))
-			admin.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
 
 			// Admin dashboard
 			admin.GET("/dashboard/stats", handlers.GetAdminDashboardStats(db))

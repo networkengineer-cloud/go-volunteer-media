@@ -57,6 +57,23 @@
   color: var(--text-primary, #1f2937);
 }
 
+.activity-item__username--link {
+  text-decoration: none;
+  color: var(--brand, #0e6c55);
+  transition: color 0.2s ease;
+}
+
+.activity-item__username--link:hover {
+  color: var(--brand-600, #0a5443);
+  text-decoration: underline;
+}
+
+.activity-item__username--link:focus {
+  outline: 2px solid var(--brand, #0e6c55);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .activity-item__timestamp {
   font-size: 0.8125rem;
   color: var(--text-secondary, #6b7280);

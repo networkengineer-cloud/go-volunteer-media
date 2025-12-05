@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi } from '../api/client';
-import type { Animal, AnimalComment, CommentTag, Group } from '../api/client';
+import type { Animal, AnimalComment, CommentTag, Group, GroupMembership } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import EmptyState from '../components/EmptyState';
@@ -33,6 +33,7 @@ const AnimalDetailPage: React.FC = () => {
   const toast = useToast();
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
+  const [membership, setMembership] = useState<GroupMembership | null>(null);
   const [comments, setComments] = useState<AnimalComment[]>([]);
   const [deletedComments, setDeletedComments] = useState<AnimalComment[]>([]);
   const [showDeleted, setShowDeleted] = useState(false);
@@ -132,8 +133,12 @@ const AnimalDetailPage: React.FC = () => {
 
   const loadGroupData = useCallback(async (gId: number) => {
     try {
-      const groupRes = await groupsApi.getById(gId);
+      const [groupRes, membershipRes] = await Promise.all([
+        groupsApi.getById(gId),
+        groupsApi.getMembership(gId)
+      ]);
       setGroup(groupRes.data);
+      setMembership(membershipRes.data);
     } catch (error) {
       console.error('Failed to load group data:', error);
     }
@@ -183,7 +188,7 @@ const AnimalDetailPage: React.FC = () => {
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim() && !commentImage) {
-      toast.showWarning('Please add a photo or write a comment');
+      toast.showWarning('Please write a comment');
       return;
     }
 
@@ -468,6 +473,11 @@ const AnimalDetailPage: React.FC = () => {
                     Edit Animal Details
                   </button>
                 )}
+                {!isAdmin && (membership?.is_group_admin) && (
+                  <button onClick={handleEdit} className="btn-edit">
+                    Edit Animal Details
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -476,7 +486,7 @@ const AnimalDetailPage: React.FC = () => {
         <div className="comments-section" ref={commentsTopRef}>
           <div className="comments-header">
             <div className="comments-header-title">
-              <h2>Comments & Photos</h2>
+              <h2>Comments</h2>
               {totalComments > 20 && getCommentDateRange() && (
                 <span className="date-range-info">
                   Showing activity from {getCommentDateRange()?.oldest.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} to {getCommentDateRange()?.newest.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
@@ -510,10 +520,10 @@ const AnimalDetailPage: React.FC = () => {
           {showCommentForm && (
             <form onSubmit={handleSubmitComment} className="comment-form">
               <div className="form-section-header">
-                <span className="form-hint">📷 Add a photo or write a comment (or both!)</span>
+                <span className="form-hint">💬 Add a comment about this animal</span>
               </div>
               <textarea
-                placeholder="Add a comment (optional if uploading photo)..."
+                placeholder="Add a comment..."
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 rows={3}
@@ -618,7 +628,13 @@ const AnimalDetailPage: React.FC = () => {
                 <div key={comment.id} className="comment-card deleted-comment">
                   <div className="deleted-badge">🗑️ DELETED</div>
                   <div className="comment-header">
-                    <span className="comment-author">{comment.user?.username}</span>
+                    {comment.user?.id ? (
+                      <Link to={`/users/${comment.user.id}/profile`} className="comment-author comment-author--link">
+                        {comment.user.username}
+                      </Link>
+                    ) : (
+                      <span className="comment-author">{comment.user?.username}</span>
+                    )}
                     <span className="comment-date">
                       {new Date(comment.created_at).toLocaleDateString()} at{' '}
                       {new Date(comment.created_at).toLocaleTimeString([], {
@@ -739,7 +755,13 @@ const AnimalDetailPage: React.FC = () => {
                 {comments.map((comment) => (
                   <div key={comment.id} className="comment-card">
                     <div className="comment-header">
-                      <span className="comment-author">{comment.user?.username}</span>
+                      {comment.user?.id ? (
+                        <Link to={`/users/${comment.user.id}/profile`} className="comment-author comment-author--link">
+                          {comment.user.username}
+                        </Link>
+                      ) : (
+                        <span className="comment-author">{comment.user?.username}</span>
+                      )}
                       <span className="comment-date">
                         {new Date(comment.created_at).toLocaleDateString()} at{' '}
                         {new Date(comment.created_at).toLocaleTimeString([], {

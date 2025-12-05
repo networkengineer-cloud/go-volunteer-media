@@ -44,8 +44,8 @@ The platform has three distinct permission levels:
 - **Switch** between groups they're a member of
 
 #### Profile Management
-- **View** their own profile
-- **View** other users' profiles (username, email, phone number only if shared)
+- **View** their own profile (complete information)
+- **View** all other users' profiles (respects their privacy settings for email/phone)
 - **Update** their own settings (optional to share email/phone)
 - **Set** default group preference
 - **Update** notification preferences
@@ -243,7 +243,7 @@ The platform has three distinct permission levels:
 | Create groups | ❌ | ❌ | ✅ |
 | Delete groups | ❌ | ❌ | ✅ |
 | **Users** |
-| View user profiles | ✅ (limited, if shared) | ✅ (group members) | ✅ (full) |
+| View user profiles | ✅ (respects privacy settings) | ✅ (respects privacy settings) | ✅ (full) |
 | View member list | ✅ | ✅ (own groups) | ✅ (all) |
 | Add/remove members | ❌ | ✅ (own groups) | ✅ (all) |
 | Promote/demote admins | ❌ | ✅ (own groups) | ✅ (all) |
@@ -335,6 +335,51 @@ When adding new permissions:
 5. **Update this document** - Keep permissions documented
 6. **Write tests** - Verify permission enforcement
 7. **Update API.md** - Document API permission requirements
+
+---
+
+## Privacy Settings
+
+All users can control how their email address and phone number are visible to other users in the system.
+
+### Privacy Controls
+
+Users can toggle two privacy settings in their Settings page:
+
+1. **Hide Email from Other Users**
+   - When enabled, only site admins can view your email
+   - Group admins can still see your email if you're a member of their group
+   - When disabled (default), all users can see your email
+
+2. **Hide Phone from Other Users**
+   - When enabled, only site admins and group admins can view your phone number
+   - Group admins in shared groups can always see your phone number
+   - Regular users can only see your phone if you haven't hidden it
+   - When disabled (default), all users can see your phone number
+
+### Visibility Rules
+
+| Scenario | Email Visible | Phone Visible |
+|----------|---------------|---------------|
+| User viewing own profile | ✅ Always | ✅ Always |
+| Site admin viewing any user | ✅ Always | ✅ Always |
+| Group admin viewing group member | ✅ Always | ✅ Always |
+| Regular user viewing another user (email hidden) | ❌ No | Depends on setting |
+| Regular user viewing another user (phone hidden) | Depends on setting | ❌ No |
+
+### Impact on Profile Visibility
+
+All authenticated users can view profiles of any user in the system. The privacy settings control what information is displayed:
+
+- **Public Information:** Always visible to everyone
+  - User ID
+  - Username
+  - User's groups
+  - Profile created date
+
+- **Conditional Information:** Visibility depends on privacy settings and user role
+  - Email address (respects `hide_email` setting, always visible to admins)
+  - Phone number (respects `hide_phone_number` setting, always visible to admins and group admins)
 
 ---
 

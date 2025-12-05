@@ -1,17 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { commentTagsApi, animalTagsApi, statisticsApi, groupsApi, type CommentTag, type CommentTagStatistics, type Group } from '../api/client';
+import { Link } from 'react-router-dom';
+import { commentTagsApi, animalTagsApi, groupsApi, type CommentTag, type Group, type AnimalTag as ApiAnimalTag } from '../api/client';
 import Modal from '../components/Modal';
 import './AdminAnimalTagsPage.css';
 
-interface AnimalTag {
-  id: number;
-  group_id: number;
-  name: string;
-  category: string;
-  color: string;
-  created_at: string;
-  updated_at: string;
-}
+type AnimalTag = ApiAnimalTag;
 
 // Color presets used across all tag forms
 const colorPresets = [
@@ -21,22 +14,6 @@ const colorPresets = [
   '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
   '#f43f5e', '#6b7280', '#374151', '#1f2937',
 ];
-
-// Helper function to format relative time
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 30) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
 
 // Isolated form component for Animal Tags
 interface AnimalTagFormModalProps {
@@ -273,7 +250,6 @@ const AdminAnimalTagsPage: React.FC = () => {
 
   // Comment Tags state
   const [commentTags, setCommentTags] = useState<CommentTag[]>([]);
-  const [commentTagStats, setCommentTagStats] = useState<Record<number, CommentTagStatistics>>({});
   const [loadingCommentTags, setLoadingCommentTags] = useState(false);
   const [commentTagError, setCommentTagError] = useState<string | null>(null);
   const [isCommentTagModalOpen, setIsCommentTagModalOpen] = useState(false);
@@ -319,18 +295,8 @@ const AdminAnimalTagsPage: React.FC = () => {
     if (!selectedGroupId) return;
     try {
       setLoadingCommentTags(true);
-      const [tagsRes, statsRes] = await Promise.all([
-        commentTagsApi.getAll(selectedGroupId),
-        statisticsApi.getCommentTagStatistics()
-      ]);
-      
+      const tagsRes = await commentTagsApi.getAll(selectedGroupId);
       setCommentTags(tagsRes.data);
-      
-      const statsMap: Record<number, CommentTagStatistics> = {};
-      statsRes.data.forEach(stat => {
-        statsMap[stat.tag_id] = stat;
-      });
-      setCommentTagStats(statsMap);
       setCommentTagError(null);
     } catch (err) {
       setCommentTagError('Failed to load comment tags');
@@ -445,6 +411,19 @@ const AdminAnimalTagsPage: React.FC = () => {
 
   return (
     <div className="admin-tags-page">
+      {/* Breadcrumb Navigation */}
+      {selectedGroupId && (
+        <nav className="breadcrumb" aria-label="Breadcrumb">
+          <Link to="/" className="breadcrumb-link">Home</Link>
+          <span className="breadcrumb-separator" aria-hidden="true">/</span>
+          <Link to={`/groups/${selectedGroupId}`} className="breadcrumb-link">
+            {groups.find(g => g.id === selectedGroupId)?.name || 'Group'}
+          </Link>
+          <span className="breadcrumb-separator" aria-hidden="true">/</span>
+          <span className="breadcrumb-current" aria-current="page">Tag Management</span>
+        </nav>
+      )}
+
       <div className="page-header">
         <div className="page-header-content">
           <h1>🏷️ Tag Management</h1>
@@ -615,55 +594,23 @@ const AdminAnimalTagsPage: React.FC = () => {
                 <p className="empty-hint">Create tags like "Medical Update", "Behavior Note", "Needs Attention" to help organize comments.</p>
               </div>
             ) : (
-              commentTags.map((tag) => {
-                const stats = commentTagStats[tag.id];
-                return (
-                  <div key={tag.id} className="comment-tag-card">
-                    <div className="tag-header">
-                      <div className="tag-preview" style={{ backgroundColor: tag.color }}>
-                        {tag.name}
-                      </div>
-                      <button
-                        onClick={() => handleDeleteCommentTag(tag.id)}
-                        className="btn-delete"
-                        aria-label={`Delete ${tag.name} tag`}
-                        title="Delete tag"
-                      >
-                        ✕
-                      </button>
+              commentTags.map((tag) => (
+                <div key={tag.id} className="comment-tag-card">
+                  <div className="tag-header">
+                    <div className="tag-preview" style={{ backgroundColor: tag.color }}>
+                      {tag.name}
                     </div>
-                    
-                    {stats && stats.usage_count > 0 ? (
-                      <div className="tag-stats">
-                        <div className="tag-stat-item">
-                          <span className="tag-stat-label">Uses:</span>
-                          <span className="tag-stat-value">{stats.usage_count}</span>
-                        </div>
-                        
-                        {stats.last_used && (
-                          <div className="tag-stat-item">
-                            <span className="tag-stat-label">Last used:</span>
-                            <span className="tag-stat-value" title={new Date(stats.last_used).toLocaleString()}>
-                              {formatRelativeTime(stats.last_used)}
-                            </span>
-                          </div>
-                        )}
-                        
-                        {stats.most_tagged_animal_name && (
-                          <div className="tag-stat-item">
-                            <span className="tag-stat-label">Most tagged:</span>
-                            <span className="tag-stat-value">{stats.most_tagged_animal_name}</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="tag-stats">
-                        <span className="no-usage">Not used yet</span>
-                      </div>
-                    )}
+                    <button
+                      onClick={() => handleDeleteCommentTag(tag.id)}
+                      className="btn-delete"
+                      aria-label={`Delete ${tag.name} tag`}
+                      title="Delete tag"
+                    >
+                      ✕
+                    </button>
                   </div>
-                );
-              })
+                </div>
+              ))
             )}
           </div>
         </section>

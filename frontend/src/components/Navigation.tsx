@@ -7,6 +7,11 @@ const Navigation: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
+  // Check if user is a group admin for any group
+  const isGroupAdmin = React.useMemo(() => {
+    return (user?.groups?.length ?? 0) > 0;
+  }, [user?.groups]);
+
   // Theme state and persistence
   const [theme, setTheme] = React.useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'light';
@@ -114,6 +119,9 @@ const Navigation: React.FC = () => {
                   <Link to="/admin/animal-tags" className="nav-admin-tags" onClick={closeMobileMenu}>Tags</Link>
                   <Link to="/admin/site-settings" className="nav-admin-settings" onClick={closeMobileMenu}>Admin</Link>
                 </>
+              )}
+              {(user?.is_admin || isGroupAdmin) && (
+                <Link to="/users" className="nav-users" onClick={closeMobileMenu}>Users</Link>
               )}
               <Link to="/settings" className="nav-settings" onClick={closeMobileMenu}>My Settings</Link>
               <span className="nav-user" aria-label={`Logged in as ${user?.username}${user?.is_admin ? ', Admin' : ''}`}>

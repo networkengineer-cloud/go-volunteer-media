@@ -63,6 +63,9 @@ export interface User {
   id: number;
   username: string;
   email: string;
+  phone_number?: string;
+  hide_email?: boolean;
+  hide_phone_number?: boolean;
   is_admin: boolean;
   default_group_id?: number;
   groups?: Group[];
@@ -74,6 +77,7 @@ export interface GroupMember {
   user_id: number;
   username: string;
   email: string;
+  phone_number?: string;
   is_group_admin: boolean;
   is_site_admin: boolean;
 }
@@ -314,15 +318,16 @@ export interface AnimalInteraction {
 export interface UserProfile {
   id: number;
   username: string;
-  email: string;
-  is_admin: boolean;
-  created_at: string;
+  email?: string;  // Optional for limited profiles
+  phone_number?: string;  // Optional for limited profiles
+  is_admin?: boolean;  // Optional for limited/group admin profiles
+  created_at?: string;  // Optional for limited profiles
   default_group_id?: number;
-  groups: Group[];
-  statistics: UserProfileStatistics;
-  recent_comments: UserCommentActivity[];
-  recent_announcements: UserAnnouncementActivity[];
-  animals_interacted_with: AnimalInteraction[];
+  groups?: Group[];  // Optional for limited profiles
+  statistics?: UserProfileStatistics;  // Optional for limited/group admin profiles
+  recent_comments?: UserCommentActivity[];  // Optional for limited/group admin profiles
+  recent_announcements?: UserAnnouncementActivity[];  // Optional for limited/group admin profiles
+  animals_interacted_with?: AnimalInteraction[];  // Optional for limited/group admin profiles
 }
 
 
@@ -335,6 +340,21 @@ export const authApi = {
     api.post<{ token: string; user: User }>('/register', { username, email, password }),
   
   getCurrentUser: () => api.get<User>('/me'),
+  
+  updateCurrentUserProfile: (profile: {
+    email: string;
+    phone_number?: string;
+    hide_email?: boolean;
+    hide_phone_number?: boolean;
+  }) =>
+    api.put<{
+      message: string;
+      id: number;
+      email: string;
+      phone_number?: string;
+      hide_email?: boolean;
+      hide_phone_number?: boolean;
+    }>('/me/profile', profile),
   
   setDefaultGroup: (groupId: number) => api.put('/default-group', { group_id: groupId }),
   
@@ -548,11 +568,14 @@ export const settingsApi = {
   },
 };
 
-// Statistics API (admin only)
+// Statistics API
 export const statisticsApi = {
   getGroupStatistics: () => api.get<GroupStatistics[]>('/admin/statistics/groups'),
   getUserStatistics: () => api.get<UserStatistics[]>('/admin/statistics/users'),
-  getCommentTagStatistics: () => api.get<CommentTagStatistics[]>('/admin/statistics/comment-tags'),
+  getCommentTagStatistics: (groupId?: number) => {
+    const params = groupId ? `?group_id=${groupId}` : '';
+    return api.get<CommentTagStatistics[]>(`/statistics/comment-tags${params}`);
+  },
 };
 
 // User Profile API

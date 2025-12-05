@@ -116,8 +116,9 @@ func UploadAnimalImage(db *gorm.DB) gin.HandlerFunc {
 		imageURL := fmt.Sprintf("/api/images/%s", imageUUID)
 
 		// Create image record in database
+		animalIDUint := uint(animalID)
 		animalImage := models.AnimalImage{
-			AnimalID:  uint(animalID),
+			AnimalID:  &animalIDUint,
 			UserID:    userID.(uint),
 			ImageURL:  imageURL,
 			ImageData: imageData,
@@ -184,9 +185,17 @@ func UploadAnimalImageSimple(db *gorm.DB) gin.HandlerFunc {
 		logger := middleware.GetLogger(c)
 
 		// Get user ID from context
-		userID, exists := c.Get("userID")
+		userIDVal, exists := c.Get("user_id")
 		if !exists {
+			logger.Error("User ID not found in context", nil)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		userID, ok := userIDVal.(uint)
+		if !ok {
+			logger.Error("User ID is not a uint", nil)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user session"})
 			return
 		}
 
@@ -259,10 +268,10 @@ func UploadAnimalImageSimple(db *gorm.DB) gin.HandlerFunc {
 		imageUUID := uuid.New().String()
 		imageURL := fmt.Sprintf("/api/images/%s", imageUUID)
 
-		// Create image record in database with AnimalID = 0 (will be linked later)
+		// Create image record in database with AnimalID = nil (will be linked later)
 		animalImage := models.AnimalImage{
-			AnimalID:  0, // Will be linked when animal is created/updated
-			UserID:    userID.(uint),
+			AnimalID:  nil, // Will be linked when animal is created/updated
+			UserID:    userID,
 			ImageURL:  imageURL,
 			ImageData: imageData,
 			MimeType:  "image/jpeg",

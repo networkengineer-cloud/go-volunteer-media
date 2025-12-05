@@ -460,15 +460,18 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, _ := c.Get("user_id")
-
 		// Check if user has access to this group (is member or site admin)
-		if !middleware.IsSiteAdmin(c) {
+		currentUserID, _ := c.Get("user_id")
+		isSiteAdmin := middleware.IsSiteAdmin(c)
+
+		var currentUserGroupAdmin bool
+		if !isSiteAdmin {
 			var userGroup models.UserGroup
-			if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", userID, groupID).First(&userGroup).Error; err != nil {
+			if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", currentUserID, groupID).First(&userGroup).Error; err != nil {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 				return
 			}
+			currentUserGroupAdmin = userGroup.IsGroupAdmin
 		}
 
 		// Get all members with their group admin status
@@ -483,16 +486,41 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 			UserID       uint   `json:"user_id"`
 			Username     string `json:"username"`
 			Email        string `json:"email"`
+			PhoneNumber  string `json:"phone_number"`
 			IsGroupAdmin bool   `json:"is_group_admin"`
 			IsSiteAdmin  bool   `json:"is_site_admin"`
 		}
 
 		var members []MemberInfo
 		for _, ug := range userGroups {
+			// Show email and phone number respecting privacy settings
+			// Site admins always see all contact info
+			// Group admins of this group see all contact info for their members
+			// Users viewing their own profile always see their contact info
+			// Other users see contact info only if not hidden
+
+			email := ""
+			phoneNumber := ""
+
+			if isSiteAdmin || currentUserGroupAdmin || currentUserID.(uint) == ug.UserID {
+				// Site admins, group admins, and users viewing their own profile always see all contact info
+				email = ug.User.Email
+				phoneNumber = ug.User.PhoneNumber
+			} else {
+				// Regular users see contact info only if not hidden by the target user
+				if !ug.User.HideEmail {
+					email = ug.User.Email
+				}
+				if !ug.User.HidePhoneNumber {
+					phoneNumber = ug.User.PhoneNumber
+				}
+			}
+
 			members = append(members, MemberInfo{
 				UserID:       ug.UserID,
 				Username:     ug.User.Username,
-				Email:        ug.User.Email,
+				Email:        email,
+				PhoneNumber:  phoneNumber,
 				IsGroupAdmin: ug.IsGroupAdmin,
 				IsSiteAdmin:  ug.User.IsAdmin,
 			})

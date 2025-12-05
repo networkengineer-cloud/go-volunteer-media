@@ -81,6 +81,10 @@ const UserProfilePage: React.FC = () => {
     return null;
   }
 
+  // Check if we have a full profile (with statistics) or limited profile
+  const hasFullProfile = !!profile.statistics;
+  const hasExtendedProfile = !!profile.email; // Group admin view includes email
+
   return (
     <div className="user-profile-page">
       {/* Header */}
@@ -102,16 +106,25 @@ const UserProfilePage: React.FC = () => {
             </div>
             <div className="profile-details">
               <h1>{profile.username}</h1>
-              <p className="profile-email">{profile.email}</p>
+              {profile.email && <p className="profile-email">{profile.email}</p>}
+              {profile.phone_number && <p className="profile-phone">{profile.phone_number}</p>}
               {profile.is_admin && <span className="admin-badge">Admin</span>}
-              <p className="member-since">Member since {formatDate(profile.created_at)}</p>
+              {profile.created_at && <p className="member-since">Member since {formatDate(profile.created_at)}</p>}
             </div>
           </div>
         </div>
       </div>
 
       <div className="container">
-        {/* Statistics Overview */}
+        {/* Limited Profile Notice */}
+        {!hasFullProfile && !hasExtendedProfile && (
+          <div className="limited-profile-notice">
+            <p>You are viewing a limited profile. Only basic information is available.</p>
+          </div>
+        )}
+
+        {/* Statistics Overview - only for full profiles */}
+        {hasFullProfile && profile.statistics && (
         <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-icon">
@@ -167,6 +180,7 @@ const UserProfilePage: React.FC = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* Groups */}
         {profile.groups && profile.groups.length > 0 && (
@@ -194,7 +208,7 @@ const UserProfilePage: React.FC = () => {
         )}
 
         {/* Most Active Group */}
-        {profile.statistics.most_active_group && (
+        {profile.statistics?.most_active_group && (
           <div className="profile-section">
             <h2>Most Active Group</h2>
             <div className="most-active-group">
@@ -212,7 +226,7 @@ const UserProfilePage: React.FC = () => {
         )}
 
         {/* Animals Interacted With */}
-        {profile.animals_interacted_with.length > 0 && (
+        {profile.animals_interacted_with && profile.animals_interacted_with.length > 0 && (
           <div className="profile-section">
             <h2>Animals Interacted With ({profile.animals_interacted_with.length})</h2>
             <div className="animals-grid">
@@ -248,7 +262,7 @@ const UserProfilePage: React.FC = () => {
         )}
 
         {/* Recent Comments */}
-        {profile.recent_comments.length > 0 && (
+        {profile.recent_comments && profile.recent_comments.length > 0 && (
           <div className="profile-section">
             <h2>Recent Comments ({profile.recent_comments.length})</h2>
             <div className="activity-list">
@@ -274,7 +288,7 @@ const UserProfilePage: React.FC = () => {
         )}
 
         {/* Recent Announcements (if admin) */}
-        {profile.is_admin && profile.recent_announcements.length > 0 && (
+        {profile.is_admin && profile.recent_announcements && profile.recent_announcements.length > 0 && (
           <div className="profile-section">
             <h2>Recent Announcements ({profile.recent_announcements.length})</h2>
             <div className="activity-list">
@@ -293,8 +307,8 @@ const UserProfilePage: React.FC = () => {
           </div>
         )}
 
-        {/* Empty State */}
-        {profile.recent_comments.length === 0 && profile.animals_interacted_with.length === 0 && (
+        {/* Empty State - only for full profiles with no activity */}
+        {hasFullProfile && (!profile.recent_comments || profile.recent_comments.length === 0) && (!profile.animals_interacted_with || profile.animals_interacted_with.length === 0) && (
           <div className="empty-state">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2"/>

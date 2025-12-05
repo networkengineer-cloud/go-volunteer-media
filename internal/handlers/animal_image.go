@@ -168,9 +168,10 @@ func UploadAnimalImageToGallery(db *gorm.DB) gin.HandlerFunc {
 		// Create database record
 		animalIDUint, _ := strconv.ParseUint(animalID, 10, 32)
 		userIDUint := userID.(uint)
+		animalIDVal := uint(animalIDUint)
 
 		animalImage := models.AnimalImage{
-			AnimalID:  uint(animalIDUint),
+			AnimalID:  &animalIDVal,
 			UserID:    userIDUint,
 			ImageURL:  imageURL,
 			ImageData: imageData,

@@ -12,9 +12,18 @@ import './ProtocolsList.css';
 interface ProtocolsListProps {
   groupId: number;
   isGroupAdmin?: boolean; // True if user is a group admin for this group
+  showFormExternal?: boolean; // External trigger to show form
+  onShowFormChange?: (show: boolean) => void; // Callback when form visibility changes
+  hideAddButton?: boolean; // Hide the add button (when using external trigger)
 }
 
-const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId, isGroupAdmin = false }) => {
+const ProtocolsList: React.FC<ProtocolsListProps> = ({ 
+  groupId, 
+  isGroupAdmin = false,
+  showFormExternal = false,
+  onShowFormChange,
+  hideAddButton = false
+}) => {
   const { isAdmin } = useAuth();
   // Allow editing if user is site admin OR group admin
   const canEdit = isAdmin || isGroupAdmin;
@@ -28,6 +37,22 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId, isGroupAdmin = f
     show: false, 
     protocol: null 
   });
+
+  // Sync with external form trigger
+  useEffect(() => {
+    if (showFormExternal && !showForm) {
+      setEditingProtocol(null);
+      setShowForm(true);
+    }
+  }, [showFormExternal, showForm]);
+
+  // Handle internal form state changes
+  const handleSetShowForm = (show: boolean) => {
+    setShowForm(show);
+    if (onShowFormChange) {
+      onShowFormChange(show);
+    }
+  };
 
   const loadProtocols = useCallback(async () => {
     try {
@@ -68,11 +93,11 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId, isGroupAdmin = f
 
   const handleEdit = (protocol: Protocol) => {
     setEditingProtocol(protocol);
-    setShowForm(true);
+    handleSetShowForm(true);
   };
 
   const handleFormSuccess = () => {
-    setShowForm(false);
+    handleSetShowForm(false);
     setEditingProtocol(null);
     loadProtocols();
   };
@@ -118,10 +143,10 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId, isGroupAdmin = f
               : 'No protocols have been added to this group yet. Protocols will appear here once an admin adds them.'
           }
           primaryAction={
-            canEdit
+            canEdit && !hideAddButton
               ? {
                   label: 'Add First Protocol',
-                  onClick: () => setShowForm(true),
+                  onClick: () => handleSetShowForm(true),
                 }
               : undefined
           }
@@ -130,14 +155,12 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId, isGroupAdmin = f
         <>
       <div className="protocols-header">
         <h2>Protocols</h2>
-        {canEdit && (
+        {canEdit && !hideAddButton && (
           <button
             className="btn-primary"
             onClick={() => {
-              console.log('Add Protocol button clicked');
               setEditingProtocol(null);
-              setShowForm(true);
-              console.log('showForm should now be true');
+              handleSetShowForm(true);
             }}
             aria-label="Add new protocol"
           >
@@ -218,8 +241,7 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId, isGroupAdmin = f
         <Modal
           isOpen={showForm}
           onClose={() => {
-            console.log('Modal onClose called');
-            setShowForm(false);
+            handleSetShowForm(false);
             setEditingProtocol(null);
           }}
           title={editingProtocol ? 'Edit Protocol' : 'Add Protocol'}
@@ -229,8 +251,7 @@ const ProtocolsList: React.FC<ProtocolsListProps> = ({ groupId, isGroupAdmin = f
             protocol={editingProtocol}
             onSuccess={handleFormSuccess}
             onCancel={() => {
-              console.log('Form cancel called');
-              setShowForm(false);
+              handleSetShowForm(false);
               setEditingProtocol(null);
             }}
           />

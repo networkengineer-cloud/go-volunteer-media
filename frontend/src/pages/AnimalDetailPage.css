@@ -752,6 +752,23 @@
   font-size: 1rem;
 }
 
+.comment-author--link {
+  text-decoration: none;
+  color: var(--brand, #0e6c55);
+  transition: color 0.2s ease;
+}
+
+.comment-author--link:hover {
+  color: var(--brand-600, #0a5443);
+  text-decoration: underline;
+}
+
+.comment-author--link:focus {
+  outline: 2px solid var(--brand, #0e6c55);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .comment-date {
   color: var(--text-secondary);
   font-size: 0.9rem;

@@ -35,6 +35,7 @@ const GroupPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [nameSearch, setNameSearch] = useState<string>('');
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
+  const [showProtocolForm, setShowProtocolForm] = useState(false);
   const [activityFeedKey, setActivityFeedKey] = useState(0);
 
   // Load group data and membership info
@@ -242,7 +243,7 @@ const GroupPage: React.FC = () => {
       {/* Group Admin Quick Links - shown only to group admins (site admins already have nav bar) */}
       {membership?.is_group_admin && !membership?.is_site_admin && (
         <div className="group-admin-links" role="navigation" aria-label="Group administration links">
-          <span className="group-admin-links__title">Group Admin:</span>
+          <span className="group-admin-links__title">Quick Actions:</span>
           <Link to={`/groups/${id}/animals/new`} className="group-admin-link">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <circle cx="12" cy="12" r="10" />
@@ -251,20 +252,38 @@ const GroupPage: React.FC = () => {
             </svg>
             <span>Add Animal</span>
           </Link>
+          <button 
+            type="button"
+            className="group-admin-link"
+            onClick={() => setShowAnnouncementForm(true)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            <span>Announcement</span>
+          </button>
+          <Link to="/admin/animal-tags" className="group-admin-link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+              <line x1="7" y1="7" x2="7.01" y2="7" />
+            </svg>
+            <span>Manage Tags</span>
+          </Link>
           {group.has_protocols && (
             <button 
               type="button"
               className="group-admin-link"
               onClick={() => {
                 setViewMode('protocols');
-                // The ProtocolsList component has an "Add Protocol" button
+                setShowProtocolForm(true);
               }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
               </svg>
-              <span>View Protocols</span>
+              <span>Add Protocol</span>
             </button>
           )}
         </div>
@@ -278,7 +297,7 @@ const GroupPage: React.FC = () => {
           aria-labelledby="activity-tab"
           className="group-content"
         >
-          {/* Quick Actions Bar */}
+          {/* Activity Filter */}
           <div className="quick-actions-bar">
             <div className="quick-actions-bar__filters">
               <label htmlFor="activity-filter" className="sr-only">Filter activity type</label>
@@ -293,19 +312,6 @@ const GroupPage: React.FC = () => {
                 <option value="comments">Comments Only</option>
                 <option value="announcements">Announcements Only</option>
               </select>
-            </div>
-            <div className="quick-actions-bar__actions">
-              <button
-                className="quick-actions-bar__button quick-actions-bar__button--primary"
-                onClick={() => setShowAnnouncementForm(true)}
-                aria-label="Post new announcement"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                <span>New Announcement</span>
-              </button>
             </div>
           </div>
 
@@ -329,14 +335,6 @@ const GroupPage: React.FC = () => {
           <div className="animals-section">
             <div className="section-header">
               <h2>Animals</h2>
-              {(membership?.is_group_admin || membership?.is_site_admin) && (
-                <Link to={`/groups/${id}/animals/new`} className="btn-primary">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                  <span>Add Animal</span>
-                </Link>
-              )}
             </div>
 
             {/* Filters */}
@@ -505,6 +503,9 @@ const GroupPage: React.FC = () => {
           <ProtocolsList 
             groupId={Number(id)} 
             isGroupAdmin={membership?.is_group_admin || membership?.is_site_admin}
+            showFormExternal={showProtocolForm}
+            onShowFormChange={setShowProtocolForm}
+            hideAddButton={true}
           />
         </div>
       )}
