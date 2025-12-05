@@ -658,6 +658,7 @@
   .tags-layout {
     flex-direction: row;
     gap: 2rem;
+    align-items: flex-start;
   }
 
   .section-divider {
