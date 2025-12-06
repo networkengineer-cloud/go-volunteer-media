@@ -217,6 +217,27 @@ func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, user)
+		// Check if user is a group admin of any group
+		var userGroups []models.UserGroup
+		db.WithContext(ctx).Where("user_id = ? AND is_group_admin = ?", userID, true).Find(&userGroups)
+		
+		// Add is_group_admin flag to response
+		response := map[string]interface{}{
+			"id":                           user.ID,
+			"username":                     user.Username,
+			"email":                        user.Email,
+			"phone_number":                 user.PhoneNumber,
+			"hide_email":                   user.HideEmail,
+			"hide_phone_number":            user.HidePhoneNumber,
+			"is_admin":                     user.IsAdmin,
+			"default_group_id":             user.DefaultGroupID,
+			"groups":                       user.Groups,
+			"email_notifications_enabled":  user.EmailNotificationsEnabled,
+			"is_group_admin":               len(userGroups) > 0,
+			"created_at":                   user.CreatedAt,
+			"updated_at":                   user.UpdatedAt,
+		}
+
+		c.JSON(http.StatusOK, response)
 	}
 }

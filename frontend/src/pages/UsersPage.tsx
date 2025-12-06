@@ -20,7 +20,8 @@ api.interceptors.request.use((config) => {
 });
 
 const UsersPage: React.FC = () => {
-  const { user: currentUser, isAdmin } = useAuth();
+  const { user: currentUser, isAdmin, isGroupAdmin } = useAuth();
+  const canManageUsers = isAdmin || isGroupAdmin;
   const [users, setUsers] = React.useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = React.useState<User[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -465,8 +466,8 @@ const UsersPage: React.FC = () => {
 
   return (
     <div className="users-page">
-      <h1>{isAdmin ? 'Manage Users' : 'Team Members'}</h1>
-      {isAdmin && (
+      <h1>{canManageUsers ? 'Manage Users' : 'Team Members'}</h1>
+      {canManageUsers && (
         <div className="users-create-bar" style={{display: 'flex', gap: '1rem', alignItems: 'center'}}>
           <button className="user-action-btn" onClick={() => setShowCreate(s => !s)}>
             {showCreate ? 'Cancel' : 'Add User'}
@@ -520,7 +521,7 @@ const UsersPage: React.FC = () => {
               ))}
             </select>
 
-            {isAdmin && (
+            {canManageUsers && (
               <select
                 className="filter-select"
                 value={filterAdmin}
@@ -533,7 +534,7 @@ const UsersPage: React.FC = () => {
             </select>
             )}
 
-            {isAdmin && (
+            {canManageUsers && (
               <>
                 <select
                   className="filter-select"
@@ -574,7 +575,7 @@ const UsersPage: React.FC = () => {
         </div>
       )}
 
-      {isAdmin && showCreate && !showDeleted && (
+      {canManageUsers && showCreate && !showDeleted && (
         <form className="users-create-form" onSubmit={handleCreateSubmit}>
           <div>
             <label>
@@ -704,7 +705,7 @@ const UsersPage: React.FC = () => {
                   </div>
 
                   {/* Activity stats - collapsed by default for admins */}
-                  {isAdmin && stats && showDetails && (
+                  {canManageUsers && stats && showDetails && (
                     <div className="user-stats-row">
                       <div className="stat-item" title={`${stats.comment_count} comments`}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -733,7 +734,7 @@ const UsersPage: React.FC = () => {
 
                   {/* Actions */}
                   <div className="user-card-actions-new">
-                    {isAdmin ? (
+                    {canManageUsers ? (
                       showDeleted ? (
                         <button
                           className="action-btn primary full-width"
@@ -757,13 +758,24 @@ const UsersPage: React.FC = () => {
                           >
                             Reset Password
                           </button>
-                          <button
-                            className="action-btn secondary"
-                            onClick={() => handlePromoteDemote(user)}
-                            disabled={user.deleted_at}
-                          >
-                            {user.is_admin ? 'Demote Admin' : 'Make Admin'}
-                          </button>
+                          {isAdmin && (
+                            <>
+                              <button
+                                className="action-btn secondary"
+                                onClick={() => handlePromoteDemote(user)}
+                                disabled={user.deleted_at}
+                              >
+                                {user.is_admin ? 'Demote Admin' : 'Make Admin'}
+                              </button>
+                              <button
+                                className="action-btn danger"
+                                onClick={() => handleDelete(user)}
+                                disabled={user.deleted_at}
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
                           {stats && (
                             <button
                               className="action-btn secondary"
@@ -772,13 +784,6 @@ const UsersPage: React.FC = () => {
                               {showDetails ? 'Hide Details' : 'Show Details'}
                             </button>
                           )}
-                          <button
-                            className="action-btn danger"
-                            onClick={() => handleDelete(user)}
-                            disabled={user.deleted_at}
-                          >
-                            Delete
-                          </button>
                         </>
                       )
                     ) : (

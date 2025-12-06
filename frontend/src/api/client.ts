@@ -10,7 +10,7 @@ export const usersApi = {
   removeGroup: (userId: number, groupId: number) => api.delete(`/admin/users/${userId}/groups/${groupId}`),
   getDeleted: () => api.get<User[]>('/admin/users/deleted'),
   restore: (userId: number) => api.post(`/admin/users/${userId}/restore`),
-  resetPassword: (userId: number, newPassword: string) => api.post(`/admin/users/${userId}/reset-password`, { new_password: newPassword }),
+  resetPassword: (userId: number, newPassword: string) => api.post(`/users/${userId}/reset-password`, { new_password: newPassword }),
 };
 
 // Group Admin API (accessible by site admins and group admins)
@@ -67,6 +67,7 @@ export interface User {
   hide_email?: boolean;
   hide_phone_number?: boolean;
   is_admin: boolean;
+  is_group_admin?: boolean; // True if user is group admin of at least one group
   default_group_id?: number;
   groups?: Group[];
   deleted_at?: string | null;

@@ -165,6 +165,10 @@ func main() {
 		protected.POST("/groups/:id/admins/:userId", handlers.PromoteGroupAdmin(db))
 		protected.DELETE("/groups/:id/admins/:userId", handlers.DemoteGroupAdmin(db))
 
+		// User management (accessible by site admins and group admins for users in their groups)
+		// Authorization is checked within the handlers
+		protected.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
+
 		// Admin only routes
 		admin := protected.Group("/admin")
 		admin.Use(middleware.AdminRequired())
@@ -176,7 +180,6 @@ func main() {
 			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))
 			admin.POST("/users/:userId/promote", handlers.PromoteUser(db))
 			admin.POST("/users/:userId/demote", handlers.DemoteUser(db))
-			admin.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
 
 			// Group management (admin only)
 			admin.POST("/groups", handlers.CreateGroup(db))
