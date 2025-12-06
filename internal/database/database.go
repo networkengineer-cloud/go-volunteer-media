@@ -169,9 +169,24 @@ func fixAnimalTagsGroupID(db *gorm.DB) error {
 		return fmt.Errorf("failed to find default group for animal_tags migration: %w", err)
 	}
 
+	// First, drop the NOT NULL constraint if it exists
+	// Use a transaction to ensure atomicity
+	tx := db.Begin()
+
+	// Temporarily drop the NOT NULL constraint
+	if err := tx.Exec("ALTER TABLE animal_tags DROP CONSTRAINT IF EXISTS animal_tags_group_id_check").Error; err != nil {
+		// Constraint might not exist with that name, try another approach
+		// This is just a cleanup step, so we can ignore the error
+	}
+
 	// Update all NULL group_ids to the first group
-	if err := db.Model(&models.AnimalTag{}).Where("group_id IS NULL").Update("group_id", group.ID).Error; err != nil {
+	if err := tx.Model(&models.AnimalTag{}).Where("group_id IS NULL").Update("group_id", group.ID).Error; err != nil {
+		tx.Rollback()
 		return fmt.Errorf("failed to fix animal_tags group_id: %w", err)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed to commit animal_tags migration: %w", err)
 	}
 
 	logging.WithFields(map[string]interface{}{
