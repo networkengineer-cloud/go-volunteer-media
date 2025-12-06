@@ -95,12 +95,6 @@ func Initialize() (*gorm.DB, error) {
 func RunMigrations(db *gorm.DB) error {
 	logging.Info("Running database migrations...")
 
-	// CRITICAL: Fix NULL group_ids BEFORE AutoMigrate runs
-	// AutoMigrate will fail when trying to add NOT NULL constraint to existing NULL values
-	if err := fixNullGroupIDsBeforeMigration(db); err != nil {
-		logging.WithField("error", err.Error()).Warn("Pre-migration fix for NULL group_ids failed (may be first run)")
-	}
-
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
@@ -121,6 +115,12 @@ func RunMigrations(db *gorm.DB) error {
 	}
 
 	logging.Info("Migrations completed successfully")
+
+	// CRITICAL: Fix NULL group_ids and add NOT NULL constraint AFTER AutoMigrate
+	// AutoMigrate allows NULL values, so we fix them here, then add the constraint
+	if err := fixAndEnforceGroupIDConstraints(db); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to fix group_id constraints (may be first run)")
+	}
 
 	// Create default groups if they don't exist
 	if err := createDefaultGroups(db); err != nil {
@@ -145,67 +145,113 @@ func RunMigrations(db *gorm.DB) error {
 	return nil
 }
 
-// fixNullGroupIDsBeforeMigration fixes NULL group_ids in all tag tables using raw SQL before AutoMigrate
-// This MUST run before AutoMigrate because GORM will fail trying to add NOT NULL to columns with NULLs
-func fixNullGroupIDsBeforeMigration(db *gorm.DB) error {
-	// Get the first group ID - we need this for all fixes
+// fixAndEnforceGroupIDConstraints fixes NULL group_ids in tag tables and adds NOT NULL constraint
+// This runs AFTER AutoMigrate to ensure the tables exist first
+func fixAndEnforceGroupIDConstraints(db *gorm.DB) error {
+	// Get or create a default group
 	var groupID uint
 	if err := db.Raw("SELECT id FROM groups ORDER BY id LIMIT 1").Scan(&groupID).Error; err != nil {
-		// Groups table might not exist yet, skip
+		logging.WithField("error", err.Error()).Warn("Failed to query for first group")
 		return nil
 	}
 
-	// Fix animal_tags
-	if err := fixTableNullGroupID(db, "animal_tags", groupID); err != nil {
-		logging.WithField("error", err.Error()).Warn("Failed to fix animal_tags group_ids")
+	// If no groups exist, create the default one
+	if groupID == 0 {
+		logging.Info("No groups exist, creating default group to assign to tag records")
+		if err := db.Exec(`
+			INSERT INTO groups (name, description, has_protocols, created_at, updated_at)
+			VALUES ('modsquad', 'Behavior modification volunteers group', true, NOW(), NOW())
+			ON CONFLICT (name) DO NOTHING
+		`).Error; err != nil {
+			logging.WithField("error", err.Error()).Warn("Failed to create default group")
+			return nil
+		}
+
+		// Get the group ID again
+		if err := db.Raw("SELECT id FROM groups WHERE name = 'modsquad' LIMIT 1").Scan(&groupID).Error; err != nil || groupID == 0 {
+			logging.Warn("Still no group available after creation attempt")
+			return nil
+		}
 	}
 
-	// Fix comment_tags
-	if err := fixTableNullGroupID(db, "comment_tags", groupID); err != nil {
-		logging.WithField("error", err.Error()).Warn("Failed to fix comment_tags group_ids")
+	// Fix animal_tags: set NULL values to the group ID, then add NOT NULL constraint
+	if err := fixAndEnforceTableConstraint(db, "animal_tags", groupID); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to fix and enforce animal_tags constraint")
+	}
+
+	// Fix comment_tags: set NULL values to the group ID, then add NOT NULL constraint
+	if err := fixAndEnforceTableConstraint(db, "comment_tags", groupID); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to fix and enforce comment_tags constraint")
 	}
 
 	return nil
 }
 
-// fixTableNullGroupID fixes NULL group_ids in a specific table
-func fixTableNullGroupID(db *gorm.DB, tableName string, groupID uint) error {
-	// Check if table exists
-	var tableExists bool
-	db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = ?)", tableName).Scan(&tableExists)
-	if !tableExists {
-		return nil
+// fixAndEnforceTableConstraint fixes NULL group_ids in a specific table and adds NOT NULL constraint
+func fixAndEnforceTableConstraint(db *gorm.DB, tableName string, groupID uint) error {
+	// Check if table and column exist
+	var columnExists bool
+	query := fmt.Sprintf(`
+		SELECT EXISTS (
+			SELECT FROM information_schema.columns
+			WHERE table_name = '%s' AND column_name = 'group_id'
+		)
+	`, tableName)
+	if err := db.Raw(query).Scan(&columnExists).Error; err != nil || !columnExists {
+		return nil // Column doesn't exist yet
 	}
 
-	// Check if there are NULL group_ids
+	// Count NULL values
 	var nullCount int64
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE group_id IS NULL", tableName)
-	if err := db.Raw(query).Scan(&nullCount).Error; err != nil {
-		return nil // Column might not exist yet
-	}
-
-	if nullCount == 0 {
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE group_id IS NULL", tableName)
+	if err := db.Raw(countQuery).Scan(&nullCount).Error; err != nil {
 		return nil
 	}
 
-	logging.WithFields(map[string]interface{}{
-		"table": tableName,
-		"count": nullCount,
-	}).Info("Fixing NULL group_ids before migration...")
+	// Fix NULL values
+	if nullCount > 0 {
+		logging.WithFields(map[string]interface{}{
+			"table": tableName,
+			"count": nullCount,
+		}).Info("Fixing NULL group_ids in table...")
 
-	// Update NULL group_ids using raw SQL
-	updateQuery := fmt.Sprintf("UPDATE %s SET group_id = ? WHERE group_id IS NULL", tableName)
-	result := db.Exec(updateQuery, groupID)
-	if result.Error != nil {
-		return result.Error
+		updateQuery := fmt.Sprintf("UPDATE %s SET group_id = ? WHERE group_id IS NULL", tableName)
+		if result := db.Exec(updateQuery, groupID); result.Error != nil {
+			return result.Error
+		}
+		logging.WithFields(map[string]interface{}{
+			"table":        tableName,
+			"rows_updated": nullCount,
+			"group_id":     groupID,
+		}).Info("Fixed NULL group_ids in table")
 	}
 
-	logging.WithFields(map[string]interface{}{
-		"table":        tableName,
-		"rows_updated": result.RowsAffected,
-		"group_id":     groupID,
-	}).Info("Fixed NULL group_ids")
+	// Check if NOT NULL constraint already exists
+	var constraintExists bool
+	constraintQuery := fmt.Sprintf(`
+		SELECT EXISTS (
+			SELECT FROM information_schema.columns
+			WHERE table_name = '%s' AND column_name = 'group_id' AND is_nullable = 'NO'
+		)
+	`, tableName)
 
+	if err := db.Raw(constraintQuery).Scan(&constraintExists).Error; err == nil && constraintExists {
+		logging.WithField("table", tableName).Debug("NOT NULL constraint already exists")
+		return nil
+	}
+
+	// Add NOT NULL constraint using ALTER TABLE
+	alterQuery := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN group_id SET NOT NULL", tableName)
+	if result := db.Exec(alterQuery); result.Error != nil {
+		// Ignore errors if constraint already exists
+		logging.WithFields(map[string]interface{}{
+			"table": tableName,
+			"error": result.Error.Error(),
+		}).Debug("Error adding NOT NULL constraint (may already exist)")
+		return nil
+	}
+
+	logging.WithField("table", tableName).Info("Added NOT NULL constraint to group_id")
 	return nil
 }
 
