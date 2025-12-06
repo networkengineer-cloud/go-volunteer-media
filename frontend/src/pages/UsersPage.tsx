@@ -157,14 +157,15 @@ const UsersPage: React.FC = () => {
 
   // Fetch group members when allGroups is populated (for admin group admin management)
   React.useEffect(() => {
-    if (allGroups.length > 0 && isAdmin) {
+    if (allGroups.length > 0 && (isAdmin || isGroupAdmin)) {
       fetchGroupMembers(allGroups);
     }
-  }, [allGroups, isAdmin, fetchGroupMembers]);
+  }, [allGroups, isAdmin, isGroupAdmin, fetchGroupMembers]);
 
   // Toggle group admin status
   const handleToggleGroupAdmin = async (userId: number, groupId: number, isCurrentlyAdmin: boolean) => {
-    if (!isAdmin) return;
+    // Site admins can toggle any group, group admins can only toggle their own groups
+    if (!isAdmin && !isCurrentUserGroupAdminOf(groupId)) return;
 
     setUpdatingGroupAdmin({ userId, groupId });
     try {
