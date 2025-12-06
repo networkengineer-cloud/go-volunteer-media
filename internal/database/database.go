@@ -95,12 +95,6 @@ func Initialize() (*gorm.DB, error) {
 func RunMigrations(db *gorm.DB) error {
 	logging.Info("Running database migrations...")
 
-	// Handle existing null group_ids in animal_tags before enforcing NOT NULL constraint
-	// This is needed for databases upgraded from the non-group-specific tags version
-	if err := fixAnimalTagsGroupID(db); err != nil {
-		return err
-	}
-
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
@@ -124,6 +118,12 @@ func RunMigrations(db *gorm.DB) error {
 
 	// Create default groups if they don't exist
 	if err := createDefaultGroups(db); err != nil {
+		return err
+	}
+
+	// Handle existing null group_ids in animal_tags before creating new tags
+	// This is needed for databases upgraded from the non-group-specific tags version
+	if err := fixAnimalTagsGroupID(db); err != nil {
 		return err
 	}
 
