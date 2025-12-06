@@ -8,6 +8,45 @@ Custom agents are specialized AI assistants configured with specific expertise, 
 
 ## Available Agents
 
+### PostgreSQL and Go Database Expert
+**File:** `postgres-go-expert.agent.md`
+
+**Purpose:** Expert in PostgreSQL database design, GORM ORM, query optimization, and Go database patterns
+
+**Use When:**
+- Designing database schemas and relationships
+- Optimizing slow queries and adding indexes
+- Implementing transactions and data integrity
+- Writing complex SQL queries or GORM operations
+- Database migrations and schema changes
+- Fixing N+1 query problems
+- Adding connection pooling and timeouts
+- Reviewing database code for SQL injection
+- Implementing batch operations
+- Creating database tests
+
+**Key Expertise:**
+- PostgreSQL schema design and normalization
+- GORM ORM patterns and best practices
+- Query optimization and EXPLAIN ANALYZE
+- Indexes (foreign keys, composite, full-text)
+- Transactions and ACID compliance
+- Connection pooling and performance tuning
+- SQL injection prevention
+- Soft deletes and audit trails
+- Many-to-many associations
+- Raw SQL for complex queries
+
+**Example Invocations:**
+```
+"Optimize the animals list query - it's slow with 1000+ records"
+"Add a new table for tracking volunteer certifications with proper relationships"
+"Fix the N+1 query in the groups endpoint"
+"Implement transaction for updating animal status and recording history"
+"Review database handlers for SQL injection vulnerabilities"
+"Add composite index for filtering animals by group and status"
+```
+
 ### Security and Observability Expert
 **File:** `security-observability-expert.agent.md`
 
