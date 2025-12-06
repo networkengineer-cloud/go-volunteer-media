@@ -14,7 +14,6 @@ import PhotoGallery from './pages/PhotoGallery';
 import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
 import UsersPage from './pages/UsersPage';
-import UsersListPage from './pages/UsersListPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
 import AdminAnimalTagsPage from './pages/AdminAnimalTagsPage';
 import GroupsPage from './pages/GroupsPage';
@@ -201,7 +200,7 @@ function App() {
             path="/users"
             element={
               <UsersRoute>
-                <UsersListPage />
+                <UsersPage />
               </UsersRoute>
             }
           />
@@ -215,11 +214,7 @@ function App() {
           />
           <Route
             path="/admin/users"
-            element={
-              <AdminRoute>
-                <UsersPage />
-              </AdminRoute>
-            }
+            element={<Navigate to="/users" replace />}
           />
           <Route
             path="/admin/groups"

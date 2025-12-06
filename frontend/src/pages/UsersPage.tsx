@@ -2,10 +2,25 @@ import React from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import './UsersPage.css';
-import type { User, Group, UserStatistics } from '../api/client';
-import { usersApi, groupsApi, statisticsApi } from '../api/client';
+import type { User, Group, UserStatistics, GroupMember } from '../api/client';
+import { usersApi, groupsApi, statisticsApi, groupAdminApi } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
+
+// Create API instance for authenticated requests
+const api = axios.create({
+  baseURL: '/api',
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = 'Bearer ' + token;
+  }
+  return config;
+});
 
 const UsersPage: React.FC = () => {
+  const { user: currentUser, isAdmin } = useAuth();
   const [users, setUsers] = React.useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = React.useState<User[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -20,6 +35,10 @@ const UsersPage: React.FC = () => {
   const [sortBy, setSortBy] = React.useState<'name' | 'email' | 'last_active' | 'most_active'>('name');
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
 
+  // Group admin management state
+  const [groupMembers, setGroupMembers] = React.useState<Map<number, GroupMember[]>>(new Map());
+  const [updatingGroupAdmin, setUpdatingGroupAdmin] = React.useState<{userId: number, groupId: number} | null>(null);
+
   // Group modal state
   const [groupModalUser, setGroupModalUser] = React.useState<User | null>(null);
   const [allGroups, setAllGroups] = React.useState<Group[]>([]);
@@ -33,18 +52,38 @@ const UsersPage: React.FC = () => {
   const [resetPasswordError, setResetPasswordError] = React.useState<string | null>(null);
   const [resetPasswordSuccess, setResetPasswordSuccess] = React.useState<string | null>(null);
 
+  // Fetch group members with admin status for group admin management
+  const fetchGroupMembers = React.useCallback(async (groups: Group[]) => {
+    if (!isAdmin || groups.length === 0) return;
+
+    try {
+      const membersMap = new Map<number, GroupMember[]>();
+      for (const group of groups) {
+        const membersRes = await groupAdminApi.getMembers(group.id);
+        membersMap.set(group.id, membersRes.data);
+      }
+      setGroupMembers(membersMap);
+    } catch (err) {
+      console.error('Failed to fetch group members:', err);
+    }
+  }, [isAdmin]);
+
   // Fetch users and statistics (active or deleted)
-  const fetchUsers = React.useCallback(() => {
+  const fetchUsers = React.useCallback(async () => {
     setLoading(true);
     setError(null);
-    const apiCall = showDeleted ? usersApi.getDeleted() : usersApi.getAll();
     
-    Promise.all([
-      apiCall,
-      statisticsApi.getUserStatistics(),
-      groupsApi.getAll() // Fetch groups for filter
-    ])
-      .then(([usersRes, statsRes, groupsRes]) => {
+    try {
+      if (isAdmin) {
+        // Site admins see all users with full statistics
+        const apiCall = showDeleted ? usersApi.getDeleted() : usersApi.getAll();
+        
+        const [usersRes, statsRes, groupsRes] = await Promise.all([
+          apiCall,
+          statisticsApi.getUserStatistics(),
+          groupsApi.getAll()
+        ]);
+        
         setUsers(usersRes.data);
         setAllGroups(groupsRes.data);
         
@@ -54,18 +93,107 @@ const UsersPage: React.FC = () => {
           statsMap[stat.user_id] = stat;
         });
         setStatistics(statsMap);
-        
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to fetch users');
-        setLoading(false);
-      });
-  }, [showDeleted]);
+      } else {
+        // Group admins see users from their groups only
+        if (!currentUser?.groups || currentUser.groups.length === 0) {
+          setUsers([]);
+          setAllGroups([]);
+        } else {
+          const allUsers = new Set<User>();
+          
+          // Fetch members from each group the user is in
+          for (const group of currentUser.groups) {
+            try {
+              const membersRes = await api.get<GroupMember[]>(`/groups/${group.id}/members`);
+              const members: GroupMember[] = membersRes.data;
+              
+              // Convert GroupMember to User
+              members.forEach(member => {
+                allUsers.add({
+                  id: member.user_id,
+                  username: member.username,
+                  email: member.email,
+                  phone_number: member.phone_number,
+                  is_admin: member.is_site_admin,
+                  groups: [group],
+                });
+              });
+            } catch (err) {
+              console.error(`Failed to fetch members for group ${group.id}:`, err);
+            }
+          }
+          
+          // Merge users from all groups (avoiding duplicates)
+          const userMap = new Map<number, User>();
+          allUsers.forEach(u => {
+            if (userMap.has(u.id)) {
+              // User is in multiple groups, merge group arrays
+              const existing = userMap.get(u.id)!;
+              existing.groups = [...new Set([...(existing.groups || []), ...(u.groups || [])])];
+            } else {
+              userMap.set(u.id, u);
+            }
+          });
+          
+          setUsers(Array.from(userMap.values()));
+          setAllGroups(currentUser.groups);
+        }
+      }
+      
+      setLoading(false);
+    } catch (err) {
+      setError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to fetch users');
+      setLoading(false);
+    }
+  }, [isAdmin, currentUser?.groups, showDeleted]);
 
   React.useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  // Fetch group members when allGroups is populated (for admin group admin management)
+  React.useEffect(() => {
+    if (allGroups.length > 0 && isAdmin) {
+      fetchGroupMembers(allGroups);
+    }
+  }, [allGroups, isAdmin, fetchGroupMembers]);
+
+  // Toggle group admin status
+  const handleToggleGroupAdmin = async (userId: number, groupId: number, isCurrentlyAdmin: boolean) => {
+    if (!isAdmin) return;
+
+    setUpdatingGroupAdmin({ userId, groupId });
+    try {
+      if (isCurrentlyAdmin) {
+        await groupAdminApi.demoteFromGroupAdmin(groupId, userId);
+      } else {
+        await groupAdminApi.promoteToGroupAdmin(groupId, userId);
+      }
+      
+      // Refresh the group members for this group
+      const membersRes = await groupAdminApi.getMembers(groupId);
+      setGroupMembers(prev => {
+        const newMap = new Map(prev);
+        newMap.set(groupId, membersRes.data);
+        return newMap;
+      });
+    } catch (err) {
+      console.error('Failed to toggle group admin status:', err);
+      const error = err as { response?: { data?: { error?: string } } };
+      setError(error.response?.data?.error || 'Failed to update group admin status');
+      setTimeout(() => setError(null), 5000);
+    } finally {
+      setUpdatingGroupAdmin(null);
+    }
+  };
+
+  // Check if a user is a group admin for a specific group
+  const isUserGroupAdmin = (userId: number, groupId: number): boolean => {
+    const members = groupMembers.get(groupId);
+    if (!members) return false;
+    const member = members.find(m => m.user_id === userId);
+    return member?.is_group_admin || false;
+  };
 
   // Filter and sort users
   React.useEffect(() => {
@@ -334,19 +462,21 @@ const UsersPage: React.FC = () => {
 
   return (
     <div className="users-page">
-      <h1>Manage Users</h1>
-      <div className="users-create-bar" style={{display: 'flex', gap: '1rem', alignItems: 'center'}}>
-        <button className="user-action-btn" onClick={() => setShowCreate(s => !s)}>
-          {showCreate ? 'Cancel' : 'Add User'}
-        </button>
-        <button
-          className="user-action-btn"
-          style={{background: showDeleted ? 'var(--brand, #0e6c55)' : undefined, color: showDeleted ? '#fff' : undefined}}
-          onClick={() => setShowDeleted(v => !v)}
-        >
-          {showDeleted ? 'Show Active Users' : 'Show Deleted Users'}
-        </button>
-      </div>
+      <h1>{isAdmin ? 'Manage Users' : 'Team Members'}</h1>
+      {isAdmin && (
+        <div className="users-create-bar" style={{display: 'flex', gap: '1rem', alignItems: 'center'}}>
+          <button className="user-action-btn" onClick={() => setShowCreate(s => !s)}>
+            {showCreate ? 'Cancel' : 'Add User'}
+          </button>
+          <button
+            className="user-action-btn"
+            style={{background: showDeleted ? 'var(--brand, #0e6c55)' : undefined, color: showDeleted ? '#fff' : undefined}}
+            onClick={() => setShowDeleted(v => !v)}
+          >
+            {showDeleted ? 'Show Active Users' : 'Show Deleted Users'}
+          </button>
+        </div>
+      )}
 
       {/* Search and Filter Section */}
       {!showDeleted && (
@@ -387,9 +517,10 @@ const UsersPage: React.FC = () => {
               ))}
             </select>
 
-            <select
-              className="filter-select"
-              value={filterAdmin}
+            {isAdmin && (
+              <select
+                className="filter-select"
+                value={filterAdmin}
               onChange={(e) => setFilterAdmin(e.target.value as 'all' | 'admin' | 'user')}
               aria-label="Filter by role"
             >
@@ -397,35 +528,40 @@ const UsersPage: React.FC = () => {
               <option value="admin">Admins</option>
               <option value="user">Users</option>
             </select>
+            )}
 
-            <select
-              className="filter-select"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'name' | 'email' | 'last_active' | 'most_active')}
-              aria-label="Sort by"
-            >
-              <option value="name">Sort by Name</option>
-              <option value="email">Sort by Email</option>
-              <option value="last_active">Sort by Last Active</option>
-              <option value="most_active">Sort by Most Active</option>
-            </select>
+            {isAdmin && (
+              <>
+                <select
+                  className="filter-select"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as 'name' | 'email' | 'last_active' | 'most_active')}
+                  aria-label="Sort by"
+                >
+                  <option value="name">Sort by Name</option>
+                  <option value="email">Sort by Email</option>
+                  <option value="last_active">Sort by Last Active</option>
+                  <option value="most_active">Sort by Most Active</option>
+                </select>
 
-            <button
-              className="sort-order-btn"
-              onClick={() => setSortOrder(order => order === 'asc' ? 'desc' : 'asc')}
-              aria-label={`Sort order: ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
-              title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-            >
-              {sortOrder === 'asc' ? (
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 5v10M5 10l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 15V5M15 10l-5 5-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </button>
+                <button
+                  className="sort-order-btn"
+                  onClick={() => setSortOrder(order => order === 'asc' ? 'desc' : 'asc')}
+                  aria-label={`Sort order: ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
+                  title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                >
+                  {sortOrder === 'asc' ? (
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M10 5v10M5 10l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M10 15V5M15 10l-5 5-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </button>
+              </>
+            )}
           </div>
           
           <div className="filter-summary">
@@ -435,7 +571,7 @@ const UsersPage: React.FC = () => {
         </div>
       )}
 
-      {showCreate && !showDeleted && (
+      {isAdmin && showCreate && !showDeleted && (
         <form className="users-create-form" onSubmit={handleCreateSubmit}>
           <div>
             <label>
@@ -497,13 +633,15 @@ const UsersPage: React.FC = () => {
               <tr>
                 <th>Username</th>
                 <th>Email</th>
-                <th>Admin</th>
+                {isAdmin && <th>Site Admin</th>}
                 <th>Groups</th>
-                <th>Comments</th>
-                <th>Animals</th>
-                <th>Last Active</th>
-                <th>Status</th>
-                <th>Actions</th>
+                {isAdmin && <th>Group Admin Status</th>}
+                {isAdmin && <th>Comments</th>}
+                {isAdmin && <th>Animals</th>}
+                {isAdmin && <th>Last Active</th>}
+                {isAdmin && <th>Status</th>}
+                {isAdmin && <th>Actions</th>}
+                {!isAdmin && <th>Profile</th>}
               </tr>
             </thead>
             <tbody>
@@ -521,7 +659,7 @@ const UsersPage: React.FC = () => {
                       </Link>
                     </td>
                     <td>{user.email}</td>
-                    <td>{user.is_admin ? 'Yes' : 'No'}</td>
+                    {isAdmin && <td>{user.is_admin ? 'Yes' : 'No'}</td>}
                     <td>
                       {user.groups && user.groups.length > 0 ? (
                         user.groups.map((g, index) => (
@@ -538,89 +676,129 @@ const UsersPage: React.FC = () => {
                         ))
                       ) : '-'}
                     </td>
-                    <td className="user-stat">
-                      {stats ? (
-                        <span className="stat-badge" title={`${stats.comment_count} comment${stats.comment_count !== 1 ? 's' : ''}`}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                          </svg>
-                          {stats.comment_count}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="user-stat">
-                      {stats ? (
-                        <span className="stat-badge" title={`Interacted with ${stats.animals_interacted_with} animal${stats.animals_interacted_with !== 1 ? 's' : ''}`}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="11" cy="4" r="2"></circle>
-                            <circle cx="18" cy="8" r="2"></circle>
-                            <circle cx="20" cy="16" r="2"></circle>
-                            <circle cx="4" cy="16" r="2"></circle>
-                            <circle cx="4" cy="8" r="2"></circle>
-                          </svg>
-                          {stats.animals_interacted_with}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="user-stat">
-                      {stats?.last_active ? (
-                        <span className="last-activity" title={new Date(stats.last_active).toLocaleString()}>
-                          {formatRelativeTime(stats.last_active)}
-                        </span>
-                      ) : (
-                        <span className="no-activity">No activity</span>
-                      )}
-                    </td>
-                    <td>{showDeleted ? 'Deleted' : 'Active'}</td>
-                    <td>
-                      <div className="user-actions">
-                        {showDeleted ? (
-                          <button
-                            className="user-action-btn"
-                            title="Restore user"
-                            onClick={() => handleRestore(user)}
-                          >
-                            Restore
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              className="user-action-btn"
-                              title={user.is_admin ? 'Demote from admin' : 'Promote to admin'}
-                              disabled={user.deleted_at}
-                              onClick={() => handlePromoteDemote(user)}
-                            >
-                              {user.is_admin ? 'Demote' : 'Promote'}
-                            </button>
-                            <button
-                              className="user-action-btn"
-                              title="Assign/Remove Group"
-                              disabled={user.deleted_at}
-                              onClick={() => openGroupModal(user)}
-                            >
-                              Groups
-                            </button>
-                            <button
-                              className="user-action-btn"
-                              title="Reset password"
-                            disabled={user.deleted_at}
-                            onClick={() => openPasswordResetModal(user)}
-                          >
-                            Reset Password
-                          </button>
-                          {/* Deactivate button removed; Delete now performs soft-delete/deactivation */}
-                          <button
-                            className="user-action-btn danger"
-                            title="Delete user"
-                            disabled={user.deleted_at}
-                            onClick={() => handleDelete(user)}
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
+                    {isAdmin && (
+                      <td>
+                        {user.groups && user.groups.length > 0 ? (
+                          <div className="group-admin-controls">
+                            {user.groups.map(g => {
+                              const isGroupAdmin = isUserGroupAdmin(user.id, g.id);
+                              const isUpdating = updatingGroupAdmin?.userId === user.id && updatingGroupAdmin?.groupId === g.id;
+                              return (
+                                <div key={g.id} className="group-admin-row">
+                                  <span className="group-admin-group-name">{g.name}:</span>
+                                  <button
+                                    onClick={() => handleToggleGroupAdmin(user.id, g.id, isGroupAdmin)}
+                                    className={`group-admin-toggle-btn ${isGroupAdmin ? 'is-admin' : 'not-admin'}`}
+                                    disabled={isUpdating || user.is_admin}
+                                    title={user.is_admin ? 'Site admins have all permissions' : (isGroupAdmin ? 'Remove group admin status' : 'Make group admin')}
+                                  >
+                                    {isUpdating ? '...' : (isGroupAdmin ? '✓ Group Admin' : 'Make Admin')}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : '-'}
+                      </td>
+                    )}
+                    {isAdmin && (
+                      <>
+                        <td className="user-stat">
+                          {stats ? (
+                            <span className="stat-badge" title={`${stats.comment_count} comment${stats.comment_count !== 1 ? 's' : ''}`}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                              </svg>
+                              {stats.comment_count}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="user-stat">
+                          {stats ? (
+                            <span className="stat-badge" title={`Interacted with ${stats.animals_interacted_with} animal${stats.animals_interacted_with !== 1 ? 's' : ''}`}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="11" cy="4" r="2"></circle>
+                                <circle cx="18" cy="8" r="2"></circle>
+                                <circle cx="20" cy="16" r="2"></circle>
+                                <circle cx="4" cy="16" r="2"></circle>
+                                <circle cx="4" cy="8" r="2"></circle>
+                              </svg>
+                              {stats.animals_interacted_with}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="user-stat">
+                          {stats?.last_active ? (
+                            <span className="last-activity" title={new Date(stats.last_active).toLocaleString()}>
+                              {formatRelativeTime(stats.last_active)}
+                            </span>
+                          ) : (
+                            <span className="no-activity">No activity</span>
+                          )}
+                        </td>
+                        <td>{showDeleted ? 'Deleted' : 'Active'}</td>
+                        <td>
+                          <div className="user-actions">
+                            {showDeleted ? (
+                              <button
+                                className="user-action-btn"
+                                title="Restore user"
+                                onClick={() => handleRestore(user)}
+                              >
+                                Restore
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  className="user-action-btn"
+                                  title={user.is_admin ? 'Demote from admin' : 'Promote to admin'}
+                                  disabled={user.deleted_at}
+                                  onClick={() => handlePromoteDemote(user)}
+                                >
+                                  {user.is_admin ? 'Demote' : 'Promote'}
+                                </button>
+                                <button
+                                  className="user-action-btn"
+                                  title="Assign/Remove Group"
+                                  disabled={user.deleted_at}
+                                  onClick={() => openGroupModal(user)}
+                                >
+                                  Groups
+                                </button>
+                                <button
+                                  className="user-action-btn"
+                                  title="Reset password"
+                                  disabled={user.deleted_at}
+                                  onClick={() => openPasswordResetModal(user)}
+                                >
+                                  Reset Password
+                                </button>
+                                <button
+                                  className="user-action-btn danger"
+                                  title="Delete user"
+                                  disabled={user.deleted_at}
+                                  onClick={() => handleDelete(user)}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </>
+                    )}
+                    {/* Simple profile link for group admins (non-site-admins) */}
+                    {!isAdmin && (
+                      <td>
+                        <Link 
+                          to={`/users/${user.id}/profile`}
+                          className="user-action-btn"
+                          title={`View ${user.username}'s profile`}
+                        >
+                          View
+                        </Link>
+                      </td>
+                    )}
                 </tr>
               );
               })}
@@ -644,8 +822,8 @@ const UsersPage: React.FC = () => {
                     </div>
                     <div className="user-card-email">{user.email}</div>
                   </div>
-                  {user.is_admin && (
-                    <span className="role-badge admin">Admin</span>
+                  {isAdmin && user.is_admin && (
+                    <span className="role-badge admin">Site Admin</span>
                   )}
                 </div>
                 <div className="user-card-info">
@@ -668,52 +846,90 @@ const UsersPage: React.FC = () => {
                       ) : '-'}
                     </span>
                   </div>
-                  <div className="user-card-info-row">
-                    <span className="user-card-info-label">Status:</span>
-                    <span className="user-card-info-value">
-                      {showDeleted ? 'Deleted' : 'Active'}
-                    </span>
-                  </div>
+                  {isAdmin && user.groups && user.groups.length > 0 && (
+                    <div className="user-card-info-row">
+                      <span className="user-card-info-label">Group Admin:</span>
+                      <div className="user-card-info-value">
+                        <div className="group-admin-controls mobile">
+                          {user.groups.map(g => {
+                            const isGroupAdminStatus = isUserGroupAdmin(user.id, g.id);
+                            const isUpdating = updatingGroupAdmin?.userId === user.id && updatingGroupAdmin?.groupId === g.id;
+                            return (
+                              <div key={g.id} className="group-admin-row">
+                                <span className="group-admin-group-name">{g.name}:</span>
+                                <button
+                                  onClick={() => handleToggleGroupAdmin(user.id, g.id, isGroupAdminStatus)}
+                                  className={`group-admin-toggle-btn ${isGroupAdminStatus ? 'is-admin' : 'not-admin'}`}
+                                  disabled={isUpdating || user.is_admin}
+                                  title={user.is_admin ? 'Site admins have all permissions' : (isGroupAdminStatus ? 'Remove group admin status' : 'Make group admin')}
+                                >
+                                  {isUpdating ? '...' : (isGroupAdminStatus ? '✓ Admin' : 'Make Admin')}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {isAdmin && (
+                    <div className="user-card-info-row">
+                      <span className="user-card-info-label">Status:</span>
+                      <span className="user-card-info-value">
+                        {showDeleted ? 'Deleted' : 'Active'}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="user-card-actions">
-                  {showDeleted ? (
-                    <button
-                      className="user-action-btn"
-                      onClick={() => handleRestore(user)}
-                    >
-                      Restore
-                    </button>
+                  {isAdmin ? (
+                    showDeleted ? (
+                      <button
+                        className="user-action-btn"
+                        onClick={() => handleRestore(user)}
+                      >
+                        Restore
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          className="user-action-btn"
+                          disabled={user.deleted_at}
+                          onClick={() => handlePromoteDemote(user)}
+                        >
+                          {user.is_admin ? 'Demote' : 'Promote'}
+                        </button>
+                        <button
+                          className="user-action-btn"
+                          disabled={user.deleted_at}
+                          onClick={() => openGroupModal(user)}
+                        >
+                          Groups
+                        </button>
+                        <button
+                          className="user-action-btn"
+                          disabled={user.deleted_at}
+                          onClick={() => openPasswordResetModal(user)}
+                        >
+                          Reset Password
+                        </button>
+                        <button
+                          className="user-action-btn danger"
+                          disabled={user.deleted_at}
+                          onClick={() => handleDelete(user)}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )
                   ) : (
-                    <>
-                      <button
-                        className="user-action-btn"
-                        disabled={user.deleted_at}
-                        onClick={() => handlePromoteDemote(user)}
-                      >
-                        {user.is_admin ? 'Demote' : 'Promote'}
-                      </button>
-                      <button
-                        className="user-action-btn"
-                        disabled={user.deleted_at}
-                        onClick={() => openGroupModal(user)}
-                      >
-                        Groups
-                      </button>
-                      <button
-                        className="user-action-btn"
-                        disabled={user.deleted_at}
-                        onClick={() => openPasswordResetModal(user)}
-                      >
-                        Reset Password
-                      </button>
-                      <button
-                        className="user-action-btn danger"
-                        disabled={user.deleted_at}
-                        onClick={() => handleDelete(user)}
-                      >
-                        Delete
-                      </button>
-                    </>
+                    <Link 
+                      to={`/users/${user.id}/profile`}
+                      className="user-action-btn"
+                      title={`View ${user.username}'s profile`}
+                    >
+                      View Profile
+                    </Link>
                   )}
                 </div>
               </div>

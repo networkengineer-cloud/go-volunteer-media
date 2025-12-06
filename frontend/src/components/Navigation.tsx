@@ -113,7 +113,6 @@ const Navigation: React.FC = () => {
             <>
               {user?.is_admin && (
                 <>
-                  <Link to="/admin/users" className="nav-admin-users" onClick={closeMobileMenu}>Users</Link>
                   <Link to="/admin/groups" className="nav-admin-groups" onClick={closeMobileMenu}>Groups</Link>
                   <Link to="/admin/animals" className="nav-admin-animals" onClick={closeMobileMenu}>Animals</Link>
                   <Link to="/admin/animal-tags" className="nav-admin-tags" onClick={closeMobileMenu}>Tags</Link>
