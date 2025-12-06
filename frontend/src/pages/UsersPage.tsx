@@ -52,6 +52,9 @@ const UsersPage: React.FC = () => {
   const [resetPasswordError, setResetPasswordError] = React.useState<string | null>(null);
   const [resetPasswordSuccess, setResetPasswordSuccess] = React.useState<string | null>(null);
 
+  // Show details state - track which user cards have expanded details
+  const [expandedDetails, setExpandedDetails] = React.useState<Set<number>>(new Set());
+
   // Fetch group members with admin status for group admin management
   const fetchGroupMembers = React.useCallback(async (groups: Group[]) => {
     if (!isAdmin || groups.length === 0) return;
@@ -631,7 +634,18 @@ const UsersPage: React.FC = () => {
           <div className="users-grid">
             {filteredUsers.map(user => {
               const stats = statistics[user.id];
-              const [showDetails, setShowDetails] = React.useState(false);
+              const showDetails = expandedDetails.has(user.id);
+              const toggleDetails = () => {
+                setExpandedDetails(prev => {
+                  const next = new Set(prev);
+                  if (next.has(user.id)) {
+                    next.delete(user.id);
+                  } else {
+                    next.add(user.id);
+                  }
+                  return next;
+                });
+              };
               return (
                 <div key={user.id} className={`user-card-new ${user.deleted_at ? 'deleted' : ''}`}>
                   {/* Header with user info and badges */}
@@ -753,7 +767,7 @@ const UsersPage: React.FC = () => {
                           {stats && (
                             <button
                               className="action-btn secondary"
-                              onClick={() => setShowDetails(!showDetails)}
+                              onClick={toggleDetails}
                             >
                               {showDetails ? 'Hide Details' : 'Show Details'}
                             </button>
