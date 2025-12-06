@@ -212,19 +212,25 @@ const AnimalForm: React.FC = () => {
       
       // Upload cropped image
       const res = await animalsApi.uploadImage(file);
-      setFormData({ ...formData, image_url: res.data.url });
+      
+      // Update formData with the new image URL
+      setFormData(prev => ({ ...prev, image_url: res.data.url }));
+      
       toast.showSuccess('Image uploaded successfully!');
+      
+      // Clean up preview URL after a short delay to ensure new image loads
+      setTimeout(() => {
+        if (editingImageUrl) {
+          URL.revokeObjectURL(editingImageUrl);
+          setEditingImageUrl('');
+        }
+      }, 100);
     } catch (err: unknown) {
       console.error('Upload error:', err);
       const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setUploading(false);
-      // Clean up preview URL
-      if (editingImageUrl) {
-        URL.revokeObjectURL(editingImageUrl);
-        setEditingImageUrl('');
-      }
     }
   };
 
