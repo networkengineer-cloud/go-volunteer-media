@@ -627,314 +627,175 @@ const UsersPage: React.FC = () => {
         <div className="users-error">{error}</div>
       ) : (
         <>
-          {/* Desktop table view */}
-          <table className="users-table">
-            <thead>
-              <tr>
-                <th>Username</th>
-                <th>Email</th>
-                {isAdmin && <th>Site Admin</th>}
-                <th>Groups</th>
-                {isAdmin && <th>Group Admin Status</th>}
-                {isAdmin && <th>Comments</th>}
-                {isAdmin && <th>Animals</th>}
-                {isAdmin && <th>Last Active</th>}
-                {isAdmin && <th>Status</th>}
-                {isAdmin && <th>Actions</th>}
-                {!isAdmin && <th>Profile</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map(user => {
-                const stats = statistics[user.id];
-                return (
-                  <tr key={user.id}>
-                    <td>
-                      <Link 
-                        to={`/users/${user.id}/profile`}
-                        className="username-link"
-                        title={`View ${user.username}'s profile`}
-                      >
-                        {user.username}
-                      </Link>
-                    </td>
-                    <td>{user.email}</td>
-                    {isAdmin && <td>{user.is_admin ? 'Yes' : 'No'}</td>}
-                    <td>
-                      {user.groups && user.groups.length > 0 ? (
-                        user.groups.map((g, index) => (
-                          <React.Fragment key={g.id}>
-                            <Link 
-                              to={`/groups/${g.id}`}
-                              className="group-link"
-                              title={`View ${g.name} group`}
-                            >
-                              {g.name}
-                            </Link>
-                            {index < user.groups!.length - 1 && ', '}
-                          </React.Fragment>
-                        ))
-                      ) : '-'}
-                    </td>
-                    {isAdmin && (
-                      <td>
-                        {user.groups && user.groups.length > 0 ? (
-                          <div className="group-admin-controls">
-                            {user.groups.map(g => {
-                              const isGroupAdmin = isUserGroupAdmin(user.id, g.id);
-                              const isUpdating = updatingGroupAdmin?.userId === user.id && updatingGroupAdmin?.groupId === g.id;
-                              return (
-                                <div key={g.id} className="group-admin-row">
-                                  <span className="group-admin-group-name">{g.name}:</span>
-                                  <button
-                                    onClick={() => handleToggleGroupAdmin(user.id, g.id, isGroupAdmin)}
-                                    className={`group-admin-toggle-btn ${isGroupAdmin ? 'is-admin' : 'not-admin'}`}
-                                    disabled={isUpdating || user.is_admin}
-                                    title={user.is_admin ? 'Site admins have all permissions' : (isGroupAdmin ? 'Remove group admin status' : 'Make group admin')}
-                                  >
-                                    {isUpdating ? '...' : (isGroupAdmin ? '✓ Group Admin' : 'Make Admin')}
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : '-'}
-                      </td>
-                    )}
-                    {isAdmin && (
-                      <>
-                        <td className="user-stat">
-                          {stats ? (
-                            <span className="stat-badge" title={`${stats.comment_count} comment${stats.comment_count !== 1 ? 's' : ''}`}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                              </svg>
-                              {stats.comment_count}
-                            </span>
-                          ) : '—'}
-                        </td>
-                        <td className="user-stat">
-                          {stats ? (
-                            <span className="stat-badge" title={`Interacted with ${stats.animals_interacted_with} animal${stats.animals_interacted_with !== 1 ? 's' : ''}`}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <circle cx="11" cy="4" r="2"></circle>
-                                <circle cx="18" cy="8" r="2"></circle>
-                                <circle cx="20" cy="16" r="2"></circle>
-                                <circle cx="4" cy="16" r="2"></circle>
-                                <circle cx="4" cy="8" r="2"></circle>
-                              </svg>
-                              {stats.animals_interacted_with}
-                            </span>
-                          ) : '—'}
-                        </td>
-                        <td className="user-stat">
-                          {stats?.last_active ? (
-                            <span className="last-activity" title={new Date(stats.last_active).toLocaleString()}>
-                              {formatRelativeTime(stats.last_active)}
-                            </span>
-                          ) : (
-                            <span className="no-activity">No activity</span>
-                          )}
-                        </td>
-                        <td>{showDeleted ? 'Deleted' : 'Active'}</td>
-                        <td>
-                          <div className="user-actions">
-                            {showDeleted ? (
-                              <button
-                                className="user-action-btn"
-                                title="Restore user"
-                                onClick={() => handleRestore(user)}
-                              >
-                                Restore
-                              </button>
-                            ) : (
-                              <>
-                                <button
-                                  className="user-action-btn"
-                                  title={user.is_admin ? 'Demote from admin' : 'Promote to admin'}
-                                  disabled={user.deleted_at}
-                                  onClick={() => handlePromoteDemote(user)}
-                                >
-                                  {user.is_admin ? 'Demote' : 'Promote'}
-                                </button>
-                                <button
-                                  className="user-action-btn"
-                                  title="Assign/Remove Group"
-                                  disabled={user.deleted_at}
-                                  onClick={() => openGroupModal(user)}
-                                >
-                                  Groups
-                                </button>
-                                <button
-                                  className="user-action-btn"
-                                  title="Reset password"
-                                  disabled={user.deleted_at}
-                                  onClick={() => openPasswordResetModal(user)}
-                                >
-                                  Reset Password
-                                </button>
-                                <button
-                                  className="user-action-btn danger"
-                                  title="Delete user"
-                                  disabled={user.deleted_at}
-                                  onClick={() => handleDelete(user)}
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </>
-                    )}
-                    {/* Simple profile link for group admins (non-site-admins) */}
-                    {!isAdmin && (
-                      <td>
+          {/* Unified card-based user list */}
+          <div className="users-grid">
+            {filteredUsers.map(user => {
+              const stats = statistics[user.id];
+              return (
+                <div key={user.id} className={`user-card-new ${user.deleted_at ? 'deleted' : ''}`}>
+                  {/* Header with user info and badges */}
+                  <div className="user-card-header-new">
+                    <div className="user-avatar">
+                      {user.username.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="user-info">
+                      <div className="user-name-row">
                         <Link 
                           to={`/users/${user.id}/profile`}
-                          className="user-action-btn"
-                          title={`View ${user.username}'s profile`}
+                          className="user-name-link"
                         >
-                          View
+                          {user.username}
                         </Link>
-                      </td>
-                    )}
-                </tr>
-              );
-              })}
-            </tbody>
-          </table>
-
-          {/* Mobile card view */}
-          <div className="users-mobile-cards">
-            {filteredUsers.map(user => (
-              <div key={user.id} className="user-card">
-                <div className="user-card-header">
-                  <div className="user-card-title">
-                    <div className="user-card-name">
-                      <Link 
-                        to={`/users/${user.id}/profile`}
-                        className="username-link"
-                        title={`View ${user.username}'s profile`}
-                      >
-                        {user.username}
-                      </Link>
+                        {user.is_admin && <span className="badge badge-admin">Admin</span>}
+                        {user.deleted_at && <span className="badge badge-deleted">Deleted</span>}
+                      </div>
+                      <div className="user-email">{user.email}</div>
                     </div>
-                    <div className="user-card-email">{user.email}</div>
                   </div>
-                  {isAdmin && user.is_admin && (
-                    <span className="role-badge admin">Site Admin</span>
-                  )}
-                </div>
-                <div className="user-card-info">
-                  <div className="user-card-info-row">
-                    <span className="user-card-info-label">Groups:</span>
-                    <span className="user-card-info-value">
-                      {user.groups && user.groups.length > 0 ? (
-                        user.groups.map((g, index) => (
-                          <React.Fragment key={g.id}>
-                            <Link 
-                              to={`/groups/${g.id}`}
-                              className="group-link"
-                              title={`View ${g.name} group`}
-                            >
-                              {g.name}
-                            </Link>
-                            {index < user.groups!.length - 1 && ', '}
-                          </React.Fragment>
-                        ))
-                      ) : '-'}
-                    </span>
-                  </div>
-                  {isAdmin && user.groups && user.groups.length > 0 && (
-                    <div className="user-card-info-row">
-                      <span className="user-card-info-label">Group Admin:</span>
-                      <div className="user-card-info-value">
-                        <div className="group-admin-controls mobile">
-                          {user.groups.map(g => {
-                            const isGroupAdminStatus = isUserGroupAdmin(user.id, g.id);
-                            const isUpdating = updatingGroupAdmin?.userId === user.id && updatingGroupAdmin?.groupId === g.id;
-                            return (
-                              <div key={g.id} className="group-admin-row">
-                                <span className="group-admin-group-name">{g.name}:</span>
+
+                  {/* Groups with role badges */}
+                  <div className="user-groups-section">
+                    {user.groups && user.groups.length > 0 ? (
+                      <div className="group-tags">
+                        {user.groups.map(g => {
+                          const isGroupAdmin = isUserGroupAdmin(user.id, g.id);
+                          return (
+                            <div key={g.id} className="group-tag-wrapper">
+                              <Link to={`/groups/${g.id}`} className="group-tag">
+                                {g.name}
+                                {isGroupAdmin && !user.is_admin && (
+                                  <span className="group-admin-indicator" title="Group Admin">★</span>
+                                )}
+                              </Link>
+                              {isAdmin && !user.is_admin && (
                                 <button
-                                  onClick={() => handleToggleGroupAdmin(user.id, g.id, isGroupAdminStatus)}
-                                  className={`group-admin-toggle-btn ${isGroupAdminStatus ? 'is-admin' : 'not-admin'}`}
-                                  disabled={isUpdating || user.is_admin}
-                                  title={user.is_admin ? 'Site admins have all permissions' : (isGroupAdminStatus ? 'Remove group admin status' : 'Make group admin')}
+                                  onClick={() => handleToggleGroupAdmin(user.id, g.id, isGroupAdmin)}
+                                  className={`group-admin-btn ${isGroupAdmin ? 'active' : ''}`}
+                                  disabled={updatingGroupAdmin?.userId === user.id && updatingGroupAdmin?.groupId === g.id}
+                                  title={isGroupAdmin ? 'Remove group admin' : 'Make group admin'}
                                 >
-                                  {isUpdating ? '...' : (isGroupAdminStatus ? '✓ Admin' : 'Make Admin')}
+                                  {updatingGroupAdmin?.userId === user.id && updatingGroupAdmin?.groupId === g.id 
+                                    ? '...' 
+                                    : (isGroupAdmin ? '−' : '+')}
                                 </button>
-                              </div>
-                            );
-                          })}
-                        </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span className="no-groups">No groups assigned</span>
+                    )}
+                  </div>
+
+                  {/* Activity stats for admins */}
+                  {isAdmin && stats && (
+                    <div className="user-stats-row">
+                      <div className="stat-item" title={`${stats.comment_count} comments`}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                        <span>{stats.comment_count}</span>
+                      </div>
+                      <div className="stat-item" title={`${stats.animals_interacted_with} animals`}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="3"></circle>
+                          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2"></path>
+                        </svg>
+                        <span>{stats.animals_interacted_with}</span>
+                      </div>
+                      <div className="stat-item last-seen">
+                        {stats.last_active ? (
+                          <span title={new Date(stats.last_active).toLocaleString()}>
+                            {formatRelativeTime(stats.last_active)}
+                          </span>
+                        ) : (
+                          <span className="inactive">Never active</span>
+                        )}
                       </div>
                     </div>
                   )}
-                  {isAdmin && (
-                    <div className="user-card-info-row">
-                      <span className="user-card-info-label">Status:</span>
-                      <span className="user-card-info-value">
-                        {showDeleted ? 'Deleted' : 'Active'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <div className="user-card-actions">
-                  {isAdmin ? (
-                    showDeleted ? (
-                      <button
-                        className="user-action-btn"
-                        onClick={() => handleRestore(user)}
-                      >
-                        Restore
-                      </button>
+
+                  {/* Actions */}
+                  <div className="user-card-actions-new">
+                    {isAdmin ? (
+                      showDeleted ? (
+                        <button
+                          className="action-btn primary"
+                          onClick={() => handleRestore(user)}
+                        >
+                          Restore User
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            className="action-btn"
+                            onClick={() => openGroupModal(user)}
+                            disabled={user.deleted_at}
+                            title="Manage group assignments"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                              <circle cx="9" cy="7" r="4"></circle>
+                              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            </svg>
+                            Groups
+                          </button>
+                          <button
+                            className="action-btn"
+                            onClick={() => handlePromoteDemote(user)}
+                            disabled={user.deleted_at}
+                            title={user.is_admin ? 'Remove admin privileges' : 'Grant admin privileges'}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                            </svg>
+                            {user.is_admin ? 'Demote' : 'Promote'}
+                          </button>
+                          <button
+                            className="action-btn"
+                            onClick={() => openPasswordResetModal(user)}
+                            disabled={user.deleted_at}
+                            title="Reset user password"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                            </svg>
+                            Password
+                          </button>
+                          <button
+                            className="action-btn danger"
+                            onClick={() => handleDelete(user)}
+                            disabled={user.deleted_at}
+                            title="Delete user"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                          </button>
+                        </>
+                      )
                     ) : (
-                      <>
-                        <button
-                          className="user-action-btn"
-                          disabled={user.deleted_at}
-                          onClick={() => handlePromoteDemote(user)}
-                        >
-                          {user.is_admin ? 'Demote' : 'Promote'}
-                        </button>
-                        <button
-                          className="user-action-btn"
-                          disabled={user.deleted_at}
-                          onClick={() => openGroupModal(user)}
-                        >
-                          Groups
-                        </button>
-                        <button
-                          className="user-action-btn"
-                          disabled={user.deleted_at}
-                          onClick={() => openPasswordResetModal(user)}
-                        >
-                          Reset Password
-                        </button>
-                        <button
-                          className="user-action-btn danger"
-                          disabled={user.deleted_at}
-                          onClick={() => handleDelete(user)}
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )
-                  ) : (
-                    <Link 
-                      to={`/users/${user.id}/profile`}
-                      className="user-action-btn"
-                      title={`View ${user.username}'s profile`}
-                    >
-                      View Profile
-                    </Link>
-                  )}
+                      <Link 
+                        to={`/users/${user.id}/profile`}
+                        className="action-btn primary"
+                      >
+                        View Profile
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
+          
+          {filteredUsers.length === 0 && (
+            <div className="users-empty">
+              <p>No users found matching your criteria.</p>
+            </div>
+          )}
         </>
       )}
       {/* Group assignment modal */}
