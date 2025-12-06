@@ -13,14 +13,14 @@ export const usersApi = {
   resetPassword: (userId: number, newPassword: string) => api.post(`/admin/users/${userId}/reset-password`, { new_password: newPassword }),
 };
 
-// Group Admin API (site admin only)
+// Group Admin API (accessible by site admins and group admins)
 export const groupAdminApi = {
   // Get members of a group with their admin status
-  getMembers: (groupId: number) => api.get<GroupMember[]>(`/admin/groups/${groupId}/members`),
-  // Promote a user to group admin
-  promoteToGroupAdmin: (groupId: number, userId: number) => api.post(`/admin/groups/${groupId}/admins/${userId}`),
-  // Demote a user from group admin
-  demoteFromGroupAdmin: (groupId: number, userId: number) => api.delete(`/admin/groups/${groupId}/admins/${userId}`),
+  getMembers: (groupId: number) => api.get<GroupMember[]>(`/groups/${groupId}/members`),
+  // Promote a user to group admin (site admins and group admins can do this for their groups)
+  promoteToGroupAdmin: (groupId: number, userId: number) => api.post(`/groups/${groupId}/admins/${userId}`),
+  // Demote a user from group admin (site admins and group admins can do this for their groups)
+  demoteFromGroupAdmin: (groupId: number, userId: number) => api.delete(`/groups/${groupId}/admins/${userId}`),
 };
 import axios from 'axios';
 

@@ -160,6 +160,12 @@ func main() {
 		// Statistics routes (accessible by authenticated users, filtered by permissions)
 		protected.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
 
+		// Group admin management (accessible by site admins and group admins)
+		// Authorization is checked within the handlers
+		protected.POST("/groups/:id/admins/:userId", handlers.PromoteGroupAdmin(db))
+		protected.DELETE("/groups/:id/admins/:userId", handlers.DemoteGroupAdmin(db))
+		protected.GET("/groups/:id/members", handlers.GetGroupMembers(db))
+
 		// Admin only routes
 		admin := protected.Group("/admin")
 		admin.Use(middleware.AdminRequired())
@@ -180,11 +186,6 @@ func main() {
 			admin.POST("/groups/upload-image", handlers.UploadGroupImage())
 			admin.POST("/users/:userId/groups/:groupId", handlers.AddUserToGroup(db))
 			admin.DELETE("/users/:userId/groups/:groupId", handlers.RemoveUserFromGroup(db))
-
-			// Group admin management (site admin only)
-			admin.POST("/groups/:id/admins/:userId", handlers.PromoteGroupAdmin(db))
-			admin.DELETE("/groups/:id/admins/:userId", handlers.DemoteGroupAdmin(db))
-			admin.GET("/groups/:id/members", handlers.GetGroupMembers(db))
 
 			// Announcement routes (admin only)
 			admin.POST("/announcements", handlers.CreateAnnouncement(db, emailService, groupMeService))

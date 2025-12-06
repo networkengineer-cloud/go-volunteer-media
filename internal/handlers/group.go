@@ -347,9 +347,12 @@ func IsGroupAdminOrSiteAdmin(c *gin.Context, db *gorm.DB, groupID uint) bool {
 }
 
 // PromoteGroupAdmin promotes a user to group admin status for a specific group
+// Accessible by site admins or group admins of the specific group
 func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
+		
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -358,6 +361,29 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
+		// Get current user
+		currentUserID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		// Check authorization: must be site admin OR group admin of this group
+		var currentUser models.User
+		if err := db.WithContext(ctx).First(&currentUser, currentUserID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
+			return
+		}
+
+		if !currentUser.IsAdmin && !IsGroupAdmin(db, currentUserID.(uint), uint(groupID)) {
+			logger.WithFields(map[string]interface{}{
+				"current_user_id": currentUserID,
+				"group_id":        groupID,
+			}).Warn("Unauthorized attempt to promote group admin")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to promote users"})
 			return
 		}
 
@@ -399,9 +425,12 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 }
 
 // DemoteGroupAdmin removes group admin status from a user for a specific group
+// Accessible by site admins or group admins of the specific group
 func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
+		
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -410,6 +439,29 @@ func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
+		// Get current user
+		currentUserID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		// Check authorization: must be site admin OR group admin of this group
+		var currentUser models.User
+		if err := db.WithContext(ctx).First(&currentUser, currentUserID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
+			return
+		}
+
+		if !currentUser.IsAdmin && !IsGroupAdmin(db, currentUserID.(uint), uint(groupID)) {
+			logger.WithFields(map[string]interface{}{
+				"current_user_id": currentUserID,
+				"group_id":        groupID,
+			}).Warn("Unauthorized attempt to demote group admin")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to demote users"})
 			return
 		}
 
