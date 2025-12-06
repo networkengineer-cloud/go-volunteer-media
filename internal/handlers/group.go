@@ -352,7 +352,7 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
-		
+
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -430,7 +430,7 @@ func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
-		
+
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})

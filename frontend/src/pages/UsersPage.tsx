@@ -199,6 +199,15 @@ const UsersPage: React.FC = () => {
     return member?.is_group_admin || false;
   };
 
+  // Check if current user is a group admin of a specific group
+  const isCurrentUserGroupAdminOf = (groupId: number): boolean => {
+    if (!currentUser) return false;
+    const members = groupMembers.get(groupId);
+    if (!members) return false;
+    const member = members.find(m => m.user_id === currentUser.id);
+    return member?.is_group_admin || false;
+  };
+
   // Filter and sort users
   React.useEffect(() => {
     let filtered = [...users];
@@ -675,12 +684,13 @@ const UsersPage: React.FC = () => {
                       <div className="group-list-simple">
                         {user.groups.map(g => {
                           const isGroupAdmin = isUserGroupAdmin(user.id, g.id);
+                          const canManageThisGroup = isAdmin || isCurrentUserGroupAdminOf(g.id);
                           return (
                             <div key={g.id} className="group-item-simple">
                               <Link to={`/groups/${g.id}`} className="group-name">
                                 {g.name}
                               </Link>
-                              {isAdmin && !user.is_admin && (
+                              {canManageThisGroup && !user.is_admin && (
                                 <button
                                   onClick={() => handleToggleGroupAdmin(user.id, g.id, isGroupAdmin)}
                                   className={`admin-toggle ${isGroupAdmin ? 'is-admin' : ''}`}
@@ -692,7 +702,7 @@ const UsersPage: React.FC = () => {
                                     : (isGroupAdmin ? 'Group Admin ✓' : 'Make Group Admin')}
                                 </button>
                               )}
-                              {!isAdmin && isGroupAdmin && (
+                              {!canManageThisGroup && isGroupAdmin && (
                                 <span className="admin-label">Group Admin</span>
                               )}
                             </div>
@@ -744,13 +754,15 @@ const UsersPage: React.FC = () => {
                         </button>
                       ) : (
                         <>
-                          <button
-                            className="action-btn secondary"
-                            onClick={() => openGroupModal(user)}
-                            disabled={user.deleted_at}
-                          >
-                            Manage Groups
-                          </button>
+                          {isAdmin && (
+                            <button
+                              className="action-btn secondary"
+                              onClick={() => openGroupModal(user)}
+                              disabled={user.deleted_at}
+                            >
+                              Manage Groups
+                            </button>
+                          )}
                           <button
                             className="action-btn secondary"
                             onClick={() => openPasswordResetModal(user)}

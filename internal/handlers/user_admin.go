@@ -180,7 +180,7 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 		userId := c.Param("userId")
-		
+
 		var req AdminResetPasswordRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -214,14 +214,14 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 			// Check if current user is group admin of any group the target user belongs to
 			for _, targetGroup := range user.Groups {
 				var userGroup models.UserGroup
-				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?", 
+				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
 					currentUserID, targetGroup.ID, true).First(&userGroup).Error
 				if err == nil {
 					hasAccess = true
 					break
 				}
 			}
-			
+
 			if !hasAccess {
 				logger.WithFields(map[string]interface{}{
 					"current_user_id": currentUserID,
