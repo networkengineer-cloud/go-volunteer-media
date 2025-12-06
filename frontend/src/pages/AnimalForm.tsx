@@ -262,7 +262,7 @@ const AnimalForm: React.FC = () => {
     if (!id || !groupId) return;
 
     try {
-      await animalsApi.setProfilePicture(parseInt(id), imageId);
+      await animalsApi.setProfilePicture(parseInt(groupId), parseInt(id), imageId);
       const selectedImage = availableImages.find(img => img.id === imageId);
       if (selectedImage) {
         setFormData({ ...formData, image_url: selectedImage.image_url });

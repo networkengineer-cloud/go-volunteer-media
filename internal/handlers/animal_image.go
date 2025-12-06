@@ -332,6 +332,98 @@ func SetAnimalProfilePicture(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// SetAnimalProfilePictureGroupScoped sets an image as the animal's profile picture (group admin access)
+// PUT /api/groups/:groupId/animals/:animalId/images/:imageId/set-profile
+func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		logger := middleware.GetLogger(c)
+		groupID := c.Param("id")
+		animalID := c.Param("animalId")
+		imageID := c.Param("imageId")
+
+		// Get user context
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check if user is group admin
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required for this group"})
+			return
+		}
+
+		// Verify the animal belongs to this group
+		var animal models.Animal
+		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found in this group"})
+			return
+		}
+
+		// Get the image
+		var animalImage models.AnimalImage
+		if err := db.Where("id = ? AND animal_id = ?", imageID, animalID).First(&animalImage).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Image not found"})
+			return
+		}
+
+		// Start transaction
+		tx := db.Begin()
+		defer func() {
+			if r := recover(); r != nil {
+				tx.Rollback()
+			}
+		}()
+
+		// Unset any existing profile picture for this animal
+		if err := tx.Model(&models.AnimalImage{}).
+			Where("animal_id = ? AND is_profile_picture = ?", animalID, true).
+			Update("is_profile_picture", false).Error; err != nil {
+			tx.Rollback()
+			logger.Error("Failed to unset existing profile picture", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile picture"})
+			return
+		}
+
+		// Set the new profile picture
+		if err := tx.Model(&animalImage).Update("is_profile_picture", true).Error; err != nil {
+			tx.Rollback()
+			logger.Error("Failed to set new profile picture", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile picture"})
+			return
+		}
+
+		// Update the animal's image_url
+		if err := tx.Model(&models.Animal{}).
+			Where("id = ?", animalID).
+			Update("image_url", animalImage.ImageURL).Error; err != nil {
+			tx.Rollback()
+			logger.Error("Failed to update animal image_url", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal profile picture"})
+			return
+		}
+
+		// Commit transaction
+		if err := tx.Commit().Error; err != nil {
+			logger.Error("Failed to commit transaction", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile picture"})
+			return
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"image_id":  imageID,
+			"animal_id": animalID,
+			"group_id":  groupID,
+		}).Info("Profile picture updated successfully by group admin")
+
+		// Reload with user data
+		db.Preload("User").First(&animalImage, animalImage.ID)
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Profile picture updated successfully",
+			"image":   animalImage,
+		})
+	}
+}
+
 // GetDeletedImages returns all soft-deleted images for admin monitoring (admin only)
 func GetDeletedImages(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {

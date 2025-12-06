@@ -238,6 +238,7 @@ func main() {
 			group.GET("/animals/:animalId/images", handlers.GetAnimalImages(db))
 			group.POST("/animals/:animalId/images", handlers.UploadAnimalImageToGallery(db))
 			group.DELETE("/animals/:animalId/images/:imageId", handlers.DeleteAnimalImage(db))
+			group.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePictureGroupScoped(db))
 
 			// Animal comments - all group members can view, add, and edit own comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))

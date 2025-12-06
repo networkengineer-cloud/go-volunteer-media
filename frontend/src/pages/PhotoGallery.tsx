@@ -138,10 +138,10 @@ const PhotoGallery: React.FC = () => {
   };
 
   const handleSetProfilePicture = async (imageId: number) => {
-    if (!id) return;
+    if (!id || !groupId) return;
 
     try {
-      await animalsApi.setProfilePicture(Number(id), imageId);
+      await animalsApi.setProfilePicture(Number(groupId), Number(id), imageId);
       showToast('Profile picture updated', 'success');
       loadData(Number(groupId), Number(id)); // Reload to show new profile badge
     } catch (error) {

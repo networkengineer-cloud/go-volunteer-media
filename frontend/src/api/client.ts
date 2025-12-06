@@ -433,8 +433,8 @@ export const animalsApi = {
     api.delete('/groups/' + groupId + '/animals/' + animalId + '/images/' + imageId),
   getDeletedImages: (groupId: number) =>
     api.get<AnimalImage[]>('/admin/groups/' + groupId + '/deleted-images'),
-  setProfilePicture: (animalId: number, imageId: number) =>
-    api.put<AnimalImage>('/admin/animals/' + animalId + '/images/' + imageId + '/set-profile'),
+  setProfilePicture: (groupId: number, animalId: number, imageId: number) =>
+    api.put<AnimalImage>(`/groups/${groupId}/animals/${animalId}/images/${imageId}/set-profile`),
   // Admin bulk operations
   getAllForAdmin: (status?: string, groupId?: number, name?: string) => {
     const params: Record<string, unknown> = {};
