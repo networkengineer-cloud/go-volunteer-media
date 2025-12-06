@@ -40,6 +40,9 @@ func SeedData(db *gorm.DB, force bool) error {
 		if err := db.Exec("DELETE FROM animal_comments").Error; err != nil {
 			return fmt.Errorf("failed to delete animal_comments: %w", err)
 		}
+		if err := db.Exec("DELETE FROM animal_images").Error; err != nil {
+			return fmt.Errorf("failed to delete animal_images: %w", err)
+		}
 		if err := db.Exec("DELETE FROM animals").Error; err != nil {
 			return fmt.Errorf("failed to delete animals: %w", err)
 		}
