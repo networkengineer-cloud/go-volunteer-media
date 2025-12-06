@@ -95,6 +95,12 @@ func Initialize() (*gorm.DB, error) {
 func RunMigrations(db *gorm.DB) error {
 	logging.Info("Running database migrations...")
 
+	// CRITICAL: Fix NULL group_ids BEFORE AutoMigrate runs
+	// AutoMigrate will fail when trying to add NOT NULL constraint to existing NULL values
+	if err := fixAnimalTagsGroupIDBeforeMigration(db); err != nil {
+		logging.WithField("error", err.Error()).Warn("Pre-migration fix for animal_tags failed (may be first run)")
+	}
+
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
@@ -121,12 +127,6 @@ func RunMigrations(db *gorm.DB) error {
 		return err
 	}
 
-	// Handle existing null group_ids in animal_tags before creating new tags
-	// This is needed for databases upgraded from the non-group-specific tags version
-	if err := fixAnimalTagsGroupID(db); err != nil {
-		return err
-	}
-
 	// Create default animal tags if they don't exist
 	if err := createDefaultAnimalTags(db); err != nil {
 		return err
@@ -145,55 +145,44 @@ func RunMigrations(db *gorm.DB) error {
 	return nil
 }
 
-// fixAnimalTagsGroupID migrates existing animal_tags with NULL group_id to use the first group
-// This handles databases that were upgraded from the version where tags weren't group-specific
-func fixAnimalTagsGroupID(db *gorm.DB) error {
-	// Check if the animal_tags table exists and has columns with NULL group_id
+// fixAnimalTagsGroupIDBeforeMigration fixes NULL group_ids using raw SQL before AutoMigrate runs
+// This MUST run before AutoMigrate because GORM will fail trying to add NOT NULL to column with NULLs
+func fixAnimalTagsGroupIDBeforeMigration(db *gorm.DB) error {
+	// Check if animal_tags table exists
+	var tableExists bool
+	db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'animal_tags')").Scan(&tableExists)
+	if !tableExists {
+		return nil // Table doesn't exist yet, nothing to fix
+	}
+
+	// Check if there are NULL group_ids
 	var nullCount int64
-	result := db.Raw("SELECT COUNT(*) FROM animal_tags WHERE group_id IS NULL").Scan(&nullCount)
-	if result.Error != nil {
-		// Table might not exist yet, that's fine
-		return nil
+	if err := db.Raw("SELECT COUNT(*) FROM animal_tags WHERE group_id IS NULL").Scan(&nullCount).Error; err != nil {
+		return nil // Column might not exist yet
 	}
 
 	if nullCount == 0 {
-		// No NULL values, nothing to fix
-		return nil
+		return nil // No NULL values to fix
 	}
 
-	logging.WithField("count", nullCount).Info("Found animal_tags with NULL group_id, assigning to first group...")
+	logging.WithField("count", nullCount).Info("Fixing NULL group_ids in animal_tags before migration...")
 
-	// Get the first group (should be modsquad)
-	var group models.Group
-	if err := db.First(&group).Error; err != nil {
-		return fmt.Errorf("failed to find default group for animal_tags migration: %w", err)
+	// Get the first group ID using raw SQL
+	var groupID uint
+	if err := db.Raw("SELECT id FROM groups ORDER BY id LIMIT 1").Scan(&groupID).Error; err != nil {
+		return fmt.Errorf("no groups exist to assign tags to: %w", err)
 	}
 
-	// First, drop the NOT NULL constraint if it exists
-	// Use a transaction to ensure atomicity
-	tx := db.Begin()
-
-	// Temporarily drop the NOT NULL constraint
-	if err := tx.Exec("ALTER TABLE animal_tags DROP CONSTRAINT IF EXISTS animal_tags_group_id_check").Error; err != nil {
-		// Constraint might not exist with that name, try another approach
-		// This is just a cleanup step, so we can ignore the error
-	}
-
-	// Update all NULL group_ids to the first group
-	if err := tx.Model(&models.AnimalTag{}).Where("group_id IS NULL").Update("group_id", group.ID).Error; err != nil {
-		tx.Rollback()
-		return fmt.Errorf("failed to fix animal_tags group_id: %w", err)
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		return fmt.Errorf("failed to commit animal_tags migration: %w", err)
+	// Update NULL group_ids using raw SQL (no GORM model involvement)
+	result := db.Exec("UPDATE animal_tags SET group_id = ? WHERE group_id IS NULL", groupID)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update NULL group_ids: %w", result.Error)
 	}
 
 	logging.WithFields(map[string]interface{}{
-		"count":      nullCount,
-		"group_id":   group.ID,
-		"group_name": group.Name,
-	}).Info("Successfully migrated animal_tags to group")
+		"rows_updated": result.RowsAffected,
+		"group_id":     groupID,
+	}).Info("Fixed NULL group_ids in animal_tags")
 
 	return nil
 }

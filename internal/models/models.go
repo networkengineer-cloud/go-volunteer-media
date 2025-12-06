@@ -192,7 +192,7 @@ type AnimalTag struct {
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	GroupID   uint           `gorm:"not null;index;uniqueIndex:idx_animal_tag_group_name" json:"group_id"` // Group this tag belongs to
+	GroupID   uint           `gorm:"index;uniqueIndex:idx_animal_tag_group_name" json:"group_id"` // Group this tag belongs to - will be enforced as NOT NULL after migration
 	Name      string         `gorm:"not null;uniqueIndex:idx_animal_tag_group_name" json:"name"`
 	Category  string         `gorm:"not null" json:"category"`       // "behavior" or "walker_status"
 	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
