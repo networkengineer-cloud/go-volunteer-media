@@ -58,7 +58,7 @@ const UsersPage: React.FC = () => {
 
   // Fetch group members with admin status for group admin management
   const fetchGroupMembers = React.useCallback(async (groups: Group[]) => {
-    if (!isAdmin || groups.length === 0) return;
+    if ((!isAdmin && !isGroupAdmin) || groups.length === 0) return;
 
     try {
       const membersMap = new Map<number, GroupMember[]>();
@@ -70,7 +70,7 @@ const UsersPage: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch group members:', err);
     }
-  }, [isAdmin]);
+  }, [isAdmin, isGroupAdmin]);
 
   // Fetch users and statistics (active or deleted)
   const fetchUsers = React.useCallback(async () => {
