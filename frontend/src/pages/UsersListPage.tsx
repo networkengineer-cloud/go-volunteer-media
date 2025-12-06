@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../hooks/useAuth';
-import { usersApi, groupsApi } from '../api/client';
+import { usersApi, groupsApi, groupAdminApi } from '../api/client';
 import type { User, Group, GroupMember } from '../api/client';
 
 // Create API instance for authenticated requests
@@ -28,6 +28,24 @@ const UsersListPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [filterGroup, setFilterGroup] = React.useState<number | 'all'>('all');
   const [allGroups, setAllGroups] = React.useState<Group[]>([]);
+  const [groupMembers, setGroupMembers] = React.useState<Map<number, GroupMember[]>>(new Map());
+  const [updatingGroupAdmin, setUpdatingGroupAdmin] = React.useState<{userId: number, groupId: number} | null>(null);
+
+  // Fetch group members with admin status for site admins
+  const fetchGroupMembers = React.useCallback(async (groups: Group[]) => {
+    if (!isAdmin || groups.length === 0) return;
+
+    try {
+      const membersMap = new Map<number, GroupMember[]>();
+      for (const group of groups) {
+        const membersRes = await groupAdminApi.getMembers(group.id);
+        membersMap.set(group.id, membersRes.data);
+      }
+      setGroupMembers(membersMap);
+    } catch (err) {
+      console.error('Failed to fetch group members:', err);
+    }
+  }, [isAdmin]);
 
   // Fetch users based on user role
   const fetchUsers = React.useCallback(async () => {
@@ -98,9 +116,52 @@ const UsersListPage: React.FC = () => {
     }
   }, [isAdmin, currentUser?.groups]);
 
+  // Toggle group admin status
+  const handleToggleGroupAdmin = async (userId: number, groupId: number, isCurrentlyAdmin: boolean) => {
+    if (!isAdmin) return;
+
+    setUpdatingGroupAdmin({ userId, groupId });
+    try {
+      if (isCurrentlyAdmin) {
+        await groupAdminApi.demoteFromGroupAdmin(groupId, userId);
+      } else {
+        await groupAdminApi.promoteToGroupAdmin(groupId, userId);
+      }
+      
+      // Refresh the group members for this group
+      const membersRes = await groupAdminApi.getMembers(groupId);
+      setGroupMembers(prev => {
+        const newMap = new Map(prev);
+        newMap.set(groupId, membersRes.data);
+        return newMap;
+      });
+    } catch (err) {
+      console.error('Failed to toggle group admin status:', err);
+      const error = err as { response?: { data?: { error?: string } } };
+      setError(error.response?.data?.error || 'Failed to update group admin status');
+      setTimeout(() => setError(null), 5000);
+    } finally {
+      setUpdatingGroupAdmin(null);
+    }
+  };
+
+  // Check if a user is a group admin for a specific group
+  const isUserGroupAdmin = (userId: number, groupId: number): boolean => {
+    const members = groupMembers.get(groupId);
+    if (!members) return false;
+    const member = members.find(m => m.user_id === userId);
+    return member?.is_group_admin || false;
+  };
+
   React.useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  React.useEffect(() => {
+    if (allGroups.length > 0 && isAdmin) {
+      fetchGroupMembers(allGroups);
+    }
+  }, [allGroups, isAdmin, fetchGroupMembers]);
 
   // Filter and search users
   React.useEffect(() => {
@@ -204,8 +265,9 @@ const UsersListPage: React.FC = () => {
                 <th>Username</th>
                 <th>Email</th>
                 <th>Phone</th>
-                {isAdmin && <th>Admin</th>}
+                {isAdmin && <th>Site Admin</th>}
                 <th>Groups</th>
+                {isAdmin && <th>Group Admin Status</th>}
                 <th>Profile</th>
               </tr>
             </thead>
@@ -232,6 +294,31 @@ const UsersListPage: React.FC = () => {
                       ))
                     ) : '-'}
                   </td>
+                  {isAdmin && (
+                    <td>
+                      {user.groups && user.groups.length > 0 ? (
+                        <div className="group-admin-controls">
+                          {user.groups.map(g => {
+                            const isGroupAdmin = isUserGroupAdmin(user.id, g.id);
+                            const isUpdating = updatingGroupAdmin?.userId === user.id && updatingGroupAdmin?.groupId === g.id;
+                            return (
+                              <div key={g.id} className="group-admin-row">
+                                <span className="group-admin-group-name">{g.name}:</span>
+                                <button
+                                  onClick={() => handleToggleGroupAdmin(user.id, g.id, isGroupAdmin)}
+                                  className={`group-admin-toggle-btn ${isGroupAdmin ? 'is-admin' : 'not-admin'}`}
+                                  disabled={isUpdating || user.is_admin}
+                                  title={user.is_admin ? 'Site admins have all permissions' : (isGroupAdmin ? 'Remove group admin status' : 'Make group admin')}
+                                >
+                                  {isUpdating ? '...' : (isGroupAdmin ? '✓ Group Admin' : 'Make Admin')}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : '-'}
+                    </td>
+                  )}
                   <td>
                     <Link 
                       to={`/users/${user.id}/profile`}
@@ -256,7 +343,7 @@ const UsersListPage: React.FC = () => {
                     <div className="user-card-email">{user.email}</div>
                   </div>
                   {isAdmin && user.is_admin && (
-                    <span className="role-badge admin">Admin</span>
+                    <span className="role-badge admin">Site Admin</span>
                   )}
                 </div>
                 <div className="user-card-info">
@@ -285,6 +372,32 @@ const UsersListPage: React.FC = () => {
                       ) : '-'}
                     </span>
                   </div>
+                  {isAdmin && user.groups && user.groups.length > 0 && (
+                    <div className="user-card-info-row">
+                      <span className="user-card-info-label">Group Admin:</span>
+                      <div className="user-card-info-value">
+                        <div className="group-admin-controls mobile">
+                          {user.groups.map(g => {
+                            const isGroupAdmin = isUserGroupAdmin(user.id, g.id);
+                            const isUpdating = updatingGroupAdmin?.userId === user.id && updatingGroupAdmin?.groupId === g.id;
+                            return (
+                              <div key={g.id} className="group-admin-row">
+                                <span className="group-admin-group-name">{g.name}:</span>
+                                <button
+                                  onClick={() => handleToggleGroupAdmin(user.id, g.id, isGroupAdmin)}
+                                  className={`group-admin-toggle-btn ${isGroupAdmin ? 'is-admin' : 'not-admin'}`}
+                                  disabled={isUpdating || user.is_admin}
+                                  title={user.is_admin ? 'Site admins have all permissions' : (isGroupAdmin ? 'Remove group admin status' : 'Make group admin')}
+                                >
+                                  {isUpdating ? '...' : (isGroupAdmin ? '✓ Admin' : 'Make Admin')}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="user-card-actions">
                   <Link 

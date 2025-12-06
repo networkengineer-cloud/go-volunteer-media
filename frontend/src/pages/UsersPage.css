@@ -710,3 +710,98 @@
 [data-theme="dark"] .no-activity {
   color: var(--dark-text-tertiary, #6b7280);
 }
+
+/* Group Admin Controls */
+.group-admin-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.group-admin-controls.mobile {
+  gap: 0.375rem;
+}
+
+.group-admin-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.group-admin-group-name {
+  color: var(--text-secondary);
+  font-weight: 500;
+  min-width: 80px;
+}
+
+[data-theme="dark"] .group-admin-group-name {
+  color: var(--dark-text-secondary);
+}
+
+.group-admin-toggle-btn {
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border: 1px solid;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.group-admin-toggle-btn.is-admin {
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand);
+}
+
+.group-admin-toggle-btn.is-admin:hover:not(:disabled) {
+  background: var(--brand-darker);
+  border-color: var(--brand-darker);
+}
+
+.group-admin-toggle-btn.not-admin {
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-color: var(--neutral-300);
+}
+
+.group-admin-toggle-btn.not-admin:hover:not(:disabled) {
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand);
+}
+
+.group-admin-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Dark mode for group admin controls */
+[data-theme="dark"] .group-admin-toggle-btn.is-admin {
+  background: var(--teal);
+  border-color: var(--teal);
+}
+
+[data-theme="dark"] .group-admin-toggle-btn.is-admin:hover:not(:disabled) {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+[data-theme="dark"] .group-admin-toggle-btn.not-admin {
+  background: var(--dark-surface-alt);
+  color: var(--dark-text-secondary);
+  border-color: var(--neutral-700);
+}
+
+[data-theme="dark"] .group-admin-toggle-btn.not-admin:hover:not(:disabled) {
+  background: var(--teal);
+  color: var(--dark-text-primary);
+  border-color: var(--teal);
+}
+
+/* Mobile card view adjustments */
+.user-card-info .group-admin-controls {
+  margin-top: 0.25rem;
+}
