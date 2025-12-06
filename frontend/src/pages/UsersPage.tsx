@@ -406,6 +406,11 @@ const UsersPage: React.FC = () => {
   const [createLoading, setCreateLoading] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = React.useState<string | null>(null);
+  
+  // Form validation state
+  const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
+  const [touchedFields, setTouchedFields] = React.useState<Set<string>>(new Set());
+  const [showPassword, setShowPassword] = React.useState(false);
 
 
   // Fetch all groups for create form
@@ -415,9 +420,78 @@ const UsersPage: React.FC = () => {
     }
   }, [showCreate, allGroups.length]);
 
+  // Reset form when closing
+  React.useEffect(() => {
+    if (!showCreate) {
+      setCreateData({ username: '', email: '', password: '', is_admin: false, groupIds: [] });
+      setFieldErrors({});
+      setTouchedFields(new Set());
+      setCreateError(null);
+      setCreateSuccess(null);
+      setShowPassword(false);
+    }
+  }, [showCreate]);
+
+  // Validation functions
+  const validateUsername = (value: string): string => {
+    if (!value) return 'Username is required';
+    if (value.length < 3) return 'Username must be at least 3 characters';
+    if (value.length > 50) return 'Username must be less than 50 characters';
+    if (!/^[a-zA-Z0-9_-]+$/.test(value)) return 'Username can only contain letters, numbers, hyphens, and underscores';
+    return '';
+  };
+
+  const validateEmail = (value: string): string => {
+    if (!value) return 'Email is required';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'Please enter a valid email address';
+    return '';
+  };
+
+  const validatePassword = (value: string): string => {
+    if (!value) return 'Password is required';
+    if (value.length < 8) return 'Password must be at least 8 characters';
+    if (value.length > 72) return 'Password must be less than 72 characters';
+    return '';
+  };
+
+  const getPasswordStrength = (password: string): { strength: 'weak' | 'medium' | 'strong'; label: string; color: string } => {
+    if (password.length < 8) return { strength: 'weak', label: 'Too short', color: '#ef4444' };
+    
+    let score = 0;
+    if (password.length >= 12) score++;
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^a-zA-Z0-9]/.test(password)) score++;
+    
+    if (score <= 1) return { strength: 'weak', label: 'Weak', color: '#ef4444' };
+    if (score <= 2) return { strength: 'medium', label: 'Medium', color: '#f59e0b' };
+    return { strength: 'strong', label: 'Strong', color: '#10b981' };
+  };
+
   const handleCreateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
     setCreateData(d => ({ ...d, [name]: type === 'checkbox' ? checked : value }));
+    
+    // Validate on change if field has been touched
+    if (touchedFields.has(name)) {
+      let error = '';
+      if (name === 'username') error = validateUsername(value);
+      else if (name === 'email') error = validateEmail(value);
+      else if (name === 'password') error = validatePassword(value);
+      
+      setFieldErrors(prev => ({ ...prev, [name]: error }));
+    }
+  };
+
+  const handleBlur = (field: string) => {
+    setTouchedFields(prev => new Set(prev).add(field));
+    
+    let error = '';
+    if (field === 'username') error = validateUsername(createData.username);
+    else if (field === 'email') error = validateEmail(createData.email);
+    else if (field === 'password') error = validatePassword(createData.password);
+    
+    setFieldErrors(prev => ({ ...prev, [field]: error }));
   };
 
   const handleCreateGroupToggle = (groupId: number) => {
@@ -452,6 +526,25 @@ const UsersPage: React.FC = () => {
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate all fields
+    const errors: Record<string, string> = {
+      username: validateUsername(createData.username),
+      email: validateEmail(createData.email),
+      password: validatePassword(createData.password),
+    };
+    
+    // Mark all fields as touched
+    setTouchedFields(new Set(['username', 'email', 'password']));
+    setFieldErrors(errors);
+    
+    // Check if there are any errors
+    const hasErrors = Object.values(errors).some(error => error !== '');
+    if (hasErrors) {
+      setCreateError('Please fix the errors above before submitting');
+      return;
+    }
+    
     setCreateLoading(true);
     setCreateError(null);
     setCreateSuccess(null);
@@ -463,12 +556,14 @@ const UsersPage: React.FC = () => {
         is_admin: createData.is_admin,
         group_ids: createData.groupIds,
       });
-      setCreateSuccess('User created successfully');
-      setCreateData({ username: '', email: '', password: '', is_admin: false, groupIds: [] });
-      fetchUsers();
-      setShowCreate(false);
+      setCreateSuccess('User created successfully! Redirecting...');
+      setTimeout(() => {
+        setShowCreate(false);
+        fetchUsers();
+      }, 1500);
     } catch (err: unknown) {
-      setCreateError(err.response?.data?.error || 'Failed to create user');
+      const error = err as { response?: { data?: { error?: string } } };
+      setCreateError(error.response?.data?.error || 'Failed to create user');
     } finally {
       setCreateLoading(false);
     }
@@ -587,52 +682,258 @@ const UsersPage: React.FC = () => {
 
       {canManageUsers && showCreate && !showDeleted && (
         <form className="users-create-form" onSubmit={handleCreateSubmit}>
-          <div>
-            <label>
-              Username
-              <input name="username" value={createData.username} onChange={handleCreateChange} required minLength={3} maxLength={50} autoComplete="off" />
+          <div className="create-form-header">
+            <h2>Add New User</h2>
+            <p className="form-description">Create a new user account with optional group assignments and admin privileges.</p>
+          </div>
+
+          <div className="form-grid">
+            {/* Username Field */}
+            <div className="form-field">
+              <label htmlFor="create-username" className="form-label">
+                Username <span className="required">*</span>
+              </label>
+              <input
+                id="create-username"
+                name="username"
+                type="text"
+                value={createData.username}
+                onChange={handleCreateChange}
+                onBlur={() => handleBlur('username')}
+                className={`form-input ${fieldErrors.username && touchedFields.has('username') ? 'input-error' : ''}`}
+                placeholder="e.g. john_doe"
+                autoComplete="off"
+                aria-invalid={!!fieldErrors.username && touchedFields.has('username')}
+                aria-describedby={fieldErrors.username && touchedFields.has('username') ? 'username-error' : 'username-hint'}
+              />
+              {!fieldErrors.username && (
+                <span id="username-hint" className="field-hint">
+                  3-50 characters, letters, numbers, hyphens, and underscores only
+                </span>
+              )}
+              {fieldErrors.username && touchedFields.has('username') && (
+                <span id="username-error" className="field-error" role="alert">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM7 4h2v5H7V4zm0 6h2v2H7v-2z" fill="currentColor"/>
+                  </svg>
+                  {fieldErrors.username}
+                </span>
+              )}
+            </div>
+
+            {/* Email Field */}
+            <div className="form-field">
+              <label htmlFor="create-email" className="form-label">
+                Email Address <span className="required">*</span>
+              </label>
+              <input
+                id="create-email"
+                name="email"
+                type="email"
+                value={createData.email}
+                onChange={handleCreateChange}
+                onBlur={() => handleBlur('email')}
+                className={`form-input ${fieldErrors.email && touchedFields.has('email') ? 'input-error' : ''}`}
+                placeholder="user@example.com"
+                autoComplete="off"
+                aria-invalid={!!fieldErrors.email && touchedFields.has('email')}
+                aria-describedby={fieldErrors.email && touchedFields.has('email') ? 'email-error' : 'email-hint'}
+              />
+              {!fieldErrors.email && (
+                <span id="email-hint" className="field-hint">
+                  User will receive login credentials at this email
+                </span>
+              )}
+              {fieldErrors.email && touchedFields.has('email') && (
+                <span id="email-error" className="field-error" role="alert">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM7 4h2v5H7V4zm0 6h2v2H7v-2z" fill="currentColor"/>
+                  </svg>
+                  {fieldErrors.email}
+                </span>
+              )}
+            </div>
+
+            {/* Password Field */}
+            <div className="form-field">
+              <label htmlFor="create-password" className="form-label">
+                Password <span className="required">*</span>
+              </label>
+              <div className="password-input-wrapper">
+                <input
+                  id="create-password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={createData.password}
+                  onChange={handleCreateChange}
+                  onBlur={() => handleBlur('password')}
+                  className={`form-input ${fieldErrors.password && touchedFields.has('password') ? 'input-error' : ''}`}
+                  placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
+                  aria-invalid={!!fieldErrors.password && touchedFields.has('password')}
+                  aria-describedby={fieldErrors.password && touchedFields.has('password') ? 'password-error' : 'password-hint'}
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"/>
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
+              {!fieldErrors.password && createData.password && (
+                <div className="password-strength">
+                  <div className="strength-bar">
+                    <div
+                      className={`strength-fill strength-${getPasswordStrength(createData.password).strength}`}
+                      style={{ width: getPasswordStrength(createData.password).strength === 'weak' ? '33%' : getPasswordStrength(createData.password).strength === 'medium' ? '66%' : '100%' }}
+                    />
+                  </div>
+                  <span className="strength-label" style={{ color: getPasswordStrength(createData.password).color }}>
+                    {getPasswordStrength(createData.password).label}
+                  </span>
+                </div>
+              )}
+              {!fieldErrors.password && !createData.password && (
+                <span id="password-hint" className="field-hint">
+                  At least 8 characters. Use a mix of letters, numbers, and symbols for better security.
+                </span>
+              )}
+              {fieldErrors.password && touchedFields.has('password') && (
+                <span id="password-error" className="field-error" role="alert">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM7 4h2v5H7V4zm0 6h2v2H7v-2z" fill="currentColor"/>
+                  </svg>
+                  {fieldErrors.password}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Admin Checkbox */}
+          <div className="form-field checkbox-field">
+            <label className="checkbox-label">
+              <input
+                name="is_admin"
+                type="checkbox"
+                checked={createData.is_admin}
+                onChange={handleCreateChange}
+                className="checkbox-input"
+              />
+              <span className="checkbox-box">
+                <svg className="checkbox-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 3L4.5 8.5L2 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </span>
+              <span className="checkbox-text">
+                <strong>Grant admin privileges</strong>
+                <span className="checkbox-description">Admins can manage users, groups, and all animals</span>
+              </span>
             </label>
           </div>
-          <div>
-            <label>
-              Email
-              <input name="email" type="email" value={createData.email} onChange={handleCreateChange} required autoComplete="off" />
-            </label>
-          </div>
-          <div>
-            <label>
-              Password
-              <input name="password" type="password" value={createData.password} onChange={handleCreateChange} required minLength={8} maxLength={72} autoComplete="new-password" />
-            </label>
-          </div>
-          <div>
-            <label>
-              <input name="is_admin" type="checkbox" checked={createData.is_admin} onChange={handleCreateChange} />
-              Admin
-            </label>
-          </div>
-          <div>
-            <label>Assign Groups</label>
-            <ul className="group-list">
-              {allGroups.map(group => (
-                <li key={group.id}>
-                  <label>
+
+          {/* Group Assignment */}
+          <div className="form-field">
+            <label className="form-label">Assign to Groups</label>
+            <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.75rem' }}>
+              Select which groups this user can access. Leave unselected for no group access.
+            </p>
+            <div className="group-checkboxes">
+              {allGroups.length === 0 ? (
+                <div className="no-groups-message">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  No groups available
+                </div>
+              ) : (
+                allGroups.map(group => (
+                  <label key={group.id} className="group-checkbox-label">
                     <input
                       type="checkbox"
                       checked={createData.groupIds.includes(group.id)}
                       onChange={() => handleCreateGroupToggle(group.id)}
+                      className="checkbox-input"
                     />
-                    {group.name}
+                    <span className="checkbox-box">
+                      <svg className="checkbox-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M10 3L4.5 8.5L2 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </span>
+                    <span className="group-name">{group.name}</span>
+                    {group.description && <span className="group-description">{group.description}</span>}
                   </label>
-                </li>
-              ))}
-            </ul>
+                ))
+              )}
+            </div>
           </div>
-          <button className="user-action-btn" type="submit" disabled={createLoading}>
-            {createLoading ? 'Creating…' : 'Create User'}
-          </button>
-          {createError && <div className="users-error">{createError}</div>}
-          {createSuccess && <div className="users-success">{createSuccess}</div>}
+
+          {/* Error and Success Messages */}
+          {createError && (
+            <div className="form-alert alert-error" role="alert">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 0a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1 5h2v6H9V5zm0 8h2v2H9v-2z" fill="currentColor"/>
+              </svg>
+              <span>{createError}</span>
+            </div>
+          )}
+          {createSuccess && (
+            <div className="form-alert alert-success" role="alert">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 0a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-2 14l-4-4 1.41-1.41L8 11.17l6.59-6.59L16 6l-8 8z" fill="currentColor"/>
+              </svg>
+              <span>{createSuccess}</span>
+            </div>
+          )}
+
+          {/* Form Actions */}
+          <div className="form-actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setShowCreate(false)}
+              disabled={createLoading}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={createLoading}
+            >
+              {createLoading ? (
+                <>
+                  <svg className="spinner" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path opacity="0.2" d="M10 0a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" fill="currentColor"/>
+                    <path d="M10 0a10 10 0 0 1 10 10h-2A8 8 0 0 0 10 2V0z" fill="currentColor"/>
+                  </svg>
+                  Creating User...
+                </>
+              ) : (
+                <>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="8.5" cy="7" r="4"/>
+                    <line x1="20" y1="8" x2="20" y2="14"/>
+                    <line x1="23" y1="11" x2="17" y2="11"/>
+                  </svg>
+                  Create User
+                </>
+              )}
+            </button>
+          </div>
         </form>
       )}
       {loading ? (
