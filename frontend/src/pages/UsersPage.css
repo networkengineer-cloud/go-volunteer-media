@@ -947,119 +947,114 @@
   background: var(--teal);
 }
 
-/* Groups Section */
+/* Groups Section - Simpler Layout */
 .user-groups-section {
   min-height: 32px;
 }
 
-.group-tags {
+.group-list-simple {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.625rem;
 }
 
-.group-tag-wrapper {
+.group-item-simple {
   display: flex;
   align-items: center;
-  gap: 0;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
-.group-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.625rem;
-  background: var(--neutral-100);
-  border: 1px solid var(--neutral-200);
-  border-radius: 6px 0 0 6px;
+.group-item-simple:last-child {
+  border-bottom: none;
+}
+
+[data-theme="dark"] .group-item-simple {
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+.group-name {
+  color: var(--brand);
+  font-weight: 500;
+  font-size: 0.9375rem;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.group-name:hover {
+  opacity: 0.8;
+}
+
+[data-theme="dark"] .group-name {
+  color: var(--teal);
+}
+
+.admin-toggle {
+  padding: 0.375rem 0.875rem;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #6b7280;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--text-primary);
-  text-decoration: none;
-  transition: all 0.15s ease;
-}
-
-.group-tag:only-child,
-.group-tag-wrapper:not(:has(.group-admin-btn)) .group-tag {
-  border-radius: 6px;
-}
-
-.group-tag:hover {
-  background: var(--brand);
-  color: white;
-  border-color: var(--brand);
-}
-
-[data-theme="dark"] .group-tag {
-  background: var(--dark-surface-alt);
-  border-color: var(--neutral-700);
-  color: var(--dark-text-primary);
-}
-
-[data-theme="dark"] .group-tag:hover {
-  background: var(--teal);
-  border-color: var(--teal);
-  color: var(--dark-surface);
-}
-
-.group-admin-indicator {
-  color: var(--warning, #f59e0b);
-  font-size: 0.875rem;
-}
-
-.group-admin-btn {
-  width: 24px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--neutral-100);
-  border: 1px solid var(--neutral-200);
-  border-left: none;
-  border-radius: 0 6px 6px 0;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
-.group-admin-btn:hover:not(:disabled) {
-  background: var(--brand);
-  color: white;
+.admin-toggle:hover:not(:disabled) {
+  background: rgba(14, 108, 85, 0.1);
   border-color: var(--brand);
+  color: var(--brand);
+  transform: translateY(-1px);
 }
 
-.group-admin-btn.active {
-  background: var(--brand);
-  color: white;
+.admin-toggle.is-admin {
+  background: rgba(14, 108, 85, 0.15);
   border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 600;
 }
 
-.group-admin-btn.active:hover:not(:disabled) {
-  background: var(--danger);
-  border-color: var(--danger);
-}
-
-.group-admin-btn:disabled {
+.admin-toggle:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-[data-theme="dark"] .group-admin-btn {
+[data-theme="dark"] .admin-toggle {
   background: var(--dark-surface-alt);
   border-color: var(--neutral-700);
   color: var(--dark-text-secondary);
 }
 
-[data-theme="dark"] .group-admin-btn:hover:not(:disabled) {
-  background: var(--teal);
+[data-theme="dark"] .admin-toggle:hover:not(:disabled) {
+  background: rgba(20, 184, 166, 0.15);
   border-color: var(--teal);
+  color: var(--teal);
 }
 
-[data-theme="dark"] .group-admin-btn.active {
-  background: var(--teal);
+[data-theme="dark"] .admin-toggle.is-admin {
+  background: rgba(20, 184, 166, 0.2);
   border-color: var(--teal);
+  color: var(--teal);
+}
+
+.admin-label {
+  padding: 0.375rem 0.875rem;
+  background: rgba(14, 108, 85, 0.15);
+  border: 1px solid var(--brand);
+  border-radius: 6px;
+  color: var(--brand);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .admin-label {
+  background: rgba(20, 184, 166, 0.2);
+  border-color: var(--teal);
+  color: var(--teal);
 }
 
 .no-groups {
@@ -1126,29 +1121,36 @@
 }
 
 .action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem 0.875rem;
   border-radius: 6px;
   font-size: 0.8125rem;
   font-weight: 500;
   border: 1px solid var(--neutral-300);
-  background: var(--surface);
+  background: white;
   color: var(--text-primary);
   cursor: pointer;
   transition: all 0.15s ease;
   text-decoration: none;
+  text-align: center;
 }
 
 .action-btn:hover:not(:disabled) {
+  border-color: var(--brand);
+  color: var(--brand);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.action-btn.secondary {
+  background: white;
+  border-color: var(--neutral-300);
+  color: var(--text-primary);
+}
+
+.action-btn.secondary:hover:not(:disabled) {
   background: var(--brand);
   color: white;
   border-color: var(--brand);
-}
-
-.action-btn:hover:not(:disabled) svg {
-  stroke: white;
 }
 
 .action-btn.primary {
@@ -1162,9 +1164,14 @@
   border-color: var(--brand-darker, #0a5443);
 }
 
+.action-btn.full-width {
+  width: 100%;
+}
+
 .action-btn.danger {
   color: var(--danger);
   border-color: var(--danger-light, #fecaca);
+  background: white;
 }
 
 .action-btn.danger:hover:not(:disabled) {
@@ -1178,20 +1185,20 @@
   cursor: not-allowed;
 }
 
-.action-btn svg {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  flex-shrink: 0;
-}
-
 [data-theme="dark"] .action-btn {
   background: var(--dark-surface-alt);
   border-color: var(--neutral-700);
   color: var(--dark-text-primary);
 }
 
-[data-theme="dark"] .action-btn:hover:not(:disabled) {
+[data-theme="dark"] .action-btn.secondary {
+  background: var(--dark-surface-alt);
+  border-color: var(--neutral-700);
+  color: var(--dark-text-primary);
+}
+
+[data-theme="dark"] .action-btn:hover:not(:disabled),
+[data-theme="dark"] .action-btn.secondary:hover:not(:disabled) {
   background: var(--teal);
   border-color: var(--teal);
   color: var(--dark-surface);
@@ -1204,6 +1211,7 @@
 }
 
 [data-theme="dark"] .action-btn.danger {
+  background: var(--dark-surface-alt);
   color: var(--danger);
   border-color: var(--neutral-700);
 }

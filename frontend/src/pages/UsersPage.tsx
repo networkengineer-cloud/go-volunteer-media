@@ -631,6 +631,7 @@ const UsersPage: React.FC = () => {
           <div className="users-grid">
             {filteredUsers.map(user => {
               const stats = statistics[user.id];
+              const [showDetails, setShowDetails] = React.useState(false);
               return (
                 <div key={user.id} className={`user-card-new ${user.deleted_at ? 'deleted' : ''}`}>
                   {/* Header with user info and badges */}
@@ -653,31 +654,31 @@ const UsersPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Groups with role badges */}
+                  {/* Groups - simpler display */}
                   <div className="user-groups-section">
                     {user.groups && user.groups.length > 0 ? (
-                      <div className="group-tags">
+                      <div className="group-list-simple">
                         {user.groups.map(g => {
                           const isGroupAdmin = isUserGroupAdmin(user.id, g.id);
                           return (
-                            <div key={g.id} className="group-tag-wrapper">
-                              <Link to={`/groups/${g.id}`} className="group-tag">
+                            <div key={g.id} className="group-item-simple">
+                              <Link to={`/groups/${g.id}`} className="group-name">
                                 {g.name}
-                                {isGroupAdmin && !user.is_admin && (
-                                  <span className="group-admin-indicator" title="Group Admin">★</span>
-                                )}
                               </Link>
                               {isAdmin && !user.is_admin && (
                                 <button
                                   onClick={() => handleToggleGroupAdmin(user.id, g.id, isGroupAdmin)}
-                                  className={`group-admin-btn ${isGroupAdmin ? 'active' : ''}`}
+                                  className={`admin-toggle ${isGroupAdmin ? 'is-admin' : ''}`}
                                   disabled={updatingGroupAdmin?.userId === user.id && updatingGroupAdmin?.groupId === g.id}
-                                  title={isGroupAdmin ? 'Remove group admin' : 'Make group admin'}
+                                  title={isGroupAdmin ? 'Remove group admin privileges' : 'Grant group admin privileges'}
                                 >
                                   {updatingGroupAdmin?.userId === user.id && updatingGroupAdmin?.groupId === g.id 
                                     ? '...' 
-                                    : (isGroupAdmin ? '−' : '+')}
+                                    : (isGroupAdmin ? 'Group Admin ✓' : 'Make Group Admin')}
                                 </button>
+                              )}
+                              {!isAdmin && isGroupAdmin && (
+                                <span className="admin-label">Group Admin</span>
                               )}
                             </div>
                           );
@@ -688,8 +689,8 @@ const UsersPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Activity stats for admins */}
-                  {isAdmin && stats && (
+                  {/* Activity stats - collapsed by default for admins */}
+                  {isAdmin && stats && showDetails && (
                     <div className="user-stats-row">
                       <div className="stat-item" title={`${stats.comment_count} comments`}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -721,7 +722,7 @@ const UsersPage: React.FC = () => {
                     {isAdmin ? (
                       showDeleted ? (
                         <button
-                          className="action-btn primary"
+                          className="action-btn primary full-width"
                           onClick={() => handleRestore(user)}
                         >
                           Restore User
@@ -729,58 +730,47 @@ const UsersPage: React.FC = () => {
                       ) : (
                         <>
                           <button
-                            className="action-btn"
+                            className="action-btn secondary"
                             onClick={() => openGroupModal(user)}
                             disabled={user.deleted_at}
-                            title="Manage group assignments"
                           >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                              <circle cx="9" cy="7" r="4"></circle>
-                              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
-                            </svg>
-                            Groups
+                            Manage Groups
                           </button>
                           <button
-                            className="action-btn"
-                            onClick={() => handlePromoteDemote(user)}
-                            disabled={user.deleted_at}
-                            title={user.is_admin ? 'Remove admin privileges' : 'Grant admin privileges'}
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
-                            </svg>
-                            {user.is_admin ? 'Demote' : 'Promote'}
-                          </button>
-                          <button
-                            className="action-btn"
+                            className="action-btn secondary"
                             onClick={() => openPasswordResetModal(user)}
                             disabled={user.deleted_at}
-                            title="Reset user password"
                           >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                            </svg>
-                            Password
+                            Reset Password
                           </button>
+                          <button
+                            className="action-btn secondary"
+                            onClick={() => handlePromoteDemote(user)}
+                            disabled={user.deleted_at}
+                          >
+                            {user.is_admin ? 'Demote Admin' : 'Make Admin'}
+                          </button>
+                          {stats && (
+                            <button
+                              className="action-btn secondary"
+                              onClick={() => setShowDetails(!showDetails)}
+                            >
+                              {showDetails ? 'Hide Details' : 'Show Details'}
+                            </button>
+                          )}
                           <button
                             className="action-btn danger"
                             onClick={() => handleDelete(user)}
                             disabled={user.deleted_at}
-                            title="Delete user"
                           >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6"></polyline>
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                            </svg>
+                            Delete
                           </button>
                         </>
                       )
                     ) : (
                       <Link 
                         to={`/users/${user.id}/profile`}
-                        className="action-btn primary"
+                        className="action-btn primary full-width"
                       >
                         View Profile
                       </Link>
