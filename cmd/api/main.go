@@ -164,7 +164,6 @@ func main() {
 		// Authorization is checked within the handlers
 		protected.POST("/groups/:id/admins/:userId", handlers.PromoteGroupAdmin(db))
 		protected.DELETE("/groups/:id/admins/:userId", handlers.DemoteGroupAdmin(db))
-		protected.GET("/groups/:id/members", handlers.GetGroupMembers(db))
 
 		// Admin only routes
 		admin := protected.Group("/admin")
