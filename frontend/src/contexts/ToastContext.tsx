@@ -1,4 +1,4 @@
-import React, { createContext, useState, useCallback } from 'react';
+import React, { createContext, useState, useCallback, useMemo } from 'react';
 import Toast, { type ToastType } from '../components/Toast';
 import './ToastContainer.css';
 
@@ -50,8 +50,15 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
+  // Memoize the context value to prevent unnecessary re-renders
+  // This ensures components using useToast() don't re-render when toasts change
+  const contextValue = useMemo(
+    () => ({ showToast, showSuccess, showError, showWarning, showInfo }),
+    [showToast, showSuccess, showError, showWarning, showInfo]
+  );
+
   return (
-    <ToastContext.Provider value={{ showToast, showSuccess, showError, showWarning, showInfo }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
       <div className="toast-container" aria-live="polite" aria-atomic="false">
         {toasts.map((toast) => (
