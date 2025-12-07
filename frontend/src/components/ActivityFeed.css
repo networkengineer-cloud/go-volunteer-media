@@ -7,6 +7,24 @@
 .activity-feed__list {
   display: flex;
   flex-direction: column;
+  /* Smooth transition when items change */
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* Fade-in animation for activity items */
+.activity-feed__list > * {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .activity-feed__skeleton {
@@ -100,6 +118,10 @@
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
   .activity-feed__spinner {
+    animation: none;
+  }
+  
+  .activity-feed__list > * {
     animation: none;
   }
 }

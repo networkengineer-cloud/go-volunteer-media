@@ -17,7 +17,7 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ groupId, filterType = 'all'
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const [offset, setOffset] = useState(0);
+  const offsetRef = useRef(0);
   const [error, setError] = useState<string>('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const observerTarget = useRef<HTMLDivElement>(null);
@@ -26,7 +26,7 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ groupId, filterType = 'all'
 
   const loadItems = useCallback(async (isLoadMore = false) => {
     try {
-      const currentOffset = isLoadMore ? offset : 0;
+      const currentOffset = isLoadMore ? offsetRef.current : 0;
       
       if (isLoadMore) {
         setLoadingMore(true);
@@ -50,8 +50,10 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ groupId, filterType = 'all'
         setItems(responseItems);
       }
 
+      // Update offset ref
+      offsetRef.current = currentOffset + responseItems.length;
+      
       setHasMore(responseHasMore);
-      setOffset(currentOffset + responseItems.length);
       setError('');
     } catch (error) {
       console.error('Failed to load activity feed:', error);
@@ -61,11 +63,11 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ groupId, filterType = 'all'
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [groupId, filterType, offset]);
+  }, [groupId, filterType]);
 
   // Load initial items
   useEffect(() => {
-    setOffset(0);
+    offsetRef.current = 0;
     loadItems(false);
   }, [groupId, filterType, loadItems]);
 
