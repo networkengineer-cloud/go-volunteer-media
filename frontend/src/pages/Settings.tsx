@@ -14,6 +14,7 @@ const Settings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
+  const [savingDisplay, setSavingDisplay] = useState(false);
   const [error, setError] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [success, setSuccess] = useState('');
@@ -99,13 +100,30 @@ const Settings: React.FC = () => {
 
     try {
       await authApi.updateEmailPreferences(emailNotificationsEnabled, showLengthOfStay);
-      showToast('Preferences saved successfully!', 'success');
+      showToast('Email preferences saved successfully!', 'success');
     } catch (err: unknown) {
       console.error('Failed to save preferences:', err);
       const axiosError = err as { response?: { data?: { error?: string } } };
       showToast(axiosError.response?.data?.error || 'Failed to save preferences', 'error');
     } finally {
       setSavingNotifications(false);
+    }
+  };
+
+  const handleSaveDisplayPreferences = async () => {
+    setSavingDisplay(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await authApi.updateEmailPreferences(emailNotificationsEnabled, showLengthOfStay);
+      showToast('Display preferences saved successfully!', 'success');
+    } catch (err: unknown) {
+      console.error('Failed to save display preferences:', err);
+      const axiosError = err as { response?: { data?: { error?: string } } };
+      showToast(axiosError.response?.data?.error || 'Failed to save display preferences', 'error');
+    } finally {
+      setSavingDisplay(false);
     }
   };
 
@@ -292,13 +310,31 @@ const Settings: React.FC = () => {
             </div>
           </div>
 
+          <div className="settings-actions">
+            <button
+              onClick={handleSaveNotifications}
+              className="btn-primary"
+              disabled={savingNotifications}
+            >
+              {savingNotifications ? 'Saving...' : 'Save Email Preferences'}
+            </button>
+          </div>
+        </div>
+
+        {/* Display Preferences Section */}
+        <div className="settings-section">
+          <h2>Display Preferences</h2>
+          <p className="settings-description">
+            Customize how information is displayed on the animals page.
+          </p>
+
           <div className="setting-item">
             <div className="setting-info">
               <label htmlFor="show-length-of-stay">
-                <strong>Show Length of Stay on Animals Page</strong>
+                <strong>Show Length of Stay</strong>
               </label>
               <p className="setting-help">
-                Display how long each animal has been at the shelter on the animals main page.
+                Display how long each animal has been at the shelter on the animals page.
               </p>
             </div>
             <div className="toggle-wrapper">
@@ -308,7 +344,7 @@ const Settings: React.FC = () => {
                   type="checkbox"
                   checked={showLengthOfStay}
                   onChange={(e) => setShowLengthOfStay(e.target.checked)}
-                  disabled={savingNotifications}
+                  disabled={savingDisplay}
                 />
                 <span className="toggle-slider"></span>
               </label>
@@ -317,11 +353,11 @@ const Settings: React.FC = () => {
 
           <div className="settings-actions">
             <button
-              onClick={handleSaveNotifications}
+              onClick={handleSaveDisplayPreferences}
               className="btn-primary"
-              disabled={savingNotifications}
+              disabled={savingDisplay}
             >
-              {savingNotifications ? 'Saving...' : 'Save Preferences'}
+              {savingDisplay ? 'Saving...' : 'Save Display Preferences'}
             </button>
           </div>
         </div>
