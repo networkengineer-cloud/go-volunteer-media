@@ -95,10 +95,10 @@ func AuthRequired() gin.HandlerFunc {
 				"method":   c.Request.Method,
 				"error":    err.Error(),
 			}).Warn("Invalid or expired token")
-			
+
 			// Use audit logger for security event
 			logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "invalid_token")
-			
+
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
 			return
@@ -126,10 +126,10 @@ func AdminRequired() gin.HandlerFunc {
 				"method":   c.Request.Method,
 				"user_id":  userID,
 			}).Warn("Admin access denied - insufficient privileges")
-			
+
 			// Use audit logger for security event
 			logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "insufficient_privileges")
-			
+
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			c.Abort()
 			return

@@ -100,9 +100,9 @@ func TestUpdateSiteSetting(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name: "bad request when value is missing",
-			key:  "site_name",
-			requestBody: map[string]interface{}{},
+			name:           "bad request when value is missing",
+			key:            "site_name",
+			requestBody:    map[string]interface{}{},
 			expectedStatus: http.StatusBadRequest,
 		},
 	}

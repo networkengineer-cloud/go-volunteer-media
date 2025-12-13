@@ -54,7 +54,7 @@ func TestInitialize_InvalidSSLMode(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for invalid SSL mode")
 	}
-	
+
 	// Check that the error contains "invalid SSL mode"
 	if err != nil {
 		expected := "invalid SSL mode: invalid_mode"
@@ -63,4 +63,3 @@ func TestInitialize_InvalidSSLMode(t *testing.T) {
 		}
 	}
 }
-

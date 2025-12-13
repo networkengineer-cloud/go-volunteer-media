@@ -20,12 +20,12 @@ func init() {
 
 func TestCORS(t *testing.T) {
 	tests := []struct {
-		name           string
-		setupEnv       func()
-		cleanupEnv     func()
-		origin         string
-		method         string
-		wantStatus     int
+		name            string
+		setupEnv        func()
+		cleanupEnv      func()
+		origin          string
+		method          string
+		wantStatus      int
 		wantAllowOrigin string
 	}{
 		{
@@ -72,10 +72,10 @@ func TestCORS(t *testing.T) {
 			setupEnv: func() {
 				os.Unsetenv("ALLOWED_ORIGINS")
 			},
-			cleanupEnv: func() {},
-			origin:     "http://localhost:5173",
-			method:     "GET",
-			wantStatus: 200,
+			cleanupEnv:      func() {},
+			origin:          "http://localhost:5173",
+			method:          "GET",
+			wantStatus:      200,
 			wantAllowOrigin: "http://localhost:5173",
 		},
 		{
@@ -176,13 +176,13 @@ func TestAuthRequired(t *testing.T) {
 	expiredToken := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJpc19hZG1pbiI6ZmFsc2UsImV4cCI6MTYwMDAwMDAwMH0.invalid"
 
 	tests := []struct {
-		name           string
-		authHeader     string
-		wantStatus     int
-		wantError      string
-		checkContext   bool
-		wantUserID     uint
-		wantIsAdmin    bool
+		name         string
+		authHeader   string
+		wantStatus   int
+		wantError    string
+		checkContext bool
+		wantUserID   uint
+		wantIsAdmin  bool
 	}{
 		{
 			name:         "valid token",
@@ -321,7 +321,7 @@ func TestAdminRequired(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create test server
 			router := gin.New()
-			
+
 			// Middleware to set context
 			router.Use(func(c *gin.Context) {
 				if tt.setContext {
@@ -329,7 +329,7 @@ func TestAdminRequired(t *testing.T) {
 				}
 				c.Next()
 			})
-			
+
 			router.Use(AdminRequired())
 			router.GET("/admin", func(c *gin.Context) {
 				c.JSON(200, gin.H{"message": "admin area"})
@@ -469,8 +469,8 @@ func TestContains(t *testing.T) {
 
 // Helper function for substring checking
 func containsSubstring(s, substr string) bool {
-	return len(substr) > 0 && len(s) >= len(substr) && 
-		   (s == substr || containsAt(s, substr))
+	return len(substr) > 0 && len(s) >= len(substr) &&
+		(s == substr || containsAt(s, substr))
 }
 
 func containsAt(s, substr string) bool {
@@ -485,17 +485,17 @@ func containsAt(s, substr string) bool {
 // TestSecurityHeaders tests security headers middleware
 func TestSecurityHeaders(t *testing.T) {
 	tests := []struct {
-		name          string
-		wantHeaders   map[string]string
+		name        string
+		wantHeaders map[string]string
 	}{
 		{
 			name: "security headers are set",
 			wantHeaders: map[string]string{
-				"X-Content-Type-Options":  "nosniff",
-				"X-Frame-Options":         "DENY",
-				"X-XSS-Protection":        "1; mode=block",
-				"Referrer-Policy":         "strict-origin-when-cross-origin",
-				"Permissions-Policy":      "geolocation=(), microphone=(), camera=()",
+				"X-Content-Type-Options": "nosniff",
+				"X-Frame-Options":        "DENY",
+				"X-XSS-Protection":       "1; mode=block",
+				"Referrer-Policy":        "strict-origin-when-cross-origin",
+				"Permissions-Policy":     "geolocation=(), microphone=(), camera=()",
 			},
 		},
 	}
@@ -534,7 +534,7 @@ func TestSecurityHeaders(t *testing.T) {
 			if cspHeader == "" {
 				t.Error("SecurityHeaders() Content-Security-Policy header not set")
 			}
-			
+
 			// Verify CSP contains key directives
 			expectedCSPDirectives := []string{
 				"default-src 'self'",
@@ -648,13 +648,13 @@ func TestRateLimitByUser(t *testing.T) {
 	t.Run("rate limits authenticated users", func(t *testing.T) {
 		// Create test server with rate limit of 3 requests per second
 		router := gin.New()
-		
+
 		// Middleware to set user context
 		router.Use(func(c *gin.Context) {
 			c.Set("user_id", uint(1))
 			c.Next()
 		})
-		
+
 		router.Use(RateLimitByUser(3, 1*time.Second))
 		router.GET("/test", func(c *gin.Context) {
 			c.JSON(200, gin.H{"message": "ok"})
@@ -715,10 +715,10 @@ func TestRateLimitByUser(t *testing.T) {
 	t.Run("different users are tracked separately", func(t *testing.T) {
 		// Create test server with rate limit of 2 requests per second
 		router := gin.New()
-		
+
 		// Track which user ID to use
 		var requestCount int
-		
+
 		router.Use(func(c *gin.Context) {
 			requestCount++
 			if requestCount <= 2 {
@@ -728,7 +728,7 @@ func TestRateLimitByUser(t *testing.T) {
 			}
 			c.Next()
 		})
-		
+
 		router.Use(RateLimitByUser(2, 1*time.Second))
 		router.GET("/test", func(c *gin.Context) {
 			c.JSON(200, gin.H{"message": "ok"})
@@ -759,56 +759,56 @@ func TestRateLimitByUser(t *testing.T) {
 }
 
 func TestRequestID(t *testing.T) {
-t.Run("generates request ID when not provided", func(t *testing.T) {
-router := gin.New()
-router.Use(RequestID())
-router.GET("/test", func(c *gin.Context) {
-requestID := c.GetString("request_id")
-if requestID == "" {
-t.Error("Expected request_id to be set in context")
-}
-c.String(200, "ok")
-})
+	t.Run("generates request ID when not provided", func(t *testing.T) {
+		router := gin.New()
+		router.Use(RequestID())
+		router.GET("/test", func(c *gin.Context) {
+			requestID := c.GetString("request_id")
+			if requestID == "" {
+				t.Error("Expected request_id to be set in context")
+			}
+			c.String(200, "ok")
+		})
 
-req, _ := http.NewRequest("GET", "/test", nil)
-w := httptest.NewRecorder()
-router.ServeHTTP(w, req)
+		req, _ := http.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
 
-if w.Code != 200 {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+		if w.Code != 200 {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
 
-// Check response header
-requestID := w.Header().Get(RequestIDKey)
-if requestID == "" {
-t.Error("Expected X-Request-ID header in response")
-}
-})
+		// Check response header
+		requestID := w.Header().Get(RequestIDKey)
+		if requestID == "" {
+			t.Error("Expected X-Request-ID header in response")
+		}
+	})
 
-t.Run("uses existing request ID from header", func(t *testing.T) {
-router := gin.New()
-router.Use(RequestID())
-router.GET("/test", func(c *gin.Context) {
-requestID := c.GetString("request_id")
-if requestID != "test-request-id-123" {
-t.Errorf("Expected request_id to be test-request-id-123, got %s", requestID)
-}
-c.String(200, "ok")
-})
+	t.Run("uses existing request ID from header", func(t *testing.T) {
+		router := gin.New()
+		router.Use(RequestID())
+		router.GET("/test", func(c *gin.Context) {
+			requestID := c.GetString("request_id")
+			if requestID != "test-request-id-123" {
+				t.Errorf("Expected request_id to be test-request-id-123, got %s", requestID)
+			}
+			c.String(200, "ok")
+		})
 
-req, _ := http.NewRequest("GET", "/test", nil)
-req.Header.Set(RequestIDKey, "test-request-id-123")
-w := httptest.NewRecorder()
-router.ServeHTTP(w, req)
+		req, _ := http.NewRequest("GET", "/test", nil)
+		req.Header.Set(RequestIDKey, "test-request-id-123")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
 
-if w.Code != 200 {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+		if w.Code != 200 {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
 
-// Check response header matches
-requestID := w.Header().Get(RequestIDKey)
-if requestID != "test-request-id-123" {
-t.Errorf("Expected X-Request-ID to be test-request-id-123, got %s", requestID)
-}
-})
+		// Check response header matches
+		requestID := w.Header().Get(RequestIDKey)
+		if requestID != "test-request-id-123" {
+			t.Errorf("Expected X-Request-ID to be test-request-id-123, got %s", requestID)
+		}
+	})
 }

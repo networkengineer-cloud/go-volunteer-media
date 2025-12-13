@@ -37,6 +37,7 @@ const GroupPage: React.FC = () => {
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showProtocolForm, setShowProtocolForm] = useState(false);
   const [activityFeedKey, setActivityFeedKey] = useState(0);
+  const [showLengthOfStay, setShowLengthOfStay] = useState(false);
 
   // Load group data and membership info
   const loadGroupData = async (groupId: number) => {
@@ -86,6 +87,17 @@ const GroupPage: React.FC = () => {
   }, [searchParams]);
 
   useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const prefsRes = await authApi.getEmailPreferences();
+        setShowLengthOfStay(prefsRes.data.show_length_of_stay || false);
+      } catch (error) {
+        console.error('Failed to load preferences:', error);
+      }
+    };
+    
+    loadPreferences();
+    
     if (id) {
       loadGroupData(Number(id));
       // Load animals immediately to show count in tab
@@ -451,6 +463,17 @@ const GroupPage: React.FC = () => {
                         {animal.breed && <p className="breed">{animal.breed}</p>}
                         <p className="age">{animal.age} years old</p>
                         <span className={`status ${animal.status}`}>{animal.status}</span>
+                        {showLengthOfStay && animal.arrival_date && (
+                          <p className="length-of-stay">
+                            {(() => {
+                              const arrivalDate = new Date(animal.arrival_date);
+                              const now = new Date();
+                              const diffTime = Math.abs(now.getTime() - arrivalDate.getTime());
+                              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                              return `${diffDays} day${diffDays !== 1 ? 's' : ''} at shelter`;
+                            })()}
+                          </p>
+                        )}
                         {animal.tags && animal.tags.length > 0 && (
                           <div className="animal-tags">
                             {animal.tags.map((tag) => (

@@ -84,8 +84,8 @@ const GroupAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) 
 // UsersRoute - allows access if user is site admin or group admin
 const UsersRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isAdmin, user } = useAuth();
-  // Check if user is a group admin (has group membership or is admin)
-  const isGroupAdmin = isAuthenticated && user ? (user.groups?.length ?? 0) > 0 : false;
+  // Check if user is a group admin (has is_group_admin flag set)
+  const isGroupAdmin = isAuthenticated && user ? (user.is_group_admin || false) : false;
 
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (!isAdmin && !isGroupAdmin) return <Navigate to="/dashboard" />;
@@ -243,9 +243,9 @@ function App() {
           <Route
             path="/admin/animals"
             element={
-              <AdminRoute>
+              <UsersRoute>
                 <BulkEditAnimalsPage />
-              </AdminRoute>
+              </UsersRoute>
             }
           />
         </Routes>

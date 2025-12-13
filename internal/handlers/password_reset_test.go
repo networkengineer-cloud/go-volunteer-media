@@ -96,7 +96,7 @@ func TestRequestPasswordReset(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name: "missing email",
+			name:    "missing email",
 			payload: map[string]interface{}{
 				// No email field
 			},

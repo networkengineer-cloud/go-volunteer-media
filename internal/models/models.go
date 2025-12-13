@@ -26,6 +26,7 @@ type User struct {
 	ResetToken                string         `json:"-"`
 	ResetTokenExpiry          *time.Time     `json:"-"`
 	EmailNotificationsEnabled bool           `gorm:"default:false" json:"email_notifications_enabled"`
+	ShowLengthOfStay          bool           `gorm:"default:false" json:"show_length_of_stay"`
 }
 
 // Group represents a volunteer group (dogs, cats, modsquad, etc.)

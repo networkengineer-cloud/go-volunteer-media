@@ -242,8 +242,8 @@ func TestAnimal_QuarantineEndDate(t *testing.T) {
 func TestAnimal_MethodsWithRealData(t *testing.T) {
 	// Test with a realistic animal scenario
 	t.Run("realistic shelter animal", func(t *testing.T) {
-		arrivalDate := time.Now().AddDate(0, 0, -15) // Arrived 15 days ago
-		statusChange := time.Now().AddDate(0, 0, -5)  // Status changed 5 days ago
+		arrivalDate := time.Now().AddDate(0, 0, -15)    // Arrived 15 days ago
+		statusChange := time.Now().AddDate(0, 0, -5)    // Status changed 5 days ago
 		quarantineStart := time.Now().AddDate(0, 0, -7) // Quarantine started 7 days ago
 
 		animal := &Animal{
