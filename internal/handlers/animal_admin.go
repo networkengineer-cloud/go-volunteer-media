@@ -268,7 +268,9 @@ func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 		// Name search filter
 		nameSearch := c.Query("name")
 		if nameSearch != "" {
-			query = query.Where("LOWER(name) LIKE ?", "%"+strings.ToLower(nameSearch)+"%")
+			// Escape SQL wildcards to prevent unintended pattern matching
+			escaped := escapeSQLWildcards(strings.ToLower(nameSearch))
+			query = query.Where("LOWER(name) LIKE ?", "%"+escaped+"%")
 		}
 
 		var animals []models.Animal
