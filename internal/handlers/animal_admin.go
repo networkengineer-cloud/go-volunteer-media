@@ -134,7 +134,7 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 
 		isAdmin, _ := c.Get("is_admin")
 		isSiteAdmin := isAdmin.(bool)
-		
+
 		// Check if user is a group admin for any group
 		isGroupAdmin := IsGroupAdminForAnyGroup(db, userID.(uint))
 
@@ -160,18 +160,18 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 			// Get the groups this user is an admin of
 			var userGroups []models.UserGroup
 			db.Where("user_id = ? AND is_group_admin = ?", userID, true).Find(&userGroups)
-			
+
 			groupIDs := make([]uint, len(userGroups))
 			for i, ug := range userGroups {
 				groupIDs[i] = ug.GroupID
 			}
-			
+
 			// Verify all animals belong to groups the user administers
 			var animalCount int64
 			db.Model(&models.Animal{}).
 				Where("id IN ? AND group_id IN ?", req.AnimalIDs, groupIDs).
 				Count(&animalCount)
-			
+
 			if int(animalCount) != len(req.AnimalIDs) {
 				c.JSON(http.StatusForbidden, gin.H{"error": "You can only update animals in groups you administer"})
 				return
@@ -224,7 +224,7 @@ func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 
 		isAdmin, _ := c.Get("is_admin")
 		isSiteAdmin := isAdmin.(bool)
-		
+
 		// Check if user is a group admin for any group
 		isGroupAdmin := IsGroupAdminForAnyGroup(db, userID.(uint))
 
@@ -242,12 +242,12 @@ func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 			// Get the groups this user is an admin of
 			var userGroups []models.UserGroup
 			db.Where("user_id = ? AND is_group_admin = ?", userID, true).Find(&userGroups)
-			
+
 			groupIDs := make([]uint, len(userGroups))
 			for i, ug := range userGroups {
 				groupIDs[i] = ug.GroupID
 			}
-			
+
 			if len(groupIDs) > 0 {
 				query = query.Where("group_id IN ?", groupIDs)
 			}

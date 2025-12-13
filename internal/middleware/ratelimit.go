@@ -112,7 +112,7 @@ func RateLimit(rate int, window time.Duration) gin.HandlerFunc {
 				"endpoint": c.Request.URL.Path,
 				"method":   c.Request.Method,
 			}).Warn("Rate limit exceeded")
-			
+
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"error": "Too many requests. Please try again later.",
 			})
@@ -141,7 +141,7 @@ func RateLimitByUser(rate int, window time.Duration) gin.HandlerFunc {
 					"endpoint": c.Request.URL.Path,
 					"method":   c.Request.Method,
 				}).Warn("Rate limit exceeded (unauthenticated)")
-				
+
 				c.JSON(http.StatusTooManyRequests, gin.H{
 					"error": "Too many requests. Please try again later.",
 				})
@@ -158,7 +158,7 @@ func RateLimitByUser(rate int, window time.Duration) gin.HandlerFunc {
 					"endpoint": c.Request.URL.Path,
 					"method":   c.Request.Method,
 				}).Warn("Rate limit exceeded (authenticated)")
-				
+
 				c.JSON(http.StatusTooManyRequests, gin.H{
 					"error": "Too many requests. Please try again later.",
 				})

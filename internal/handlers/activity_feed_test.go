@@ -66,10 +66,10 @@ func setupActivityFeedTestDB(t *testing.T) *gorm.DB {
 	db.Create(&comment)
 
 	update := models.Update{
-		GroupID:  group.ID,
-		UserID:   user.ID,
-		Title:    "Test Update",
-		Content:  "Test update content",
+		GroupID: group.ID,
+		UserID:  user.ID,
+		Title:   "Test Update",
+		Content: "Test update content",
 	}
 	db.Create(&update)
 

@@ -52,13 +52,13 @@ func TestNew(t *testing.T) {
 func TestLogger_WithField(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := New(INFO, buf, true)
-	
+
 	newLogger := logger.WithField("key", "value")
-	
+
 	if val, ok := newLogger.fields["key"]; !ok || val != "value" {
 		t.Error("Expected field to be set")
 	}
-	
+
 	// Original logger should not have the field
 	if _, ok := logger.fields["key"]; ok {
 		t.Error("Original logger should not be modified")
@@ -68,14 +68,14 @@ func TestLogger_WithField(t *testing.T) {
 func TestLogger_WithFields(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := New(INFO, buf, true)
-	
+
 	fields := map[string]interface{}{
 		"key1": "value1",
 		"key2": 123,
 	}
-	
+
 	newLogger := logger.WithFields(fields)
-	
+
 	if val, ok := newLogger.fields["key1"]; !ok || val != "value1" {
 		t.Error("Expected key1 to be set")
 	}
@@ -87,13 +87,13 @@ func TestLogger_WithFields(t *testing.T) {
 func TestLogger_WithContext(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := New(INFO, buf, true)
-	
+
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "request_id", "req-123")
 	ctx = context.WithValue(ctx, "user_id", uint(456))
-	
+
 	newLogger := logger.WithContext(ctx)
-	
+
 	if val, ok := newLogger.fields["request_id"]; !ok || val != "req-123" {
 		t.Error("Expected request_id to be extracted from context")
 	}
@@ -105,9 +105,9 @@ func TestLogger_WithContext(t *testing.T) {
 func TestLogger_Info(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := New(INFO, buf, true)
-	
+
 	logger.Info("test message")
-	
+
 	output := buf.String()
 	if !strings.Contains(output, "test message") {
 		t.Errorf("Expected output to contain message, got: %s", output)
@@ -115,7 +115,7 @@ func TestLogger_Info(t *testing.T) {
 	if !strings.Contains(output, "INFO") {
 		t.Errorf("Expected output to contain level, got: %s", output)
 	}
-	
+
 	// Verify JSON structure
 	var entry LogEntry
 	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
@@ -132,9 +132,9 @@ func TestLogger_Info(t *testing.T) {
 func TestLogger_Debug_FilteredByLevel(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := New(INFO, buf, true)
-	
+
 	logger.Debug("debug message")
-	
+
 	// Debug should be filtered out since level is INFO
 	if buf.Len() > 0 {
 		t.Errorf("Expected no output for debug message, got: %s", buf.String())
@@ -144,10 +144,10 @@ func TestLogger_Debug_FilteredByLevel(t *testing.T) {
 func TestLogger_Error(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := New(ERROR, buf, true)
-	
+
 	testErr := &testError{msg: "test error"}
 	logger.Error("error occurred", testErr)
-	
+
 	output := buf.String()
 	if !strings.Contains(output, "error occurred") {
 		t.Errorf("Expected output to contain message, got: %s", output)
@@ -155,7 +155,7 @@ func TestLogger_Error(t *testing.T) {
 	if !strings.Contains(output, "test error") {
 		t.Errorf("Expected output to contain error, got: %s", output)
 	}
-	
+
 	// Verify JSON structure
 	var entry LogEntry
 	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
@@ -169,9 +169,9 @@ func TestLogger_Error(t *testing.T) {
 func TestLogger_Warn(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := New(WARN, buf, true)
-	
+
 	logger.Warn("warning message")
-	
+
 	output := buf.String()
 	if !strings.Contains(output, "warning message") {
 		t.Errorf("Expected output to contain message, got: %s", output)
@@ -184,9 +184,9 @@ func TestLogger_Warn(t *testing.T) {
 func TestLogger_TextFormat(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := New(INFO, buf, false) // Text format
-	
+
 	logger.Info("test message")
-	
+
 	output := buf.String()
 	if !strings.Contains(output, "test message") {
 		t.Errorf("Expected output to contain message, got: %s", output)
@@ -194,7 +194,7 @@ func TestLogger_TextFormat(t *testing.T) {
 	if !strings.Contains(output, "INFO") {
 		t.Errorf("Expected output to contain level, got: %s", output)
 	}
-	
+
 	// Should not be valid JSON
 	var entry LogEntry
 	if err := json.Unmarshal(buf.Bytes(), &entry); err == nil {
@@ -208,9 +208,9 @@ func TestDefaultLogger(t *testing.T) {
 	oldLogger := defaultLogger
 	defaultLogger = New(INFO, buf, true)
 	defer func() { defaultLogger = oldLogger }()
-	
+
 	Info("test info")
-	
+
 	if buf.Len() == 0 {
 		t.Error("Expected output from package-level Info function")
 	}
@@ -224,9 +224,9 @@ func TestSetLevel(t *testing.T) {
 	oldLogger := defaultLogger
 	defaultLogger = New(INFO, buf, true)
 	defer func() { defaultLogger = oldLogger }()
-	
+
 	SetLevel(ERROR)
-	
+
 	if defaultLogger.level != ERROR {
 		t.Errorf("Expected level ERROR, got %v", defaultLogger.level)
 	}
@@ -245,12 +245,12 @@ func TestGetDefaultLogger(t *testing.T) {
 func TestSetDefaultLogger(t *testing.T) {
 	buf := &bytes.Buffer{}
 	newLogger := New(DEBUG, buf, true)
-	
+
 	oldLogger := defaultLogger
 	defer func() { defaultLogger = oldLogger }()
-	
+
 	SetDefaultLogger(newLogger)
-	
+
 	if defaultLogger != newLogger {
 		t.Error("Expected default logger to be updated")
 	}
@@ -277,15 +277,15 @@ func TestAuditLogger_Log(t *testing.T) {
 	oldLogger := defaultLogger
 	defaultLogger = New(INFO, buf, true)
 	defer func() { defaultLogger = oldLogger }()
-	
+
 	al := NewAuditLogger()
 	ctx := context.Background()
-	
+
 	al.Log(ctx, AuditEventLoginSuccess, map[string]interface{}{
 		"user_id":  uint(123),
 		"username": "testuser",
 	})
-	
+
 	output := buf.String()
 	if !strings.Contains(output, "login_success") {
 		t.Errorf("Expected output to contain event type, got: %s", output)
@@ -300,12 +300,12 @@ func TestAuditLogger_LogAuthSuccess(t *testing.T) {
 	oldLogger := defaultLogger
 	defaultLogger = New(INFO, buf, true)
 	defer func() { defaultLogger = oldLogger }()
-	
+
 	al := NewAuditLogger()
 	ctx := context.Background()
-	
+
 	al.LogAuthSuccess(ctx, 123, "testuser", "192.168.1.1")
-	
+
 	output := buf.String()
 	if !strings.Contains(output, "login_success") {
 		t.Errorf("Expected output to contain event type, got: %s", output)
@@ -323,12 +323,12 @@ func TestAuditLogger_LogAuthFailure(t *testing.T) {
 	oldLogger := defaultLogger
 	defaultLogger = New(INFO, buf, true)
 	defer func() { defaultLogger = oldLogger }()
-	
+
 	al := NewAuditLogger()
 	ctx := context.Background()
-	
+
 	al.LogAuthFailure(ctx, "testuser", "192.168.1.1", "invalid password")
-	
+
 	output := buf.String()
 	if !strings.Contains(output, "login_failure") {
 		t.Errorf("Expected output to contain event type, got: %s", output)
@@ -351,7 +351,7 @@ func TestAuditEventConstants(t *testing.T) {
 		AuditEventRateLimitExceeded,
 		AuditEventUnauthorizedAccess,
 	}
-	
+
 	for _, event := range events {
 		if string(event) == "" {
 			t.Errorf("Expected event %v to have non-empty string value", event)

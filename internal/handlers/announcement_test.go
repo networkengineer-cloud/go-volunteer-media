@@ -231,12 +231,12 @@ func TestCreateAnnouncement(t *testing.T) {
 
 			// Create a mock email service (not configured)
 			emailService := &email.Service{}
-			
+
 			// Create GroupMe service (will be used if requested)
 			groupMeService := groupme.NewService()
 
 			c, w := setupAnnouncementTestContext(user.ID, tt.isAdmin)
-			
+
 			jsonBytes, _ := json.Marshal(tt.payload)
 			c.Request = httptest.NewRequest("POST", "/api/v1/announcements", bytes.NewBuffer(jsonBytes))
 			c.Request.Header.Set("Content-Type", "application/json")
@@ -298,14 +298,14 @@ func TestDeleteAnnouncement(t *testing.T) {
 			announcementID := tt.setupFunc(db, admin)
 
 			c, w := setupAnnouncementTestContext(admin.ID, true)
-			
+
 			// Handle invalid ID test case specially
 			if tt.name == "invalid announcement ID" {
 				c.Params = gin.Params{{Key: "id", Value: "invalid"}}
 			} else {
 				c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", announcementID)}}
 			}
-			
+
 			c.Request = httptest.NewRequest("DELETE", fmt.Sprintf("/api/v1/announcements/%d", announcementID), nil)
 
 			handler := DeleteAnnouncement(db)
@@ -343,7 +343,7 @@ func TestSendAnnouncementEmails(t *testing.T) {
 				// Create users with email notifications enabled
 				user1 := createAnnouncementTestUser(t, db, "user1", "user1@example.com", false)
 				db.Model(&models.User{}).Where("id = ?", user1.ID).Update("email_notifications_enabled", true)
-				
+
 				user2 := createAnnouncementTestUser(t, db, "user2", "user2@example.com", false)
 				db.Model(&models.User{}).Where("id = ?", user2.ID).Update("email_notifications_enabled", true)
 			},
@@ -400,7 +400,7 @@ func TestSendAnnouncementEmails(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := setupAnnouncementTestDB(t)
-			
+
 			if tt.setupFunc != nil {
 				tt.setupFunc(db)
 			}
@@ -499,7 +499,7 @@ func TestCreateAnnouncementWithConfiguredEmail(t *testing.T) {
 		FromEmail:    "noreply@example.com",
 		FromName:     "Test Service",
 	}
-	
+
 	groupMeService := groupme.NewService()
 
 	c, w := setupAnnouncementTestContext(user.ID, true)
@@ -537,199 +537,198 @@ func TestCreateAnnouncementWithConfiguredEmail(t *testing.T) {
 	}
 }
 
-
 // TestSendAnnouncementToGroupMe tests the sendAnnouncementToGroupMe function directly
 func TestSendAnnouncementToGroupMe(t *testing.T) {
-tests := []struct {
-name          string
-setupFunc     func(*gorm.DB)
-title         string
-content       string
-expectedError bool
-}{
-{
-name: "successfully send to GroupMe-enabled groups",
-setupFunc: func(db *gorm.DB) {
-// Create groups with GroupMe enabled
-db.Create(&models.Group{
-Name:           "Dogs",
-Description:    "Dog volunteers",
-GroupMeEnabled: true,
-GroupMeBotID:   "bot123",
-})
-db.Create(&models.Group{
-Name:           "Cats",
-Description:    "Cat volunteers",
-GroupMeEnabled: true,
-GroupMeBotID:   "bot456",
-})
-},
-title:         "Test Announcement",
-content:       "This is a test GroupMe announcement.",
-expectedError: false,
-},
-{
-name: "no groups with GroupMe enabled",
-setupFunc: func(db *gorm.DB) {
-// Create groups but don't enable GroupMe
-db.Create(&models.Group{
-Name:           "Dogs",
-Description:    "Dog volunteers",
-GroupMeEnabled: false,
-})
-},
-title:         "Test Announcement",
-content:       "This announcement has no GroupMe groups.",
-expectedError: false,
-},
-{
-name: "groups with empty bot ID are skipped",
-setupFunc: func(db *gorm.DB) {
-db.Create(&models.Group{
-Name:           "Dogs",
-Description:    "Dog volunteers",
-GroupMeEnabled: true,
-GroupMeBotID:   "", // Empty bot ID
-})
-},
-title:         "Test Announcement",
-content:       "This announcement has empty bot ID.",
-expectedError: false,
-},
-}
+	tests := []struct {
+		name          string
+		setupFunc     func(*gorm.DB)
+		title         string
+		content       string
+		expectedError bool
+	}{
+		{
+			name: "successfully send to GroupMe-enabled groups",
+			setupFunc: func(db *gorm.DB) {
+				// Create groups with GroupMe enabled
+				db.Create(&models.Group{
+					Name:           "Dogs",
+					Description:    "Dog volunteers",
+					GroupMeEnabled: true,
+					GroupMeBotID:   "bot123",
+				})
+				db.Create(&models.Group{
+					Name:           "Cats",
+					Description:    "Cat volunteers",
+					GroupMeEnabled: true,
+					GroupMeBotID:   "bot456",
+				})
+			},
+			title:         "Test Announcement",
+			content:       "This is a test GroupMe announcement.",
+			expectedError: false,
+		},
+		{
+			name: "no groups with GroupMe enabled",
+			setupFunc: func(db *gorm.DB) {
+				// Create groups but don't enable GroupMe
+				db.Create(&models.Group{
+					Name:           "Dogs",
+					Description:    "Dog volunteers",
+					GroupMeEnabled: false,
+				})
+			},
+			title:         "Test Announcement",
+			content:       "This announcement has no GroupMe groups.",
+			expectedError: false,
+		},
+		{
+			name: "groups with empty bot ID are skipped",
+			setupFunc: func(db *gorm.DB) {
+				db.Create(&models.Group{
+					Name:           "Dogs",
+					Description:    "Dog volunteers",
+					GroupMeEnabled: true,
+					GroupMeBotID:   "", // Empty bot ID
+				})
+			},
+			title:         "Test Announcement",
+			content:       "This announcement has empty bot ID.",
+			expectedError: false,
+		},
+	}
 
-for _, tt := range tests {
-t.Run(tt.name, func(t *testing.T) {
-db := setupAnnouncementTestDB(t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupAnnouncementTestDB(t)
 
-if tt.setupFunc != nil {
-tt.setupFunc(db)
-}
+			if tt.setupFunc != nil {
+				tt.setupFunc(db)
+			}
 
-groupMeService := groupme.NewService()
-ctx := context.Background()
-err := sendAnnouncementToGroupMe(ctx, db, groupMeService, tt.title, tt.content)
+			groupMeService := groupme.NewService()
+			ctx := context.Background()
+			err := sendAnnouncementToGroupMe(ctx, db, groupMeService, tt.title, tt.content)
 
-if tt.expectedError && err == nil {
-t.Error("Expected error but got nil")
-}
-if !tt.expectedError && err != nil {
-// In SQLite tests, missing columns are expected since we can't easily migrate them
-// In production PostgreSQL, the columns exist from migrations
-if err.Error() != "no such column: groupme_enabled" {
-t.Errorf("Expected no error but got: %v", err)
-}
-}
-})
-}
+			if tt.expectedError && err == nil {
+				t.Error("Expected error but got nil")
+			}
+			if !tt.expectedError && err != nil {
+				// In SQLite tests, missing columns are expected since we can't easily migrate them
+				// In production PostgreSQL, the columns exist from migrations
+				if err.Error() != "no such column: groupme_enabled" {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+			}
+		})
+	}
 }
 
 // TestCreateAnnouncementWithGroupMe tests announcement creation with GroupMe sending
 func TestCreateAnnouncementWithGroupMe(t *testing.T) {
-tests := []struct {
-name            string
-payload         map[string]interface{}
-setupGroups     func(*gorm.DB)
-expectedStatus  int
-checkGroupMe    bool
-}{
-{
-name: "create announcement with GroupMe enabled",
-payload: map[string]interface{}{
-"title":        "GroupMe Announcement",
-"content":      "This announcement will be sent to GroupMe.",
-"send_groupme": true,
-},
-setupGroups: func(db *gorm.DB) {
-db.Create(&models.Group{
-Name:           "Dogs",
-Description:    "Dog volunteers",
-GroupMeEnabled: true,
-GroupMeBotID:   "test-bot-123",
-})
-},
-expectedStatus: http.StatusCreated,
-checkGroupMe:   true,
-},
-{
-name: "create announcement with both email and GroupMe",
-payload: map[string]interface{}{
-"title":        "Multi-channel Announcement",
-"content":      "This announcement goes to both email and GroupMe.",
-"send_email":   true,
-"send_groupme": true,
-},
-setupGroups: func(db *gorm.DB) {
-db.Create(&models.Group{
-Name:           "Cats",
-Description:    "Cat volunteers",
-GroupMeEnabled: true,
-GroupMeBotID:   "test-bot-456",
-})
-},
-expectedStatus: http.StatusCreated,
-checkGroupMe:   true,
-},
-{
-name: "create announcement with GroupMe disabled",
-payload: map[string]interface{}{
-"title":        "No GroupMe Announcement",
-"content":      "This announcement will not be sent to GroupMe.",
-"send_groupme": false,
-},
-setupGroups: func(db *gorm.DB) {
-// No groups needed
-},
-expectedStatus: http.StatusCreated,
-checkGroupMe:   false,
-},
-}
+	tests := []struct {
+		name           string
+		payload        map[string]interface{}
+		setupGroups    func(*gorm.DB)
+		expectedStatus int
+		checkGroupMe   bool
+	}{
+		{
+			name: "create announcement with GroupMe enabled",
+			payload: map[string]interface{}{
+				"title":        "GroupMe Announcement",
+				"content":      "This announcement will be sent to GroupMe.",
+				"send_groupme": true,
+			},
+			setupGroups: func(db *gorm.DB) {
+				db.Create(&models.Group{
+					Name:           "Dogs",
+					Description:    "Dog volunteers",
+					GroupMeEnabled: true,
+					GroupMeBotID:   "test-bot-123",
+				})
+			},
+			expectedStatus: http.StatusCreated,
+			checkGroupMe:   true,
+		},
+		{
+			name: "create announcement with both email and GroupMe",
+			payload: map[string]interface{}{
+				"title":        "Multi-channel Announcement",
+				"content":      "This announcement goes to both email and GroupMe.",
+				"send_email":   true,
+				"send_groupme": true,
+			},
+			setupGroups: func(db *gorm.DB) {
+				db.Create(&models.Group{
+					Name:           "Cats",
+					Description:    "Cat volunteers",
+					GroupMeEnabled: true,
+					GroupMeBotID:   "test-bot-456",
+				})
+			},
+			expectedStatus: http.StatusCreated,
+			checkGroupMe:   true,
+		},
+		{
+			name: "create announcement with GroupMe disabled",
+			payload: map[string]interface{}{
+				"title":        "No GroupMe Announcement",
+				"content":      "This announcement will not be sent to GroupMe.",
+				"send_groupme": false,
+			},
+			setupGroups: func(db *gorm.DB) {
+				// No groups needed
+			},
+			expectedStatus: http.StatusCreated,
+			checkGroupMe:   false,
+		},
+	}
 
-for _, tt := range tests {
-t.Run(tt.name, func(t *testing.T) {
-db := setupAnnouncementTestDB(t)
-user := createAnnouncementTestUser(t, db, "admin", "admin@example.com", true)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupAnnouncementTestDB(t)
+			user := createAnnouncementTestUser(t, db, "admin", "admin@example.com", true)
 
-if tt.setupGroups != nil {
-tt.setupGroups(db)
-}
+			if tt.setupGroups != nil {
+				tt.setupGroups(db)
+			}
 
-emailService := &email.Service{}
-groupMeService := groupme.NewService()
+			emailService := &email.Service{}
+			groupMeService := groupme.NewService()
 
-c, w := setupAnnouncementTestContext(user.ID, true)
+			c, w := setupAnnouncementTestContext(user.ID, true)
 
-jsonBytes, _ := json.Marshal(tt.payload)
-c.Request = httptest.NewRequest("POST", "/api/v1/announcements", bytes.NewBuffer(jsonBytes))
-c.Request.Header.Set("Content-Type", "application/json")
+			jsonBytes, _ := json.Marshal(tt.payload)
+			c.Request = httptest.NewRequest("POST", "/api/v1/announcements", bytes.NewBuffer(jsonBytes))
+			c.Request.Header.Set("Content-Type", "application/json")
 
-handler := CreateAnnouncement(db, emailService, groupMeService)
-handler(c)
+			handler := CreateAnnouncement(db, emailService, groupMeService)
+			handler(c)
 
-if w.Code != tt.expectedStatus {
-t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
-}
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
 
-if tt.expectedStatus == http.StatusCreated {
-var announcement models.Announcement
-if err := json.Unmarshal(w.Body.Bytes(), &announcement); err != nil {
-t.Fatalf("Failed to unmarshal response: %v", err)
-}
+			if tt.expectedStatus == http.StatusCreated {
+				var announcement models.Announcement
+				if err := json.Unmarshal(w.Body.Bytes(), &announcement); err != nil {
+					t.Fatalf("Failed to unmarshal response: %v", err)
+				}
 
-if tt.checkGroupMe && !announcement.SendGroupMe {
-t.Error("SendGroupMe should be true")
-}
+				if tt.checkGroupMe && !announcement.SendGroupMe {
+					t.Error("SendGroupMe should be true")
+				}
 
-// Verify announcement was created in database
-var dbAnnouncement models.Announcement
-if err := db.First(&dbAnnouncement, announcement.ID).Error; err != nil {
-t.Errorf("Announcement not found in database: %v", err)
-}
+				// Verify announcement was created in database
+				var dbAnnouncement models.Announcement
+				if err := db.First(&dbAnnouncement, announcement.ID).Error; err != nil {
+					t.Errorf("Announcement not found in database: %v", err)
+				}
 
-if dbAnnouncement.SendGroupMe != announcement.SendGroupMe {
-t.Errorf("Expected SendGroupMe %v, got %v", announcement.SendGroupMe, dbAnnouncement.SendGroupMe)
-}
-}
-})
-}
+				if dbAnnouncement.SendGroupMe != announcement.SendGroupMe {
+					t.Errorf("Expected SendGroupMe %v, got %v", announcement.SendGroupMe, dbAnnouncement.SendGroupMe)
+				}
+			}
+		})
+	}
 }

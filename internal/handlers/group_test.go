@@ -1171,16 +1171,16 @@ func TestGetGroupMembers(t *testing.T) {
 // TestIsGroupAdmin tests the IsGroupAdmin helper function
 func TestIsGroupAdmin(t *testing.T) {
 	db := setupGroupTestDB(t)
-	
+
 	// Create a user and group
 	user := createGroupTestUser(t, db, "member", "member@example.com", false)
 	group := createTestGroup(t, db, "Test Group", "Description")
-	
+
 	// Initially user is not a group admin
 	if IsGroupAdmin(db, user.ID, group.ID) {
 		t.Error("Expected user to not be a group admin initially")
 	}
-	
+
 	// Add user as regular member
 	userGroup := &models.UserGroup{
 		UserID:       user.ID,
@@ -1188,15 +1188,15 @@ func TestIsGroupAdmin(t *testing.T) {
 		IsGroupAdmin: false,
 	}
 	db.Create(userGroup)
-	
+
 	// Still not a group admin
 	if IsGroupAdmin(db, user.ID, group.ID) {
 		t.Error("Expected user to not be a group admin")
 	}
-	
+
 	// Promote to group admin
 	db.Model(userGroup).Update("is_group_admin", true)
-	
+
 	// Now should be a group admin
 	if !IsGroupAdmin(db, user.ID, group.ID) {
 		t.Error("Expected user to be a group admin")

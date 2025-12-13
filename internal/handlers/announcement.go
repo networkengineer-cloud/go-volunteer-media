@@ -272,7 +272,7 @@ func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService 
 		"user_count": len(users),
 		"group_id":   groupID,
 	}).Info("Sending group announcement emails to members")
-	
+
 	successCount := 0
 	for _, user := range users {
 		if err := emailService.SendAnnouncementEmail(user.Email, title, content); err != nil {

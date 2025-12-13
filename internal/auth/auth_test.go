@@ -383,9 +383,9 @@ func TestPasswordHashingRoundTrip(t *testing.T) {
 		"C0mpl3x!P@ssw0rd",
 		"very-long-password-with-many-characters-to-test-limits",
 		"password with spaces",
-		"пароль",        // Cyrillic
-		"密码",           // Chinese
-		"🔒secure123",   // Emoji
+		"пароль",     // Cyrillic
+		"密码",         // Chinese
+		"🔒secure123", // Emoji
 	}
 
 	for _, password := range passwords {

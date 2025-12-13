@@ -190,7 +190,7 @@ func UpdateEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 		// Update preferences
 		updates := map[string]interface{}{
 			"email_notifications_enabled": req.EmailNotificationsEnabled,
-			"show_length_of_stay":          req.ShowLengthOfStay,
+			"show_length_of_stay":         req.ShowLengthOfStay,
 		}
 		if err := db.WithContext(ctx).Model(&models.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update preferences"})
@@ -200,7 +200,7 @@ func UpdateEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"message":                     "Preferences updated successfully",
 			"email_notifications_enabled": req.EmailNotificationsEnabled,
-			"show_length_of_stay":          req.ShowLengthOfStay,
+			"show_length_of_stay":         req.ShowLengthOfStay,
 		})
 	}
 }
@@ -223,7 +223,7 @@ func GetEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, gin.H{
 			"email_notifications_enabled": user.EmailNotificationsEnabled,
-			"show_length_of_stay":          user.ShowLengthOfStay,
+			"show_length_of_stay":         user.ShowLengthOfStay,
 		})
 	}
 }

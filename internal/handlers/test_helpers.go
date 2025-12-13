@@ -14,7 +14,7 @@ import (
 func SetupTestDB(t *testing.T) *gorm.DB {
 	// Set JWT_SECRET for testing - must be random and secure for validation to pass
 	os.Setenv("JWT_SECRET", "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1fG3hI5jK7lM9nO1pQ3")
-	
+
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)

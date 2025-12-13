@@ -36,24 +36,24 @@ func TestService_SendMessage(t *testing.T) {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					// Validate request method
 					assert.Equal(t, http.MethodPost, r.Method)
-					
+
 					// Validate URL path
 					assert.Equal(t, "/v3/bots/post", r.URL.Path)
-					
+
 					// Validate content type
 					assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-					
+
 					// Validate request body
 					body, err := io.ReadAll(r.Body)
 					require.NoError(t, err)
-					
+
 					var payload map[string]string
 					err = json.Unmarshal(body, &payload)
 					require.NoError(t, err)
-					
+
 					assert.Equal(t, "test-bot-123", payload["bot_id"])
 					assert.Equal(t, "Test announcement", payload["text"])
-					
+
 					// Return success response
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusCreated)
@@ -129,14 +129,14 @@ func TestService_SendMessage(t *testing.T) {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					body, err := io.ReadAll(r.Body)
 					require.NoError(t, err)
-					
+
 					var payload map[string]string
 					err = json.Unmarshal(body, &payload)
 					require.NoError(t, err)
-					
+
 					// Should be truncated to 1000 characters
 					assert.LessOrEqual(t, len(payload["text"]), 1000)
-					
+
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusCreated)
 					json.NewEncoder(w).Encode(map[string]interface{}{
@@ -214,15 +214,15 @@ func TestService_SendAnnouncement(t *testing.T) {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					body, err := io.ReadAll(r.Body)
 					require.NoError(t, err)
-					
+
 					var payload map[string]string
 					err = json.Unmarshal(body, &payload)
 					require.NoError(t, err)
-					
+
 					// Verify formatted message
 					assert.Contains(t, payload["text"], "📢 Important Update")
 					assert.Contains(t, payload["text"], "This is the announcement content")
-					
+
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusCreated)
 					json.NewEncoder(w).Encode(map[string]interface{}{
@@ -269,14 +269,14 @@ func TestService_SendAnnouncement(t *testing.T) {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					body, err := io.ReadAll(r.Body)
 					require.NoError(t, err)
-					
+
 					var payload map[string]string
 					err = json.Unmarshal(body, &payload)
 					require.NoError(t, err)
-					
+
 					// Should be truncated to 1000 characters total
 					assert.LessOrEqual(t, len(payload["text"]), 1000)
-					
+
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusCreated)
 					json.NewEncoder(w).Encode(map[string]interface{}{
