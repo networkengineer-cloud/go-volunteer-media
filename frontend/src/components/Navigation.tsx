@@ -114,13 +114,15 @@ const Navigation: React.FC = () => {
               {user?.is_admin && (
                 <>
                   <Link to="/admin/groups" className="nav-admin-groups" onClick={closeMobileMenu}>Groups</Link>
-                  <Link to="/admin/animals" className="nav-admin-animals" onClick={closeMobileMenu}>Animals</Link>
-                  <Link to="/admin/animal-tags" className="nav-admin-tags" onClick={closeMobileMenu}>Tags</Link>
                   <Link to="/admin/site-settings" className="nav-admin-settings" onClick={closeMobileMenu}>Admin</Link>
                 </>
               )}
               {(user?.is_admin || isGroupAdmin) && (
-                <Link to="/users" className="nav-users" onClick={closeMobileMenu}>Users</Link>
+                <>
+                  <Link to="/admin/animals" className="nav-admin-animals" onClick={closeMobileMenu}>Animals</Link>
+                  <Link to="/admin/animal-tags" className="nav-admin-tags" onClick={closeMobileMenu}>Tags</Link>
+                  <Link to="/users" className="nav-users" onClick={closeMobileMenu}>Users</Link>
+                </>
               )}
               <Link to="/settings" className="nav-settings" onClick={closeMobileMenu}>My Settings</Link>
               <span className="nav-user" aria-label={`Logged in as ${user?.username}${user?.is_admin ? ', Admin' : ''}`}>
