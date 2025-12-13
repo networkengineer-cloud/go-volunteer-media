@@ -11,6 +11,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// escapeSQLWildcards escapes SQL wildcard characters (%, _) in user input
+// to prevent unintended pattern matching in LIKE queries
+func escapeSQLWildcards(input string) string {
+	// Escape backslash first to prevent double-escaping
+	result := strings.ReplaceAll(input, "\\", "\\\\")
+	// Escape SQL wildcard characters
+	result = strings.ReplaceAll(result, "%", "\\%")
+	result = strings.ReplaceAll(result, "_", "\\_")
+	return result
+}
+
 // GetAnimals returns all animals in a group with optional filtering
 func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -45,7 +56,9 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 		// Name search filter
 		nameSearch := c.Query("name")
 		if nameSearch != "" {
-			query = query.Where("LOWER(name) LIKE ?", "%"+strings.ToLower(nameSearch)+"%")
+			// Escape SQL wildcards to prevent unintended pattern matching
+			escaped := escapeSQLWildcards(strings.ToLower(nameSearch))
+			query = query.Where("LOWER(name) LIKE ?", "%"+escaped+"%")
 		}
 
 		var animals []models.Animal
