@@ -17,6 +17,9 @@ const (
 
 	// MaxHeroImageSize is the maximum size for hero images (5MB)
 	MaxHeroImageSize = 5 * 1024 * 1024 // 5 MB
+
+	// MaxDocumentSize is the maximum allowed document upload size (20MB)
+	MaxDocumentSize = 20 * 1024 * 1024 // 20 MB
 )
 
 var (
@@ -40,6 +43,12 @@ var AllowedImageTypes = map[string][]string{
 	".webp": {"image/webp"},
 	".heic": {"image/heic", "image/heif"},
 	".heif": {"image/heic", "image/heif"},
+}
+
+// AllowedDocumentTypes maps file extensions to their MIME types for protocol documents
+var AllowedDocumentTypes = map[string][]string{
+	".pdf":  {"application/pdf"},
+	".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
 }
 
 // ValidateImageUpload validates an uploaded image file
@@ -151,4 +160,68 @@ func ValidateImageContent(data []byte) error {
 	}
 
 	return fmt.Errorf("%w: unrecognized image format", ErrInvalidFile)
+}
+
+// ValidateDocumentUpload validates an uploaded document file (PDF or DOCX)
+func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
+	// Check file size
+	if file.Size > maxSize {
+		return fmt.Errorf("%w: file size is %d bytes, maximum is %d bytes",
+			ErrFileTooLarge, file.Size, maxSize)
+	}
+
+	// Check file extension
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	allowedMimeTypes, ok := AllowedDocumentTypes[ext]
+	if !ok {
+		return fmt.Errorf("%w: extension %s is not allowed (only PDF and DOCX are supported)", ErrInvalidFileType, ext)
+	}
+
+	// Open file to check content type
+	src, err := file.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer src.Close()
+
+	// Read first 512 bytes to detect content type
+	buffer := make([]byte, 512)
+	n, err := src.Read(buffer)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// Detect content type from file content
+	contentType := http.DetectContentType(buffer[:n])
+
+	// Validate content type matches expected types for the extension
+	validContentType := false
+	for _, allowedType := range allowedMimeTypes {
+		if contentType == allowedType {
+			validContentType = true
+			break
+		}
+	}
+
+	// Special handling for DOCX files - they're detected as application/zip
+	if !validContentType && ext == ".docx" {
+		// DOCX files are ZIP archives, check for ZIP signature
+		if bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x03, 0x04}) || bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x05, 0x06}) {
+			validContentType = true
+		}
+	}
+
+	// PDF files start with %PDF
+	if !validContentType && ext == ".pdf" {
+		if bytes.HasPrefix(buffer, []byte("%PDF")) {
+			validContentType = true
+		}
+	}
+
+	if !validContentType {
+		return fmt.Errorf("%w: file does not appear to be a valid %s document (detected: %s)",
+			ErrInvalidFileType, strings.ToUpper(ext[1:]), contentType)
+	}
+
+	return nil
 }

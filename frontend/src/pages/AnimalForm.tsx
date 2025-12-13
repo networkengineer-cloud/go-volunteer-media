@@ -41,7 +41,11 @@ const AnimalForm: React.FC = () => {
     status: 'available',
     quarantine_start_date: '',
     is_returned: false,
+    protocol_document_url: '',
+    protocol_document_name: '',
   });
+  const [protocolDocumentFile, setProtocolDocumentFile] = useState<File | null>(null);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
@@ -98,6 +102,8 @@ const AnimalForm: React.FC = () => {
       setFormData({
         ...animal,
         quarantine_start_date: animal.quarantine_start_date || '',
+        protocol_document_url: animal.protocol_document_url || '',
+        protocol_document_name: animal.protocol_document_name || '',
       });
       setOriginalStatus(animal.status);
       // Set selected tags
@@ -243,6 +249,82 @@ const AnimalForm: React.FC = () => {
     }
   };
 
+  const handleProtocolDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const fileExtension = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+    if (fileExtension !== '.pdf' && fileExtension !== '.docx') {
+      toast.showError('Please select a PDF or DOCX file');
+      e.target.value = '';
+      return;
+    }
+
+    // Validate file size (max 20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      toast.showError(`File size must be under 20MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+      e.target.value = '';
+      return;
+    }
+
+    // If editing existing animal, upload immediately
+    if (id && groupId) {
+      setUploadingDocument(true);
+      try {
+        const response = await animalsApi.uploadProtocolDocument(parseInt(groupId), parseInt(id), file);
+        setFormData(prev => ({
+          ...prev,
+          protocol_document_url: response.data.url,
+          protocol_document_name: response.data.name,
+        }));
+        toast.showSuccess('Protocol document uploaded successfully!');
+      } catch (error: unknown) {
+        console.error('Upload error:', error);
+        const errorMsg = error.response?.data?.error || 'Failed to upload document. Please try again.';
+        toast.showError(errorMsg);
+      } finally {
+        setUploadingDocument(false);
+      }
+    } else {
+      // For new animals, store file to upload after animal is created
+      setProtocolDocumentFile(file);
+      setFormData(prev => ({
+        ...prev,
+        protocol_document_name: file.name,
+      }));
+      toast.showSuccess('Protocol document ready to upload (will be saved with animal)');
+    }
+
+    // Clear the file input
+    e.target.value = '';
+  };
+
+  const handleRemoveProtocolDocument = async () => {
+    if (id && groupId && formData.protocol_document_url) {
+      // Remove from existing animal
+      try {
+        await animalsApi.deleteProtocolDocument(parseInt(groupId), parseInt(id));
+        setFormData(prev => ({
+          ...prev,
+          protocol_document_url: '',
+          protocol_document_name: '',
+        }));
+        toast.showSuccess('Protocol document removed');
+      } catch (error: unknown) {
+        console.error('Failed to remove document:', error);
+        toast.showError('Failed to remove protocol document');
+      }
+    } else {
+      // Just clear the pending file
+      setProtocolDocumentFile(null);
+      setFormData(prev => ({
+        ...prev,
+        protocol_document_name: '',
+      }));
+    }
+  };
+
   const loadAvailableImages = async () => {
     if (!groupId || !id) return;
     
@@ -323,6 +405,17 @@ const AnimalForm: React.FC = () => {
         const response = await animalsApi.create(parseInt(groupId), cleanedFormData);
         animalId = response.data.id;
         toast.showSuccess('Animal added successfully!');
+        
+        // Upload protocol document if one was selected for new animal
+        if (animalId && protocolDocumentFile) {
+          try {
+            await animalsApi.uploadProtocolDocument(parseInt(groupId), animalId, protocolDocumentFile);
+            toast.showSuccess('Protocol document uploaded!');
+          } catch (error) {
+            console.error('Failed to upload protocol document:', error);
+            toast.showWarning('Animal saved but protocol document upload failed');
+          }
+        }
       }
       
       // Assign tags to the animal
@@ -712,6 +805,73 @@ const AnimalForm: React.FC = () => {
                     ))}
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Protocol Document Upload Section */}
+          <div className="form-field">
+            <label htmlFor="protocol_document_upload" className="form-field__label">
+              Protocol Document (Optional)
+              {formData.protocol_document_name && <span className="label-badge">Uploaded</span>}
+            </label>
+            <p className="form-field__helper">
+              Upload care protocols, medical instructions, or behavioral guidelines for this animal (PDF or DOCX, max 20MB)
+            </p>
+            
+            {formData.protocol_document_url || formData.protocol_document_name ? (
+              <div className="document-preview">
+                <div className="document-info">
+                  <span className="document-icon">
+                    {formData.protocol_document_name?.endsWith('.pdf') ? '📄' : '📝'}
+                  </span>
+                  <div className="document-details">
+                    <span className="document-name">{formData.protocol_document_name}</span>
+                    {formData.protocol_document_url && (
+                      <a 
+                        href={formData.protocol_document_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="document-view-link"
+                      >
+                        View Document →
+                      </a>
+                    )}
+                    {!formData.protocol_document_url && protocolDocumentFile && (
+                      <span className="document-pending">Will be uploaded when animal is saved</span>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    onClick={handleRemoveProtocolDocument}
+                    disabled={uploadingDocument}
+                    size="small"
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="document-upload-area">
+                <input
+                  id="protocol_document_upload"
+                  type="file"
+                  accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={handleProtocolDocumentUpload}
+                  className="form-field__input"
+                  disabled={uploadingDocument || uploading}
+                  aria-label="Upload protocol document"
+                  style={{ display: 'none' }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => document.getElementById('protocol_document_upload')?.click()}
+                  disabled={uploadingDocument || uploading}
+                >
+                  📎 {uploadingDocument ? 'Uploading...' : 'Upload Protocol Document'}
+                </Button>
               </div>
             )}
           </div>

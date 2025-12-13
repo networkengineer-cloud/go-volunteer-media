@@ -458,6 +458,35 @@ const AnimalDetailPage: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Protocol Document Section */}
+              {animal.protocol_document_url && animal.protocol_document_name && (
+                <div className="protocol-document-section">
+                  <h3>📋 Protocol Document</h3>
+                  <div className="protocol-document-card">
+                    <span className="protocol-document-icon">
+                      {animal.protocol_document_name.endsWith('.pdf') ? '📄' : '📝'}
+                    </span>
+                    <div className="protocol-document-details">
+                      <span className="protocol-document-name">{animal.protocol_document_name}</span>
+                      {animal.protocol_document_size && (
+                        <span className="protocol-document-size">
+                          {(animal.protocol_document_size / 1024 / 1024).toFixed(2)} MB
+                        </span>
+                      )}
+                    </div>
+                    <a 
+                      href={animal.protocol_document_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-view-document"
+                      title="Open protocol document in new tab"
+                    >
+                      View Document →
+                    </a>
+                  </div>
+                </div>
+              )}
               
               <div className="animal-action-buttons">
                 <Link 
