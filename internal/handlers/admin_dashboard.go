@@ -11,14 +11,14 @@ import (
 
 // AdminDashboardStats represents overall system statistics for the admin dashboard
 type AdminDashboardStats struct {
-	TotalUsers          int64                  `json:"total_users"`
-	TotalGroups         int64                  `json:"total_groups"`
-	TotalAnimals        int64                  `json:"total_animals"`
-	TotalComments       int64                  `json:"total_comments"`
-	RecentUsers         []RecentUser           `json:"recent_users"`
-	MostActiveGroups    []ActiveGroupInfo      `json:"most_active_groups"`
-	AnimalsNeedingAttention []AnimalAlert      `json:"animals_needing_attention"`
-	SystemHealth        SystemHealthInfo       `json:"system_health"`
+	TotalUsers              int64             `json:"total_users"`
+	TotalGroups             int64             `json:"total_groups"`
+	TotalAnimals            int64             `json:"total_animals"`
+	TotalComments           int64             `json:"total_comments"`
+	RecentUsers             []RecentUser      `json:"recent_users"`
+	MostActiveGroups        []ActiveGroupInfo `json:"most_active_groups"`
+	AnimalsNeedingAttention []AnimalAlert     `json:"animals_needing_attention"`
+	SystemHealth            SystemHealthInfo  `json:"system_health"`
 }
 
 // RecentUser represents a recently registered user
@@ -63,7 +63,7 @@ type SystemHealthInfo struct {
 func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		
+
 		var stats AdminDashboardStats
 
 		// Get total counts
@@ -174,7 +174,7 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 			if alert.TagNames != "" {
 				tags = append(tags, alert.TagNames) // Simplified - would need proper string split in production
 			}
-			
+
 			stats.AnimalsNeedingAttention[i] = AnimalAlert{
 				AnimalID:    alert.AnimalID,
 				AnimalName:  alert.AnimalName,

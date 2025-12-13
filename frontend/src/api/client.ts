@@ -10,7 +10,17 @@ export const usersApi = {
   removeGroup: (userId: number, groupId: number) => api.delete(`/admin/users/${userId}/groups/${groupId}`),
   getDeleted: () => api.get<User[]>('/admin/users/deleted'),
   restore: (userId: number) => api.post(`/admin/users/${userId}/restore`),
-  resetPassword: (userId: number, newPassword: string) => api.post(`/admin/users/${userId}/reset-password`, { new_password: newPassword }),
+  resetPassword: (userId: number, newPassword: string) => api.post(`/users/${userId}/reset-password`, { new_password: newPassword }),
+};
+
+// Group Admin API (accessible by site admins and group admins)
+export const groupAdminApi = {
+  // Get members of a group with their admin status
+  getMembers: (groupId: number) => api.get<GroupMember[]>(`/groups/${groupId}/members`),
+  // Promote a user to group admin (site admins and group admins can do this for their groups)
+  promoteToGroupAdmin: (groupId: number, userId: number) => api.post(`/groups/${groupId}/admins/${userId}`),
+  // Demote a user from group admin (site admins and group admins can do this for their groups)
+  demoteFromGroupAdmin: (groupId: number, userId: number) => api.delete(`/groups/${groupId}/admins/${userId}`),
 };
 import axios from 'axios';
 
@@ -27,14 +37,50 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Handle 401 responses (expired/invalid token)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear invalid token
+      localStorage.removeItem('token');
+      
+      // Redirect to login if not already there
+      if (window.location.pathname !== '/login') {
+        // Store the current path to redirect back after login
+        const currentPath = window.location.pathname + window.location.search;
+        if (currentPath !== '/' && currentPath !== '/login') {
+          sessionStorage.setItem('redirectAfterLogin', currentPath);
+        }
+        window.location.href = '/login?expired=true';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export interface User {
   id: number;
   username: string;
   email: string;
+  phone_number?: string;
+  hide_email?: boolean;
+  hide_phone_number?: boolean;
   is_admin: boolean;
+  is_group_admin?: boolean; // True if user is group admin of at least one group
   default_group_id?: number;
   groups?: Group[];
   deleted_at?: string | null;
+}
+
+// GroupMember represents a user's membership in a group with admin status
+export interface GroupMember {
+  user_id: number;
+  username: string;
+  email: string;
+  phone_number?: string;
+  is_group_admin: boolean;
+  is_site_admin: boolean;
 }
 
 export interface Group {
@@ -46,6 +92,15 @@ export interface Group {
   has_protocols: boolean;
   groupme_bot_id: string;
   groupme_enabled: boolean;
+}
+
+// GroupMembership represents the current user's membership status in a group
+export interface GroupMembership {
+  user_id: number;
+  group_id: number;
+  is_member: boolean;
+  is_group_admin: boolean;
+  is_site_admin: boolean;
 }
 
 export interface Protocol {
@@ -112,6 +167,21 @@ export interface Announcement {
   user?: User;
 }
 
+export interface AnimalImage {
+  id: number;
+  animal_id: number;
+  user_id: number;
+  image_url: string;
+  caption: string;
+  is_profile_picture: boolean;
+  width: number;
+  height: number;
+  file_size: number;
+  created_at: string;
+  deleted_at?: string | null;
+  user?: User;
+}
+
 export interface AnimalComment {
   id: number;
   animal_id: number;
@@ -119,6 +189,7 @@ export interface AnimalComment {
   content: string;
   image_url: string;
   created_at: string;
+  deleted_at?: string | null;
   tags?: CommentTag[];
   user?: User;
 }
@@ -148,6 +219,7 @@ export interface AnimalTag {
   name: string;
   category: string; // 'behavior' or 'walker_status'
   color: string;
+  icon: string; // Unicode emoji
   created_at: string;
 }
 
@@ -247,15 +319,16 @@ export interface AnimalInteraction {
 export interface UserProfile {
   id: number;
   username: string;
-  email: string;
-  is_admin: boolean;
-  created_at: string;
+  email?: string;  // Optional for limited profiles
+  phone_number?: string;  // Optional for limited profiles
+  is_admin?: boolean;  // Optional for limited/group admin profiles
+  created_at?: string;  // Optional for limited profiles
   default_group_id?: number;
-  groups: Group[];
-  statistics: UserProfileStatistics;
-  recent_comments: UserCommentActivity[];
-  recent_announcements: UserAnnouncementActivity[];
-  animals_interacted_with: AnimalInteraction[];
+  groups?: Group[];  // Optional for limited profiles
+  statistics?: UserProfileStatistics;  // Optional for limited/group admin profiles
+  recent_comments?: UserCommentActivity[];  // Optional for limited/group admin profiles
+  recent_announcements?: UserAnnouncementActivity[];  // Optional for limited/group admin profiles
+  animals_interacted_with?: AnimalInteraction[];  // Optional for limited/group admin profiles
 }
 
 
@@ -269,15 +342,31 @@ export const authApi = {
   
   getCurrentUser: () => api.get<User>('/me'),
   
+  updateCurrentUserProfile: (profile: {
+    email: string;
+    phone_number?: string;
+    hide_email?: boolean;
+    hide_phone_number?: boolean;
+  }) =>
+    api.put<{
+      message: string;
+      id: number;
+      email: string;
+      phone_number?: string;
+      hide_email?: boolean;
+      hide_phone_number?: boolean;
+    }>('/me/profile', profile),
+  
   setDefaultGroup: (groupId: number) => api.put('/default-group', { group_id: groupId }),
   
   getDefaultGroup: () => api.get<Group>('/default-group'),
   
-  getEmailPreferences: () => api.get<{ email_notifications_enabled: boolean }>('/email-preferences'),
+  getEmailPreferences: () => api.get<{ email_notifications_enabled: boolean; show_length_of_stay: boolean }>('/email-preferences'),
   
-  updateEmailPreferences: (emailNotificationsEnabled: boolean) =>
-    api.put<{ message: string; email_notifications_enabled: boolean }>('/email-preferences', {
+  updateEmailPreferences: (emailNotificationsEnabled: boolean, showLengthOfStay: boolean) =>
+    api.put<{ message: string; email_notifications_enabled: boolean; show_length_of_stay: boolean }>('/email-preferences', {
       email_notifications_enabled: emailNotificationsEnabled,
+      show_length_of_stay: showLengthOfStay,
     }),
 };
 
@@ -285,6 +374,7 @@ export const authApi = {
 export const groupsApi = {
   getAll: () => api.get<Group[]>('/groups'),
   getById: (id: number) => api.get<Group>('/groups/' + id),
+  getMembership: (id: number) => api.get<GroupMembership>('/groups/' + id + '/membership'),
   getLatestComments: (id: number, limit?: number) => {
     const params = limit ? { limit } : {};
     return api.get<CommentWithAnimal[]>('/groups/' + id + '/latest-comments', { params });
@@ -331,19 +421,34 @@ export const animalsApi = {
     formData.append('image', file);
     return api.post<{ url: string }>('/animals/upload-image', formData);
   },
-  // Admin bulk operations
+  // Image gallery API
+  getImages: (groupId: number, animalId: number) =>
+    api.get<AnimalImage[]>('/groups/' + groupId + '/animals/' + animalId + '/images'),
+  uploadImageToGallery: (groupId: number, animalId: number, file: File, caption?: string) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    if (caption) formData.append('caption', caption);
+    return api.post<AnimalImage>('/groups/' + groupId + '/animals/' + animalId + '/images', formData);
+  },
+  deleteImage: (groupId: number, animalId: number, imageId: number) =>
+    api.delete('/groups/' + groupId + '/animals/' + animalId + '/images/' + imageId),
+  getDeletedImages: (groupId: number) =>
+    api.get<AnimalImage[]>('/admin/groups/' + groupId + '/deleted-images'),
+  setProfilePicture: (groupId: number, animalId: number, imageId: number) =>
+    api.put<AnimalImage>(`/groups/${groupId}/animals/${animalId}/images/${imageId}/set-profile`),
+  // Admin and group admin bulk operations
   getAllForAdmin: (status?: string, groupId?: number, name?: string) => {
     const params: Record<string, unknown> = {};
     if (status !== undefined) params.status = status;
     if (groupId !== undefined) params.group_id = groupId;
     if (name) params.name = name;
-    return api.get<Animal[]>('/admin/animals', { params });
+    return api.get<Animal[]>('/bulk-animals', { params });
   },
   bulkUpdate: (animalIds: number[], groupId?: number, status?: string) => {
     const data: Record<string, unknown> = { animal_ids: animalIds };
     if (groupId !== undefined) data.group_id = groupId;
     if (status !== undefined) data.status = status;
-    return api.post<{ message: string; count: number }>('/admin/animals/bulk-update', data);
+    return api.post<{ message: string; count: number }>('/bulk-animals/bulk-update', data);
   },
   importCSV: (file: File) => {
     const formData = new FormData();
@@ -393,26 +498,30 @@ export const animalCommentsApi = {
       image_url,
       tag_ids,
     }),
+  delete: (groupId: number, animalId: number, commentId: number) =>
+    api.delete('/groups/' + groupId + '/animals/' + animalId + '/comments/' + commentId),
+  getDeleted: (groupId: number) =>
+    api.get<AnimalComment[]>('/admin/groups/' + groupId + '/deleted-comments'),
 };
 
-// Comment Tags API
+// Comment Tags API - Group-specific tags
 export const commentTagsApi = {
-  getAll: () => api.get<CommentTag[]>('/comment-tags'),
-  create: (name: string, color: string) =>
-    api.post<CommentTag>('/admin/comment-tags', { name, color }),
-  delete: (tagId: number) => api.delete('/admin/comment-tags/' + tagId),
+  getAll: (groupId: number) => api.get<CommentTag[]>('/groups/' + groupId + '/comment-tags'),
+  create: (groupId: number, name: string, color: string) =>
+    api.post<CommentTag>('/groups/' + groupId + '/comment-tags', { name, color }),
+  delete: (groupId: number, tagId: number) => api.delete('/groups/' + groupId + '/comment-tags/' + tagId),
 };
 
-// Animal Tags API
+// Animal Tags API - Group-specific tags
 export const animalTagsApi = {
-  getAll: () => api.get<AnimalTag[]>('/animal-tags'),
-  create: (data: { name: string; category: string; color: string }) =>
-    api.post<AnimalTag>('/admin/animal-tags', data),
-  update: (tagId: number, data: { name: string; category: string; color: string }) =>
-    api.put<AnimalTag>('/admin/animal-tags/' + tagId, data),
-  delete: (tagId: number) => api.delete('/admin/animal-tags/' + tagId),
-  assignToAnimal: (animalId: number, tagIds: number[]) =>
-    api.post<Animal>('/admin/animals/' + animalId + '/tags', { tag_ids: tagIds }),
+  getAll: (groupId: number) => api.get<AnimalTag[]>('/groups/' + groupId + '/animal-tags'),
+  create: (groupId: number, data: { name: string; category: string; color: string }) =>
+    api.post<AnimalTag>('/groups/' + groupId + '/animal-tags', data),
+  update: (groupId: number, tagId: number, data: { name: string; category: string; color: string }) =>
+    api.put<AnimalTag>('/groups/' + groupId + '/animal-tags/' + tagId, data),
+  delete: (groupId: number, tagId: number) => api.delete('/groups/' + groupId + '/animal-tags/' + tagId),
+  assignToAnimal: (groupId: number, animalId: number, tagIds: number[]) =>
+    api.post<Animal>('/groups/' + groupId + '/animals/' + animalId + '/tags', { tag_ids: tagIds }),
 };
 
 // Protocols API
@@ -461,11 +570,14 @@ export const settingsApi = {
   },
 };
 
-// Statistics API (admin only)
+// Statistics API
 export const statisticsApi = {
   getGroupStatistics: () => api.get<GroupStatistics[]>('/admin/statistics/groups'),
   getUserStatistics: () => api.get<UserStatistics[]>('/admin/statistics/users'),
-  getCommentTagStatistics: () => api.get<CommentTagStatistics[]>('/admin/statistics/comment-tags'),
+  getCommentTagStatistics: (groupId?: number) => {
+    const params = groupId ? `?group_id=${groupId}` : '';
+    return api.get<CommentTagStatistics[]>(`/statistics/comment-tags${params}`);
+  },
 };
 
 // User Profile API

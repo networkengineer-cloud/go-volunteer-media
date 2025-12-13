@@ -39,12 +39,22 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ item, groupId, onImageClick
             {item.user?.username?.charAt(0).toUpperCase() || '?'}
           </div>
           <div className="activity-item__meta">
-            <span 
-              className="activity-item__username" 
-              title={`Posted by ${item.user?.username || 'Unknown'}`}
-            >
-              {item.user?.username || 'Unknown'}
-            </span>
+            {item.user?.id ? (
+              <Link 
+                to={`/users/${item.user.id}/profile`}
+                className="activity-item__username activity-item__username--link" 
+                title={`View ${item.user.username}'s profile`}
+              >
+                {item.user.username}
+              </Link>
+            ) : (
+              <span 
+                className="activity-item__username" 
+                title={`Posted by ${item.user?.username || 'Unknown'}`}
+              >
+                {item.user?.username || 'Unknown'}
+              </span>
+            )}
             <time className="activity-item__timestamp" dateTime={item.created_at}>
               {formatDate(item.created_at)}
             </time>

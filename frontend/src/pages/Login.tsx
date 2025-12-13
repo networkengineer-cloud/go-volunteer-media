@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import axios from 'axios';
@@ -21,6 +21,7 @@ const Login: React.FC = () => {
   const [resetSuccess, setResetSuccess] = useState('');
   const [resetError, setResetError] = useState('');
   const [isSubmittingReset, setIsSubmittingReset] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   
   // Form validation states
   const [touched, setTouched] = useState({
@@ -35,6 +36,15 @@ const Login: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
+  const [searchParams] = useSearchParams();
+
+  // Check if redirected due to session expiration
+  useEffect(() => {
+    if (searchParams.get('expired') === 'true') {
+      setSessionExpired(true);
+      toast.showWarning('Your session has expired. Please log in again.');
+    }
+  }, [searchParams, toast]);
 
   // Validation functions
   const validateUsername = (value: string): string => {
@@ -103,7 +113,15 @@ const Login: React.FC = () => {
     try {
       await login(username, password);
       toast.showSuccess('Successfully logged in!');
-      navigate('/dashboard');
+      
+      // Redirect back to original page if there was one
+      const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+      if (redirectPath) {
+        sessionStorage.removeItem('redirectAfterLogin');
+        navigate(redirectPath);
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: unknown) {
       // Enhanced error handling for account lockout
       const errorResponse = err.response?.data;
@@ -164,6 +182,13 @@ const Login: React.FC = () => {
       <div className="login-card">
         <h1>Haws Volunteers</h1>
         <h2>Login</h2>
+        
+        {sessionExpired && (
+          <div className="session-expired-notice" role="alert">
+            Your session has expired. Please log in again to continue.
+          </div>
+        )}
+        
         <form onSubmit={handleSubmit}>
           <FormField
             label="Username"

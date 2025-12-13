@@ -181,6 +181,78 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// UpdateAnimalComment updates a comment on an animal
+// Users can only edit their own comments
+func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		groupID := c.Param("id")
+		animalID := c.Param("animalId")
+		commentID := c.Param("commentId")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check group access
+		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		// Verify animal exists and belongs to group
+		var animal models.Animal
+		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
+			return
+		}
+
+		// Get the comment
+		var comment models.AnimalComment
+		if err := db.Where("id = ? AND animal_id = ?", commentID, animalID).First(&comment).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})
+			return
+		}
+
+		// Users can only edit their own comments
+		if comment.UserID != userID.(uint) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You can only edit your own comments"})
+			return
+		}
+
+		var req AnimalCommentRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Update comment fields
+		comment.Content = req.Content
+		comment.ImageURL = req.ImageURL
+
+		if err := db.Save(&comment).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update comment"})
+			return
+		}
+
+		// Update tags if provided
+		if len(req.TagIDs) > 0 {
+			var tags []models.CommentTag
+			if err := db.Where("id IN ?", req.TagIDs).Find(&tags).Error; err == nil {
+				if err := db.Model(&comment).Association("Tags").Replace(&tags); err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update tags"})
+					return
+				}
+			}
+		}
+
+		// Reload with user info and tags
+		if err := db.Preload("User").Preload("Tags").First(&comment, comment.ID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load comment"})
+			return
+		}
+
+		c.JSON(http.StatusOK, comment)
+	}
+}
+
 // GetGroupLatestComments returns the latest comments across all animals in a group
 func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -251,6 +323,119 @@ func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 		for _, comment := range comments {
 			if animal, ok := animalMap[comment.AnimalID]; ok {
 				results = append(results, CommentWithAnimal{
+					AnimalComment: comment,
+					Animal:        animal,
+				})
+			}
+		}
+
+		c.JSON(http.StatusOK, results)
+	}
+}
+
+// DeleteAnimalComment deletes a comment (soft delete)
+// Users can delete their own comments, admins can delete any comment
+func DeleteAnimalComment(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		groupID := c.Param("id")
+		animalID := c.Param("animalId")
+		commentID := c.Param("commentId")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check group access
+		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		// Verify animal exists and belongs to group
+		var animal models.Animal
+		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
+			return
+		}
+
+		// Get the comment
+		var comment models.AnimalComment
+		if err := db.Where("id = ? AND animal_id = ?", commentID, animalID).First(&comment).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})
+			return
+		}
+
+		// Check if user owns the comment, is group admin, or is site admin
+		isGroupAdmin := checkGroupAdminAccess(db, userID, isAdmin, groupID)
+		if comment.UserID != userID.(uint) && !isGroupAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own comments"})
+			return
+		}
+
+		// Soft delete the comment
+		if err := db.Delete(&comment).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete comment"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Comment deleted successfully"})
+	}
+}
+
+// GetDeletedComments returns all soft-deleted comments (group admin or site admin)
+func GetDeletedComments(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		groupID := c.Param("id")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		// Get animals in this group
+		var animals []models.Animal
+		if err := db.Where("group_id = ?", groupID).Find(&animals).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
+			return
+		}
+
+		var animalIDs []uint
+		animalMap := make(map[uint]models.Animal)
+		for _, animal := range animals {
+			animalIDs = append(animalIDs, animal.ID)
+			animalMap[animal.ID] = animal
+		}
+
+		if len(animalIDs) == 0 {
+			c.JSON(http.StatusOK, []interface{}{})
+			return
+		}
+
+		// Get deleted comments (unscoped to include soft-deleted)
+		var comments []models.AnimalComment
+		err := db.Unscoped().
+			Where("animal_id IN ? AND deleted_at IS NOT NULL", animalIDs).
+			Preload("User").
+			Preload("Tags").
+			Order("deleted_at DESC").
+			Find(&comments).Error
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch deleted comments"})
+			return
+		}
+
+		// Build response with animal information
+		type DeletedCommentWithAnimal struct {
+			models.AnimalComment
+			Animal models.Animal `json:"animal"`
+		}
+
+		var results []DeletedCommentWithAnimal
+		for _, comment := range comments {
+			if animal, ok := animalMap[comment.AnimalID]; ok {
+				results = append(results, DeletedCommentWithAnimal{
 					AnimalComment: comment,
 					Animal:        animal,
 				})

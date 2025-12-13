@@ -12,17 +12,17 @@ import (
 
 // ActivityItem represents a unified activity feed item
 type ActivityItem struct {
-	ID        uint      `json:"id"`
-	Type      string    `json:"type"` // "comment", "announcement"
-	CreatedAt time.Time `json:"created_at"`
-	UserID    uint      `json:"user_id"`
-	User      *models.User `json:"user,omitempty"`
-	Content   string    `json:"content"`
-	Title     string    `json:"title,omitempty"`    // For announcements
-	ImageURL  string    `json:"image_url,omitempty"`
-	AnimalID  *uint     `json:"animal_id,omitempty"`  // For comments
-	Animal    *models.Animal `json:"animal,omitempty"`    // For comments
-	Tags      []models.CommentTag `json:"tags,omitempty"` // For comments
+	ID        uint                `json:"id"`
+	Type      string              `json:"type"` // "comment", "announcement"
+	CreatedAt time.Time           `json:"created_at"`
+	UserID    uint                `json:"user_id"`
+	User      *models.User        `json:"user,omitempty"`
+	Content   string              `json:"content"`
+	Title     string              `json:"title,omitempty"` // For announcements
+	ImageURL  string              `json:"image_url,omitempty"`
+	AnimalID  *uint               `json:"animal_id,omitempty"` // For comments
+	Animal    *models.Animal      `json:"animal,omitempty"`    // For comments
+	Tags      []models.CommentTag `json:"tags,omitempty"`      // For comments
 }
 
 // GetGroupActivityFeed returns a unified activity feed combining updates/announcements and comments
@@ -163,7 +163,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		paginatedItems := activityItems[start:end]
-		
+
 		// Ensure we return an empty array instead of nil
 		if paginatedItems == nil {
 			paginatedItems = []ActivityItem{}
@@ -171,10 +171,10 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 
 		// Return response with pagination metadata
 		c.JSON(http.StatusOK, gin.H{
-			"items":  paginatedItems,
-			"total":  total,
-			"limit":  limit,
-			"offset": offset,
+			"items":   paginatedItems,
+			"total":   total,
+			"limit":   limit,
+			"offset":  offset,
 			"hasMore": end < total,
 		})
 	}

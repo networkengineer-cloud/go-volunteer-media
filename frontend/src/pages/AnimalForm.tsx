@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { animalsApi, announcementsApi, animalTagsApi } from '../api/client';
-import type { AnimalTag, Animal, DuplicateNameInfo } from '../api/client';
+import { animalsApi, updatesApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
+import type { AnimalTag, Animal, DuplicateNameInfo, AnimalImage } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import FormField from '../components/FormField';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
+import ImageEditor from '../components/ImageEditor';
 import './Form.css';
 
 const AnimalForm: React.FC = () => {
@@ -17,6 +18,11 @@ const AnimalForm: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showQuarantineModal, setShowQuarantineModal] = useState(false);
   const [showUnarchiveModal, setShowUnarchiveModal] = useState(false);
+  const [showImageSelector, setShowImageSelector] = useState(false);
+  const [availableImages, setAvailableImages] = useState<AnimalImage[]>([]);
+  const [loadingImages, setLoadingImages] = useState(false);
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [editingImageUrl, setEditingImageUrl] = useState<string>('');
   const [pendingStatusChange, setPendingStatusChange] = useState<string>('');
   const [unarchiveIsReturned, setUnarchiveIsReturned] = useState(false);
   const [quarantineContext, setQuarantineContext] = useState('');
@@ -40,12 +46,24 @@ const AnimalForm: React.FC = () => {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const loadAvailableTags = useCallback(async () => {
+    if (!groupId) return;
     try {
-      const response = await animalTagsApi.getAll();
+      const response = await animalTagsApi.getAll(parseInt(groupId));
       setAvailableTags(response.data);
     } catch (error) {
       console.error('Failed to load tags:', error);
     }
+  }, [groupId]);
+
+  // Memoize modal close handlers to prevent unnecessary re-renders
+  const handleQuarantineModalClose = useCallback(() => {
+    setShowQuarantineModal(false);
+    setQuarantineContext('');
+  }, []);
+
+  const handleUnarchiveModalClose = useCallback(() => {
+    setShowUnarchiveModal(false);
+    setPendingStatusChange('');
   }, []);
 
   const checkForDuplicateNames = useCallback(async (name: string, currentAnimalId?: number) => {
@@ -174,19 +192,90 @@ const AnimalForm: React.FC = () => {
       return;
     }
 
+    // Create preview URL for editor
+    const previewUrl = URL.createObjectURL(file);
+    setEditingImageUrl(previewUrl);
+    setShowImageEditor(true);
+    
+    // Clear the file input
+    e.target.value = '';
+  };
+
+  const handleEditorSave = async (croppedBlob: Blob) => {
+    setShowImageEditor(false);
     setUploading(true);
+    
     try {
+      // Create a File object from the Blob with proper filename
+      const fileName = `cropped-image-${Date.now()}.jpg`;
+      const file = new File([croppedBlob], fileName, { type: 'image/jpeg' });
+      
+      // Upload cropped image
       const res = await animalsApi.uploadImage(file);
-      setFormData({ ...formData, image_url: res.data.url });
+      
+      // Update formData with the new image URL
+      setFormData(prev => ({ ...prev, image_url: res.data.url }));
+      
       toast.showSuccess('Image uploaded successfully!');
+      
+      // Clean up preview URL after a short delay to ensure new image loads
+      setTimeout(() => {
+        if (editingImageUrl) {
+          URL.revokeObjectURL(editingImageUrl);
+          setEditingImageUrl('');
+        }
+      }, 100);
     } catch (err: unknown) {
       console.error('Upload error:', err);
       const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setUploading(false);
-      // Clear the file input
-      e.target.value = '';
+    }
+  };
+
+  const handleEditorCancel = () => {
+    setShowImageEditor(false);
+    // Clean up preview URL
+    if (editingImageUrl) {
+      URL.revokeObjectURL(editingImageUrl);
+      setEditingImageUrl('');
+    }
+  };
+
+  const loadAvailableImages = async () => {
+    if (!groupId || !id) return;
+    
+    setLoadingImages(true);
+    try {
+      const response = await animalsApi.getImages(parseInt(groupId), parseInt(id));
+      setAvailableImages(response.data);
+    } catch (error) {
+      console.error('Failed to load images:', error);
+      toast.showError('Failed to load images');
+    } finally {
+      setLoadingImages(false);
+    }
+  };
+
+  const handleSelectExistingImage = async (imageId: number) => {
+    if (!id || !groupId) return;
+
+    try {
+      await animalsApi.setProfilePicture(parseInt(groupId), parseInt(id), imageId);
+      const selectedImage = availableImages.find(img => img.id === imageId);
+      if (selectedImage) {
+        setFormData({ ...formData, image_url: selectedImage.image_url });
+      }
+      
+      // Reload images to update profile picture badges
+      await loadAvailableImages();
+      
+      setShowImageSelector(false);
+      toast.showSuccess('Profile picture updated!');
+    } catch (error) {
+      console.error('Failed to set profile picture:', error);
+      toast.showError('Failed to set profile picture');
     }
   };
 
@@ -237,9 +326,9 @@ const AnimalForm: React.FC = () => {
       }
       
       // Assign tags to the animal
-      if (animalId && selectedTagIds.length >= 0) {
+      if (animalId && selectedTagIds.length >= 0 && groupId) {
         try {
-          await animalTagsApi.assignToAnimal(animalId, selectedTagIds);
+          await animalTagsApi.assignToAnimal(parseInt(groupId), animalId, selectedTagIds);
         } catch (error) {
           console.error('Failed to assign tags:', error);
           // Don't fail the whole operation if tag assignment fails
@@ -270,25 +359,73 @@ const AnimalForm: React.FC = () => {
 
     setLoading(true);
     try {
-      // Save the animal first
+      // Save the animal first (and get the animal ID for comments)
+      let animalId: number | null = null;
       if (id && groupId) {
-        await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
+        const response = await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
+        console.log('Update response:', response);
+        console.log('Response data:', response.data);
+        console.log('Animal ID from response:', response.data.id);
+        animalId = response.data.id;
       } else if (groupId) {
-        await animalsApi.create(parseInt(groupId), updatedFormData);
+        const response = await animalsApi.create(parseInt(groupId), updatedFormData);
+        console.log('Create response:', response);
+        console.log('Response data:', response.data);
+        console.log('Animal ID from response:', response.data.id);
+        animalId = response.data.id;
       }
 
-      // Create announcement with behavior tag context
       const endDate = calculateQuarantineEndDate(quarantineDate);
-      const announcementTitle = `🚨 Bite Quarantine: ${formData.name}`;
-      const announcementContent = `${formData.name} has been placed in bite quarantine.\n\n` +
+      
+      // Create a comment on the animal with behavior tag
+      if (animalId && groupId) {
+        try {
+          // Fetch comment tags to find the behavior tag
+          const commentTagsResponse = await commentTagsApi.getAll(parseInt(groupId));
+          const commentTags = commentTagsResponse.data;
+          const behaviorTag = commentTags.find(tag => tag.name.toLowerCase() === 'behavior');
+          
+          // Create comment with bite quarantine details
+          const commentContent = `🚨 BITE QUARANTINE\n\n` +
+            `Quarantine Start: ${new Date(quarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
+            `Quarantine End: ${endDate}\n\n` +
+            `Incident Details:\n${quarantineContext}`;
+          
+          console.log('Creating comment for animal ID:', animalId, 'in group:', groupId);
+          console.log('Comment tags:', commentTags);
+          console.log('Behavior tag:', behaviorTag);
+          
+          await animalCommentsApi.create(
+            parseInt(groupId),
+            animalId,
+            commentContent,
+            undefined, // no image
+            behaviorTag ? [behaviorTag.id] : [] // attach behavior tag if found
+          );
+          
+          console.log('Comment created successfully');
+        } catch (commentError) {
+          console.error('Failed to create comment:', commentError);
+          // Don't fail the whole operation if comment creation fails
+          toast.showWarning('Animal updated but comment creation failed');
+        }
+      } else {
+        console.warn('Missing animalId or groupId, skipping comment creation:', { animalId, groupId });
+      }
+
+      // Create group update (post) with behavior tag context for activity feed
+      const updateTitle = `🚨 Bite Quarantine: ${formData.name}`;
+      const updateContent = `${formData.name} has been placed in bite quarantine.\n\n` +
         `Quarantine Start: ${new Date(quarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
         `Quarantine End: ${endDate}\n\n` +
         `Details:\n${quarantineContext}\n\n` +
         `#behavior`;
 
-      await announcementsApi.create(announcementTitle, announcementContent, true, false);
+      // Create group update (shows in activity feed) with GroupMe notification
+      // Parameters: (groupId, title, content, send_groupme, image_url?)
+      await updatesApi.create(parseInt(groupId), updateTitle, updateContent, true);
 
-      toast.showSuccess('Animal updated and announcement created successfully!');
+      toast.showSuccess('Animal updated, comment added, and announcement posted successfully!');
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
@@ -450,30 +587,57 @@ const AnimalForm: React.FC = () => {
 
           <div className="form-field">
             <label htmlFor="image_upload" className="form-field__label">
-              Animal Image
+              Animal Image {formData.image_url && <span className="label-badge">Profile Picture</span>}
             </label>
-            <input
-              id="image_upload"
-              type="file"
-              accept="image/jpeg,image/png,image/gif"
-              onChange={handleImageUpload}
-              className="form-field__input"
-              disabled={uploading}
-              aria-label="Upload animal image"
-            />
+            
+            {formData.image_url && (
+              <div className="image-preview">
+                <img src={formData.image_url} alt="Current profile picture" />
+              </div>
+            )}
+            
+            <div className="image-upload-options">
+              <input
+                id="image_upload"
+                type="file"
+                accept="image/jpeg,image/png,image/gif"
+                onChange={handleImageUpload}
+                className="form-field__input"
+                disabled={uploading}
+                aria-label="Upload animal image"
+                style={{ display: 'none' }}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => document.getElementById('image_upload')?.click()}
+                disabled={uploading}
+              >
+                📤 {formData.image_url ? 'Upload Different Image' : 'Upload New Image'}
+              </Button>
+              
+              {id && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    loadAvailableImages();
+                    setShowImageSelector(true);
+                  }}
+                  disabled={uploading}
+                >
+                  🖼️ Choose from Gallery
+                </Button>
+              )}
+            </div>
+            
             <p className="form-field__helper">
-              Upload a photo (JPG, PNG, or GIF, max 10MB)
+              Upload a photo (JPG, PNG, or GIF, max 10MB) {id && 'or choose from uploaded images'}
             </p>
             {uploading && (
               <p className="form-field__helper" style={{ color: 'var(--color-primary)' }}>
                 Uploading image...
               </p>
-            )}
-            {formData.image_url && (
-              <div className="image-preview">
-                <label>Preview:</label>
-                <img src={formData.image_url} alt="Animal Preview" />
-              </div>
             )}
           </div>
 
@@ -612,10 +776,7 @@ const AnimalForm: React.FC = () => {
       {/* Bite Quarantine Context Modal */}
       <Modal
         isOpen={showQuarantineModal}
-        onClose={() => {
-          setShowQuarantineModal(false);
-          setQuarantineContext('');
-        }}
+        onClose={handleQuarantineModalClose}
         title="🚨 Bite Quarantine Information"
         size="medium"
       >
@@ -671,10 +832,7 @@ const AnimalForm: React.FC = () => {
         <div className="modal__actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
           <Button
             variant="secondary"
-            onClick={() => {
-              setShowQuarantineModal(false);
-              setQuarantineContext('');
-            }}
+            onClick={handleQuarantineModalClose}
             disabled={loading}
           >
             Cancel
@@ -693,10 +851,7 @@ const AnimalForm: React.FC = () => {
       {/* Unarchive Confirmation Modal */}
       <Modal
         isOpen={showUnarchiveModal}
-        onClose={() => {
-          setShowUnarchiveModal(false);
-          setPendingStatusChange('');
-        }}
+        onClose={handleUnarchiveModalClose}
         title="Confirm Status Change"
         size="medium"
       >
@@ -767,6 +922,134 @@ const AnimalForm: React.FC = () => {
           </Button>
         </div>
       </Modal>
+
+      {/* Image Selector Modal */}
+      <Modal
+        isOpen={showImageSelector}
+        onClose={() => setShowImageSelector(false)}
+        title="Select Profile Picture"
+      >
+        {loadingImages ? (
+          <div style={{ padding: '2rem', textAlign: 'center' }}>
+            <p>Loading images...</p>
+          </div>
+        ) : availableImages.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center' }}>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              No images available yet.
+            </p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+              Upload images to the photo gallery first, then you can select them as profile pictures.
+            </p>
+            {groupId && id && (
+              <Link
+                to={`/groups/${groupId}/animals/${id}/photos`}
+                style={{ 
+                  display: 'inline-block', 
+                  marginTop: '1rem',
+                  color: 'var(--brand)',
+                  textDecoration: 'underline'
+                }}
+              >
+                Go to Photo Gallery →
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="image-selector-grid">
+            {availableImages.map((image) => (
+              <div
+                key={image.id}
+                className={`selectable-image ${image.is_profile_picture ? 'current' : ''}`}
+                onClick={() => handleSelectExistingImage(image.id)}
+                style={{
+                  cursor: 'pointer',
+                  border: image.is_profile_picture ? '3px solid var(--brand)' : '2px solid var(--border)',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (!image.is_profile_picture) {
+                    e.currentTarget.style.borderColor = 'var(--brand)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!image.is_profile_picture) {
+                    e.currentTarget.style.borderColor = 'var(--border)';
+                  }
+                }}
+              >
+                <img
+                  src={image.image_url}
+                  alt={image.caption || 'Gallery image'}
+                  style={{
+                    width: '100%',
+                    height: '200px',
+                    objectFit: 'cover',
+                    display: 'block',
+                  }}
+                />
+                {image.is_profile_picture && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '0.5rem',
+                      right: '0.5rem',
+                      background: 'var(--brand)',
+                      color: 'white',
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '12px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Current
+                  </div>
+                )}
+                <div style={{ padding: '0.75rem', backgroundColor: 'var(--bg-secondary)' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    <div>By {image.user?.username || 'Unknown'}</div>
+                    <div>{new Date(image.created_at).toLocaleDateString()}</div>
+                  </div>
+                  {image.caption && (
+                    <div style={{ 
+                      fontSize: '0.875rem', 
+                      marginTop: '0.5rem',
+                      color: 'var(--text-primary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {image.caption}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="secondary"
+            onClick={() => setShowImageSelector(false)}
+          >
+            Close
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Image Editor Modal */}
+      {showImageEditor && editingImageUrl && (
+        <ImageEditor
+          imageSrc={editingImageUrl}
+          onSave={handleEditorSave}
+          onCancel={handleEditorCancel}
+          aspectRatio={4 / 3}
+        />
+      )}
     </div>
   );
 };

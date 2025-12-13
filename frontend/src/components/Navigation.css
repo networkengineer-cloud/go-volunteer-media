@@ -270,10 +270,15 @@
   }
 }
 
-/* Tablet breakpoint */
+/* Tablet breakpoint - hide logo text to prevent overlap */
 @media (max-width: 1024px) and (min-width: 769px) {
   .nav-container {
     padding: 0.875rem 1.5rem;
+  }
+
+  /* Hide logo text on tablets, keep icon visible */
+  .nav-brand-text {
+    display: none;
   }
 
   .nav-right {

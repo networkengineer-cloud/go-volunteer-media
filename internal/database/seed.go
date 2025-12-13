@@ -23,6 +23,48 @@ func SeedData(db *gorm.DB, force bool) error {
 		return nil
 	}
 
+	// If force is true, delete existing data
+	if force && userCount > 0 {
+		logging.Info("Force flag set - deleting existing data...")
+
+		// Delete in reverse order of foreign key dependencies
+		if err := db.Exec("DELETE FROM animal_comment_tags").Error; err != nil {
+			return fmt.Errorf("failed to delete animal_comment_tags: %w", err)
+		}
+		if err := db.Exec("DELETE FROM animal_animal_tags").Error; err != nil {
+			return fmt.Errorf("failed to delete animal_animal_tags: %w", err)
+		}
+		if err := db.Exec("DELETE FROM animal_name_histories").Error; err != nil {
+			return fmt.Errorf("failed to delete animal_name_histories: %w", err)
+		}
+		if err := db.Exec("DELETE FROM animal_comments").Error; err != nil {
+			return fmt.Errorf("failed to delete animal_comments: %w", err)
+		}
+		if err := db.Exec("DELETE FROM animal_images").Error; err != nil {
+			return fmt.Errorf("failed to delete animal_images: %w", err)
+		}
+		if err := db.Exec("DELETE FROM animals").Error; err != nil {
+			return fmt.Errorf("failed to delete animals: %w", err)
+		}
+		if err := db.Exec("DELETE FROM updates").Error; err != nil {
+			return fmt.Errorf("failed to delete updates: %w", err)
+		}
+		if err := db.Exec("DELETE FROM announcements").Error; err != nil {
+			return fmt.Errorf("failed to delete announcements: %w", err)
+		}
+		if err := db.Exec("DELETE FROM protocols").Error; err != nil {
+			return fmt.Errorf("failed to delete protocols: %w", err)
+		}
+		if err := db.Exec("DELETE FROM user_groups").Error; err != nil {
+			return fmt.Errorf("failed to delete user_groups: %w", err)
+		}
+		if err := db.Exec("DELETE FROM users").Error; err != nil {
+			return fmt.Errorf("failed to delete users: %w", err)
+		}
+
+		logging.Info("Existing data deleted successfully")
+	}
+
 	// Seed users
 	users, err := seedUsers(db)
 	if err != nil {
@@ -95,34 +137,39 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			Password:                  string(hashedPassword),
 			IsAdmin:                   true,
 			EmailNotificationsEnabled: true,
+			PhoneNumber:               "(555) 100-0001",
+			HideEmail:                 false,
+			HidePhoneNumber:           false,
 		},
 		{
-			Username:                  "sarah_modsquad",
-			Email:                     "sarah@demo.local",
+			Username:                  "merry",
+			Email:                     "merry@demo.local",
 			Password:                  string(hashedPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: true,
+			PhoneNumber:               "(555) 100-0002",
+			HideEmail:                 false,
+			HidePhoneNumber:           true, // Merry has hidden phone number
 		},
 		{
-			Username:                  "mike_modsquad",
-			Email:                     "mike@demo.local",
+			Username:                  "sophia",
+			Email:                     "sophia@demo.local",
 			Password:                  string(hashedPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: true,
+			PhoneNumber:               "(555) 100-0003",
+			HideEmail:                 true, // Sophia has hidden email
+			HidePhoneNumber:           false,
 		},
 		{
-			Username:                  "jake_modsquad",
-			Email:                     "jake@demo.local",
-			Password:                  string(hashedPassword),
-			IsAdmin:                   false,
-			EmailNotificationsEnabled: false,
-		},
-		{
-			Username:                  "lisa_modsquad",
-			Email:                     "lisa@demo.local",
+			Username:                  "terry",
+			Email:                     "terry@demo.local",
 			Password:                  string(hashedPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: true,
+			PhoneNumber:               "(555) 100-0004",
+			HideEmail:                 false,
+			HidePhoneNumber:           false,
 		},
 	}
 
@@ -164,6 +211,7 @@ func updateGroupImages(db *gorm.DB, groups []models.Group) error {
 }
 
 // assignUsersToGroups assigns demo users to ModSquad group (primary focus)
+// It also sets group admin status for merry and sophia
 func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group) error {
 	// Find ModSquad group (primary group for demo)
 	var modsquadGroup models.Group
@@ -175,9 +223,21 @@ func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group
 	}
 
 	// All users get access to ModSquad (primary group for first few months)
+	// merry and sophia are group admins
 	for i := range users {
 		if err := db.Model(&users[i]).Association("Groups").Append(&modsquadGroup); err != nil {
 			return err
+		}
+
+		// Set group admin status for merry and sophia
+		if users[i].Username == "merry" || users[i].Username == "sophia" {
+			// Update the UserGroup record to set IsGroupAdmin = true
+			if err := db.Model(&models.UserGroup{}).
+				Where("user_id = ? AND group_id = ?", users[i].ID, modsquadGroup.ID).
+				Update("is_group_admin", true).Error; err != nil {
+				return fmt.Errorf("failed to set group admin for %s: %w", users[i].Username, err)
+			}
+			logging.WithField("username", users[i].Username).Info("Set user as group admin for ModSquad")
 		}
 	}
 
@@ -336,7 +396,6 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 		shyTag           models.AnimalTag
 		reactiveTag      models.AnimalTag
 		resourceGuarding models.AnimalTag
-		walker20Tag      models.AnimalTag
 		dualWalkerTag    models.AnimalTag
 		experiencedOnly  models.AnimalTag
 	)
@@ -345,22 +404,21 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 	db.Where("name = ?", "shy").First(&shyTag)
 	db.Where("name = ?", "reactive").First(&reactiveTag)
 	db.Where("name = ?", "resource guarding").First(&resourceGuarding)
-	db.Where("name = ?", "2.0 walker").First(&walker20Tag)
 	db.Where("name = ?", "dual walker").First(&dualWalkerTag)
 	db.Where("name = ?", "experienced only").First(&experiencedOnly)
 
 	// Assign tags to animals based on their characteristics
 	animalTags := map[int][]models.AnimalTag{
-		0: {friendlyTag},                           // Buddy - friendly golden retriever
-		1: {experiencedOnly, walker20Tag},          // Luna - needs experienced owner
-		2: {friendlyTag},                           // Charlie - calm and friendly beagle
-		3: {friendlyTag},                           // Max - high-energy but friendly lab
-		4: {reactiveTag, experiencedOnly},          // Rocky - in bite quarantine
-		5: {friendlyTag},                           // Daisy - intelligent and eager border collie
-		6: {walker20Tag},                           // Cooper - energetic aussie shepherd
-		7: {experiencedOnly},                       // Bella - independent husky
-		8: {friendlyTag},                           // Zeus - gentle giant
-		9: {friendlyTag},                           // Rosie - playful corgi
+		0: {friendlyTag},                    // Buddy - friendly golden retriever
+		1: {experiencedOnly, dualWalkerTag}, // Luna - needs experienced walker, dual walker
+		2: {friendlyTag},                    // Charlie - calm and friendly beagle
+		3: {friendlyTag},                    // Max - high-energy but friendly lab
+		4: {reactiveTag, experiencedOnly},   // Rocky - in bite quarantine
+		5: {friendlyTag},                    // Daisy - intelligent and eager border collie
+		6: {dualWalkerTag},                  // Cooper - energetic aussie shepherd
+		7: {experiencedOnly},                // Bella - independent husky
+		8: {friendlyTag},                    // Zeus - gentle giant
+		9: {friendlyTag},                    // Rosie - playful corgi
 	}
 
 	for i := range animals {
@@ -392,92 +450,140 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 	threeDaysAgo := now.AddDate(0, 0, -3)
 	fourDaysAgo := now.AddDate(0, 0, -4)
 
+	// Generate comments for long-term animals (simulate 6+ months)
+	var allComments []models.AnimalComment
+
+	// Buddy - Long-term resident with 35+ comments over 6 months
+	for i := 0; i < 35; i++ {
+		daysAgo := 180 - (i * 5) // Spread over 6 months
+		userIdx := (i % 3) + 1   // Rotate between merry, sophia, terry
+		commentDate := now.AddDate(0, 0, -daysAgo)
+
+		commentTexts := []string{
+			"Buddy had a great walk today! He's so friendly with everyone we meet.",
+			"Worked on recall training with Buddy. He's making excellent progress!",
+			"Buddy enjoyed his playtime in the yard today. Still full of energy!",
+			"Vet checkup went well. Buddy is healthy and ready for adoption!",
+			"Buddy met some potential adopters today. They loved his gentle nature.",
+			"Training session complete. Buddy is very food-motivated and eager to learn.",
+			"Buddy had a bath today and looks so handsome! Great temperament during grooming.",
+			"Socialization with other dogs went well. Buddy is very playful.",
+			"Buddy's favorite toy is the tennis ball. He could fetch all day!",
+			"Another wonderful day with Buddy. He deserves a loving forever home.",
+		}
+
+		comment := models.AnimalComment{
+			AnimalID:  animals[0].ID,
+			UserID:    users[userIdx].ID,
+			Content:   commentTexts[i%len(commentTexts)],
+			CreatedAt: commentDate,
+		}
+
+		if i%7 == 0 {
+			comment.Tags = []models.CommentTag{behaviorTag}
+		} else if i%11 == 0 {
+			comment.Tags = []models.CommentTag{medicalTag}
+		}
+
+		allComments = append(allComments, comment)
+	}
+
+	// Rocky - Long-term resident with 40+ comments (behavioral rehabilitation)
+	for i := 0; i < 40; i++ {
+		daysAgo := 200 - (i * 5) // Spread over ~7 months
+		userIdx := (i % 3) + 1
+		commentDate := now.AddDate(0, 0, -daysAgo)
+
+		commentTexts := []string{
+			"Rocky showed great improvement in today's training session.",
+			"Behavioral eval: Rocky is responding well to positive reinforcement.",
+			"Rocky's confidence is growing every day. Wonderful progress!",
+			"Worked on leash manners with Rocky. He's getting much better!",
+			"Rocky had a calm, relaxed day today. His transformation is amazing.",
+			"Socialization session went very well. Rocky is becoming more trusting.",
+			"Rocky enjoys his puzzle toys. Great mental stimulation for him.",
+			"Another successful training milestone for Rocky today!",
+			"Rocky's gentle nature is really shining through now.",
+			"So proud of Rocky's progress. He's ready for a patient, experienced home.",
+		}
+
+		comment := models.AnimalComment{
+			AnimalID:  animals[4].ID, // Rocky
+			UserID:    users[userIdx].ID,
+			Content:   commentTexts[i%len(commentTexts)],
+			CreatedAt: commentDate,
+		}
+
+		if i%5 == 0 {
+			comment.Tags = []models.CommentTag{behaviorTag}
+		}
+
+		allComments = append(allComments, comment)
+	}
+
+	// Regular comments for other animals
 	comments := []models.AnimalComment{
 		{
-			AnimalID:  animals[0].ID, // Buddy (Golden Retriever)
-			UserID:    users[1].ID,   // sarah_modsquad
-			Content:   "Buddy had an amazing walk today! He's so well-behaved on leash and absolutely loves meeting new people at the park. Several people asked about adopting him!",
+			AnimalID:  animals[1].ID, // Luna
+			UserID:    users[1].ID,   // merry
+			Content:   "Luna is doing fantastic in her foster home! She's settling in beautifully and learning quickly.",
 			CreatedAt: yesterday,
 		},
 		{
-			AnimalID:  animals[1].ID, // Luna (German Shepherd Mix)
-			UserID:    users[2].ID,   // mike_modsquad
-			Content:   "Luna is doing fantastic in her foster home! She's settling in beautifully and learning quickly. Foster family reports she's fully housetrained and sleeps through the night without any issues.",
-			CreatedAt: now,
-		},
-		{
-			AnimalID:  animals[4].ID, // Rocky (Pit Bull)
-			UserID:    users[3].ID,   // jake_modsquad
-			Content:   "Rocky completed his first behavioral evaluation session today. He responded wonderfully to calm handling and showed no signs of aggression. Continuing with positive reinforcement training. Great progress!",
-			Tags:      []models.CommentTag{behaviorTag},
-			CreatedAt: yesterday,
-		},
-		{
-			AnimalID:  animals[2].ID, // Charlie (Beagle)
-			UserID:    users[4].ID,   // lisa_modsquad
-			Content:   "Charlie is such a sweetheart! He's been getting along great with the other dogs during playtime. His gentle nature makes him perfect for a family with kids.",
+			AnimalID:  animals[2].ID, // Charlie
+			UserID:    users[2].ID,   // sophia
+			Content:   "Charlie is such a sweetheart! He's been getting along great with the other dogs during playtime.",
 			CreatedAt: twoDaysAgo,
 		},
 		{
-			AnimalID:  animals[3].ID, // Max (Lab)
-			UserID:    users[1].ID,   // sarah_modsquad
-			Content:   "Took Max to the lake today for some swimming practice! He's a natural in the water and had an absolute blast. He definitely needs an active family who can give him plenty of exercise.",
+			AnimalID:  animals[3].ID, // Max
+			UserID:    users[3].ID,   // terry
+			Content:   "Took Max to the lake today for some swimming practice! He's a natural in the water.",
 			CreatedAt: threeDaysAgo,
 		},
 		{
-			AnimalID:  animals[5].ID, // Daisy (Border Collie Mix)
-			UserID:    users[2].ID,   // mike_modsquad
-			Content:   "Daisy learned three new tricks today - she's incredibly smart! Working on frisbee catching next. This girl would excel at agility competitions.",
+			AnimalID:  animals[5].ID, // Daisy
+			UserID:    users[1].ID,   // merry
+			Content:   "Daisy learned three new tricks today - she's incredibly smart! Would excel at agility.",
 			Tags:      []models.CommentTag{behaviorTag},
 			CreatedAt: yesterday,
 		},
 		{
-			AnimalID:  animals[6].ID, // Cooper (Australian Shepherd)
-			UserID:    users[4].ID,   // lisa_modsquad
-			Content:   "Cooper went to his foster home today! The foster family has a large yard and lots of experience with herding breeds. He seemed excited to explore his new space!",
+			AnimalID:  animals[6].ID, // Cooper
+			UserID:    users[2].ID,   // sophia
+			Content:   "Cooper went to his foster home today! The family has a large yard and herding breed experience.",
 			CreatedAt: now,
 		},
 		{
-			AnimalID:  animals[7].ID, // Bella (Husky)
-			UserID:    users[3].ID,   // jake_modsquad
-			Content:   "Bella had a vet checkup today - everything looks great! Her coat is shiny and healthy. She does have a lot of energy and would benefit from long daily runs or hikes.",
+			AnimalID:  animals[7].ID, // Bella
+			UserID:    users[3].ID,   // terry
+			Content:   "Bella had a vet checkup today - everything looks great! She has lots of energy.",
 			Tags:      []models.CommentTag{medicalTag},
 			CreatedAt: twoDaysAgo,
 		},
 		{
-			AnimalID:  animals[8].ID, // Zeus (Great Dane)
-			UserID:    users[1].ID,   // sarah_modsquad
-			Content:   "Zeus is the gentlest giant! Despite his massive size, he's so careful around people and just wants to cuddle. He tried to sit on my lap during training - it was adorable!",
+			AnimalID:  animals[8].ID, // Zeus
+			UserID:    users[1].ID,   // merry
+			Content:   "Zeus is the gentlest giant! Despite his size, he's so careful and just wants to cuddle.",
 			CreatedAt: yesterday,
 		},
 		{
-			AnimalID:  animals[9].ID, // Rosie (Corgi)
-			UserID:    users[2].ID,   // mike_modsquad
-			Content:   "Rosie is an absolute star! She's great with commands and loves showing off her tricks. Her short little legs and big personality have won everyone's hearts here at ModSquad.",
+			AnimalID:  animals[9].ID, // Rosie
+			UserID:    users[2].ID,   // sophia
+			Content:   "Rosie is an absolute star! Her short legs and big personality have won everyone's hearts.",
 			CreatedAt: fourDaysAgo,
-		},
-		{
-			AnimalID:  animals[0].ID, // Buddy (Golden Retriever)
-			UserID:    users[3].ID,   // jake_modsquad
-			Content:   "Buddy's training continues to impress. He now knows sit, stay, down, come, and leave it. He's ready for his forever home!",
-			Tags:      []models.CommentTag{behaviorTag},
-			CreatedAt: threeDaysAgo,
-		},
-		{
-			AnimalID:  animals[4].ID, // Rocky (Pit Bull)
-			UserID:    users[4].ID,   // lisa_modsquad
-			Content:   "Rocky had another great session today. He's showing more confidence and trust. His tail wags are coming more frequently now - it's beautiful to see his transformation!",
-			Tags:      []models.CommentTag{behaviorTag},
-			CreatedAt: now,
 		},
 	}
 
-	for i := range comments {
-		if err := db.Create(&comments[i]).Error; err != nil {
+	// Combine all comments
+	allComments = append(allComments, comments...)
+
+	for i := range allComments {
+		if err := db.Create(&allComments[i]).Error; err != nil {
 			return err
 		}
-		logging.WithField("animal_id", comments[i].AnimalID).Info("Created ModSquad demo comment")
 	}
+	logging.WithField("total_comments", len(allComments)).Info("Created ModSquad demo comments")
 
 	return nil
 }
@@ -501,42 +607,42 @@ func seedUpdates(db *gorm.DB, users []models.User, groups []models.Group) error 
 	updates := []models.Update{
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[1].ID, // sarah_modsquad
+			UserID:    users[1].ID, // merry
 			Title:     "Amazing Adoption Weekend!",
 			Content:   "What an incredible weekend for ModSquad! We had THREE successful adoptions - Ranger, Scout, and Pepper all found their forever homes! 🎉 Thank you to everyone who helped with meet and greets, applications, and home checks. Our teamwork made this possible. Let's keep this momentum going!",
 			CreatedAt: threeDaysAgo,
 		},
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[2].ID, // mike_modsquad
+			UserID:    users[2].ID, // sophia
 			Title:     "Training Workshop This Saturday",
 			Content:   "Don't forget about our ModSquad training workshop this Saturday at 10am! We'll be working on loose-leash walking, recall commands, and proper greeting behaviors. All dogs welcome, regardless of skill level. Bring treats and water for your pup! See you there!",
 			CreatedAt: yesterday,
 		},
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[3].ID, // jake_modsquad
+			UserID:    users[3].ID, // terry
 			Title:     "New Foster Homes Needed!",
 			Content:   "ModSquad is looking for experienced foster volunteers! We have several dogs coming in next month who need temporary homes while they await adoption. If you've fostered before or are interested in learning, please reach out. Training and supplies provided. Foster families save lives!",
 			CreatedAt: fiveDaysAgo,
 		},
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[4].ID, // lisa_modsquad
+			UserID:    users[1].ID, // merry
 			Title:     "Fundraiser Success - Thank You!",
 			Content:   "Our recent fundraising event was a huge success! We raised $3,500 for ModSquad medical expenses and supplies. Special thanks to everyone who donated, volunteered, and spread the word. This money will directly help dogs like Rocky get the behavioral support they need and provide medical care for incoming rescues. You all are amazing! ❤️",
 			CreatedAt: oneWeekAgo,
 		},
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[1].ID, // sarah_modsquad
+			UserID:    users[2].ID, // sophia
 			Title:     "Volunteer Orientation Next Month",
 			Content:   "Are you interested in joining the ModSquad team? We're hosting a volunteer orientation session on the first Saturday of next month! Learn about our mission, meet current volunteers, and discover how you can help. No experience necessary - just a love for dogs and willingness to learn. Email us to RSVP!",
 			CreatedAt: now,
 		},
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[2].ID, // mike_modsquad
+			UserID:    users[3].ID, // terry
 			Title:     "Dog Park Playdate Success!",
 			Content:   "Yesterday's ModSquad playdate at the park was wonderful! Six of our dogs got to socialize and play together. Buddy, Max, and Daisy especially loved showing off their fetch skills. Thanks to everyone who came out - socialization is so important for our pups! Let's plan another one soon.",
 			CreatedAt: yesterday,

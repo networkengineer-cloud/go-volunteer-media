@@ -274,6 +274,66 @@
   background: var(--neutral-800);
 }
 
+/* Group Admin Quick Links */
+.group-admin-links {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: var(--surface);
+  border-radius: 12px;
+  border: 1px solid var(--neutral-200);
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+[data-theme='dark'] .group-admin-links {
+  border-color: var(--neutral-700);
+}
+
+.group-admin-links__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-right: 0.5rem;
+}
+
+.group-admin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--neutral-300);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  background: var(--surface);
+}
+
+.group-admin-link:hover {
+  border-color: var(--brand);
+  background: rgba(0, 163, 173, 0.05);
+  color: var(--brand);
+}
+
+.group-admin-link svg {
+  width: 16px;
+  height: 16px;
+  color: var(--brand);
+}
+
+[data-theme='dark'] .group-admin-link {
+  border-color: var(--neutral-600);
+}
+
+[data-theme='dark'] .group-admin-link:hover {
+  border-color: var(--brand);
+  background: rgba(0, 163, 173, 0.1);
+}
+
 /* Screen reader only */
 .sr-only {
   position: absolute;
@@ -563,6 +623,31 @@
 
 [data-theme='dark'] .quarantine-end-date {
   background: rgba(239, 68, 68, 0.15);
+}
+
+/* Animal Tags */
+.animal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.animal-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid;
+  white-space: nowrap;
+  transition: transform 0.15s;
+}
+
+.animal-tag:hover {
+  transform: scale(1.05);
 }
 
 /* Responsive */

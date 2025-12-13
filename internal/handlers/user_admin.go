@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -177,19 +178,58 @@ func AdminCreateUser(db *gorm.DB) gin.HandlerFunc {
 func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
 		userId := c.Param("userId")
-		
+
 		var req AdminResetPasswordRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		// Find the user
+		// Get current user
+		currentUserID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		// Check authorization: must be site admin OR group admin of a shared group
+		var currentUser models.User
+		if err := db.WithContext(ctx).Preload("Groups").First(&currentUser, currentUserID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch current user"})
+			return
+		}
+
+		// Find the target user with their groups
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userId).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
+		}
+
+		// If not site admin, verify group admin has access to this user
+		if !currentUser.IsAdmin {
+			hasAccess := false
+			// Check if current user is group admin of any group the target user belongs to
+			for _, targetGroup := range user.Groups {
+				var userGroup models.UserGroup
+				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
+					currentUserID, targetGroup.ID, true).First(&userGroup).Error
+				if err == nil {
+					hasAccess = true
+					break
+				}
+			}
+
+			if !hasAccess {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_user_id":  userId,
+				}).Warn("Unauthorized attempt to reset password")
+				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to reset passwords"})
+				return
+			}
 		}
 
 		// Hash the new password

@@ -71,15 +71,15 @@ func Initialize() (*gorm.DB, error) {
 	// Configure connection pool for security and performance
 	// SetMaxIdleConns sets the maximum number of connections in the idle connection pool
 	sqlDB.SetMaxIdleConns(10)
-	
+
 	// SetMaxOpenConns sets the maximum number of open connections to the database
 	// This prevents resource exhaustion attacks
 	sqlDB.SetMaxOpenConns(100)
-	
+
 	// SetConnMaxLifetime sets the maximum amount of time a connection may be reused
 	// This helps with database connection rotation and security
 	sqlDB.SetConnMaxLifetime(1 * time.Hour)
-	
+
 	// SetConnMaxIdleTime sets the maximum amount of time a connection may be idle
 	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 
@@ -98,6 +98,7 @@ func RunMigrations(db *gorm.DB) error {
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
+		&models.UserGroup{},
 		&models.Animal{},
 		&models.Update{},
 		&models.Announcement{},
@@ -106,6 +107,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.SiteSetting{},
 		&models.Protocol{},
 		&models.AnimalTag{},
+		&models.AnimalImage{},
 		&models.AnimalNameHistory{},
 	)
 	if err != nil {
@@ -113,6 +115,12 @@ func RunMigrations(db *gorm.DB) error {
 	}
 
 	logging.Info("Migrations completed successfully")
+
+	// CRITICAL: Fix NULL group_ids and add NOT NULL constraint AFTER AutoMigrate
+	// AutoMigrate allows NULL values, so we fix them here, then add the constraint
+	if err := fixAndEnforceGroupIDConstraints(db); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to fix group_id constraints (may be first run)")
+	}
 
 	// Create default groups if they don't exist
 	if err := createDefaultGroups(db); err != nil {
@@ -134,6 +142,116 @@ func RunMigrations(db *gorm.DB) error {
 		return err
 	}
 
+	return nil
+}
+
+// fixAndEnforceGroupIDConstraints fixes NULL group_ids in tag tables and adds NOT NULL constraint
+// This runs AFTER AutoMigrate to ensure the tables exist first
+func fixAndEnforceGroupIDConstraints(db *gorm.DB) error {
+	// Get or create a default group
+	var groupID uint
+	if err := db.Raw("SELECT id FROM groups ORDER BY id LIMIT 1").Scan(&groupID).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to query for first group")
+		return nil
+	}
+
+	// If no groups exist, create the default one
+	if groupID == 0 {
+		logging.Info("No groups exist, creating default group to assign to tag records")
+		if err := db.Exec(`
+			INSERT INTO groups (name, description, has_protocols, created_at, updated_at)
+			VALUES ('modsquad', 'Behavior modification volunteers group', true, NOW(), NOW())
+			ON CONFLICT (name) DO NOTHING
+		`).Error; err != nil {
+			logging.WithField("error", err.Error()).Warn("Failed to create default group")
+			return nil
+		}
+
+		// Get the group ID again
+		if err := db.Raw("SELECT id FROM groups WHERE name = 'modsquad' LIMIT 1").Scan(&groupID).Error; err != nil || groupID == 0 {
+			logging.Warn("Still no group available after creation attempt")
+			return nil
+		}
+	}
+
+	// Fix animal_tags: set NULL values to the group ID, then add NOT NULL constraint
+	if err := fixAndEnforceTableConstraint(db, "animal_tags", groupID); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to fix and enforce animal_tags constraint")
+	}
+
+	// Fix comment_tags: set NULL values to the group ID, then add NOT NULL constraint
+	if err := fixAndEnforceTableConstraint(db, "comment_tags", groupID); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to fix and enforce comment_tags constraint")
+	}
+
+	return nil
+}
+
+// fixAndEnforceTableConstraint fixes NULL group_ids in a specific table and adds NOT NULL constraint
+func fixAndEnforceTableConstraint(db *gorm.DB, tableName string, groupID uint) error {
+	// Check if table and column exist
+	var columnExists bool
+	query := fmt.Sprintf(`
+		SELECT EXISTS (
+			SELECT FROM information_schema.columns
+			WHERE table_name = '%s' AND column_name = 'group_id'
+		)
+	`, tableName)
+	if err := db.Raw(query).Scan(&columnExists).Error; err != nil || !columnExists {
+		return nil // Column doesn't exist yet
+	}
+
+	// Count NULL values
+	var nullCount int64
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE group_id IS NULL", tableName)
+	if err := db.Raw(countQuery).Scan(&nullCount).Error; err != nil {
+		return nil
+	}
+
+	// Fix NULL values
+	if nullCount > 0 {
+		logging.WithFields(map[string]interface{}{
+			"table": tableName,
+			"count": nullCount,
+		}).Info("Fixing NULL group_ids in table...")
+
+		updateQuery := fmt.Sprintf("UPDATE %s SET group_id = ? WHERE group_id IS NULL", tableName)
+		if result := db.Exec(updateQuery, groupID); result.Error != nil {
+			return result.Error
+		}
+		logging.WithFields(map[string]interface{}{
+			"table":        tableName,
+			"rows_updated": nullCount,
+			"group_id":     groupID,
+		}).Info("Fixed NULL group_ids in table")
+	}
+
+	// Check if NOT NULL constraint already exists
+	var constraintExists bool
+	constraintQuery := fmt.Sprintf(`
+		SELECT EXISTS (
+			SELECT FROM information_schema.columns
+			WHERE table_name = '%s' AND column_name = 'group_id' AND is_nullable = 'NO'
+		)
+	`, tableName)
+
+	if err := db.Raw(constraintQuery).Scan(&constraintExists).Error; err == nil && constraintExists {
+		logging.WithField("table", tableName).Debug("NOT NULL constraint already exists")
+		return nil
+	}
+
+	// Add NOT NULL constraint using ALTER TABLE
+	alterQuery := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN group_id SET NOT NULL", tableName)
+	if result := db.Exec(alterQuery); result.Error != nil {
+		// Ignore errors if constraint already exists
+		logging.WithFields(map[string]interface{}{
+			"table": tableName,
+			"error": result.Error.Error(),
+		}).Debug("Error adding NOT NULL constraint (may already exist)")
+		return nil
+	}
+
+	logging.WithField("table", tableName).Info("Added NOT NULL constraint to group_id")
 	return nil
 }
 
@@ -167,49 +285,91 @@ func createDefaultGroups(db *gorm.DB) error {
 	return nil
 }
 
-// createDefaultCommentTags creates the default comment tags if they don't exist
+// createDefaultCommentTags creates the default comment tags for each group if they don't exist
 func createDefaultCommentTags(db *gorm.DB) error {
-	defaultTags := []models.CommentTag{
+	// Get all groups
+	var groups []models.Group
+	if err := db.Find(&groups).Error; err != nil {
+		return fmt.Errorf("failed to fetch groups: %w", err)
+	}
+
+	defaultTagTemplates := []struct {
+		Name     string
+		Color    string
+		IsSystem bool
+	}{
 		{Name: "behavior", Color: "#3b82f6", IsSystem: true},
 		{Name: "medical", Color: "#ef4444", IsSystem: true},
 	}
 
-	for _, tag := range defaultTags {
-		var existing models.CommentTag
-		result := db.Where("name = ?", tag.Name).First(&existing)
-		if result.Error == gorm.ErrRecordNotFound {
-			if err := db.Create(&tag).Error; err != nil {
-				return fmt.Errorf("failed to create default tag %s: %w", tag.Name, err)
+	for _, group := range groups {
+		for _, template := range defaultTagTemplates {
+			var existing models.CommentTag
+			result := db.Where("name = ? AND group_id = ?", template.Name, group.ID).First(&existing)
+			if result.Error == gorm.ErrRecordNotFound {
+				tag := models.CommentTag{
+					GroupID:  group.ID,
+					Name:     template.Name,
+					Color:    template.Color,
+					IsSystem: template.IsSystem,
+				}
+				if err := db.Create(&tag).Error; err != nil {
+					return fmt.Errorf("failed to create default tag %s for group %s: %w", template.Name, group.Name, err)
+				}
+				logging.WithFields(map[string]interface{}{
+					"tag_name":   template.Name,
+					"group_name": group.Name,
+				}).Info("Created default comment tag for group")
 			}
-			logging.WithField("tag_name", tag.Name).Info("Created default comment tag")
 		}
 	}
 
 	return nil
 }
 
-// createDefaultAnimalTags creates the default animal tags if they don't exist
+// createDefaultAnimalTags creates the default animal tags for each group if they don't exist
 func createDefaultAnimalTags(db *gorm.DB) error {
-	defaultTags := []models.AnimalTag{
+	// Get all groups
+	var groups []models.Group
+	if err := db.Find(&groups).Error; err != nil {
+		return fmt.Errorf("failed to fetch groups: %w", err)
+	}
+
+	defaultTagTemplates := []struct {
+		Name     string
+		Category string
+		Color    string
+	}{
 		// Behavior tags
 		{Name: "resource guarding", Category: "behavior", Color: "#ef4444"},
 		{Name: "shy", Category: "behavior", Color: "#a855f7"},
 		{Name: "reactive", Category: "behavior", Color: "#f97316"},
 		{Name: "friendly", Category: "behavior", Color: "#22c55e"},
-		// Walker status tags
-		{Name: "2.0 walker", Category: "walker_status", Color: "#3b82f6"},
-		{Name: "dual walker", Category: "walker_status", Color: "#06b6d4"},
+		// Walker status tags (only these 3)
+		{Name: "iso", Category: "walker_status", Color: "#ef4444"},
 		{Name: "experienced only", Category: "walker_status", Color: "#8b5cf6"},
+		{Name: "dual walker", Category: "walker_status", Color: "#06b6d4"},
 	}
 
-	for _, tag := range defaultTags {
-		var existing models.AnimalTag
-		result := db.Where("name = ?", tag.Name).First(&existing)
-		if result.Error == gorm.ErrRecordNotFound {
-			if err := db.Create(&tag).Error; err != nil {
-				return fmt.Errorf("failed to create default animal tag %s: %w", tag.Name, err)
+	for _, group := range groups {
+		for _, template := range defaultTagTemplates {
+			var existing models.AnimalTag
+			result := db.Where("name = ? AND group_id = ?", template.Name, group.ID).First(&existing)
+			if result.Error == gorm.ErrRecordNotFound {
+				tag := models.AnimalTag{
+					GroupID:  group.ID,
+					Name:     template.Name,
+					Category: template.Category,
+					Color:    template.Color,
+				}
+				if err := db.Create(&tag).Error; err != nil {
+					return fmt.Errorf("failed to create default animal tag %s for group %s: %w", template.Name, group.Name, err)
+				}
+				logging.WithFields(map[string]interface{}{
+					"tag_name":   template.Name,
+					"group_name": group.Name,
+				}).Info("Created default animal tag for group")
 			}
-			logging.WithField("tag_name", tag.Name).Info("Created default animal tag")
 		}
 	}
 

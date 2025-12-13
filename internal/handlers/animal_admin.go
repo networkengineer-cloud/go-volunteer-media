@@ -120,10 +120,29 @@ type BulkUpdateAnimalsRequest struct {
 	Status    *string `json:"status,omitempty"`
 }
 
-// BulkUpdateAnimals updates multiple animals at once (admin only)
+// BulkUpdateAnimals updates multiple animals at once (admin or group admin)
 func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := middleware.GetLogger(c)
+
+		// Check if user is site admin or group admin
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		isAdmin, _ := c.Get("is_admin")
+		isSiteAdmin := isAdmin.(bool)
+
+		// Check if user is a group admin for any group
+		isGroupAdmin := IsGroupAdminForAnyGroup(db, userID.(uint))
+
+		// Only site admins and group admins can access this endpoint
+		if !isSiteAdmin && !isGroupAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin or group admin access required"})
+			return
+		}
 
 		var req BulkUpdateAnimalsRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -134,6 +153,29 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 		if len(req.AnimalIDs) == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "No animal IDs provided"})
 			return
+		}
+
+		// If user is not a site admin, verify they can only update animals from groups they admin
+		if !isSiteAdmin && isGroupAdmin {
+			// Get the groups this user is an admin of
+			var userGroups []models.UserGroup
+			db.Where("user_id = ? AND is_group_admin = ?", userID, true).Find(&userGroups)
+
+			groupIDs := make([]uint, len(userGroups))
+			for i, ug := range userGroups {
+				groupIDs[i] = ug.GroupID
+			}
+
+			// Verify all animals belong to groups the user administers
+			var animalCount int64
+			db.Model(&models.Animal{}).
+				Where("id IN ? AND group_id IN ?", req.AnimalIDs, groupIDs).
+				Count(&animalCount)
+
+			if int(animalCount) != len(req.AnimalIDs) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "You can only update animals in groups you administer"})
+				return
+			}
 		}
 
 		// Build update map
@@ -170,11 +212,46 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// GetAllAnimals returns all animals (admin only, for bulk edit page)
+// GetAllAnimals returns all animals (admin or group admin, for bulk edit page)
 func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Check if user is site admin or group admin
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		isAdmin, _ := c.Get("is_admin")
+		isSiteAdmin := isAdmin.(bool)
+
+		// Check if user is a group admin for any group
+		isGroupAdmin := IsGroupAdminForAnyGroup(db, userID.(uint))
+
+		// Only site admins and group admins can access this endpoint
+		if !isSiteAdmin && !isGroupAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin or group admin access required"})
+			return
+		}
+
 		// Build query with filters
 		query := db.Model(&models.Animal{})
+
+		// If user is not a site admin, only show animals from groups they admin
+		if !isSiteAdmin && isGroupAdmin {
+			// Get the groups this user is an admin of
+			var userGroups []models.UserGroup
+			db.Where("user_id = ? AND is_group_admin = ?", userID, true).Find(&userGroups)
+
+			groupIDs := make([]uint, len(userGroups))
+			for i, ug := range userGroups {
+				groupIDs[i] = ug.GroupID
+			}
+
+			if len(groupIDs) > 0 {
+				query = query.Where("group_id IN ?", groupIDs)
+			}
+		}
 
 		// Status filter
 		status := c.Query("status")

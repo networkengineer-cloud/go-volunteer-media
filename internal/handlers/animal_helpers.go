@@ -20,6 +20,7 @@ type NullableTime struct {
 
 // UnmarshalJSON implements custom unmarshaling for NullableTime
 // It handles empty strings ("") by treating them as null values
+// It also handles date-only strings (YYYY-MM-DD) from HTML date inputs
 func (nt *NullableTime) UnmarshalJSON(data []byte) error {
 	// Handle null explicitly
 	if string(data) == "null" {
@@ -33,16 +34,23 @@ func (nt *NullableTime) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-	
+
 	if s == "" {
 		nt.Time = nil
 		nt.Valid = false
 		return nil
 	}
 
-	// Parse the time string
+	// Try parsing as full RFC3339 timestamp first
 	var t time.Time
 	if err := json.Unmarshal(data, &t); err != nil {
+		// If that fails, try parsing as date-only (YYYY-MM-DD) from HTML date input
+		if parsedDate, parseErr := time.Parse("2006-01-02", s); parseErr == nil {
+			nt.Time = &parsedDate
+			nt.Valid = true
+			return nil
+		}
+		// If both fail, return the original error
 		return err
 	}
 
@@ -92,6 +100,29 @@ func checkGroupAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, grou
 		return false
 	}
 	return len(user.Groups) > 0
+}
+
+// checkGroupAdminAccess verifies if the user has admin access to a specific group
+// Returns true if:
+// - User is a site-wide admin, OR
+// - User is a group admin for the specified group
+func checkGroupAdminAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, groupID string) bool {
+	// Site admins have access to all groups
+	if isAdmin.(bool) {
+		return true
+	}
+
+	// Check if user is a group admin for this specific group
+	userIDUint, ok := userID.(uint)
+	if !ok {
+		return false
+	}
+
+	var userGroup models.UserGroup
+	if err := db.Where("user_id = ? AND group_id = ?", userIDUint, groupID).First(&userGroup).Error; err != nil {
+		return false
+	}
+	return userGroup.IsGroupAdmin
 }
 
 // CheckDuplicateNames checks if any animals in a group have duplicate names

@@ -40,12 +40,18 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "-static"' -o /app/api ./cmd/api
 
 # Final stage
-FROM scratch
+FROM alpine:latest
 
-# Copy certificates, timezone data, and user info from builder
+# Install security updates and runtime dependencies
+RUN apk update && apk upgrade && \
+    apk add --no-cache ca-certificates tzdata && \
+    update-ca-certificates
+
+# Create non-root user
+RUN adduser -D -g '' appuser
+
+# Copy certificates and timezone data
 COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=backend-builder /usr/share/zoneinfo /usr/share/zoneinfo
-COPY --from=backend-builder /etc/passwd /etc/passwd
 
 # Copy binary from backend builder
 COPY --from=backend-builder /app/api /api
@@ -55,6 +61,11 @@ COPY --from=frontend-builder /app/frontend/dist /frontend/dist
 
 # Copy public directory for uploads and static assets
 COPY --from=backend-builder /app/public /public
+
+# Create uploads directory and set permissions
+RUN mkdir -p /public/uploads && \
+    chown -R appuser:appuser /public/uploads && \
+    chmod -R 755 /public/uploads
 
 # Use non-root user
 USER appuser

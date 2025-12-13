@@ -11,26 +11,27 @@ import (
 
 // UserProfileResponse represents user profile information with activity data
 type UserProfileResponse struct {
-	ID                        uint                     `json:"id"`
-	Username                  string                   `json:"username"`
-	Email                     string                   `json:"email"`
-	IsAdmin                   bool                     `json:"is_admin"`
-	CreatedAt                 string                   `json:"created_at"`
-	DefaultGroupID            *uint                    `json:"default_group_id"`
-	Groups                    []models.Group           `json:"groups"`
-	Statistics                UserProfileStatistics    `json:"statistics"`
-	RecentComments            []UserCommentActivity    `json:"recent_comments"`
-	RecentAnnouncements       []UserAnnouncementActivity `json:"recent_announcements"`
-	AnimalsInteractedWith     []AnimalInteraction      `json:"animals_interacted_with"`
+	ID                    uint                       `json:"id"`
+	Username              string                     `json:"username"`
+	Email                 string                     `json:"email"`
+	PhoneNumber           string                     `json:"phone_number"`
+	IsAdmin               bool                       `json:"is_admin"`
+	CreatedAt             string                     `json:"created_at"`
+	DefaultGroupID        *uint                      `json:"default_group_id"`
+	Groups                []models.Group             `json:"groups"`
+	Statistics            UserProfileStatistics      `json:"statistics"`
+	RecentComments        []UserCommentActivity      `json:"recent_comments"`
+	RecentAnnouncements   []UserAnnouncementActivity `json:"recent_announcements"`
+	AnimalsInteractedWith []AnimalInteraction        `json:"animals_interacted_with"`
 }
 
 // UserProfileStatistics represents statistics for a user profile
 type UserProfileStatistics struct {
-	TotalComments         int64  `json:"total_comments"`
-	TotalAnnouncements    int64  `json:"total_announcements"`
-	AnimalsInteracted     int64  `json:"animals_interacted"`
-	MostActiveGroup       *GroupActivityInfo `json:"most_active_group"`
-	LastActiveDate        *string `json:"last_active_date"`
+	TotalComments      int64              `json:"total_comments"`
+	TotalAnnouncements int64              `json:"total_announcements"`
+	AnimalsInteracted  int64              `json:"animals_interacted"`
+	MostActiveGroup    *GroupActivityInfo `json:"most_active_group"`
+	LastActiveDate     *string            `json:"last_active_date"`
 }
 
 // GroupActivityInfo represents activity information for a group
@@ -42,14 +43,14 @@ type GroupActivityInfo struct {
 
 // UserCommentActivity represents a user's comment activity
 type UserCommentActivity struct {
-	ID          uint   `json:"id"`
-	AnimalID    uint   `json:"animal_id"`
-	AnimalName  string `json:"animal_name"`
-	GroupID     uint   `json:"group_id"`
-	GroupName   string `json:"group_name"`
-	Content     string `json:"content"`
-	ImageURL    string `json:"image_url"`
-	CreatedAt   string `json:"created_at"`
+	ID         uint   `json:"id"`
+	AnimalID   uint   `json:"animal_id"`
+	AnimalName string `json:"animal_name"`
+	GroupID    uint   `json:"group_id"`
+	GroupName  string `json:"group_name"`
+	Content    string `json:"content"`
+	ImageURL   string `json:"image_url"`
+	CreatedAt  string `json:"created_at"`
 }
 
 // UserAnnouncementActivity represents a user's announcement activity
@@ -73,11 +74,14 @@ type AnimalInteraction struct {
 }
 
 // GetUserProfile returns detailed profile information for a user
-// Accessible by the user themselves or admins
+// - Users can view their own profile with full details
+// - Site admins can view any profile with full details
+// - Group admins can view extended profile info for members in their groups
+// - Regular group members can view limited profile info (username only) for members in their shared groups
 func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		
+
 		// Get user ID from URL parameter
 		userIDParam := c.Param("id")
 		targetUserID, err := strconv.ParseUint(userIDParam, 10, 32)
@@ -90,10 +94,34 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 		currentUserID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
-		// Check authorization: users can only view their own profile unless they're admin
-		if !isAdmin.(bool) && currentUserID.(uint) != uint(targetUserID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "You can only view your own profile"})
-			return
+		// Determine access level
+		isOwnProfile := currentUserID.(uint) == uint(targetUserID)
+		isSiteAdmin := isAdmin.(bool)
+
+		// Check if current user is a group admin for any shared group with target user
+		var isGroupAdminForSharedGroup bool
+		if !isSiteAdmin && !isOwnProfile {
+			// Check if current user is admin of any shared group
+			type SharedGroupInfo struct {
+				GroupID      uint
+				IsGroupAdmin bool
+			}
+			var sharedGroups []SharedGroupInfo
+			err := db.WithContext(ctx).Raw(`
+				SELECT ug1.group_id, ug1.is_group_admin
+				FROM user_groups ug1
+				JOIN user_groups ug2 ON ug1.group_id = ug2.group_id
+				WHERE ug1.user_id = ? AND ug2.user_id = ?
+			`, currentUserID, targetUserID).Scan(&sharedGroups).Error
+
+			if err == nil && len(sharedGroups) > 0 {
+				for _, sg := range sharedGroups {
+					if sg.IsGroupAdmin {
+						isGroupAdminForSharedGroup = true
+						break
+					}
+				}
+			}
 		}
 
 		// Fetch user details
@@ -107,11 +135,64 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Build profile response
+		// For regular users viewing another user's profile - return info respecting privacy settings
+		if !isOwnProfile && !isSiteAdmin && !isGroupAdminForSharedGroup {
+			// Return profile info respecting privacy settings
+			type RegularUserProfileResponse struct {
+				ID          uint           `json:"id"`
+				Username    string         `json:"username"`
+				Email       string         `json:"email,omitempty"`
+				PhoneNumber string         `json:"phone_number,omitempty"`
+				CreatedAt   string         `json:"created_at"`
+				Groups      []models.Group `json:"groups"`
+			}
+			response := RegularUserProfileResponse{
+				ID:        user.ID,
+				Username:  user.Username,
+				CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+				Groups:    user.Groups,
+			}
+			// Only include email if user hasn't hidden it
+			if !user.HideEmail {
+				response.Email = user.Email
+			}
+			// Only include phone if user hasn't hidden it
+			if !user.HidePhoneNumber {
+				response.PhoneNumber = user.PhoneNumber
+			}
+			c.JSON(http.StatusOK, response)
+			return
+		}
+
+		// For group admins viewing members - return extended info respecting privacy settings
+		if !isOwnProfile && !isSiteAdmin && isGroupAdminForSharedGroup {
+			// Return extended profile for group admins
+			// Group admins can see all members but still respect privacy settings
+			// Actually, based on PERMISSIONS.md: "Group admins can always see contact info"
+			// So group admins bypass privacy settings for their group members
+			type GroupAdminProfileResponse struct {
+				ID          uint           `json:"id"`
+				Username    string         `json:"username"`
+				Email       string         `json:"email"`
+				PhoneNumber string         `json:"phone_number"`
+				CreatedAt   string         `json:"created_at"`
+				Groups      []models.Group `json:"groups"`
+			}
+			c.JSON(http.StatusOK, GroupAdminProfileResponse{
+				ID:          user.ID,
+				Username:    user.Username,
+				Email:       user.Email,
+				PhoneNumber: user.PhoneNumber,
+				CreatedAt:   user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+				Groups:      user.Groups,
+			})
+			return
+		} // Build full profile response for own profile or admin viewing
 		profile := UserProfileResponse{
 			ID:             user.ID,
 			Username:       user.Username,
 			Email:          user.Email,
+			PhoneNumber:    user.PhoneNumber,
 			IsAdmin:        user.IsAdmin,
 			CreatedAt:      user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			DefaultGroupID: user.DefaultGroupID,
@@ -182,14 +263,14 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 
 		// Recent comments (last 10)
 		type CommentWithDetails struct {
-			CommentID   uint
-			AnimalID    uint
-			AnimalName  string
-			GroupID     uint
-			GroupName   string
-			Content     string
-			ImageURL    string
-			CreatedAt   string
+			CommentID  uint
+			AnimalID   uint
+			AnimalName string
+			GroupID    uint
+			GroupName  string
+			Content    string
+			ImageURL   string
+			CreatedAt  string
 		}
 
 		var commentDetails []CommentWithDetails

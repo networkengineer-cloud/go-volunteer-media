@@ -1,245 +1,634 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { animalTagsApi } from '../api/client';
-import type { AnimalTag } from '../api/client';
-import { useToast } from '../hooks/useToast';
-import Button from '../components/Button';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { commentTagsApi, animalTagsApi, groupsApi, type CommentTag, type Group, type AnimalTag as ApiAnimalTag } from '../api/client';
 import Modal from '../components/Modal';
-import FormField from '../components/FormField';
 import './AdminAnimalTagsPage.css';
 
-const AdminAnimalTagsPage: React.FC = () => {
-  const toast = useToast();
-  const [tags, setTags] = useState<AnimalTag[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingTag, setEditingTag] = useState<AnimalTag | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    category: 'behavior',
-    color: '#6b7280',
-  });
+type AnimalTag = ApiAnimalTag;
 
-  const loadTags = useCallback(async () => {
-    try {
-      const response = await animalTagsApi.getAll();
-      setTags(response.data);
-    } catch (error) {
-      console.error('Failed to load tags:', error);
-      toast.showError('Failed to load tags');
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
+// Color presets used across all tag forms
+const colorPresets = [
+  '#ef4444', '#f97316', '#f59e0b', '#eab308',
+  '#84cc16', '#22c55e', '#10b981', '#14b8a6',
+  '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
+  '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
+  '#f43f5e', '#6b7280', '#374151', '#1f2937',
+];
+
+// Isolated form component for Animal Tags
+interface AnimalTagFormModalProps {
+  isOpen: boolean;
+  editingTag: AnimalTag | null;
+  onClose: () => void;
+  onSubmit: (data: { name: string; category: string; color: string }) => Promise<void>;
+}
+
+const AnimalTagFormModal: React.FC<AnimalTagFormModalProps> = ({ isOpen, editingTag, onClose, onSubmit }) => {
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState<'behavior' | 'walker_status'>('behavior');
+  const [color, setColor] = useState('#6b7280');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    loadTags();
-  }, [loadTags]);
-
-  const handleOpenCreate = () => {
-    setEditingTag(null);
-    setFormData({ name: '', category: 'behavior', color: '#6b7280' });
-    setShowModal(true);
-  };
-
-  const handleOpenEdit = (tag: AnimalTag) => {
-    setEditingTag(tag);
-    setFormData({ name: tag.name, category: tag.category, color: tag.color });
-    setShowModal(true);
-  };
+    if (isOpen) {
+      if (editingTag) {
+        setName(editingTag.name);
+        setCategory(editingTag.category as 'behavior' | 'walker_status');
+        setColor(editingTag.color);
+      } else {
+        setName('');
+        setCategory('behavior');
+        setColor('#6b7280');
+      }
+    }
+  }, [isOpen, editingTag]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim()) return;
     
-    if (!formData.name.trim()) {
-      toast.showError('Tag name is required');
-      return;
-    }
-
+    setIsSubmitting(true);
     try {
-      if (editingTag) {
-        await animalTagsApi.update(editingTag.id, formData);
-        toast.showSuccess('Tag updated successfully');
-      } else {
-        await animalTagsApi.create(formData);
-        toast.showSuccess('Tag created successfully');
+      await onSubmit({ name: name.trim().toLowerCase(), category, color });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={editingTag ? 'Edit Animal Tag' : 'Create Animal Tag'}
+    >
+      <form onSubmit={handleSubmit} className="tag-form">
+        <div className="form-group">
+          <label htmlFor="animalTagName">Tag Name</label>
+          <input
+            type="text"
+            id="animalTagName"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g., jumpy, leash-reactive, staff-only"
+            required
+            autoComplete="off"
+            autoFocus
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="animalTagCategory">Category</label>
+          <select
+            id="animalTagCategory"
+            value={category}
+            onChange={(e) => setCategory(e.target.value as 'behavior' | 'walker_status')}
+          >
+            <option value="behavior">Behavior Trait</option>
+            <option value="walker_status">Walker Level</option>
+          </select>
+          <p className="form-hint">
+            {category === 'behavior' 
+              ? 'Behavior traits describe how an animal acts (e.g., jumpy, mouthy, reactive)'
+              : 'Walker levels indicate required volunteer experience (e.g., green, yellow, red)'}
+          </p>
+        </div>
+
+        <div className="form-group">
+          <label>Color</label>
+          <div className="color-picker">
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="color-input"
+            />
+            <div className="color-presets">
+              {colorPresets.map((presetColor) => (
+                <button
+                  key={presetColor}
+                  type="button"
+                  className={`color-preset ${color === presetColor ? 'selected' : ''}`}
+                  style={{ backgroundColor: presetColor }}
+                  onClick={() => setColor(presetColor)}
+                  aria-label={`Select color ${presetColor}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="tag-preview">
+          <span>Preview:</span>
+          <span className="tag-badge" style={{ backgroundColor: color }}>
+            {name || 'tag name'}
+          </span>
+        </div>
+
+        <div className="form-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary" disabled={isSubmitting || !name.trim()}>
+            {isSubmitting ? 'Saving...' : editingTag ? 'Update Tag' : 'Create Tag'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+// Comment Tag Form Modal
+interface CommentTagFormModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (name: string, color: string) => Promise<void>;
+}
+
+const CommentTagFormModal: React.FC<CommentTagFormModalProps> = ({ isOpen, onClose, onSubmit }) => {
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('#006b54');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setName('');
+      setColor('#006b54');
+    }
+  }, [isOpen]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    
+    setIsSubmitting(true);
+    try {
+      await onSubmit(name.trim(), color);
+      onClose();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Create Comment Tag"
+    >
+      <form onSubmit={handleSubmit} className="tag-form">
+        <div className="form-group">
+          <label htmlFor="commentTagName">Tag Name</label>
+          <input
+            type="text"
+            id="commentTagName"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g., Medical Update, Behavior Note"
+            required
+            autoComplete="off"
+            autoFocus
+            maxLength={50}
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Color</label>
+          <div className="color-picker">
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="color-input"
+            />
+            <div className="color-presets">
+              {colorPresets.map((presetColor) => (
+                <button
+                  key={presetColor}
+                  type="button"
+                  className={`color-preset ${color === presetColor ? 'selected' : ''}`}
+                  style={{ backgroundColor: presetColor }}
+                  onClick={() => setColor(presetColor)}
+                  aria-label={`Select color ${presetColor}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="tag-preview">
+          <span>Preview:</span>
+          <span className="tag-badge" style={{ backgroundColor: color }}>
+            {name || 'tag name'}
+          </span>
+        </div>
+
+        <div className="form-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary" disabled={isSubmitting || !name.trim()}>
+            {isSubmitting ? 'Creating...' : 'Create Tag'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+const AdminAnimalTagsPage: React.FC = () => {
+  // Groups state
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [loadingGroups, setLoadingGroups] = useState(true);
+
+  // Animal Tags state
+  const [animalTags, setAnimalTags] = useState<AnimalTag[]>([]);
+  const [loadingAnimalTags, setLoadingAnimalTags] = useState(false);
+  const [animalTagError, setAnimalTagError] = useState<string | null>(null);
+  const [isAnimalTagModalOpen, setIsAnimalTagModalOpen] = useState(false);
+  const [editingAnimalTag, setEditingAnimalTag] = useState<AnimalTag | null>(null);
+
+  // Comment Tags state
+  const [commentTags, setCommentTags] = useState<CommentTag[]>([]);
+  const [loadingCommentTags, setLoadingCommentTags] = useState(false);
+  const [commentTagError, setCommentTagError] = useState<string | null>(null);
+  const [isCommentTagModalOpen, setIsCommentTagModalOpen] = useState(false);
+
+  // Active section for mobile
+  const [activeSection, setActiveSection] = useState<'animal' | 'comment'>('animal');
+
+  // Fetch Groups
+  const fetchGroups = useCallback(async () => {
+    try {
+      setLoadingGroups(true);
+      const response = await groupsApi.getAll();
+      setGroups(response.data);
+      // Auto-select first group if none selected
+      if (response.data.length > 0 && !selectedGroupId) {
+        setSelectedGroupId(response.data[0].id);
       }
-      setShowModal(false);
-      loadTags();
-    } catch (error: unknown) {
-      const errorMsg = error.response?.data?.error || 'Failed to save tag';
-      toast.showError(errorMsg);
+    } catch (err) {
+      console.error('Error fetching groups:', err);
+    } finally {
+      setLoadingGroups(false);
     }
-  };
+  }, [selectedGroupId]);
 
-  const handleDelete = async (tag: AnimalTag) => {
-    if (!confirm(`Are you sure you want to delete the tag "${tag.name}"? This will remove it from all animals.`)) {
-      return;
-    }
-
+  // Fetch Animal Tags for selected group
+  const fetchAnimalTags = useCallback(async () => {
+    if (!selectedGroupId) return;
     try {
-      await animalTagsApi.delete(tag.id);
-      toast.showSuccess('Tag deleted successfully');
-      loadTags();
-    } catch (error: unknown) {
-      const errorMsg = error.response?.data?.error || 'Failed to delete tag';
-      toast.showError(errorMsg);
+      setLoadingAnimalTags(true);
+      const response = await animalTagsApi.getAll(selectedGroupId);
+      setAnimalTags(response.data);
+      setAnimalTagError(null);
+    } catch (err) {
+      setAnimalTagError('Failed to load animal tags');
+      console.error('Error fetching animal tags:', err);
+    } finally {
+      setLoadingAnimalTags(false);
     }
-  };
+  }, [selectedGroupId]);
 
-  const behaviorTags = tags.filter(tag => tag.category === 'behavior');
-  const walkerStatusTags = tags.filter(tag => tag.category === 'walker_status');
+  // Fetch Comment Tags for selected group
+  const fetchCommentTags = useCallback(async () => {
+    if (!selectedGroupId) return;
+    try {
+      setLoadingCommentTags(true);
+      const tagsRes = await commentTagsApi.getAll(selectedGroupId);
+      setCommentTags(tagsRes.data);
+      setCommentTagError(null);
+    } catch (err) {
+      setCommentTagError('Failed to load comment tags');
+      console.error('Error fetching comment tags:', err);
+    } finally {
+      setLoadingCommentTags(false);
+    }
+  }, [selectedGroupId]);
 
-  if (loading) {
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
+
+  useEffect(() => {
+    if (selectedGroupId) {
+      fetchAnimalTags();
+      fetchCommentTags();
+    }
+  }, [selectedGroupId, fetchAnimalTags, fetchCommentTags]);
+
+  // Animal Tag handlers
+  const handleCreateAnimalTag = useCallback(() => {
+    setEditingAnimalTag(null);
+    setIsAnimalTagModalOpen(true);
+  }, []);
+
+  const handleEditAnimalTag = useCallback((tag: AnimalTag) => {
+    setEditingAnimalTag(tag);
+    setIsAnimalTagModalOpen(true);
+  }, []);
+
+  const handleCloseAnimalTagModal = useCallback(() => {
+    setIsAnimalTagModalOpen(false);
+    setEditingAnimalTag(null);
+  }, []);
+
+  const handleSubmitAnimalTag = useCallback(async (data: { name: string; category: string; color: string }) => {
+    if (!selectedGroupId) return;
+    try {
+      if (editingAnimalTag) {
+        await animalTagsApi.update(selectedGroupId, editingAnimalTag.id, data);
+      } else {
+        await animalTagsApi.create(selectedGroupId, data);
+      }
+      await fetchAnimalTags();
+      handleCloseAnimalTagModal();
+    } catch (err) {
+      console.error('Error saving animal tag:', err);
+      throw err;
+    }
+  }, [selectedGroupId, editingAnimalTag, fetchAnimalTags, handleCloseAnimalTagModal]);
+
+  const handleDeleteAnimalTag = useCallback(async (tagId: number) => {
+    if (!selectedGroupId) return;
+    if (!window.confirm('Are you sure you want to delete this animal tag?')) return;
+    
+    try {
+      await animalTagsApi.delete(selectedGroupId, tagId);
+      await fetchAnimalTags();
+    } catch (err) {
+      console.error('Error deleting animal tag:', err);
+      setAnimalTagError('Failed to delete tag');
+    }
+  }, [selectedGroupId, fetchAnimalTags]);
+
+  // Comment Tag handlers
+  const handleCreateCommentTag = useCallback(async (name: string, color: string) => {
+    if (!selectedGroupId) return;
+    try {
+      await commentTagsApi.create(selectedGroupId, name, color);
+      await fetchCommentTags();
+    } catch (err) {
+      console.error('Error creating comment tag:', err);
+      throw err;
+    }
+  }, [selectedGroupId, fetchCommentTags]);
+
+  const handleDeleteCommentTag = useCallback(async (tagId: number) => {
+    if (!selectedGroupId) return;
+    if (!window.confirm('Are you sure you want to delete this comment tag?')) return;
+    
+    try {
+      await commentTagsApi.delete(selectedGroupId, tagId);
+      await fetchCommentTags();
+    } catch (err) {
+      console.error('Error deleting comment tag:', err);
+      setCommentTagError('Failed to delete tag');
+    }
+  }, [selectedGroupId, fetchCommentTags]);
+
+  const behaviorTags = animalTags.filter(tag => tag.category === 'behavior');
+  const walkerStatusTags = animalTags.filter(tag => tag.category === 'walker_status');
+
+  const isLoading = loadingGroups || loadingAnimalTags || loadingCommentTags;
+
+  if (loadingGroups) {
+    return <div className="admin-tags-page loading">Loading groups...</div>;
+  }
+
+  if (groups.length === 0) {
     return (
       <div className="admin-tags-page">
         <div className="page-header">
-          <h1>Animal Tags Management</h1>
+          <div className="page-header-content">
+            <h1>🏷️ Tag Management</h1>
+            <p className="page-subtitle">No groups available. Tags are group-specific.</p>
+          </div>
         </div>
-        <p>Loading...</p>
       </div>
     );
   }
 
   return (
     <div className="admin-tags-page">
-      <div className="page-header">
-        <h1>Animal Tags Management</h1>
-        <Button variant="primary" onClick={handleOpenCreate}>
-          + Create New Tag
-        </Button>
-      </div>
-
-      <div className="tags-sections">
-        {/* Behavior Tags */}
-        <section className="tags-section">
-          <h2>Behavior Traits</h2>
-          <div className="tags-grid">
-            {behaviorTags.length === 0 ? (
-              <p className="empty-message">No behavior tags yet</p>
-            ) : (
-              behaviorTags.map(tag => (
-                <div key={tag.id} className="tag-card">
-                  <div className="tag-preview" style={{ backgroundColor: tag.color }}>
-                    {tag.name}
-                  </div>
-                  <div className="tag-actions">
-                    <button onClick={() => handleOpenEdit(tag)} className="btn-edit">
-                      Edit
-                    </button>
-                    <button onClick={() => handleDelete(tag)} className="btn-delete">
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        {/* Walker Status Tags */}
-        <section className="tags-section">
-          <h2>Walker Status</h2>
-          <div className="tags-grid">
-            {walkerStatusTags.length === 0 ? (
-              <p className="empty-message">No walker status tags yet</p>
-            ) : (
-              walkerStatusTags.map(tag => (
-                <div key={tag.id} className="tag-card">
-                  <div className="tag-preview" style={{ backgroundColor: tag.color }}>
-                    {tag.name}
-                  </div>
-                  <div className="tag-actions">
-                    <button onClick={() => handleOpenEdit(tag)} className="btn-edit">
-                      Edit
-                    </button>
-                    <button onClick={() => handleDelete(tag)} className="btn-delete">
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-      </div>
-
-      {/* Create/Edit Modal */}
-      {showModal && (
-        <Modal
-          isOpen={showModal}
-          onClose={() => setShowModal(false)}
-          title={editingTag ? 'Edit Tag' : 'Create New Tag'}
-        >
-          <form onSubmit={handleSubmit} className="tag-form">
-            <FormField
-              label="Tag Name"
-              id="name"
-              type="text"
-              value={formData.name}
-              onChange={(value) => setFormData({ ...formData, name: value })}
-              required
-              helperText="The display name for this tag"
-            />
-
-            <div className="form-field">
-              <label htmlFor="category" className="form-field__label">
-                Category
-              </label>
-              <select
-                id="category"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="form-field__input"
-                required
-              >
-                <option value="behavior">Behavior Traits</option>
-                <option value="walker_status">Walker Status</option>
-              </select>
-              <p className="form-field__helper">The category this tag belongs to</p>
-            </div>
-
-            <div className="form-field">
-              <label htmlFor="color" className="form-field__label">
-                Color
-              </label>
-              <div className="color-picker-container">
-                <input
-                  type="color"
-                  id="color"
-                  value={formData.color}
-                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                  className="color-picker"
-                />
-                <input
-                  type="text"
-                  value={formData.color}
-                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                  className="color-input"
-                  placeholder="#6b7280"
-                  pattern="^#[0-9A-Fa-f]{6}$"
-                />
-                <div className="color-preview" style={{ backgroundColor: formData.color }}>
-                  Preview
-                </div>
-              </div>
-              <p className="form-field__helper">The color used to display this tag</p>
-            </div>
-
-            <div className="form-actions">
-              <Button type="submit" variant="primary">
-                {editingTag ? 'Update Tag' : 'Create Tag'}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setShowModal(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </form>
-        </Modal>
+      {/* Breadcrumb Navigation */}
+      {selectedGroupId && (
+        <nav className="breadcrumb" aria-label="Breadcrumb">
+          <Link to="/" className="breadcrumb-link">Home</Link>
+          <span className="breadcrumb-separator" aria-hidden="true">/</span>
+          <Link to={`/groups/${selectedGroupId}`} className="breadcrumb-link">
+            {groups.find(g => g.id === selectedGroupId)?.name || 'Group'}
+          </Link>
+          <span className="breadcrumb-separator" aria-hidden="true">/</span>
+          <span className="breadcrumb-current" aria-current="page">Tag Management</span>
+        </nav>
       )}
+
+      <div className="page-header">
+        <div className="page-header-content">
+          <h1>🏷️ Tag Management</h1>
+          <p className="page-subtitle">
+            Manage tags used to organize animals and comments. Tags are group-specific and help volunteers quickly understand important information.
+          </p>
+        </div>
+      </div>
+
+      {/* Group Selector */}
+      <div className="group-selector">
+        <label htmlFor="group-select">Select Group:</label>
+        <select
+          id="group-select"
+          value={selectedGroupId || ''}
+          onChange={(e) => setSelectedGroupId(Number(e.target.value))}
+          className="group-select"
+        >
+          {groups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {isLoading && <div className="loading-indicator">Loading tags for selected group...</div>}
+
+      {/* Section Tabs for mobile */}
+      <div className="section-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={activeSection === 'animal'}
+          className={`section-tab ${activeSection === 'animal' ? 'active' : ''}`}
+          onClick={() => setActiveSection('animal')}
+        >
+          🐾 Animal Tags
+        </button>
+        <button
+          role="tab"
+          aria-selected={activeSection === 'comment'}
+          className={`section-tab ${activeSection === 'comment' ? 'active' : ''}`}
+          onClick={() => setActiveSection('comment')}
+        >
+          💬 Comment Tags
+        </button>
+      </div>
+
+      <div className="tags-layout">
+        {/* Animal Tags Section */}
+        <section 
+          className={`tag-section animal-tags-section ${activeSection === 'animal' ? 'active' : ''}`}
+          aria-label="Animal Tags"
+        >
+          <div className="section-header">
+            <div className="section-title">
+              <h2>🐾 Animal Tags</h2>
+              <p className="section-description">
+                Tags applied directly to animals. Displayed on animal cards and detail pages to help volunteers understand each animal's traits and required handling.
+              </p>
+            </div>
+            <button className="btn-primary btn-sm" onClick={handleCreateAnimalTag}>
+              + Add Animal Tag
+            </button>
+          </div>
+
+          {animalTagError && <div className="error-message">{animalTagError}</div>}
+
+          <div className="tag-categories">
+            {/* Behavior Tags */}
+            <div className="tag-category">
+              <div className="category-header">
+                <h3>🎭 Behavior Traits</h3>
+                <span className="category-count">{behaviorTags.length} tags</span>
+              </div>
+              <p className="category-description">
+                Describe how an animal behaves or acts. Examples: jumpy, mouthy, dog-reactive, leash-puller
+              </p>
+              <div className="tags-grid">
+                {behaviorTags.length === 0 ? (
+                  <p className="no-tags">No behavior tags yet. Add one to get started.</p>
+                ) : (
+                  behaviorTags.map(tag => (
+                    <div key={tag.id} className="tag-card">
+                      <div className="tag-display">
+                        <span className="tag-badge" style={{ backgroundColor: tag.color }}>
+                          {tag.name}
+                        </span>
+                      </div>
+                      <div className="tag-actions">
+                        <button className="btn-text" onClick={() => handleEditAnimalTag(tag)}>
+                          Edit
+                        </button>
+                        <button className="btn-text btn-danger" onClick={() => handleDeleteAnimalTag(tag.id)}>
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Walker Status Tags */}
+            <div className="tag-category">
+              <div className="category-header">
+                <h3>👟 Walker Levels</h3>
+                <span className="category-count">{walkerStatusTags.length} tags</span>
+              </div>
+              <p className="category-description">
+                Indicate required volunteer experience level. Examples: green (all volunteers), yellow (experienced), red (staff only)
+              </p>
+              <div className="tags-grid">
+                {walkerStatusTags.length === 0 ? (
+                  <p className="no-tags">No walker level tags yet. Add one to get started.</p>
+                ) : (
+                  walkerStatusTags.map(tag => (
+                    <div key={tag.id} className="tag-card">
+                      <div className="tag-display">
+                        <span className="tag-badge" style={{ backgroundColor: tag.color }}>
+                          {tag.name}
+                        </span>
+                      </div>
+                      <div className="tag-actions">
+                        <button className="btn-text" onClick={() => handleEditAnimalTag(tag)}>
+                          Edit
+                        </button>
+                        <button className="btn-text btn-danger" onClick={() => handleDeleteAnimalTag(tag.id)}>
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Divider */}
+        <div className="section-divider" aria-hidden="true">
+          <div className="divider-line"></div>
+        </div>
+
+        {/* Comment Tags Section */}
+        <section 
+          className={`tag-section comment-tags-section ${activeSection === 'comment' ? 'active' : ''}`}
+          aria-label="Comment Tags"
+        >
+          <div className="section-header">
+            <div className="section-title">
+              <h2>💬 Comment Tags</h2>
+              <p className="section-description">
+                Tags applied to volunteer comments on animals. Used to categorize and filter updates about medical info, behavior observations, and other notes.
+              </p>
+            </div>
+            <button className="btn-primary btn-sm" onClick={() => setIsCommentTagModalOpen(true)}>
+              + Add Comment Tag
+            </button>
+          </div>
+
+          {commentTagError && <div className="error-message">{commentTagError}</div>}
+
+          <div className="comment-tags-grid">
+            {commentTags.length === 0 ? (
+              <div className="empty-state">
+                <p className="no-tags">No comment tags yet.</p>
+                <p className="empty-hint">Create tags like "Medical Update", "Behavior Note", "Needs Attention" to help organize comments.</p>
+              </div>
+            ) : (
+              commentTags.map((tag) => (
+                <div key={tag.id} className="comment-tag-card">
+                  <div className="tag-header">
+                    <div className="tag-preview" style={{ backgroundColor: tag.color }}>
+                      {tag.name}
+                    </div>
+                    <button
+                      onClick={() => handleDeleteCommentTag(tag.id)}
+                      className="btn-delete"
+                      aria-label={`Delete ${tag.name} tag`}
+                      title="Delete tag"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+
+      {/* Modals */}
+      <AnimalTagFormModal
+        isOpen={isAnimalTagModalOpen}
+        editingTag={editingAnimalTag}
+        onClose={handleCloseAnimalTagModal}
+        onSubmit={handleSubmitAnimalTag}
+      />
+
+      <CommentTagFormModal
+        isOpen={isCommentTagModalOpen}
+        onClose={() => setIsCommentTagModalOpen(false)}
+        onSubmit={handleCreateCommentTag}
+      />
     </div>
   );
 };

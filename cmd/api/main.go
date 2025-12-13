@@ -107,15 +107,19 @@ func main() {
 	router.GET("/healthz", handlers.HealthCheck())
 	router.GET("/ready", handlers.ReadinessCheck(db))
 
-	// Serve uploaded images and default assets
+	// Serve uploaded images from database (public, cached)
+	// Legacy: also serve from filesystem for backwards compatibility
 	router.Static("/uploads", "./public/uploads")
 	router.StaticFile("/default-hero.svg", "./public/default-hero.svg")
-	
+
 	// Serve security.txt for responsible vulnerability disclosure
 	router.StaticFile("/.well-known/security.txt", "./public/.well-known/security.txt")
 
 	// API routes
 	api := router.Group("/api")
+
+	// Serve images from database (public endpoint, no auth required)
+	api.GET("/images/:uuid", handlers.ServeImage(db))
 
 	// Public routes (with rate limiting for auth endpoints)
 	authLimiter := middleware.RateLimit(5, 1*time.Minute) // 5 requests per minute
@@ -132,9 +136,13 @@ func main() {
 	protected := api.Group("/")
 	protected.Use(middleware.AuthRequired())
 	{
+		// Environment info (authenticated users can check environment)
+		protected.GET("/environment", handlers.GetEnvironment())
+
 		// User routes
 		protected.GET("/me", handlers.GetCurrentUser(db))
 		protected.GET("/users/:id/profile", handlers.GetUserProfile(db))
+		protected.PUT("/me/profile", handlers.UpdateCurrentUserProfile(db))
 		protected.GET("/email-preferences", handlers.GetEmailPreferences(db))
 		protected.PUT("/email-preferences", handlers.UpdateEmailPreferences(db))
 		protected.PUT("/default-group", handlers.SetDefaultGroup(db))
@@ -146,14 +154,20 @@ func main() {
 		// Group routes
 		protected.GET("/groups", handlers.GetGroups(db))
 
-		// Comment tags (all authenticated users can view)
-		protected.GET("/comment-tags", handlers.GetCommentTags(db))
+		// Image upload (authenticated users only) - stores in database
+		protected.POST("/animals/upload-image", handlers.UploadAnimalImageSimple(db))
 
-		// Animal tags (all authenticated users can view)
-		protected.GET("/animal-tags", handlers.GetAnimalTags(db))
+		// Statistics routes (accessible by authenticated users, filtered by permissions)
+		protected.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
 
-		// Image upload (authenticated users only)
-		protected.POST("/animals/upload-image", handlers.UploadAnimalImage())
+		// Group admin management (accessible by site admins and group admins)
+		// Authorization is checked within the handlers
+		protected.POST("/groups/:id/admins/:userId", handlers.PromoteGroupAdmin(db))
+		protected.DELETE("/groups/:id/admins/:userId", handlers.DemoteGroupAdmin(db))
+
+		// User management (accessible by site admins and group admins for users in their groups)
+		// Authorization is checked within the handlers
+		protected.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
 
 		// Admin only routes
 		admin := protected.Group("/admin")
@@ -166,7 +180,6 @@ func main() {
 			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))
 			admin.POST("/users/:userId/promote", handlers.PromoteUser(db))
 			admin.POST("/users/:userId/demote", handlers.DemoteUser(db))
-			admin.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
 
 			// Group management (admin only)
 			admin.POST("/groups", handlers.CreateGroup(db))
@@ -180,16 +193,6 @@ func main() {
 			admin.POST("/announcements", handlers.CreateAnnouncement(db, emailService, groupMeService))
 			admin.DELETE("/announcements/:id", handlers.DeleteAnnouncement(db))
 
-			// Comment tag management (admin only)
-			admin.POST("/comment-tags", handlers.CreateCommentTag(db))
-			admin.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
-
-			// Animal tag management (admin only)
-			admin.POST("/animal-tags", handlers.CreateAnimalTag(db))
-			admin.PUT("/animal-tags/:tagId", handlers.UpdateAnimalTag(db))
-			admin.DELETE("/animal-tags/:tagId", handlers.DeleteAnimalTag(db))
-			admin.POST("/animals/:animalId/tags", handlers.AssignTagsToAnimal(db))
-
 			// Site settings management (admin only)
 			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))
 			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage())
@@ -198,33 +201,51 @@ func main() {
 			admin.GET("/animals", handlers.GetAllAnimals(db))
 			admin.POST("/animals/bulk-update", handlers.BulkUpdateAnimals(db))
 			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db))
-			admin.GET("/animals/export-csv", handlers.ExportAnimalsCSV(db))
+			admin.POST("/animals/export-csv", handlers.ExportAnimalsCSV(db))
 			admin.GET("/animals/export-comments-csv", handlers.ExportAnimalCommentsCSV(db))
 			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db))
+
+			// Animal image management (admin only)
+			admin.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePicture(db))
+
+			// Database seeding (admin only, dangerous operation)
+			admin.POST("/seed-database", handlers.SeedDatabase(db))
 
 			// Statistics routes (admin only)
 			admin.GET("/statistics/groups", handlers.GetGroupStatistics(db))
 			admin.GET("/statistics/users", handlers.GetUserStatistics(db))
-			admin.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
-			
+
 			// Admin dashboard
 			admin.GET("/dashboard/stats", handlers.GetAdminDashboardStats(db))
+
+			// Admin content moderation - view deleted content
+			admin.GET("/groups/:id/deleted-comments", handlers.GetDeletedComments(db))
+			admin.GET("/groups/:id/deleted-images", handlers.GetDeletedImages(db))
 		}
 
 		// Group-specific routes
 		group := protected.Group("/groups/:id")
 		{
 			group.GET("", handlers.GetGroup(db))
+			group.GET("/membership", handlers.GetGroupMembership(db))
 
 			// Animal routes - viewing accessible to all group members
 			group.GET("/animals", handlers.GetAnimals(db))
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
 			group.GET("/animals/check-duplicates", handlers.CheckDuplicateNames(db))
 
-			// Animal comments - all group members can view and add comments
+			// Animal images - all group members can view and upload
+			group.GET("/animals/:animalId/images", handlers.GetAnimalImages(db))
+			group.POST("/animals/:animalId/images", handlers.UploadAnimalImageToGallery(db))
+			group.DELETE("/animals/:animalId/images/:imageId", handlers.DeleteAnimalImage(db))
+			group.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePictureGroupScoped(db))
+
+			// Animal comments - all group members can view, add, and edit own comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
 			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
-			
+			group.PUT("/animals/:animalId/comments/:commentId", handlers.UpdateAnimalComment(db))
+			group.DELETE("/animals/:animalId/comments/:commentId", handlers.DeleteAnimalComment(db))
+
 			// Latest comments across the group
 			group.GET("/latest-comments", handlers.GetGroupLatestComments(db))
 
@@ -238,39 +259,72 @@ func main() {
 			// Protocol routes - all group members can view
 			group.GET("/protocols", handlers.GetProtocols(db))
 			group.GET("/protocols/:protocolId", handlers.GetProtocol(db))
+
+			// Group-specific tag routes - viewing accessible to all group members
+			// Tag management (create/update/delete) requires group admin or site admin
+			group.GET("/animal-tags", handlers.GetAnimalTags(db))
+			group.POST("/animal-tags", handlers.CreateAnimalTag(db))
+			group.PUT("/animal-tags/:tagId", handlers.UpdateAnimalTag(db))
+			group.DELETE("/animal-tags/:tagId", handlers.DeleteAnimalTag(db))
+
+			group.GET("/comment-tags", handlers.GetCommentTags(db))
+			group.POST("/comment-tags", handlers.CreateCommentTag(db))
+			group.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
+
+			// Group settings - group admin or site admin can update
+			group.PUT("/settings", handlers.UpdateGroupSettings(db))
+
+			// Member management - group admin or site admin (checks access within handlers)
+			group.GET("/members", handlers.GetGroupMembers(db))
+			group.POST("/members/:userId", handlers.AddMemberToGroup(db))
+			group.DELETE("/members/:userId", handlers.RemoveMemberFromGroup(db))
+			group.POST("/members/:userId/promote", handlers.PromoteMemberToGroupAdmin(db))
+			group.POST("/members/:userId/demote", handlers.DemoteMemberFromGroupAdmin(db))
+
+			// Content moderation - group admin or site admin can view deleted content
+			group.GET("/deleted-comments", handlers.GetDeletedComments(db))
+			group.GET("/deleted-images", handlers.GetDeletedImages(db))
+
+			// Group announcements - group admin or site admin can create announcements for their group
+			group.POST("/announcements", handlers.CreateGroupAnnouncement(db, emailService, groupMeService))
 		}
 
-		// Admin-only animal management routes
-		adminAnimals := protected.Group("/groups/:id/animals")
-		adminAnimals.Use(middleware.AdminRequired())
+		// Group admin or site admin animal management routes
+		// These routes check for site admin OR group admin access within the handlers
+		groupAdminAnimals := protected.Group("/groups/:id/animals")
 		{
-			adminAnimals.POST("", handlers.CreateAnimal(db))
-			adminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db))
-			adminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
+			groupAdminAnimals.POST("", handlers.CreateAnimal(db))
+			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db))
+			groupAdminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
+			// Tag assignment for animals
+			groupAdminAnimals.POST("/:animalId/tags", handlers.AssignTagsToAnimal(db))
 		}
 
-		// Admin-only protocol management routes
-		adminProtocols := protected.Group("/groups/:id/protocols")
-		adminProtocols.Use(middleware.AdminRequired())
+		// Group admin or site admin protocol management routes
+		// These routes check for site admin OR group admin access within the handlers
+		groupAdminProtocols := protected.Group("/groups/:id/protocols")
 		{
-			adminProtocols.POST("/upload-image", handlers.UploadProtocolImage())
-			adminProtocols.POST("", handlers.CreateProtocol(db))
-			adminProtocols.PUT("/:protocolId", handlers.UpdateProtocol(db))
-			adminProtocols.DELETE("/:protocolId", handlers.DeleteProtocol(db))
+			groupAdminProtocols.POST("/upload-image", handlers.UploadProtocolImage(db))
+			groupAdminProtocols.POST("", handlers.CreateProtocol(db))
+			groupAdminProtocols.PUT("/:protocolId", handlers.UpdateProtocol(db))
+			groupAdminProtocols.DELETE("/:protocolId", handlers.DeleteProtocol(db))
 		}
+
+		// Bulk animal management routes accessible to group admins and site admins
+		// Authorization is checked within the handlers
+		protected.GET("/bulk-animals", handlers.GetAllAnimals(db))
+		protected.POST("/bulk-animals/bulk-update", handlers.BulkUpdateAnimals(db))
 	}
 
-	// Serve frontend in production
-	if os.Getenv("ENV") == "production" {
-		// Serve static files
-		router.StaticFile("/", "./frontend/dist/index.html")
-		router.Static("/assets", "./frontend/dist/assets")
+	// Serve frontend (both development and production environments)
+	// Serve static files
+	router.StaticFile("/", "./frontend/dist/index.html")
+	router.Static("/assets", "./frontend/dist/assets")
 
-		// Serve index.html for all non-API routes (SPA routing)
-		router.NoRoute(func(c *gin.Context) {
-			c.File("./frontend/dist/index.html")
-		})
-	}
+	// Serve index.html for all non-API routes (SPA routing)
+	router.NoRoute(func(c *gin.Context) {
+		c.File("./frontend/dist/index.html")
+	})
 
 	port := os.Getenv("PORT")
 	if port == "" {

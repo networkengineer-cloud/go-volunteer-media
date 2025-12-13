@@ -1,8 +1,9 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import { ToastProvider } from './contexts/ToastContext';
+import { groupsApi } from './api/client';
 import Navigation from './components/Navigation';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -38,6 +39,56 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isAdmin } = useAuth();
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (!isAdmin) return <Navigate to="/dashboard" />;
+  return <>{children}</>;
+};
+
+// GroupAdminRoute - allows access if user is site admin OR group admin for the specific group
+// The groupId is extracted from URL params (supports both :id and :groupId patterns)
+const GroupAdminRouteInner: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isAdmin } = useAuth();
+  const params = useParams();
+  const groupId = params.groupId || params.id;
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Site admins have access to everything
+    if (isAdmin) {
+      setHasAccess(true);
+      return;
+    }
+
+    // Check if user is group admin for this group
+    if (groupId) {
+      groupsApi.getMembership(parseInt(groupId))
+        .then(response => {
+          setHasAccess(response.data.is_group_admin || response.data.is_site_admin);
+        })
+        .catch(() => {
+          setHasAccess(false);
+        });
+    } else {
+      setHasAccess(false);
+    }
+  }, [groupId, isAdmin]);
+
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (hasAccess === null) return <div className="loading-spinner">Loading...</div>;
+  if (!hasAccess) return <Navigate to="/dashboard" />;
+  return <>{children}</>;
+};
+
+const GroupAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  return <GroupAdminRouteInner>{children}</GroupAdminRouteInner>;
+};
+
+// UsersRoute - allows access if user is site admin or group admin
+const UsersRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isAdmin, user } = useAuth();
+  // Check if user is a group admin (has is_group_admin flag set)
+  const isGroupAdmin = isAuthenticated && user ? (user.is_group_admin || false) : false;
+
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (!isAdmin && !isGroupAdmin) return <Navigate to="/dashboard" />;
   return <>{children}</>;
 };
 
@@ -92,17 +143,17 @@ function App() {
           <Route
             path="/groups/:groupId/animals/new"
             element={
-              <AdminRoute>
+              <GroupAdminRoute>
                 <AnimalForm />
-              </AdminRoute>
+              </GroupAdminRoute>
             }
           />
           <Route
             path="/groups/:groupId/animals/:id"
             element={
-              <AdminRoute>
+              <GroupAdminRoute>
                 <AnimalForm />
-              </AdminRoute>
+              </GroupAdminRoute>
             }
           />
           <Route
@@ -146,6 +197,14 @@ function App() {
             }
           />
           <Route
+            path="/users"
+            element={
+              <UsersRoute>
+                <UsersPage />
+              </UsersRoute>
+            }
+          />
+          <Route
             path="/admin/dashboard"
             element={
               <AdminRoute>
@@ -155,11 +214,7 @@ function App() {
           />
           <Route
             path="/admin/users"
-            element={
-              <AdminRoute>
-                <UsersPage />
-              </AdminRoute>
-            }
+            element={<Navigate to="/users" replace />}
           />
           <Route
             path="/admin/groups"
@@ -180,17 +235,17 @@ function App() {
           <Route
             path="/admin/animal-tags"
             element={
-              <AdminRoute>
+              <PrivateRoute>
                 <AdminAnimalTagsPage />
-              </AdminRoute>
+              </PrivateRoute>
             }
           />
           <Route
             path="/admin/animals"
             element={
-              <AdminRoute>
+              <UsersRoute>
                 <BulkEditAnimalsPage />
-              </AdminRoute>
+              </UsersRoute>
             }
           />
         </Routes>

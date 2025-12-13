@@ -109,6 +109,11 @@
   --z-modal: 1050;
   --z-popover: 1060;
   --z-tooltip: 1070;
+
+  /* Semantic Background/Border Variables */
+  --bg-primary: var(--surface);
+  --bg-secondary: var(--neutral-50);
+  --border: var(--neutral-200);
 }
 
 [data-theme='dark'] {
@@ -165,6 +170,11 @@
   /* Links */
   --link: #00B8C4; /* brand tint for dark */
   --link-hover: #00D4E0;
+
+  /* Semantic Background/Border Variables */
+  --bg-primary: var(--surface);
+  --bg-secondary: var(--neutral-50);
+  --border: var(--neutral-200);
 }
 
 * {

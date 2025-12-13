@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { animalsApi, animalCommentsApi, animalsApi as imageUploadApi, commentTagsApi, groupsApi } from '../api/client';
-import type { Animal, AnimalComment, CommentTag, Group } from '../api/client';
+import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi } from '../api/client';
+import type { Animal, AnimalComment, CommentTag, Group, GroupMembership } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import EmptyState from '../components/EmptyState';
@@ -29,28 +29,31 @@ const calculateQuarantineEndDate = (startDateString?: string): string => {
 const AnimalDetailPage: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const toast = useToast();
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
+  const [membership, setMembership] = useState<GroupMembership | null>(null);
   const [comments, setComments] = useState<AnimalComment[]>([]);
+  const [deletedComments, setDeletedComments] = useState<AnimalComment[]>([]);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [availableTags, setAvailableTags] = useState<CommentTag[]>([]);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [filterTags, setFilterTags] = useState<string[]>([]); // Tags selected for filtering
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [commentImage, setCommentImage] = useState('');
-  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showCommentForm, setShowCommentForm] = useState(true);
   const [error, setError] = useState<string>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Pagination state
   const [totalComments, setTotalComments] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
 
   const loadComments = useCallback(async (
@@ -83,19 +86,59 @@ const AnimalDetailPage: React.FC = () => {
     }
   }, [toast, COMMENTS_PER_PAGE]);
 
-  const loadTags = useCallback(async () => {
+  const loadTags = useCallback(async (gId: number) => {
     try {
-      const res = await commentTagsApi.getAll();
+      const res = await commentTagsApi.getAll(gId);
       setAvailableTags(res.data);
     } catch (error) {
       console.error('Failed to load tags:', error);
     }
   }, []);
 
+  const loadDeletedComments = useCallback(async (gId: number) => {
+    if (!isAdmin) return;
+    try {
+      const res = await animalCommentsApi.getDeleted(gId);
+      console.log('Deleted comments loaded:', res.data);
+      setDeletedComments(res.data || []);
+    } catch (error) {
+      console.error('Failed to load deleted comments:', error);
+      setDeletedComments([]);
+    }
+  }, [isAdmin]);
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!groupId || !id) return;
+    
+    if (!window.confirm('Are you sure you want to delete this comment?')) {
+      return;
+    }
+
+    try {
+      await animalCommentsApi.delete(Number(groupId), Number(id), commentId);
+      toast.showSuccess('Comment deleted successfully');
+      
+      // Reload comments
+      await loadComments(Number(groupId), Number(id), filterTags.join(','), 0, sortOrder, false);
+      
+      // Reload deleted comments if admin
+      if (isAdmin) {
+        await loadDeletedComments(Number(groupId));
+      }
+    } catch (error) {
+      console.error('Failed to delete comment:', error);
+      toast.showError('Failed to delete comment. Please try again.');
+    }
+  };
+
   const loadGroupData = useCallback(async (gId: number) => {
     try {
-      const groupRes = await groupsApi.getById(gId);
+      const [groupRes, membershipRes] = await Promise.all([
+        groupsApi.getById(gId),
+        groupsApi.getMembership(gId)
+      ]);
       setGroup(groupRes.data);
+      setMembership(membershipRes.data);
     } catch (error) {
       console.error('Failed to load group data:', error);
     }
@@ -120,9 +163,12 @@ const AnimalDetailPage: React.FC = () => {
     if (groupId && id) {
       loadAnimalData(Number(groupId), Number(id));
       loadGroupData(Number(groupId));
-      loadTags();
+      loadTags(Number(groupId));
+      if (isAdmin) {
+        loadDeletedComments(Number(groupId));
+      }
     }
-  }, [groupId, id, loadAnimalData, loadGroupData, loadTags]);
+  }, [groupId, id, loadAnimalData, loadGroupData, loadTags, isAdmin, loadDeletedComments]);
 
   useEffect(() => {
     if (groupId && id) {
@@ -131,43 +177,18 @@ const AnimalDetailPage: React.FC = () => {
     }
   }, [filterTags, groupId, id, loadComments, sortOrder]);
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.showError('Please select an image file (JPG, PNG, or GIF)');
-      return;
-    }
-
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const res = await imageUploadApi.uploadImage(file);
-      setCommentImage(res.data.url);
-      toast.showSuccess('Image uploaded successfully!');
-    } catch (error: unknown) {
-      console.error('Upload error:', error);
-      const errorMsg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to upload image. Please try again.';
-      toast.showError(errorMsg);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollToTop(window.scrollY > 500);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim() && !commentImage) {
-      toast.showWarning('Please enter a comment or upload an image');
+      toast.showWarning('Please write a comment');
       return;
     }
 
@@ -228,6 +249,22 @@ const AnimalDetailPage: React.FC = () => {
   const handleSortChange = () => {
     const newOrder = sortOrder === 'desc' ? 'asc' : 'desc';
     setSortOrder(newOrder);
+  };
+
+  const getCommentDateRange = () => {
+    if (comments.length === 0) return null;
+    const dates = comments.map(c => new Date(c.created_at));
+    const oldest = new Date(Math.min(...dates.map(d => d.getTime())));
+    const newest = new Date(Math.max(...dates.map(d => d.getTime())));
+    return { oldest, newest };
+  };
+
+  const scrollToComments = (position: 'top' | 'bottom') => {
+    if (position === 'top' && commentsTopRef.current) {
+      commentsTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
   };
 
   const handleExportComments = async () => {
@@ -422,18 +459,40 @@ const AnimalDetailPage: React.FC = () => {
                 </div>
               )}
               
-              {isAdmin && (
-                <button onClick={handleEdit} className="btn-edit">
-                  Edit Animal Details
-                </button>
-              )}
+              <div className="animal-action-buttons">
+                <Link 
+                  to={`/groups/${groupId}/animals/${id}/photos`} 
+                  className="btn-view-gallery-large"
+                  title="View and manage animal photos"
+                >
+                  📷 Photo Gallery
+                </Link>
+                
+                {isAdmin && (
+                  <button onClick={handleEdit} className="btn-edit">
+                    Edit Animal Details
+                  </button>
+                )}
+                {!isAdmin && (membership?.is_group_admin) && (
+                  <button onClick={handleEdit} className="btn-edit">
+                    Edit Animal Details
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="comments-section">
+        <div className="comments-section" ref={commentsTopRef}>
           <div className="comments-header">
-            <h2>Comments & Photos</h2>
+            <div className="comments-header-title">
+              <h2>Comments</h2>
+              {totalComments > 20 && getCommentDateRange() && (
+                <span className="date-range-info">
+                  Showing activity from {getCommentDateRange()?.oldest.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} to {getCommentDateRange()?.newest.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                </span>
+              )}
+            </div>
             <div className="comments-header-actions">
               {isAdmin && (
                 <button
@@ -460,8 +519,11 @@ const AnimalDetailPage: React.FC = () => {
 
           {showCommentForm && (
             <form onSubmit={handleSubmitComment} className="comment-form">
+              <div className="form-section-header">
+                <span className="form-hint">💬 Add a comment about this animal</span>
+              </div>
               <textarea
-                placeholder="Share an update or comment about this animal..."
+                placeholder="Add a comment..."
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 rows={3}
@@ -521,32 +583,102 @@ const AnimalDetailPage: React.FC = () => {
                 )}
               </div>
               <div className="comment-form-actions">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.gif"
-                  onChange={handleImageUpload}
-                  style={{ display: 'none' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="btn-upload"
-                  disabled={uploading || submitting}
+                <button 
+                  type="submit" 
+                  className="btn-post" 
+                  disabled={submitting || (!commentText.trim() && !commentImage)}
+                  title={!commentText.trim() && !commentImage ? 'Add a comment or photo first' : 'Post comment'}
                 >
-                  {uploading ? 'Uploading...' : '📷 Add Photo'}
-                </button>
-                <button type="submit" className="btn-post" disabled={submitting || (!commentText.trim() && !commentImage)}>
-                  {submitting ? 'Posting...' : 'Post'}
+                  {submitting ? 'Posting...' : 'Post Comment'}
                 </button>
               </div>
             </form>
           )}
 
+          {/* Admin: Show Deleted Comments Toggle - HIGH VISIBILITY */}
+          {isAdmin && deletedComments && deletedComments.length > 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.04) 100%)',
+              border: '2px solid #ef4444',
+              padding: '1rem',
+              borderRadius: '8px',
+              marginBottom: '1.5rem',
+              marginTop: '1rem'
+            }}>
+              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.75rem' }}>
+                <input
+                  id="show-deleted-comments"
+                  type="checkbox"
+                  checked={showDeleted}
+                  onChange={() => setShowDeleted(!showDeleted)}
+                  style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#ef4444' }}
+                />
+                <span style={{ fontWeight: 700, color: '#ef4444', fontSize: '1.05rem' }}>
+                  🗑️ Show Deleted Comments ({deletedComments.length})
+                </span>
+              </label>
+            </div>
+          )}
+
+          {/* Deleted Comments Section */}
+          {showDeleted && deletedComments && deletedComments.length > 0 && (
+            <div className="deleted-comments-section">
+              <h3>🗑️ Deleted Comments (Admin Review)</h3>
+              {deletedComments.filter(dc => dc.animal_id === Number(id)).map((comment) => (
+                <div key={comment.id} className="comment-card deleted-comment">
+                  <div className="deleted-badge">🗑️ DELETED</div>
+                  <div className="comment-header">
+                    {comment.user?.id ? (
+                      <Link to={`/users/${comment.user.id}/profile`} className="comment-author comment-author--link">
+                        {comment.user.username}
+                      </Link>
+                    ) : (
+                      <span className="comment-author">{comment.user?.username}</span>
+                    )}
+                    <span className="comment-date">
+                      {new Date(comment.created_at).toLocaleDateString()} at{' '}
+                      {new Date(comment.created_at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                  {comment.tags && comment.tags.length > 0 && (
+                    <div className="comment-tags">
+                      {comment.tags.map((tag) => (
+                        <span key={tag.id} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="comment-content">{comment.content}</p>
+                  {comment.image_url && (
+                    <img
+                      src={comment.image_url}
+                      alt="Comment"
+                      className="comment-image"
+                    />
+                  )}
+                  <div className="comment-meta">
+                    Deleted: {new Date(comment.deleted_at!).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="comments-controls">
             <div className="comments-count-and-sort">
               <span className="comments-count" aria-live="polite">
-                Showing {comments.length} of {totalComments} comment{totalComments !== 1 ? 's' : ''}
+                {totalComments > 50 ? (
+                  <>
+                    <strong>{comments.length}</strong> of <strong>{totalComments}</strong> comments loaded
+                    {hasMore && <span className="load-more-hint"> • Scroll down to load more</span>}
+                  </>
+                ) : (
+                  <>Showing {comments.length} of {totalComments} comment{totalComments !== 1 ? 's' : ''}</>
+                )}
               </span>
               <button
                 onClick={handleSortChange}
@@ -623,7 +755,13 @@ const AnimalDetailPage: React.FC = () => {
                 {comments.map((comment) => (
                   <div key={comment.id} className="comment-card">
                     <div className="comment-header">
-                      <span className="comment-author">{comment.user?.username}</span>
+                      {comment.user?.id ? (
+                        <Link to={`/users/${comment.user.id}/profile`} className="comment-author comment-author--link">
+                          {comment.user.username}
+                        </Link>
+                      ) : (
+                        <span className="comment-author">{comment.user?.username}</span>
+                      )}
                       <span className="comment-date">
                         {new Date(comment.created_at).toLocaleDateString()} at{' '}
                         {new Date(comment.created_at).toLocaleTimeString([], {
@@ -631,6 +769,15 @@ const AnimalDetailPage: React.FC = () => {
                           minute: '2-digit',
                         })}
                       </span>
+                      {(isAdmin || comment.user?.id === user?.id) && (
+                        <button
+                          className="btn-delete-comment"
+                          onClick={() => handleDeleteComment(comment.id)}
+                          title="Delete comment"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </div>
                     {comment.tags && comment.tags.length > 0 && (
                       <div className="comment-tags">
@@ -654,6 +801,15 @@ const AnimalDetailPage: React.FC = () => {
 
                 {hasMore && (
                   <div className="load-more-container">
+                    {comments.length > 20 && (
+                      <button
+                        onClick={() => scrollToComments('top')}
+                        className="btn-scroll-to-top-inline"
+                        aria-label="Jump to top of comments"
+                      >
+                        ↑ Back to Top
+                      </button>
+                    )}
                     <button
                       onClick={handleLoadMore}
                       disabled={loadingMore}
@@ -669,7 +825,7 @@ const AnimalDetailPage: React.FC = () => {
                         <>
                           Load More Comments
                           <span className="remaining-count">
-                            ({totalComments - comments.length} remaining)
+                            ({totalComments - comments.length} more • {Math.ceil((totalComments - comments.length) / COMMENTS_PER_PAGE)} pages)
                           </span>
                         </>
                       )}
@@ -686,6 +842,18 @@ const AnimalDetailPage: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Floating scroll to top button */}
+        {showScrollToTop && totalComments > 20 && (
+          <button
+            onClick={() => scrollToComments('top')}
+            className="btn-scroll-to-top-floating"
+            aria-label="Scroll to top of comments"
+            title="Jump to top of comments"
+          >
+            ↑
+          </button>
+        )}
       </div>
     </div>
   );

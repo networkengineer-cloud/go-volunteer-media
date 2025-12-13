@@ -28,7 +28,7 @@ func setupGroupTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Run migrations
-	err = db.AutoMigrate(&models.User{}, &models.Group{})
+	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{})
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -896,6 +896,571 @@ func TestIsValidGroupMeBotID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := isValidGroupMeBotID(tt.id); got != tt.want {
 				t.Errorf("isValidGroupMeBotID(%q) = %v, want %v", tt.id, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPromoteGroupAdmin tests promoting a user to group admin
+func TestPromoteGroupAdmin(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupFunc      func(*gorm.DB) (uint, uint) // returns userID, groupID
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name: "successfully promote user to group admin",
+			setupFunc: func(db *gorm.DB) (uint, uint) {
+				user := createGroupTestUser(t, db, "member", "member@example.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				// Add user as regular member (not group admin)
+				userGroup := &models.UserGroup{
+					UserID:       user.ID,
+					GroupID:      group.ID,
+					IsGroupAdmin: false,
+				}
+				db.Create(userGroup)
+				return user.ID, group.ID
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "promoted to group admin",
+		},
+		{
+			name: "user not a member of group",
+			setupFunc: func(db *gorm.DB) (uint, uint) {
+				user := createGroupTestUser(t, db, "nonmember", "nonmember@example.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				// Don't add user to group
+				return user.ID, group.ID
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "not a member",
+		},
+		{
+			name: "user already a group admin",
+			setupFunc: func(db *gorm.DB) (uint, uint) {
+				user := createGroupTestUser(t, db, "admin_member", "admin_member@example.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				userGroup := &models.UserGroup{
+					UserID:       user.ID,
+					GroupID:      group.ID,
+					IsGroupAdmin: true,
+				}
+				db.Create(userGroup)
+				return user.ID, group.ID
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "already a group admin",
+		},
+		{
+			name: "user not found",
+			setupFunc: func(db *gorm.DB) (uint, uint) {
+				group := createTestGroup(t, db, "Test Group", "Description")
+				return 99999, group.ID
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "User not found",
+		},
+		{
+			name: "group not found",
+			setupFunc: func(db *gorm.DB) (uint, uint) {
+				user := createGroupTestUser(t, db, "member", "member@example.com", false)
+				return user.ID, 99999
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "Group not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupGroupTestDB(t)
+			admin := createGroupTestUser(t, db, "admin", "admin@example.com", true)
+
+			userID, groupID := tt.setupFunc(db)
+
+			c, w := setupGroupTestContext(admin.ID, true)
+			c.Params = gin.Params{
+				{Key: "userId", Value: fmt.Sprintf("%d", userID)},
+				{Key: "id", Value: fmt.Sprintf("%d", groupID)},
+			}
+			c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/admins/%d", groupID, userID), nil)
+
+			handler := PromoteGroupAdmin(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+
+			if !strings.Contains(w.Body.String(), tt.expectedBody) {
+				t.Errorf("Expected body to contain %q, got %s", tt.expectedBody, w.Body.String())
+			}
+		})
+	}
+}
+
+// TestDemoteGroupAdmin tests demoting a user from group admin
+func TestDemoteGroupAdmin(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupFunc      func(*gorm.DB) (uint, uint) // returns userID, groupID
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name: "successfully demote group admin",
+			setupFunc: func(db *gorm.DB) (uint, uint) {
+				user := createGroupTestUser(t, db, "groupadmin", "groupadmin@example.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				userGroup := &models.UserGroup{
+					UserID:       user.ID,
+					GroupID:      group.ID,
+					IsGroupAdmin: true,
+				}
+				db.Create(userGroup)
+				return user.ID, group.ID
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "demoted from group admin",
+		},
+		{
+			name: "user not a group admin",
+			setupFunc: func(db *gorm.DB) (uint, uint) {
+				user := createGroupTestUser(t, db, "member", "member@example.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				userGroup := &models.UserGroup{
+					UserID:       user.ID,
+					GroupID:      group.ID,
+					IsGroupAdmin: false,
+				}
+				db.Create(userGroup)
+				return user.ID, group.ID
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "not a group admin",
+		},
+		{
+			name: "user not a member of group",
+			setupFunc: func(db *gorm.DB) (uint, uint) {
+				user := createGroupTestUser(t, db, "nonmember", "nonmember@example.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				return user.ID, group.ID
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "not a member",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupGroupTestDB(t)
+			admin := createGroupTestUser(t, db, "admin", "admin@example.com", true)
+
+			userID, groupID := tt.setupFunc(db)
+
+			c, w := setupGroupTestContext(admin.ID, true)
+			c.Params = gin.Params{
+				{Key: "userId", Value: fmt.Sprintf("%d", userID)},
+				{Key: "id", Value: fmt.Sprintf("%d", groupID)},
+			}
+			c.Request = httptest.NewRequest("DELETE", fmt.Sprintf("/api/v1/groups/%d/admins/%d", groupID, userID), nil)
+
+			handler := DemoteGroupAdmin(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+
+			if !strings.Contains(w.Body.String(), tt.expectedBody) {
+				t.Errorf("Expected body to contain %q, got %s", tt.expectedBody, w.Body.String())
+			}
+		})
+	}
+}
+
+// TestGetGroupMembers tests retrieving group members with admin status
+func TestGetGroupMembers(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupFunc      func(*gorm.DB) (*models.User, uint) // returns requesting user and groupID
+		expectedStatus int
+		checkFunc      func(*testing.T, *httptest.ResponseRecorder)
+	}{
+		{
+			name: "site admin can view members",
+			setupFunc: func(db *gorm.DB) (*models.User, uint) {
+				admin := createGroupTestUser(t, db, "admin", "admin@example.com", true)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				member := createGroupTestUser(t, db, "member", "member@example.com", false)
+				userGroup := &models.UserGroup{
+					UserID:       member.ID,
+					GroupID:      group.ID,
+					IsGroupAdmin: false,
+				}
+				db.Create(userGroup)
+				return admin, group.ID
+			},
+			expectedStatus: http.StatusOK,
+			checkFunc: func(t *testing.T, w *httptest.ResponseRecorder) {
+				var members []map[string]interface{}
+				if err := json.Unmarshal(w.Body.Bytes(), &members); err != nil {
+					t.Fatalf("Failed to unmarshal response: %v", err)
+				}
+				if len(members) != 1 {
+					t.Errorf("Expected 1 member, got %d", len(members))
+				}
+			},
+		},
+		{
+			name: "group member can view members",
+			setupFunc: func(db *gorm.DB) (*models.User, uint) {
+				group := createTestGroup(t, db, "Test Group", "Description")
+				member := createGroupTestUser(t, db, "member", "member@example.com", false)
+				userGroup := &models.UserGroup{
+					UserID:       member.ID,
+					GroupID:      group.ID,
+					IsGroupAdmin: false,
+				}
+				db.Create(userGroup)
+				return member, group.ID
+			},
+			expectedStatus: http.StatusOK,
+			checkFunc:      nil,
+		},
+		{
+			name: "non-member cannot view members",
+			setupFunc: func(db *gorm.DB) (*models.User, uint) {
+				group := createTestGroup(t, db, "Test Group", "Description")
+				nonmember := createGroupTestUser(t, db, "nonmember", "nonmember@example.com", false)
+				return nonmember, group.ID
+			},
+			expectedStatus: http.StatusForbidden,
+			checkFunc:      nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupGroupTestDB(t)
+
+			user, groupID := tt.setupFunc(db)
+
+			c, w := setupGroupTestContext(user.ID, user.IsAdmin)
+			c.Params = gin.Params{
+				{Key: "id", Value: fmt.Sprintf("%d", groupID)},
+			}
+			c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/v1/admin/groups/%d/members", groupID), nil)
+
+			handler := GetGroupMembers(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+
+			if tt.checkFunc != nil {
+				tt.checkFunc(t, w)
+			}
+		})
+	}
+}
+
+// TestIsGroupAdmin tests the IsGroupAdmin helper function
+func TestIsGroupAdmin(t *testing.T) {
+	db := setupGroupTestDB(t)
+
+	// Create a user and group
+	user := createGroupTestUser(t, db, "member", "member@example.com", false)
+	group := createTestGroup(t, db, "Test Group", "Description")
+
+	// Initially user is not a group admin
+	if IsGroupAdmin(db, user.ID, group.ID) {
+		t.Error("Expected user to not be a group admin initially")
+	}
+
+	// Add user as regular member
+	userGroup := &models.UserGroup{
+		UserID:       user.ID,
+		GroupID:      group.ID,
+		IsGroupAdmin: false,
+	}
+	db.Create(userGroup)
+
+	// Still not a group admin
+	if IsGroupAdmin(db, user.ID, group.ID) {
+		t.Error("Expected user to not be a group admin")
+	}
+
+	// Promote to group admin
+	db.Model(userGroup).Update("is_group_admin", true)
+
+	// Now should be a group admin
+	if !IsGroupAdmin(db, user.ID, group.ID) {
+		t.Error("Expected user to be a group admin")
+	}
+}
+
+// TestAddMemberToGroup tests the AddMemberToGroup handler
+func TestAddMemberToGroup(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupFunc      func(*gorm.DB) (*models.User, *models.User, *models.Group)
+		contextUserID  uint
+		isAdmin        bool
+		groupID        string
+		targetUserID   string
+		expectedStatus int
+		expectedError  string
+	}{
+		{
+			name: "site admin can add user to group",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
+				admin := createGroupTestUser(t, db, "admin", "admin@test.com", true)
+				user := createGroupTestUser(t, db, "user", "user@test.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				return admin, user, group
+			},
+			isAdmin:        true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "group admin can add user to their group",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
+				groupAdmin := createGroupTestUser(t, db, "groupadmin", "groupadmin@test.com", false)
+				user := createGroupTestUser(t, db, "user", "user@test.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				// Make groupAdmin a group admin
+				db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true})
+				return groupAdmin, user, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "regular user cannot add members",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
+				regular := createGroupTestUser(t, db, "regular", "regular@test.com", false)
+				user := createGroupTestUser(t, db, "user", "user@test.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				// Regular user is a member but not an admin
+				db.Create(&models.UserGroup{UserID: regular.ID, GroupID: group.ID, IsGroupAdmin: false})
+				return regular, user, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusForbidden,
+			expectedError:  "Admin access required",
+		},
+		{
+			name: "cannot add user already in group",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
+				admin := createGroupTestUser(t, db, "admin", "admin@test.com", true)
+				user := createGroupTestUser(t, db, "user", "user@test.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				// User already in group
+				db.Create(&models.UserGroup{UserID: user.ID, GroupID: group.ID})
+				return admin, user, group
+			},
+			isAdmin:        true,
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "already a member",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupGroupTestDB(t)
+			contextUser, targetUser, group := tt.setupFunc(db)
+
+			c, w := setupGroupTestContext(contextUser.ID, tt.isAdmin)
+			c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/groups/%d/members/%d", group.ID, targetUser.ID), nil)
+			c.Params = gin.Params{
+				{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+				{Key: "userId", Value: fmt.Sprintf("%d", targetUser.ID)},
+			}
+
+			handler := AddMemberToGroup(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
+
+			if tt.expectedError != "" && !strings.Contains(w.Body.String(), tt.expectedError) {
+				t.Errorf("Expected error containing %q, got %q", tt.expectedError, w.Body.String())
+			}
+		})
+	}
+}
+
+// TestPromoteMemberToGroupAdmin tests the PromoteMemberToGroupAdmin handler
+func TestPromoteMemberToGroupAdmin(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupFunc      func(*gorm.DB) (*models.User, *models.User, *models.Group)
+		contextUserID  uint
+		isAdmin        bool
+		expectedStatus int
+		expectedError  string
+	}{
+		{
+			name: "site admin can promote member",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
+				admin := createGroupTestUser(t, db, "admin", "admin@test.com", true)
+				user := createGroupTestUser(t, db, "user", "user@test.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				// User is a regular member
+				db.Create(&models.UserGroup{UserID: user.ID, GroupID: group.ID, IsGroupAdmin: false})
+				return admin, user, group
+			},
+			isAdmin:        true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "group admin can promote member in their group",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
+				groupAdmin := createGroupTestUser(t, db, "groupadmin", "groupadmin@test.com", false)
+				user := createGroupTestUser(t, db, "user", "user@test.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				// Make groupAdmin a group admin
+				db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true})
+				// User is a regular member
+				db.Create(&models.UserGroup{UserID: user.ID, GroupID: group.ID, IsGroupAdmin: false})
+				return groupAdmin, user, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "regular member cannot promote",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
+				regular := createGroupTestUser(t, db, "regular", "regular@test.com", false)
+				user := createGroupTestUser(t, db, "user", "user@test.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				// Regular user is a member but not an admin
+				db.Create(&models.UserGroup{UserID: regular.ID, GroupID: group.ID, IsGroupAdmin: false})
+				db.Create(&models.UserGroup{UserID: user.ID, GroupID: group.ID, IsGroupAdmin: false})
+				return regular, user, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusForbidden,
+			expectedError:  "Admin access required",
+		},
+		{
+			name: "cannot promote non-member",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
+				admin := createGroupTestUser(t, db, "admin", "admin@test.com", true)
+				user := createGroupTestUser(t, db, "user", "user@test.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				// User is NOT a member
+				return admin, user, group
+			},
+			isAdmin:        true,
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "not a member",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupGroupTestDB(t)
+			contextUser, targetUser, group := tt.setupFunc(db)
+
+			c, w := setupGroupTestContext(contextUser.ID, tt.isAdmin)
+			c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/groups/%d/members/%d/promote", group.ID, targetUser.ID), nil)
+			c.Params = gin.Params{
+				{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+				{Key: "userId", Value: fmt.Sprintf("%d", targetUser.ID)},
+			}
+
+			handler := PromoteMemberToGroupAdmin(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
+
+			if tt.expectedError != "" && !strings.Contains(w.Body.String(), tt.expectedError) {
+				t.Errorf("Expected error containing %q, got %q", tt.expectedError, w.Body.String())
+			}
+		})
+	}
+}
+
+// TestUpdateGroupSettings tests the UpdateGroupSettings handler
+func TestUpdateGroupSettings(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupFunc      func(*gorm.DB) (*models.User, *models.Group)
+		isAdmin        bool
+		expectedStatus int
+		expectedError  string
+	}{
+		{
+			name: "site admin can update any group settings",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				admin := createGroupTestUser(t, db, "admin", "admin@test.com", true)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				return admin, group
+			},
+			isAdmin:        true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "group admin can update their group settings",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				groupAdmin := createGroupTestUser(t, db, "groupadmin", "groupadmin@test.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true})
+				return groupAdmin, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "regular member cannot update settings",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				regular := createGroupTestUser(t, db, "regular", "regular@test.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				db.Create(&models.UserGroup{UserID: regular.ID, GroupID: group.ID, IsGroupAdmin: false})
+				return regular, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusForbidden,
+			expectedError:  "Admin access required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupGroupTestDB(t)
+			contextUser, group := tt.setupFunc(db)
+
+			reqBody := GroupRequest{
+				Name:         "Updated Name",
+				Description:  "Updated Description",
+				HasProtocols: true,
+			}
+			jsonBody, _ := json.Marshal(reqBody)
+
+			c, w := setupGroupTestContext(contextUser.ID, tt.isAdmin)
+			c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/settings", group.ID), bytes.NewBuffer(jsonBody))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Params = gin.Params{
+				{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+			}
+
+			handler := UpdateGroupSettings(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
+
+			if tt.expectedError != "" && !strings.Contains(w.Body.String(), tt.expectedError) {
+				t.Errorf("Expected error containing %q, got %q", tt.expectedError, w.Body.String())
 			}
 		})
 	}

@@ -1,8 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { commentTagsApi, statisticsApi, type CommentTag, type CommentTagStatistics } from '../../api/client';
 import './CommentTagsTab.css';
 
-const CommentTagsTab: React.FC = () => {
+interface CommentTagsTabProps {
+  groupId: number;
+}
+
+const CommentTagsTab: React.FC<CommentTagsTabProps> = ({ groupId }) => {
   const [tags, setTags] = useState<CommentTag[]>([]);
   const [statistics, setStatistics] = useState<Record<number, CommentTagStatistics>>({});
   const [loading, setLoading] = useState(true);
@@ -11,14 +15,10 @@ const CommentTagsTab: React.FC = () => {
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadTags();
-  }, []);
-
-  const loadTags = async () => {
+  const loadTags = useCallback(async () => {
     try {
       const [tagsRes, statsRes] = await Promise.all([
-        commentTagsApi.getAll(),
+        commentTagsApi.getAll(groupId),
         statisticsApi.getCommentTagStatistics()
       ]);
       
@@ -36,7 +36,11 @@ const CommentTagsTab: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId]);
+
+  useEffect(() => {
+    loadTags();
+  }, [loadTags]);
 
   const handleCreateTag = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,7 +54,7 @@ const CommentTagsTab: React.FC = () => {
     setMessage('');
 
     try {
-      const response = await commentTagsApi.create(newTagName.trim(), newTagColor);
+      const response = await commentTagsApi.create(groupId, newTagName.trim(), newTagColor);
       setTags([...tags, response.data]);
       setNewTagName('');
       setNewTagColor('#006b54');
@@ -70,7 +74,7 @@ const CommentTagsTab: React.FC = () => {
     }
 
     try {
-      await commentTagsApi.delete(tagId);
+      await commentTagsApi.delete(groupId, tagId);
       setTags(tags.filter(t => t.id !== tagId));
       setMessage('Tag deleted successfully!');
       setTimeout(() => setMessage(''), 3000);

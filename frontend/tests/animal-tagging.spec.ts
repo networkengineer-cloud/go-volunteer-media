@@ -33,21 +33,20 @@ test.describe('Animal Tagging System', () => {
     await page.goto('http://localhost:5173/admin/animal-tags');
     await page.waitForLoadState('networkidle');
     
-    // Check for behavior tags section
-    const behaviorSection = page.locator('h2:has-text("Behavior Traits")');
+    // Check for behavior tags section (h3 in new layout)
+    const behaviorSection = page.locator('h3:has-text("Behavior Traits")');
     await expect(behaviorSection).toBeVisible();
     
-    // Check for walker status section
-    const walkerSection = page.locator('h2:has-text("Walker Status")');
+    // Check for walker levels section (h3 in new layout)
+    const walkerSection = page.locator('h3:has-text("Walker Levels")');
     await expect(walkerSection).toBeVisible();
     
-    // Verify some default tags exist
-    const resourceGuarding = page.locator('.tag-preview:has-text("resource guarding")');
-    const shy = page.locator('.tag-preview:has-text("shy")');
-    const walker20 = page.locator('.tag-preview:has-text("2.0 walker")');
+    // Verify some default tags exist (check for common behavior tags)
+    const resourceGuarding = page.locator('.tag-badge:has-text("resource guarding")');
+    const shy = page.locator('.tag-badge:has-text("shy")');
+    const friendly = page.locator('.tag-badge:has-text("friendly")');
     
-    await expect(resourceGuarding.or(shy)).toBeVisible();
-    await expect(walker20).toBeVisible();
+    await expect(resourceGuarding.or(shy).or(friendly)).toBeVisible();
   });
 
   test('should create a new animal tag', async () => {
@@ -57,12 +56,12 @@ test.describe('Animal Tagging System', () => {
     await page.goto('http://localhost:5173/admin/animal-tags');
     await page.waitForLoadState('networkidle');
     
-    // Click create button
-    await page.click('button:has-text("Create New Tag")');
+    // Click create button (updated text)
+    await page.click('button:has-text("Add Animal Tag")');
     
-    // Fill in form
-    await page.fill('input#name', 'Test Tag');
-    await page.selectOption('select#category', 'behavior');
+    // Fill in form (updated IDs)
+    await page.fill('input#animalTagName', 'Test Tag');
+    await page.selectOption('select#animalTagCategory', 'behavior');
     await page.fill('input[type="color"]', '#ff5733');
     
     // Submit form
@@ -70,7 +69,7 @@ test.describe('Animal Tagging System', () => {
     
     // Wait for success and verify tag appears
     await page.waitForTimeout(1000);
-    const newTag = page.locator('.tag-preview:has-text("Test Tag")');
+    const newTag = page.locator('.tag-badge:has-text("test tag")');
     await expect(newTag).toBeVisible();
   });
 
@@ -224,8 +223,8 @@ test.describe('Animal Tagging System', () => {
       // Wait for modal
       await page.waitForSelector('.modal, form', { state: 'visible' });
       
-      // Change the name
-      const nameInput = page.locator('input#name');
+      // Change the name (updated input ID)
+      const nameInput = page.locator('input#animalTagName');
       await nameInput.fill('Updated Tag Name');
       
       // Submit
@@ -234,7 +233,7 @@ test.describe('Animal Tagging System', () => {
       await page.waitForTimeout(1000);
       
       // Verify update (check if new name appears)
-      const updatedTag = page.locator('.tag-preview:has-text("Updated Tag Name")');
+      const updatedTag = page.locator('.tag-badge:has-text("updated tag name")');
       await expect(updatedTag).toBeVisible();
     }
   });

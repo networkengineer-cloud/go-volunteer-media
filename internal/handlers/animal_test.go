@@ -97,7 +97,7 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c, w := setupAnimalTestContext(user.ID, false)
 			c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
-			
+
 			url := fmt.Sprintf("/api/v1/groups/%d/animals", group.ID)
 			if tt.statusQuery != "" {
 				url = fmt.Sprintf("%s?status=%s", url, tt.statusQuery)
@@ -1388,140 +1388,140 @@ func TestUpdateAnimal_EmptyQuarantineDateString(t *testing.T) {
 
 // TestUpdateAnimal_NameHistory tests that name changes are tracked
 func TestUpdateAnimal_NameHistory(t *testing.T) {
-db := setupAnimalTestDB(t)
+	db := setupAnimalTestDB(t)
 
-// Migrate AnimalNameHistory model
-if err := db.AutoMigrate(&models.AnimalNameHistory{}); err != nil {
-t.Fatalf("Failed to migrate AnimalNameHistory: %v", err)
-}
+	// Migrate AnimalNameHistory model
+	if err := db.AutoMigrate(&models.AnimalNameHistory{}); err != nil {
+		t.Fatalf("Failed to migrate AnimalNameHistory: %v", err)
+	}
 
-user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
-animal := createTestAnimal(t, db, group.ID, "OriginalName", "Dog")
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "OriginalName", "Dog")
 
-// Update animal name
-updateReq := map[string]interface{}{
-"name":    "NewName",
-"species": "Dog",
-"breed":   "Labrador",
-"age":     3,
-"status":  "available",
-}
-body, _ := json.Marshal(updateReq)
+	// Update animal name
+	updateReq := map[string]interface{}{
+		"name":    "NewName",
+		"species": "Dog",
+		"breed":   "Labrador",
+		"age":     3,
+		"status":  "available",
+	}
+	body, _ := json.Marshal(updateReq)
 
-c, w := setupAnimalTestContext(user.ID, false)
-c.Params = gin.Params{
-{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
-{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
-}
-c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(body))
-c.Request.Header.Set("Content-Type", "application/json")
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
 
-handler := UpdateAnimal(db)
-handler(c)
+	handler := UpdateAnimal(db)
+	handler(c)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
 
-// Check that name history was recorded
-var history []models.AnimalNameHistory
-if err := db.Where("animal_id = ?", animal.ID).Find(&history).Error; err != nil {
-t.Fatalf("Failed to query name history: %v", err)
-}
+	// Check that name history was recorded
+	var history []models.AnimalNameHistory
+	if err := db.Where("animal_id = ?", animal.ID).Find(&history).Error; err != nil {
+		t.Fatalf("Failed to query name history: %v", err)
+	}
 
-if len(history) != 1 {
-t.Errorf("Expected 1 name history record, got %d", len(history))
-}
+	if len(history) != 1 {
+		t.Errorf("Expected 1 name history record, got %d", len(history))
+	}
 
-if len(history) > 0 {
-if history[0].OldName != "OriginalName" {
-t.Errorf("Expected old name 'OriginalName', got '%s'", history[0].OldName)
-}
-if history[0].NewName != "NewName" {
-t.Errorf("Expected new name 'NewName', got '%s'", history[0].NewName)
-}
-if history[0].ChangedBy != user.ID {
-t.Errorf("Expected changed_by %d, got %d", user.ID, history[0].ChangedBy)
-}
-}
+	if len(history) > 0 {
+		if history[0].OldName != "OriginalName" {
+			t.Errorf("Expected old name 'OriginalName', got '%s'", history[0].OldName)
+		}
+		if history[0].NewName != "NewName" {
+			t.Errorf("Expected new name 'NewName', got '%s'", history[0].NewName)
+		}
+		if history[0].ChangedBy != user.ID {
+			t.Errorf("Expected changed_by %d, got %d", user.ID, history[0].ChangedBy)
+		}
+	}
 }
 
 // TestUpdateAnimal_IsReturned tests the is_returned flag functionality
 func TestUpdateAnimal_IsReturned(t *testing.T) {
-db := setupAnimalTestDB(t)
-user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
-animal := createTestAnimal(t, db, group.ID, "TestAnimal", "Dog")
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "TestAnimal", "Dog")
 
-tests := []struct {
-name       string
-status     string
-isReturned *bool
-wantValue  bool
-}{
-{
-name:       "archived with is_returned true",
-status:     "archived",
-isReturned: boolPtr(true),
-wantValue:  true,
-},
-{
-name:       "archived with is_returned false",
-status:     "archived",
-isReturned: boolPtr(false),
-wantValue:  false,
-},
-{
-name:       "archived without is_returned (defaults to false)",
-status:     "archived",
-isReturned: nil,
-wantValue:  false,
-},
-}
+	tests := []struct {
+		name       string
+		status     string
+		isReturned *bool
+		wantValue  bool
+	}{
+		{
+			name:       "archived with is_returned true",
+			status:     "archived",
+			isReturned: boolPtr(true),
+			wantValue:  true,
+		},
+		{
+			name:       "archived with is_returned false",
+			status:     "archived",
+			isReturned: boolPtr(false),
+			wantValue:  false,
+		},
+		{
+			name:       "archived without is_returned (defaults to false)",
+			status:     "archived",
+			isReturned: nil,
+			wantValue:  false,
+		},
+	}
 
-for _, tt := range tests {
-t.Run(tt.name, func(t *testing.T) {
-updateReq := map[string]interface{}{
-"name":    "TestAnimal",
-"species": "Dog",
-"breed":   "Mixed",
-"age":     3,
-"status":  tt.status,
-}
-if tt.isReturned != nil {
-updateReq["is_returned"] = *tt.isReturned
-}
-body, _ := json.Marshal(updateReq)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updateReq := map[string]interface{}{
+				"name":    "TestAnimal",
+				"species": "Dog",
+				"breed":   "Mixed",
+				"age":     3,
+				"status":  tt.status,
+			}
+			if tt.isReturned != nil {
+				updateReq["is_returned"] = *tt.isReturned
+			}
+			body, _ := json.Marshal(updateReq)
 
-c, w := setupAnimalTestContext(user.ID, false)
-c.Params = gin.Params{
-{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
-{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
-}
-c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(body))
-c.Request.Header.Set("Content-Type", "application/json")
+			c, w := setupAnimalTestContext(user.ID, false)
+			c.Params = gin.Params{
+				{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+				{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+			}
+			c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(body))
+			c.Request.Header.Set("Content-Type", "application/json")
 
-handler := UpdateAnimal(db)
-handler(c)
+			handler := UpdateAnimal(db)
+			handler(c)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
-return
-}
+			if w.Code != http.StatusOK {
+				t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+				return
+			}
 
-// Verify is_returned value
-var updatedAnimal models.Animal
-if err := db.First(&updatedAnimal, animal.ID).Error; err != nil {
-t.Fatalf("Failed to query updated animal: %v", err)
-}
+			// Verify is_returned value
+			var updatedAnimal models.Animal
+			if err := db.First(&updatedAnimal, animal.ID).Error; err != nil {
+				t.Fatalf("Failed to query updated animal: %v", err)
+			}
 
-if updatedAnimal.IsReturned != tt.wantValue {
-t.Errorf("Expected is_returned %v, got %v", tt.wantValue, updatedAnimal.IsReturned)
-}
-})
-}
+			if updatedAnimal.IsReturned != tt.wantValue {
+				t.Errorf("Expected is_returned %v, got %v", tt.wantValue, updatedAnimal.IsReturned)
+			}
+		})
+	}
 }
 
 // Helper function to create bool pointer
 func boolPtr(b bool) *bool {
-return &b
+	return &b
 }

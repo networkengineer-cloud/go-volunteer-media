@@ -1,0 +1,27 @@
+Azure AD Application Setup - Development Environment
+Generated: Sat Nov 22 10:11:53 CST 2025
+
+Application Name: HCP-Terraform-OIDC-Dev
+Application (Client) ID: a7ea82c2-183a-4d31-a771-0c967d283422
+Tenant ID: 0d9bb6ac-d0d5-4194-8d89-4a0cc14d77f4
+Subscription ID: bd4191b8-87ee-4d65-917b-ddd3eddba8af
+Service Principal Object ID: 6708919f-773e-4da8-88a3-c083290e314e
+
+HCP Terraform Configuration:
+Organization: Networkengineer
+Workspace: volunteer-app-dev
+
+GitHub Repository: networkengineer-cloud/go-volunteer-media
+
+Federated Credentials:
+1. HCP Terraform: organization:Networkengineer:project:*:workspace:volunteer-app-dev:run_phase:*
+2. GitHub Actions: repo:networkengineer-cloud/go-volunteer-media:ref:refs/heads/develop
+
+GitHub Secret to Add:
+AZURE_CLIENT_ID_DEV=a7ea82c2-183a-4d31-a771-0c967d283422
+
+HCP Terraform Environment Variables:
+ARM_CLIENT_ID=a7ea82c2-183a-4d31-a771-0c967d283422
+ARM_TENANT_ID=0d9bb6ac-d0d5-4194-8d89-4a0cc14d77f4
+ARM_SUBSCRIPTION_ID=bd4191b8-87ee-4d65-917b-ddd3eddba8af
+ARM_USE_OIDC=true

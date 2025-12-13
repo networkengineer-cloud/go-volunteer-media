@@ -26,6 +26,7 @@ type ResetPasswordRequest struct {
 
 type UpdateEmailPreferencesRequest struct {
 	EmailNotificationsEnabled bool `json:"email_notifications_enabled"`
+	ShowLengthOfStay          bool `json:"show_length_of_stay"`
 }
 
 // generateSecureToken generates a cryptographically secure random token
@@ -186,15 +187,20 @@ func UpdateEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Update email preferences
-		if err := db.WithContext(ctx).Model(&models.User{}).Where("id = ?", userID).Update("email_notifications_enabled", req.EmailNotificationsEnabled).Error; err != nil {
+		// Update preferences
+		updates := map[string]interface{}{
+			"email_notifications_enabled": req.EmailNotificationsEnabled,
+			"show_length_of_stay":         req.ShowLengthOfStay,
+		}
+		if err := db.WithContext(ctx).Model(&models.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update preferences"})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"message":                     "Email preferences updated successfully",
+			"message":                     "Preferences updated successfully",
 			"email_notifications_enabled": req.EmailNotificationsEnabled,
+			"show_length_of_stay":         req.ShowLengthOfStay,
 		})
 	}
 }
@@ -210,13 +216,14 @@ func GetEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var user models.User
-		if err := db.WithContext(ctx).Select("email_notifications_enabled").First(&user, userID).Error; err != nil {
+		if err := db.WithContext(ctx).Select("email_notifications_enabled, show_length_of_stay").First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
 			"email_notifications_enabled": user.EmailNotificationsEnabled,
+			"show_length_of_stay":         user.ShowLengthOfStay,
 		})
 	}
 }

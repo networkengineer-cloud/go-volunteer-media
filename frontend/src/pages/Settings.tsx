@@ -1,50 +1,111 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../api/client';
+import { useToast } from '../hooks/useToast';
 import './Settings.css';
 
-const SUCCESS_MESSAGE_TIMEOUT = 3000; // milliseconds
-
 const Settings: React.FC = () => {
+  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [hideEmail, setHideEmail] = useState(false);
+  const [hidePhoneNumber, setHidePhoneNumber] = useState(false);
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false);
+  const [showLengthOfStay, setShowLengthOfStay] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingNotifications, setSavingNotifications] = useState(false);
   const [error, setError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
   const [success, setSuccess] = useState('');
   const navigate = useNavigate();
+  const { showToast } = useToast();
+
+  const validatePhoneNumber = (phone: string): boolean => {
+    if (!phone.trim()) {
+      setPhoneError('');
+      return true; // Phone is optional
+    }
+    
+    // Accept various US phone formats: (123) 456-7890, 123-456-7890, 1234567890, +1-123-456-7890, etc.
+    const phoneRegex = /^(\+?1[-.]?)?(\([0-9]{3}\)|[0-9]{3})[-.]?[0-9]{3}[-.]?[0-9]{4}$/;
+    if (!phoneRegex.test(phone)) {
+      setPhoneError('Phone number must be in format (123) 456-7890 or similar');
+      return false;
+    }
+    setPhoneError('');
+    return true;
+  };
 
   useEffect(() => {
-    loadPreferences();
+    loadData();
   }, []);
 
-  const loadPreferences = async () => {
+  const loadData = async () => {
     try {
-      const response = await authApi.getEmailPreferences();
-      setEmailNotificationsEnabled(response.data.email_notifications_enabled || false);
+      const [userRes, prefsRes] = await Promise.all([
+        authApi.getCurrentUser(),
+        authApi.getEmailPreferences(),
+      ]);
+      setEmail(userRes.data.email);
+      setPhoneNumber(userRes.data.phone_number || '');
+      setHideEmail(userRes.data.hide_email || false);
+      setHidePhoneNumber(userRes.data.hide_phone_number || false);
+      setEmailNotificationsEnabled(prefsRes.data.email_notifications_enabled || false);
+      setShowLengthOfStay(prefsRes.data.show_length_of_stay || false);
       setError('');
     } catch (err: unknown) {
-      console.error('Failed to load preferences:', err);
-      setError('Failed to load preferences');
+      console.error('Failed to load settings:', err);
+      setError('Failed to load settings');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = async () => {
-    setSaving(true);
+  const handleSaveEmail = async () => {
+    if (!email.trim()) {
+      showToast('Email cannot be empty', 'error');
+      return;
+    }
+
+    if (!validatePhoneNumber(phoneNumber)) {
+      return;
+    }
+
+    setSavingEmail(true);
     setError('');
     setSuccess('');
 
     try {
-      await authApi.updateEmailPreferences(emailNotificationsEnabled);
-      setSuccess('Preferences saved successfully!');
-      setTimeout(() => setSuccess(''), SUCCESS_MESSAGE_TIMEOUT);
+      await authApi.updateCurrentUserProfile({
+        email,
+        phone_number: phoneNumber,
+        hide_email: hideEmail,
+        hide_phone_number: hidePhoneNumber,
+      });
+      showToast('Profile updated successfully!', 'success');
+    } catch (err: unknown) {
+      console.error('Failed to save profile:', err);
+      const axiosError = err as { response?: { data?: { error?: string } } };
+      showToast(axiosError.response?.data?.error || 'Failed to save profile', 'error');
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const handleSaveNotifications = async () => {
+    setSavingNotifications(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await authApi.updateEmailPreferences(emailNotificationsEnabled, showLengthOfStay);
+      showToast('Preferences saved successfully!', 'success');
     } catch (err: unknown) {
       console.error('Failed to save preferences:', err);
       const axiosError = err as { response?: { data?: { error?: string } } };
-      setError(axiosError.response?.data?.error || 'Failed to save preferences');
+      showToast(axiosError.response?.data?.error || 'Failed to save preferences', 'error');
     } finally {
-      setSaving(false);
+      setSavingNotifications(false);
     }
   };
 
@@ -68,6 +129,140 @@ const Settings: React.FC = () => {
           </button>
         </div>
 
+        {/* Profile Information Section */}
+        <div className="settings-section">
+          <h2>Profile Information</h2>
+          <p className="settings-description">
+            Manage your account email, phone number, and control who can see this information.
+          </p>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="email">
+                <strong>Email Address</strong>
+              </label>
+              <p className="setting-help">
+                Your email is used for account recovery and notifications.
+              </p>
+            </div>
+            <div className="setting-input-wrapper">
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={savingEmail}
+                className="setting-input"
+                placeholder="your.email@example.com"
+              />
+            </div>
+          </div>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="phone">
+                <strong>Phone Number</strong>
+              </label>
+              <p className="setting-help">
+                Your phone number helps other volunteers contact you (optional).
+              </p>
+            </div>
+            <div className="setting-input-wrapper">
+              <input
+                id="phone"
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => {
+                  setPhoneNumber(e.target.value);
+                  validatePhoneNumber(e.target.value);
+                }}
+                disabled={savingEmail}
+                className="setting-input"
+                placeholder="(123) 456-7890"
+              />
+              {phoneError && <div className="error" style={{ marginTop: '8px' }}>{phoneError}</div>}
+            </div>
+          </div>
+
+          {error && <div className="error">{error}</div>}
+          {success && <div className="success">{success}</div>}
+
+          <div className="settings-actions">
+            <button
+              onClick={handleSaveEmail}
+              className="btn-primary"
+              disabled={savingEmail}
+            >
+              {savingEmail ? 'Saving Profile...' : 'Save Profile'}
+            </button>
+          </div>
+        </div>
+
+        {/* Privacy Settings Section */}
+        <div className="settings-section">
+          <h2>Privacy Settings</h2>
+          <p className="settings-description">
+            Control who can see your email and phone number. Administrators and group admins will always have access.
+          </p>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="hide-email">
+                <strong>Hide Email from Other Users</strong>
+              </label>
+              <p className="setting-help">
+                When enabled, only admins can see your email address.
+              </p>
+            </div>
+            <div className="toggle-wrapper">
+              <label className="toggle">
+                <input
+                  id="hide-email"
+                  type="checkbox"
+                  checked={hideEmail}
+                  onChange={(e) => setHideEmail(e.target.checked)}
+                  disabled={savingEmail}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="hide-phone">
+                <strong>Hide Phone from Other Users</strong>
+              </label>
+              <p className="setting-help">
+                When enabled, only admins and group admins can see your phone number.
+              </p>
+            </div>
+            <div className="toggle-wrapper">
+              <label className="toggle">
+                <input
+                  id="hide-phone"
+                  type="checkbox"
+                  checked={hidePhoneNumber}
+                  onChange={(e) => setHidePhoneNumber(e.target.checked)}
+                  disabled={savingEmail}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div className="settings-actions">
+            <button
+              onClick={handleSaveEmail}
+              className="btn-primary"
+              disabled={savingEmail}
+            >
+              {savingEmail ? 'Saving...' : 'Update Privacy Settings'}
+            </button>
+          </div>
+        </div>
+
+        {/* Email Notifications Section */}
         <div className="settings-section">
           <h2>Email Notifications</h2>
           <p className="settings-description">
@@ -90,23 +285,43 @@ const Settings: React.FC = () => {
                   type="checkbox"
                   checked={emailNotificationsEnabled}
                   onChange={(e) => setEmailNotificationsEnabled(e.target.checked)}
-                  disabled={saving}
+                  disabled={savingNotifications}
                 />
                 <span className="toggle-slider"></span>
               </label>
             </div>
           </div>
 
-          {error && <div className="error">{error}</div>}
-          {success && <div className="success">{success}</div>}
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="show-length-of-stay">
+                <strong>Show Length of Stay on Animals Page</strong>
+              </label>
+              <p className="setting-help">
+                Display how long each animal has been at the shelter on the animals main page.
+              </p>
+            </div>
+            <div className="toggle-wrapper">
+              <label className="toggle">
+                <input
+                  id="show-length-of-stay"
+                  type="checkbox"
+                  checked={showLengthOfStay}
+                  onChange={(e) => setShowLengthOfStay(e.target.checked)}
+                  disabled={savingNotifications}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
 
           <div className="settings-actions">
             <button
-              onClick={handleSave}
+              onClick={handleSaveNotifications}
               className="btn-primary"
-              disabled={saving}
+              disabled={savingNotifications}
             >
-              {saving ? 'Saving...' : 'Save Preferences'}
+              {savingNotifications ? 'Saving...' : 'Save Preferences'}
             </button>
           </div>
         </div>

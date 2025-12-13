@@ -16,8 +16,8 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
-	"gorm.io/gorm"
 	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func init() {
@@ -35,7 +35,7 @@ func init() {
 func setupUserAdminTestDB(t *testing.T) *gorm.DB {
 	// Set JWT_SECRET for testing
 	os.Setenv("JWT_SECRET", "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1fG3hI5jK7lM9nO1pQ3")
-	
+
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
@@ -129,7 +129,7 @@ func TestPromoteUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := setupUserAdminTestDB(t)
 			admin := createUserAdminTestUser(t, db, "admin", "admin@test.com", true)
-			
+
 			userID := tt.setupFunc(db)
 
 			c, w := setupUserAdminTestContext(admin.ID, true)
@@ -198,7 +198,7 @@ func TestDemoteUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := setupUserAdminTestDB(t)
 			admin := createUserAdminTestUser(t, db, "admin", "admin@test.com", true)
-			
+
 			userID := tt.setupFunc(db)
 
 			c, w := setupUserAdminTestContext(admin.ID, true)
@@ -381,7 +381,7 @@ func TestAdminCreateUser(t *testing.T) {
 			}
 
 			c, w := setupUserAdminTestContext(admin.ID, true)
-			
+
 			jsonBytes, _ := json.Marshal(tt.payload)
 			c.Request = httptest.NewRequest("POST", "/api/v1/admin/users", bytes.NewBuffer(jsonBytes))
 			c.Request.Header.Set("Content-Type", "application/json")
@@ -480,12 +480,12 @@ func TestAdminResetUserPassword(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := setupUserAdminTestDB(t)
 			admin := createUserAdminTestUser(t, db, "admin", "admin@test.com", true)
-			
+
 			userID := tt.setupFunc(db)
 
 			c, w := setupUserAdminTestContext(admin.ID, true)
 			c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", userID)}}
-			
+
 			jsonBytes, _ := json.Marshal(tt.payload)
 			c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/admin/users/%d/reset-password", userID), bytes.NewBuffer(jsonBytes))
 			c.Request.Header.Set("Content-Type", "application/json")
@@ -551,7 +551,7 @@ func TestAdminDeleteUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := setupUserAdminTestDB(t)
 			admin := createUserAdminTestUser(t, db, "admin", "admin@test.com", true)
-			
+
 			userID := tt.setupFunc(db)
 
 			c, w := setupUserAdminTestContext(admin.ID, true)
@@ -656,7 +656,7 @@ func TestRestoreUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := setupUserAdminTestDB(t)
 			admin := createUserAdminTestUser(t, db, "admin", "admin@test.com", true)
-			
+
 			userID := tt.setupFunc(db)
 
 			c, w := setupUserAdminTestContext(admin.ID, true)

@@ -113,3 +113,89 @@ func GetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, group)
 	}
 }
+
+type UpdateProfileRequest struct {
+	Email           string `json:"email" binding:"required,email"`
+	PhoneNumber     string `json:"phone_number"`
+	HideEmail       bool   `json:"hide_email"`
+	HidePhoneNumber bool   `json:"hide_phone_number"`
+}
+
+// UpdateCurrentUserProfile allows users to update their own profile information
+func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		var req UpdateProfileRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Fetch current user to check if email is being changed
+		var user models.User
+		if err := db.WithContext(ctx).First(&user, userID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// Check if email is being changed to an already-taken email
+		if req.Email != user.Email {
+			var existingUser models.User
+			if err := db.WithContext(ctx).Where("email = ? AND id != ?", req.Email, userID).First(&existingUser).Error; err == nil {
+				// Email exists for another user
+				c.JSON(http.StatusConflict, gin.H{"error": "Email address is already in use"})
+				return
+			}
+		}
+
+		// Update user profile (email, phone, and privacy settings)
+		updates := map[string]interface{}{
+			"email":             req.Email,
+			"phone_number":      req.PhoneNumber,
+			"hide_email":        req.HideEmail,
+			"hide_phone_number": req.HidePhoneNumber,
+		}
+		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":           "Profile updated successfully",
+			"id":                user.ID,
+			"email":             req.Email,
+			"phone_number":      req.PhoneNumber,
+			"hide_email":        req.HideEmail,
+			"hide_phone_number": req.HidePhoneNumber,
+		})
+	}
+}
+
+// GetPrivacyPreferences returns the current user's privacy settings
+func GetPrivacyPreferences(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		var user models.User
+		if err := db.WithContext(ctx).First(&user, userID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"hide_email":        user.HideEmail,
+			"hide_phone_number": user.HidePhoneNumber,
+		})
+	}
+}
