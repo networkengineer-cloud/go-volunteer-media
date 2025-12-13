@@ -346,6 +346,15 @@ func IsGroupAdminOrSiteAdmin(c *gin.Context, db *gorm.DB, groupID uint) bool {
 	return IsGroupAdmin(db, userID.(uint), groupID)
 }
 
+// IsGroupAdminForAnyGroup checks if a user is a group admin for any group
+func IsGroupAdminForAnyGroup(db *gorm.DB, userID uint) bool {
+	var count int64
+	db.Model(&models.UserGroup{}).
+		Where("user_id = ? AND is_group_admin = ?", userID, true).
+		Count(&count)
+	return count > 0
+}
+
 // PromoteGroupAdmin promotes a user to group admin status for a specific group
 // Accessible by site admins or group admins of the specific group
 func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {

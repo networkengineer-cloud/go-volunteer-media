@@ -10,6 +10,7 @@ const Settings: React.FC = () => {
   const [hideEmail, setHideEmail] = useState(false);
   const [hidePhoneNumber, setHidePhoneNumber] = useState(false);
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false);
+  const [showLengthOfStay, setShowLengthOfStay] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
@@ -50,6 +51,7 @@ const Settings: React.FC = () => {
       setHideEmail(userRes.data.hide_email || false);
       setHidePhoneNumber(userRes.data.hide_phone_number || false);
       setEmailNotificationsEnabled(prefsRes.data.email_notifications_enabled || false);
+      setShowLengthOfStay(prefsRes.data.show_length_of_stay || false);
       setError('');
     } catch (err: unknown) {
       console.error('Failed to load settings:', err);
@@ -96,8 +98,8 @@ const Settings: React.FC = () => {
     setSuccess('');
 
     try {
-      await authApi.updateEmailPreferences(emailNotificationsEnabled);
-      showToast('Notification preferences saved successfully!', 'success');
+      await authApi.updateEmailPreferences(emailNotificationsEnabled, showLengthOfStay);
+      showToast('Preferences saved successfully!', 'success');
     } catch (err: unknown) {
       console.error('Failed to save preferences:', err);
       const axiosError = err as { response?: { data?: { error?: string } } };
@@ -283,6 +285,29 @@ const Settings: React.FC = () => {
                   type="checkbox"
                   checked={emailNotificationsEnabled}
                   onChange={(e) => setEmailNotificationsEnabled(e.target.checked)}
+                  disabled={savingNotifications}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="show-length-of-stay">
+                <strong>Show Length of Stay on Animals Page</strong>
+              </label>
+              <p className="setting-help">
+                Display how long each animal has been at the shelter on the animals main page.
+              </p>
+            </div>
+            <div className="toggle-wrapper">
+              <label className="toggle">
+                <input
+                  id="show-length-of-stay"
+                  type="checkbox"
+                  checked={showLengthOfStay}
+                  onChange={(e) => setShowLengthOfStay(e.target.checked)}
                   disabled={savingNotifications}
                 />
                 <span className="toggle-slider"></span>

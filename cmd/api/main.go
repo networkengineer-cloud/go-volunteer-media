@@ -309,6 +309,11 @@ func main() {
 			groupAdminProtocols.PUT("/:protocolId", handlers.UpdateProtocol(db))
 			groupAdminProtocols.DELETE("/:protocolId", handlers.DeleteProtocol(db))
 		}
+
+		// Bulk animal management routes accessible to group admins and site admins
+		// Authorization is checked within the handlers
+		protected.GET("/bulk-animals", handlers.GetAllAnimals(db))
+		protected.POST("/bulk-animals/bulk-update", handlers.BulkUpdateAnimals(db))
 	}
 
 	// Serve frontend (both development and production environments)

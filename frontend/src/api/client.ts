@@ -361,11 +361,12 @@ export const authApi = {
   
   getDefaultGroup: () => api.get<Group>('/default-group'),
   
-  getEmailPreferences: () => api.get<{ email_notifications_enabled: boolean }>('/email-preferences'),
+  getEmailPreferences: () => api.get<{ email_notifications_enabled: boolean; show_length_of_stay: boolean }>('/email-preferences'),
   
-  updateEmailPreferences: (emailNotificationsEnabled: boolean) =>
-    api.put<{ message: string; email_notifications_enabled: boolean }>('/email-preferences', {
+  updateEmailPreferences: (emailNotificationsEnabled: boolean, showLengthOfStay: boolean) =>
+    api.put<{ message: string; email_notifications_enabled: boolean; show_length_of_stay: boolean }>('/email-preferences', {
       email_notifications_enabled: emailNotificationsEnabled,
+      show_length_of_stay: showLengthOfStay,
     }),
 };
 
@@ -435,19 +436,19 @@ export const animalsApi = {
     api.get<AnimalImage[]>('/admin/groups/' + groupId + '/deleted-images'),
   setProfilePicture: (groupId: number, animalId: number, imageId: number) =>
     api.put<AnimalImage>(`/groups/${groupId}/animals/${animalId}/images/${imageId}/set-profile`),
-  // Admin bulk operations
+  // Admin and group admin bulk operations
   getAllForAdmin: (status?: string, groupId?: number, name?: string) => {
     const params: Record<string, unknown> = {};
     if (status !== undefined) params.status = status;
     if (groupId !== undefined) params.group_id = groupId;
     if (name) params.name = name;
-    return api.get<Animal[]>('/admin/animals', { params });
+    return api.get<Animal[]>('/bulk-animals', { params });
   },
   bulkUpdate: (animalIds: number[], groupId?: number, status?: string) => {
     const data: Record<string, unknown> = { animal_ids: animalIds };
     if (groupId !== undefined) data.group_id = groupId;
     if (status !== undefined) data.status = status;
-    return api.post<{ message: string; count: number }>('/admin/animals/bulk-update', data);
+    return api.post<{ message: string; count: number }>('/bulk-animals/bulk-update', data);
   },
   importCSV: (file: File) => {
     const formData = new FormData();
