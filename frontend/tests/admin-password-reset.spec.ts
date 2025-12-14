@@ -37,7 +37,7 @@ test.describe('Admin Password Reset', () => {
     await page.waitForURL(/dashboard|\/$/);
   }
 
-  test('admin should see Reset Password button in users list', async () => {
+  test('admin should see Reset Password button in users list', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -52,7 +52,7 @@ test.describe('Admin Password Reset', () => {
     await expect(resetPasswordButtons.first()).toBeVisible();
   });
 
-  test('admin should be able to open password reset modal', async () => {
+  test('admin should be able to open password reset modal', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -78,7 +78,7 @@ test.describe('Admin Password Reset', () => {
     await expect(page.locator('button:has-text("Cancel")')).toBeVisible();
   });
 
-  test('password reset modal should validate minimum password length', async () => {
+  test('password reset modal should validate minimum password length', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -175,7 +175,7 @@ test.describe('Admin Password Reset', () => {
     await expect(page.locator('.users-success')).toContainText(/reset.*successfully/i);
   });
 
-  test('should close modal when clicking Cancel button', async () => {
+  test('should close modal when clicking Cancel button', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -199,7 +199,7 @@ test.describe('Admin Password Reset', () => {
     await expect(page.locator('.group-modal-backdrop')).not.toBeVisible();
   });
 
-  test('should close modal when clicking backdrop', async () => {
+  test('should close modal when clicking backdrop', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
@@ -223,7 +223,7 @@ test.describe('Admin Password Reset', () => {
     await expect(page.locator('.group-modal-backdrop')).not.toBeVisible();
   });
 
-  test('Reset Password button should be disabled for deleted users', async () => {
+  test('Reset Password button should be disabled for deleted users', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     

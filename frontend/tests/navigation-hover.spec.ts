@@ -25,7 +25,7 @@ test.describe('Navigation Hover Visibility - Light Mode', () => {
     await page.waitForLoadState('domcontentloaded');
   });
 
-  test('brand logo should be visible on hover in light mode', async () => {
+  test('brand logo should be visible on hover in light mode', async ({ page }) => {
     const brandLink = page.locator('.nav-brand');
     
     // Verify the brand link exists
@@ -44,7 +44,7 @@ test.describe('Navigation Hover Visibility - Light Mode', () => {
     expect(color).toContain('255, 255, 255');
   });
 
-  test('login link should be visible on hover in light mode', async () => {
+  test('login link should be visible on hover in light mode', async ({ page }) => {
     const loginLink = page.locator('.nav-right a').filter({ hasText: 'Login' });
     
     // Verify the login link exists
@@ -62,7 +62,7 @@ test.describe('Navigation Hover Visibility - Light Mode', () => {
     expect(color).toContain('255, 255, 255');
   });
 
-  test('theme toggle should be visible on hover in light mode', async () => {
+  test('theme toggle should be visible on hover in light mode', async ({ page }) => {
     const themeToggle = page.locator('.theme-toggle');
     
     // Verify the theme toggle exists
@@ -80,7 +80,7 @@ test.describe('Navigation Hover Visibility - Light Mode', () => {
     expect(color).toContain('255, 255, 255');
   });
 
-  test('navigation background should remain dark green', async () => {
+  test('navigation background should remain dark green', async ({ page }) => {
     const navigation = page.locator('.navigation');
     
     // Verify the navigation exists
@@ -111,7 +111,7 @@ test.describe('Navigation Hover Visibility - Dark Mode', () => {
     await page.waitForLoadState('domcontentloaded');
   });
 
-  test('brand logo should be visible on hover in dark mode', async () => {
+  test('brand logo should be visible on hover in dark mode', async ({ page }) => {
     const brandLink = page.locator('.nav-brand');
     
     // Verify the brand link exists
@@ -129,7 +129,7 @@ test.describe('Navigation Hover Visibility - Dark Mode', () => {
     expect(color).toContain('255, 255, 255');
   });
 
-  test('navigation links should be visible on hover in dark mode', async () => {
+  test('navigation links should be visible on hover in dark mode', async ({ page }) => {
     const loginLink = page.locator('.nav-right a').filter({ hasText: 'Login' });
     
     // Verify the login link exists
@@ -147,7 +147,7 @@ test.describe('Navigation Hover Visibility - Dark Mode', () => {
     expect(color).toContain('255, 255, 255');
   });
 
-  test('theme toggle should be visible on hover in dark mode', async () => {
+  test('theme toggle should be visible on hover in dark mode', async ({ page }) => {
     const themeToggle = page.locator('.theme-toggle');
     
     // Verify the theme toggle exists
@@ -171,7 +171,7 @@ test.describe('Navigation Hover Visual Feedback', () => {
     await page.goto(BASE_URL);
   });
 
-  test('hovering should provide visual feedback with background change', async () => {
+  test('hovering should provide visual feedback with background change', async ({ page }) => {
     const loginLink = page.locator('.nav-right a').filter({ hasText: 'Login' });
     
     // Get the initial background color
@@ -191,7 +191,7 @@ test.describe('Navigation Hover Visual Feedback', () => {
     expect(hoverBg).not.toBe(initialBg);
   });
 
-  test('brand logo should show opacity change on hover', async () => {
+  test('brand logo should show opacity change on hover', async ({ page }) => {
     const brandLink = page.locator('.nav-brand');
     
     // Hover over the brand link

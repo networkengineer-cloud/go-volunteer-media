@@ -175,7 +175,7 @@ test.describe('Edge Cases & Error Handling', () => {
 });
 
 test.describe('Backend Integration', () => {
-  test('documents backend behavior for unarchive workflow', async () => {
+  test('documents backend behavior for unarchive workflow', async ({ page }) => {
     console.log('Backend Logic:');
     console.log('  ✓ When status changes from archived to available:');
     console.log('    - Backend increments return_count automatically');
@@ -188,7 +188,7 @@ test.describe('Backend Integration', () => {
 });
 
 test.describe('Comparison with Old Workflow', () => {
-  test('documents improvements over previous implementation', async () => {
+  test('documents improvements over previous implementation', async ({ page }) => {
     console.log('Old Workflow (Problematic):');
     console.log('  ❌ is_returned checkbox only visible when status === "archived"');
     console.log('  ❌ Checkbox disappeared when user changed status dropdown');

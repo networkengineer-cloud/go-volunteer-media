@@ -37,7 +37,7 @@ test.describe('UX Improvements: Animal Form and Announcement Form', () => {
     console.log('  - Buttons use consistent brand colors');
   });
 
-  test('documents the changes made', async () => {
+  test('documents the changes made', async ({ page }) => {
     console.log('UX Improvements Summary:');
     console.log('');
     console.log('1. AnimalForm.tsx Changes:');
@@ -71,7 +71,7 @@ test.describe('UX Improvements: Animal Form and Announcement Form', () => {
 });
 
 test.describe('Implementation Details', () => {
-  test('AnimalForm.tsx changes', async () => {
+  test('AnimalForm.tsx changes', async ({ page }) => {
     console.log('AnimalForm.tsx:');
     console.log('  Removed:');
     console.log('    - Conditional checkbox display for is_returned');
@@ -83,7 +83,7 @@ test.describe('Implementation Details', () => {
     console.log('    - Status dropdown remains unchanged');
   });
 
-  test('AnnouncementForm.css changes', async () => {
+  test('AnnouncementForm.css changes', async ({ page }) => {
     console.log('AnnouncementForm.css:');
     console.log('  Changed selector:');
     console.log('    - @media (prefers-color-scheme: dark) → [data-theme="dark"]');
@@ -97,7 +97,7 @@ test.describe('Implementation Details', () => {
     console.log('    - Only kept specific overrides for remove button');
   });
 
-  test('No breaking changes', async () => {
+  test('No breaking changes', async ({ page }) => {
     console.log('Verification:');
     console.log('  ✅ Frontend builds successfully');
     console.log('  ✅ No TypeScript errors');

@@ -30,7 +30,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Comment Form Dark Mode', () => {
-    test('comment form should be visible and readable in dark mode', async () => {
+    test('comment form should be visible and readable in dark mode', async ({ page }) => {
       // Navigate to an animal detail page
       await page.goto('/dashboard');
       
@@ -83,7 +83,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
       }
     });
 
-    test('comment form buttons should be readable in dark mode', async () => {
+    test('comment form buttons should be readable in dark mode', async ({ page }) => {
       // Navigate to an animal detail page
       await page.goto('/dashboard');
       const firstAnimalLink = page.locator('.animal-card-mini, .animal-card').first();
@@ -125,7 +125,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Comment Cards Dark Mode', () => {
-    test('existing comment cards should be readable in dark mode', async () => {
+    test('existing comment cards should be readable in dark mode', async ({ page }) => {
       // Navigate to an animal with comments
       await page.goto('/dashboard');
       const firstAnimalLink = page.locator('.animal-card-mini, .animal-card').first();
@@ -191,7 +191,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Group Selector Dark Mode', () => {
-    test('group selector on dashboard should be readable in dark mode', async () => {
+    test('group selector on dashboard should be readable in dark mode', async ({ page }) => {
       await page.goto('/dashboard');
       
       // Find the group selector
@@ -232,7 +232,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
       console.log('Group selector has', options.length, 'options');
     });
 
-    test('group selector on group page should be readable in dark mode', async () => {
+    test('group selector on group page should be readable in dark mode', async ({ page }) => {
       // Navigate to a group page
       await page.goto('/dashboard');
       
@@ -279,7 +279,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Form Inputs Dark Mode', () => {
-    test('all text inputs should be readable in dark mode', async () => {
+    test('all text inputs should be readable in dark mode', async ({ page }) => {
       // Test settings page inputs
       await page.goto('/settings');
       
@@ -316,7 +316,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Mobile Dark Mode', () => {
-    test('comment form should be readable in dark mode on mobile', async () => {
+    test('comment form should be readable in dark mode on mobile', async ({ page }) => {
       // Set mobile viewport
       await page.setViewportSize({ width: 375, height: 667 });
       
@@ -339,7 +339,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
       console.log('Mobile comment form background in dark mode:', formBg);
     });
 
-    test('group selector should be readable in dark mode on mobile', async () => {
+    test('group selector should be readable in dark mode on mobile', async ({ page }) => {
       // Set mobile viewport
       await page.setViewportSize({ width: 375, height: 667 });
       
@@ -364,7 +364,7 @@ test.describe('Dark Mode Contrast & Readability', () => {
   });
 
   test.describe('Contrast Validation', () => {
-    test('should log color combinations for manual contrast review', async () => {
+    test('should log color combinations for manual contrast review', async ({ page }) => {
       console.log('\n=== DARK MODE COLOR AUDIT ===');
       
       // Navigate to various pages and log color combinations

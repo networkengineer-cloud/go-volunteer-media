@@ -31,7 +31,7 @@ test.describe('Animal Form UX Improvements', () => {
     await loginAsAdmin(page);
   });
 
-  test('should display Cancel button on animal edit form', async () => {
+  test('should display Cancel button on animal edit form', async ({ page }) => {
     // Navigate to a group (assuming group ID 1 exists)
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -57,7 +57,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should navigate back to group when Cancel is clicked', async () => {
+  test('should navigate back to group when Cancel is clicked', async ({ page }) => {
     // Navigate to a group
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -87,7 +87,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should NOT show duplicate date field when Bite Quarantine is selected', async () => {
+  test('should NOT show duplicate date field when Bite Quarantine is selected', async ({ page }) => {
     // Navigate to add new animal page
     await page.goto(BASE_URL + '/groups/1/animals/new');
     await page.waitForLoadState('networkidle');
@@ -110,7 +110,7 @@ test.describe('Animal Form UX Improvements', () => {
     console.log('✅ No duplicate quarantine date field in main form');
   });
 
-  test('should show date field in modal when Bite Quarantine is selected and Update is clicked', async () => {
+  test('should show date field in modal when Bite Quarantine is selected and Update is clicked', async ({ page }) => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -145,7 +145,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should preserve focus when typing in modal textarea', async () => {
+  test('should preserve focus when typing in modal textarea', async ({ page }) => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -202,7 +202,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should preserve focus when typing in modal date input', async () => {
+  test('should preserve focus when typing in modal date input', async ({ page }) => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -247,7 +247,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should allow closing modal with Cancel button', async () => {
+  test('should allow closing modal with Cancel button', async ({ page }) => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -285,7 +285,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should allow closing modal with Escape key', async () => {
+  test('should allow closing modal with Escape key', async ({ page }) => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -322,7 +322,7 @@ test.describe('Animal Form UX Improvements', () => {
     }
   });
 
-  test('should have proper button order: Update, Cancel, Delete', async () => {
+  test('should have proper button order: Update, Cancel, Delete', async ({ page }) => {
     // Navigate to edit existing animal
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
@@ -368,7 +368,7 @@ test.describe('Animal Form UX - Accessibility', () => {
     await loginAsAdmin(page);
   });
 
-  test('Cancel button should be keyboard accessible', async () => {
+  test('Cancel button should be keyboard accessible', async ({ page }) => {
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
 
@@ -399,7 +399,7 @@ test.describe('Animal Form UX - Accessibility', () => {
     }
   });
 
-  test('Modal should trap focus within itself', async () => {
+  test('Modal should trap focus within itself', async ({ page }) => {
     await page.goto(BASE_URL + '/groups/1');
     await page.waitForLoadState('networkidle');
 

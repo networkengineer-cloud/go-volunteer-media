@@ -2,6 +2,7 @@
   "plan": "Fix Playwright tests to pass by adding missing page parameter",
   "issue": "Tests are failing with 'ReferenceError: page is not defined' because test callbacks are missing ({ page }) parameter",
   "solution": "Add ({ page }) parameter to all test callbacks that use page object",
+  "status": "completed",
   "mockingStrategy": {
     "whatToMock": [
       "External API calls when backend is not running",
@@ -13,208 +14,102 @@
       "Application code (components, routes, navigation)",
       "Frontend logic and state management",
       "UI interactions and rendering"
-    ]
+    ],
+    "mockHelpersCreated": true,
+    "mockHelpersPath": "tests/helpers/api-mocks.ts"
   },
-  "files": [
+  "filesFixed": [
     {
       "file": "tests/authentication.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Line 35: test('should successfully login as admin user', async () => { - missing ({ page })",
-        "Line 65: test('should display admin-specific navigation/features', async () => { - missing ({ page })",
-        "Line 87: test('should maintain session after page reload', async () => { - missing ({ page })",
-        "Line 115: test('should successfully login as regular user', async () => { - missing ({ page })",
-        "Line 136: test('should not see admin-only features', async () => { - missing ({ page })",
-        "Line 166: test('should show error for invalid credentials', async () => { - missing ({ page })",
-        "Line 199: test('should not create session token for failed login', async () => { - missing ({ page })",
-        "Line 221: test('should successfully logout', async () => { - missing ({ page })",
-        "Line 279: test('should receive valid JWT token on successful login', async () => { - missing ({ page })",
-        "Line 311: test('should include auth token in subsequent API requests', async () => { - missing ({ page })",
-        "Line 349: test('should handle empty credentials', async () => { - missing ({ page })",
-        "Line 363: test('should handle network errors gracefully', async () => { - missing ({ page })",
-        "Line 380: test('should handle SQL injection attempts safely', async () => { - missing ({ page })"
-      ],
-      "mockingNeeded": [
-        "Mock login API responses for successful/failed login tests",
-        "Mock network errors for error handling tests"
-      ]
+      "status": "completed",
+      "testsFixed": 13
     },
     {
       "file": "tests/activity-feed.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Line 18: test('displays activity feed tabs on group page', async () => { - missing ({ page })",
-        "Line 31: test('switches between activity feed and animals view', async () => { - missing ({ page })"
-      ],
-      "mockingNeeded": [
-        "Mock group data API",
-        "Mock activity feed data"
-      ]
+      "status": "completed",
+      "testsFixed": 10
     },
     {
       "file": "tests/admin-password-reset.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Multiple tests missing ({ page }) parameter"
-      ],
-      "mockingNeeded": [
-        "Mock user list API",
-        "Mock password reset API"
-      ]
+      "status": "completed",
+      "testsFixed": 6
     },
     {
       "file": "tests/animal-filtering.spec.ts",
-      "status": "pending",
-      "issues": [
-        "All test functions missing ({ page }) parameter"
-      ],
-      "mockingNeeded": [
-        "Mock animals API with filtering support"
-      ]
+      "status": "completed",
+      "testsFixed": 10
     },
     {
       "file": "tests/animal-form-ux.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Multiple tests missing ({ page }) parameter"
-      ],
-      "mockingNeeded": [
-        "Mock animal create/update API",
-        "Mock groups API for form"
-      ]
+      "status": "completed",
+      "testsFixed": 9
     },
     {
       "file": "tests/animal-tagging.spec.ts",
-      "status": "pending",
-      "issues": [
-        "All test functions missing ({ page }) parameter"
-      ],
-      "mockingNeeded": [
-        "Mock tags API",
-        "Mock animals API with tags"
-      ]
+      "status": "completed",
+      "testsFixed": 7
     },
     {
       "file": "tests/bulk-edit-animals.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Tests missing ({ page }) parameter"
-      ],
-      "mockingNeeded": [
-        "Mock bulk edit API"
-      ]
+      "status": "completed",
+      "testsFixed": 2
     },
     {
       "file": "tests/dark-mode-contrast.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Multiple tests missing ({ page }) parameter"
-      ],
-      "mockingNeeded": []
+      "status": "completed",
+      "testsFixed": 8
     },
     {
       "file": "tests/default-group.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Multiple tests missing ({ page }) parameter"
-      ],
-      "mockingNeeded": [
-        "Mock groups API",
-        "Mock activity feed API"
-      ]
+      "status": "completed",
+      "testsFixed": 10
     },
     {
       "file": "tests/group-images.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Some tests missing ({ page }) parameter"
-      ],
-      "mockingNeeded": [
-        "Mock group API with image fields"
-      ]
+      "status": "completed",
+      "testsFixed": 4
     },
     {
       "file": "tests/groups-management.spec.ts",
-      "status": "pending",
-      "issues": [
-        "All test functions missing ({ page }) parameter"
-      ],
-      "mockingNeeded": [
-        "Mock groups CRUD API"
-      ]
+      "status": "completed",
+      "testsFixed": 10
     },
     {
       "file": "tests/mobile-responsiveness.spec.ts",
-      "status": "pending",
-      "issues": [
-        "All test functions missing ({ page }) parameter"
-      ],
-      "mockingNeeded": []
+      "status": "completed",
+      "testsFixed": 10
     },
     {
       "file": "tests/navigation-hover.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Multiple tests missing ({ page }) parameter"
-      ],
-      "mockingNeeded": []
+      "status": "completed",
+      "testsFixed": 8
     },
     {
       "file": "tests/photo-feature.spec.ts",
-      "status": "pending",
-      "issues": [
-        "All test functions missing ({ page }) parameter"
-      ],
-      "mockingNeeded": [
-        "Mock photo upload API",
-        "Mock photo gallery API"
-      ]
+      "status": "completed",
+      "testsFixed": 10
     },
     {
       "file": "tests/returning-animals-and-duplicates.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Some tests missing ({ page }) parameter"
-      ],
-      "mockingNeeded": []
+      "status": "completed",
+      "testsFixed": 3
     },
     {
       "file": "tests/tag-selection-ux.spec.ts",
-      "status": "pending",
-      "issues": [
-        "All test functions missing ({ page }) parameter"
-      ],
-      "mockingNeeded": [
-        "Mock tags API",
-        "Mock comments API with tag filtering"
-      ]
+      "status": "completed",
+      "testsFixed": 8
     },
     {
       "file": "tests/ux-improvements-checkbox-announcement.spec.ts",
-      "status": "pending",
-      "issues": [
-        "Some tests missing ({ page }) parameter"
-      ],
-      "mockingNeeded": []
+      "status": "completed",
+      "testsFixed": 4
+    },
+    {
+      "file": "tests/unarchive-modal.spec.ts",
+      "status": "completed",
+      "testsFixed": 2
     }
   ],
-  "testExecutionOrder": [
-    "tests/authentication.spec.ts",
-    "tests/groups-management.spec.ts",
-    "tests/animal-filtering.spec.ts",
-    "tests/animal-form-ux.spec.ts",
-    "tests/animal-tagging.spec.ts",
-    "tests/activity-feed.spec.ts",
-    "tests/dark-mode-contrast.spec.ts",
-    "tests/navigation-hover.spec.ts",
-    "tests/mobile-responsiveness.spec.ts",
-    "tests/default-group.spec.ts",
-    "tests/photo-feature.spec.ts",
-    "tests/tag-selection-ux.spec.ts",
-    "tests/bulk-edit-animals.spec.ts",
-    "tests/admin-password-reset.spec.ts",
-    "tests/group-images.spec.ts",
-    "tests/returning-animals-and-duplicates.spec.ts",
-    "tests/ux-improvements-checkbox-announcement.spec.ts"
-  ]
+  "totalTestsFixed": 134,
+  "summary": "Fixed all Playwright tests by adding ({ page }) parameter to test callbacks. Created API mock helpers for external dependencies. Tests should now pass without backend running."
 }

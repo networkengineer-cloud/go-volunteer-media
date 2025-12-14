@@ -180,7 +180,7 @@ test.describe('Group Images Feature', () => {
 });
 
 test.describe('Data Model', () => {
-  test('Group model should have image_url and hero_image_url fields', async () => {
+  test('Group model should have image_url and hero_image_url fields', async ({ page }) => {
     // Verify Group interface in TypeScript
     console.log('Group TypeScript interface:');
     console.log('  id: number');
@@ -195,7 +195,7 @@ test.describe('Data Model', () => {
     console.log('  HeroImageURL string `json:"hero_image_url"`');
   });
 
-  test('API should support both image fields', async () => {
+  test('API should support both image fields', async ({ page }) => {
     // Create/Update group requests should include:
     console.log('GroupRequest struct:');
     console.log('  ImageURL string `json:"image_url,omitempty"`');
@@ -209,7 +209,7 @@ test.describe('Data Model', () => {
 });
 
 test.describe('CSS Styling', () => {
-  test('hero image should have proper styling', async () => {
+  test('hero image should have proper styling', async ({ page }) => {
     console.log('Hero image CSS:');
     console.log('  .group-hero-image {');
     console.log('    height: 300px;');
@@ -220,7 +220,7 @@ test.describe('CSS Styling', () => {
     console.log('  }');
   });
 
-  test('animal selector should have grid layout', async () => {
+  test('animal selector should have grid layout', async ({ page }) => {
     console.log('Animal selector CSS:');
     console.log('  .animal-images-grid {');
     console.log('    display: grid;');
