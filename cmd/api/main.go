@@ -120,6 +120,8 @@ func main() {
 
 	// Serve images from database (public endpoint, no auth required)
 	api.GET("/images/:uuid", handlers.ServeImage(db))
+	// Serve protocol documents (public, no auth required)
+	api.GET("/documents/:uuid", handlers.ServeAnimalProtocolDocument(db))
 
 	// Public routes (with rate limiting for auth endpoints)
 	authLimiter := middleware.RateLimit(5, 1*time.Minute) // 5 requests per minute
@@ -157,8 +159,8 @@ func main() {
 		// Image upload (authenticated users only) - stores in database
 		protected.POST("/animals/upload-image", handlers.UploadAnimalImageSimple(db))
 
-		// Document serving route (accessible by authenticated users)
-		protected.GET("/documents/:uuid", handlers.ServeAnimalProtocolDocument(db))
+		// Document serving route (PUBLIC): protocol documents should be viewable by anyone
+		// Moved to public API routes above to remove auth requirement
 
 		// Statistics routes (accessible by authenticated users, filtered by permissions)
 		protected.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
