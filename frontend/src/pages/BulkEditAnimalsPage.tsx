@@ -666,7 +666,6 @@ const BulkEditAnimalsPage: React.FC = () => {
         ) : viewMode === 'cards' ? (
           <div className="animals-grid">
             {animals.map((animal) => {
-              const groupName = groups.find(g => g.id === animal.group_id)?.name || 'Unknown';
               const isSelected = selectedAnimalIds.has(animal.id);
               const isUpdating = updatingAnimal === animal.id;
 

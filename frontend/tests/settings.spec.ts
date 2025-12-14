@@ -203,7 +203,6 @@ test.describe('Settings Page', () => {
     const saveButton = page.locator('button:has-text("Save Preferences")');
     
     // Toggle the notification setting
-    const initialState = await toggleInput.isChecked();
     await toggleInput.click();
     
     // Click save button
