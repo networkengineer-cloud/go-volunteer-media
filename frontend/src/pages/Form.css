@@ -443,6 +443,66 @@
   box-shadow: 0 4px 16px rgba(14, 108, 85, 0.3);
 }
 
+/* Protocol Document Styles */
+.document-preview {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--neutral-300);
+  border-radius: 8px;
+}
+
+[data-theme='dark'] .document-preview {
+  background: var(--neutral-800);
+  border-color: var(--neutral-700);
+}
+
+.document-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.document-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.document-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.document-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.document-view-link {
+  color: var(--brand);
+  text-decoration: none;
+  font-size: 0.875rem;
+  transition: color 0.2s;
+}
+
+.document-view-link:hover {
+  color: var(--brand-hover);
+  text-decoration: underline;
+}
+
+.document-pending {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.document-upload-area {
+  margin-top: 1rem;
+}
+
 @media (max-width: 768px) {
   .image-upload-options {
     flex-direction: column;
@@ -451,5 +511,10 @@
   .image-selector-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 1rem;
+  }
+  
+  .document-info {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

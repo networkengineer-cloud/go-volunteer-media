@@ -140,6 +140,11 @@ export interface Animal {
   last_status_change?: string;
   return_count: number;
   is_returned: boolean;
+  protocol_document_url?: string;
+  protocol_document_name?: string;
+  protocol_document_type?: string;
+  protocol_document_size?: number;
+  protocol_document_user_id?: number;
   tags?: AnimalTag[];
   name_history?: AnimalNameHistory[];
 }
@@ -436,6 +441,20 @@ export const animalsApi = {
     api.get<AnimalImage[]>('/admin/groups/' + groupId + '/deleted-images'),
   setProfilePicture: (groupId: number, animalId: number, imageId: number) =>
     api.put<AnimalImage>(`/groups/${groupId}/animals/${animalId}/images/${imageId}/set-profile`),
+  // Protocol document API
+  uploadProtocolDocument: (groupId: number, animalId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('document', file);
+    return api.post<{
+      url: string;
+      name: string;
+      size: number;
+      type: string;
+      uploaded_by: number;
+    }>(`/groups/${groupId}/animals/${animalId}/protocol-document`, formData);
+  },
+  deleteProtocolDocument: (groupId: number, animalId: number) =>
+    api.delete(`/groups/${groupId}/animals/${animalId}/protocol-document`),
   // Admin and group admin bulk operations
   getAllForAdmin: (status?: string, groupId?: number, name?: string) => {
     const params: Record<string, unknown> = {};

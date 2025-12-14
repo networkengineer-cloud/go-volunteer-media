@@ -805,6 +805,83 @@ Delete an animal.
 - `403 Forbidden`: User is not site admin or group admin
 - `500 Internal Server Error`: Database error
 
+#### Upload Protocol Document
+
+Upload a protocol document (PDF or DOCX) for an animal.
+
+**Endpoint:** `POST /groups/:id/animals/:animalId/protocol-document`
+
+**Authentication:** Required (Site Admin or Group Admin)
+
+**URL Parameters:**
+- `id` (integer): Group ID
+- `animalId` (integer): Animal ID
+
+**Request Body:** `multipart/form-data`
+- `document` (file): Protocol document file (PDF or DOCX, max 20MB)
+
+**Response:** `200 OK`
+```json
+{
+  "url": "/api/documents/550e8400-e29b-41d4-a716-446655440000",
+  "name": "protocol.pdf",
+  "size": 1048576,
+  "type": "application/pdf",
+  "uploaded_by": 5
+}
+```
+
+**Errors:**
+- `400 Bad Request`: Invalid file type or size
+- `401 Unauthorized`: Invalid or missing token
+- `403 Forbidden`: User is not site admin or group admin
+- `404 Not Found`: Animal not found
+- `500 Internal Server Error`: Upload failed
+
+#### View Protocol Document
+
+Get the protocol document for an animal.
+
+**Endpoint:** `GET /documents/:uuid`
+
+**Authentication:** Required
+
+**URL Parameters:**
+- `uuid` (string): Document UUID from the document URL
+
+**Response:** `200 OK`
+- Returns the document file with appropriate `Content-Type` header
+- `Content-Disposition: inline; filename="protocol.pdf"`
+
+**Errors:**
+- `401 Unauthorized`: Invalid or missing token
+- `404 Not Found`: Document not found
+
+#### Delete Protocol Document
+
+Remove the protocol document from an animal.
+
+**Endpoint:** `DELETE /groups/:id/animals/:animalId/protocol-document`
+
+**Authentication:** Required (Site Admin or Group Admin)
+
+**URL Parameters:**
+- `id` (integer): Group ID
+- `animalId` (integer): Animal ID
+
+**Response:** `200 OK`
+```json
+{
+  "message": "Protocol document removed successfully"
+}
+```
+
+**Errors:**
+- `401 Unauthorized`: Invalid or missing token
+- `403 Forbidden`: User is not site admin or group admin
+- `404 Not Found`: Animal not found
+- `500 Internal Server Error`: Database error
+
 ---
 
 ### Updates

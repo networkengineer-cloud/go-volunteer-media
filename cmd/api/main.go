@@ -157,6 +157,9 @@ func main() {
 		// Image upload (authenticated users only) - stores in database
 		protected.POST("/animals/upload-image", handlers.UploadAnimalImageSimple(db))
 
+		// Document serving route (accessible by authenticated users)
+		protected.GET("/documents/:uuid", handlers.ServeAnimalProtocolDocument(db))
+
 		// Statistics routes (accessible by authenticated users, filtered by permissions)
 		protected.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
 
@@ -298,6 +301,9 @@ func main() {
 			groupAdminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
 			// Tag assignment for animals
 			groupAdminAnimals.POST("/:animalId/tags", handlers.AssignTagsToAnimal(db))
+			// Protocol document management
+			groupAdminAnimals.POST("/:animalId/protocol-document", handlers.UploadAnimalProtocolDocument(db))
+			groupAdminAnimals.DELETE("/:animalId/protocol-document", handlers.DeleteAnimalProtocolDocument(db))
 		}
 
 		// Group admin or site admin protocol management routes
