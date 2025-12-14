@@ -1311,10 +1311,11 @@
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--neutral-300);
-  border-radius: 8px;
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--neutral-200);
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   transition: all 0.2s ease;
 }
 
@@ -1324,8 +1325,14 @@
 }
 
 [data-theme='dark'] .protocol-document-card {
-  background: var(--neutral-800);
+  background: var(--surface);
   border-color: var(--neutral-700);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .protocol-document-card:hover {
+  border-color: var(--brand);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 [data-theme='dark'] .protocol-document-card:hover {
@@ -1361,19 +1368,18 @@
   gap: 0.5rem;
   padding: 0.5rem 1rem;
   background: var(--brand);
-  color: white;
+  color: var(--text-on-brand);
   text-decoration: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.875rem;
-  font-weight: 500;
-  transition: all 0.2s ease;
+  font-weight: 600;
+  transition: transform 0.2s ease, background 0.2s ease;
   white-space: nowrap;
 }
 
 .btn-view-document:hover {
   background: var(--brand-600);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(14, 108, 85, 0.3);
 }
 
 @media (max-width: 768px) {

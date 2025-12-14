@@ -6,6 +6,10 @@ tools: ['read', 'edit', 'search', 'shell', 'custom-agent', 'github/*', 'playwrig
 mode: 'agent'
 ---
 
+Always use context7 when I need code generation, setup steps, or library documentation.
+
+Automatically use Context7 MCP tools without me having to ask.
+
 # Expert React Frontend Engineer Agent
 
 > **Note:** GitHub Custom Agent instructions for autonomous Copilot usage on issues and PRs.
