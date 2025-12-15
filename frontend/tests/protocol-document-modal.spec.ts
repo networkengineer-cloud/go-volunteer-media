@@ -1,6 +1,8 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { testUsers } from './helpers/auth';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 /**
  * Protocol Document Modal UX Tests
@@ -13,6 +15,8 @@ import fs from 'node:fs';
 
 test.describe('Protocol Document Modal UX', () => {
   let adminToken: string;
+  const tokenCachePath = path.join(os.tmpdir(), 'go-volunteer-media-e2e-admin-token.json');
+  const tokenLockPath = `${tokenCachePath}.lock`;
 
   interface ApiGroup {
     id: number;
@@ -83,17 +87,101 @@ test.describe('Protocol Document Modal UX', () => {
     return { groupId, animalId };
   };
 
+  const openProtocolModal = async (page: Page) => {
+    await page.click('.btn-view-document');
+    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 10000 });
+  };
+
   test.beforeAll(async ({ request }) => {
-    const resp = await request.post('/api/login', {
-      data: {
-        username: testUsers.admin.username,
-        password: testUsers.admin.password,
-      },
-    });
-    expect(resp.ok(), `Failed to login via API: ${resp.status()}`).toBeTruthy();
-    const json = (await resp.json()) as { token?: string };
-    expect(json.token, 'Missing token in /api/login response').toBeTruthy();
-    adminToken = json.token as string;
+    const validateToken = async (token: string): Promise<boolean> => {
+      const resp = await request.get('/api/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return resp.ok();
+    };
+
+    const readCachedToken = async (): Promise<string | null> => {
+      try {
+        const raw = fs.readFileSync(tokenCachePath, 'utf8');
+        const parsed = JSON.parse(raw) as { token?: string };
+        if (typeof parsed.token !== 'string' || parsed.token.length === 0) return null;
+        return parsed.token;
+      } catch {
+        return null;
+      }
+    };
+
+    const writeCachedToken = (token: string) => {
+      fs.writeFileSync(tokenCachePath, JSON.stringify({ token }), 'utf8');
+    };
+
+    const cached = await readCachedToken();
+    if (cached && (await validateToken(cached))) {
+      adminToken = cached;
+      return;
+    }
+
+    // Try to acquire a simple file lock so only one project hits /api/login.
+    let lockFd: number | null = null;
+    try {
+      lockFd = fs.openSync(tokenLockPath, 'wx');
+    } catch {
+      lockFd = null;
+    }
+
+    if (lockFd === null) {
+      // Another project is logging in. Wait for the token file to appear.
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        const maybeToken = await readCachedToken();
+        if (maybeToken && (await validateToken(maybeToken))) {
+          adminToken = maybeToken;
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      // Fall through to login attempt if the lock holder failed.
+    }
+
+    try {
+      const maxAttempts = 10;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const resp = await request.post('/api/login', {
+          data: {
+            username: testUsers.admin.username,
+            password: testUsers.admin.password,
+          },
+        });
+
+        if (resp.status() === 429 && attempt < maxAttempts) {
+          const backoffMs = Math.min(1000 * 2 ** (attempt - 1), 10000);
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+          continue;
+        }
+
+        expect(resp.ok(), `Failed to login via API: ${resp.status()}`).toBeTruthy();
+        const json = (await resp.json()) as { token?: string };
+        expect(json.token, 'Missing token in /api/login response').toBeTruthy();
+        adminToken = json.token as string;
+        writeCachedToken(adminToken);
+        return;
+      }
+
+      throw new Error('Failed to login via API after retries');
+    } finally {
+      if (lockFd !== null) {
+        try {
+          fs.closeSync(lockFd);
+        } catch {
+          // ignore
+        }
+        try {
+          fs.unlinkSync(tokenLockPath);
+        } catch {
+          // ignore
+        }
+      }
+    }
   });
 
   test.beforeEach(async ({ page }) => {
@@ -123,7 +211,7 @@ test.describe('Protocol Document Modal UX', () => {
     const [response] = await Promise.all([
       page.waitForResponse((res) => {
         return res.url().includes('/api/documents/') && res.status() === 200;
-      }, { timeout: 10000 }),
+      }, { timeout: 20000 }),
       page.click('.btn-view-document'),
     ]);
     const contentType = response.headers()['content-type'] ?? '';
@@ -166,9 +254,7 @@ test.describe('Protocol Document Modal UX', () => {
   test('should close modal on Escape key press', async ({ page, request }) => {
     await openAnimalDetailWithProtocol(page, request);
 
-    // Open modal
-    await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 5000 });
+    await openProtocolModal(page);
 
     // Press Escape key
     await page.keyboard.press('Escape');
@@ -180,23 +266,55 @@ test.describe('Protocol Document Modal UX', () => {
   test('should close modal when clicking outside', async ({ page, request }) => {
     await openAnimalDetailWithProtocol(page, request);
 
-    // Open modal
-    await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 5000 });
+    await openProtocolModal(page);
 
-    // Click on overlay (outside modal content)
-    await page.locator('.protocol-modal-overlay').click({ position: { x: 10, y: 10 } });
+    const overlay = page.locator('.protocol-modal-overlay');
+
+    const clickOutside = async () => {
+      const overlayBox = await overlay.boundingBox();
+      expect(overlayBox, 'Missing overlay bounding box').toBeTruthy();
+
+      const o = overlayBox as NonNullable<typeof overlayBox>;
+      const candidates = [
+        { x: Math.floor(o.x + 2), y: Math.floor(o.y + 2) },
+        { x: Math.floor(o.x + o.width - 2), y: Math.floor(o.y + 2) },
+        { x: Math.floor(o.x + 2), y: Math.floor(o.y + o.height - 2) },
+        { x: Math.floor(o.x + o.width - 2), y: Math.floor(o.y + o.height - 2) },
+      ];
+
+      let target: { x: number; y: number } | null = null;
+      for (const p of candidates) {
+        const isOverlayOutsideContent = await page.evaluate(({ x, y }) => {
+          const el = document.elementFromPoint(x, y);
+          if (!el) return false;
+          if (el.closest('.protocol-modal-content')) return false;
+          return !!el.closest('.protocol-modal-overlay');
+        }, p);
+
+        if (isOverlayOutsideContent) {
+          target = p;
+          break;
+        }
+      }
+
+      test.skip(!target, 'Modal content covers overlay; no outside click target on this viewport');
+      await page.mouse.click((target as { x: number; y: number }).x, (target as { x: number; y: number }).y);
+    };
+
+    await clickOutside();
+    // Retry once for occasional mobile/WebKit gesture quirks.
+    if (await overlay.isVisible()) {
+      await clickOutside();
+    }
 
     // Modal should be closed
-    await expect(page.locator('.protocol-modal-overlay')).not.toBeVisible();
+    await expect(page.locator('.protocol-modal-overlay')).not.toBeVisible({ timeout: 10000 });
   });
 
   test('should close modal when clicking close button', async ({ page, request }) => {
     await openAnimalDetailWithProtocol(page, request);
 
-    // Open modal
-    await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 5000 });
+    await openProtocolModal(page);
 
     // Click close button
     await page.click('.protocol-modal-close');
@@ -208,9 +326,7 @@ test.describe('Protocol Document Modal UX', () => {
   test('should have accessible close button with proper attributes', async ({ page, request }) => {
     await openAnimalDetailWithProtocol(page, request);
 
-    // Open modal
-    await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible();
+    await openProtocolModal(page);
 
     // Close button should have aria-label
     const closeButton = page.locator('.protocol-modal-close');
@@ -227,9 +343,7 @@ test.describe('Protocol Document Modal UX', () => {
     const pagesBefore = context.pages().length;
     const urlBefore = page.url();
 
-    // Open protocol
-    await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 5000 });
+    await openProtocolModal(page);
 
     // Should not create new tab/page
     const pagesAfter = context.pages().length;

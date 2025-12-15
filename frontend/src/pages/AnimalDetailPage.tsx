@@ -321,9 +321,13 @@ const AnimalDetailPage: React.FC = () => {
       // Fetch document with authorization header via API client
       const response = await animalsApi.getProtocolDocument(uuid);
 
-      // Axios responseType=blob -> response.data is a Blob
-      const responseBlob = response.data as Blob;
-      const headerContentType = (response.headers?.['content-type'] || response.headers?.['Content-Type']) as string | undefined;
+      if (!(response.data instanceof Blob)) {
+        throw new Error('Unexpected response type');
+      }
+
+      const responseBlob = response.data;
+      const rawHeaderContentType = response.headers?.['content-type'] || response.headers?.['Content-Type'];
+      const headerContentType = typeof rawHeaderContentType === 'string' ? rawHeaderContentType : undefined;
       const filename = (animal.protocol_document_name || '').toLowerCase();
 
       const inferredContentType =
@@ -356,7 +360,7 @@ const AnimalDetailPage: React.FC = () => {
     } catch (error) {
       console.error('Failed to open protocol document:', error);
       toast.showError('Failed to open protocol document. Please try again.');
-      setShowProtocolModal(false);
+      setProtocolRenderError('Failed to open protocol document. Please try again.');
     } finally {
       setLoadingProtocol(false);
     }
