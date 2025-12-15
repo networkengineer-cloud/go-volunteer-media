@@ -24,13 +24,13 @@ func UploadAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 		// Get animal ID from URL parameter
 		groupIDStr := c.Param("id")
 		animalIDStr := c.Param("animalId")
-		
+
 		groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
 			return
 		}
-		
+
 		animalID, err := strconv.ParseUint(animalIDStr, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid animal ID"})
@@ -127,25 +127,58 @@ func UploadAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 		}).Info("Protocol document uploaded successfully")
 
 		c.JSON(http.StatusOK, gin.H{
-			"url":           documentURL,
-			"name":          file.Filename,
-			"size":          len(documentData),
-			"type":          mimeType,
-			"uploaded_by":   userID,
+			"url":         documentURL,
+			"name":        file.Filename,
+			"size":        len(documentData),
+			"type":        mimeType,
+			"uploaded_by": userID,
 		})
 	}
 }
 
 // ServeAnimalProtocolDocument serves a protocol document from the database
+// Requires authentication and verifies user is member of the animal's group
 func ServeAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		documentUUID := c.Param("uuid")
 		documentURL := fmt.Sprintf("/api/documents/%s", documentUUID)
 
+		// Get authenticated user
+		userValue, exists := c.Get("user")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		user := userValue.(*models.User)
+
+		// Find animal with the protocol document
 		var animal models.Animal
 		if err := db.Where("protocol_document_url = ?", documentURL).First(&animal).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Document not found"})
 			return
+		}
+
+		// Authorization: Verify user is member of the animal's group (or is admin)
+		if !user.IsAdmin {
+			var userGroups []models.Group
+			if err := db.Model(user).Association("Groups").Find(&userGroups); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+				return
+			}
+
+			// Check if user is member of the animal's group
+			isMember := false
+			for _, group := range userGroups {
+				if group.ID == animal.GroupID {
+					isMember = true
+					break
+				}
+			}
+
+			if !isMember {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: You must be a member of this group to view this document"})
+				return
+			}
 		}
 
 		if len(animal.ProtocolDocumentData) == 0 {
@@ -171,13 +204,13 @@ func DeleteAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 		// Get animal ID from URL parameter
 		groupIDStr := c.Param("id")
 		animalIDStr := c.Param("animalId")
-		
+
 		groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
 			return
 		}
-		
+
 		animalID, err := strconv.ParseUint(animalIDStr, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid animal ID"})
