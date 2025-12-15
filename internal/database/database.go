@@ -1,6 +1,7 @@
 package database
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 )
 
@@ -309,7 +311,7 @@ func createDefaultGroups(db *gorm.DB) error {
 	for _, group := range defaultGroups {
 		var existing models.Group
 		result := db.Where("name = ?", group.Name).First(&existing)
-		if result.Error == gorm.ErrRecordNotFound {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			if err := db.Create(&group).Error; err != nil {
 				return fmt.Errorf("failed to create default group %s: %w", group.Name, err)
 			}
@@ -324,6 +326,8 @@ func createDefaultGroups(db *gorm.DB) error {
 					logging.WithField("group_name", group.Name).Info("Enabled protocols for existing group")
 				}
 			}
+		} else {
+			return fmt.Errorf("failed to check for existing group %s: %w", group.Name, result.Error)
 		}
 	}
 
@@ -349,27 +353,21 @@ func createDefaultCommentTags(db *gorm.DB) error {
 
 	for _, group := range groups {
 		for _, template := range defaultTagTemplates {
-			var existingTag models.CommentTag
-			// Check if tag already exists for this group
-			checkResult := db.Where("group_id = ? AND name = ?", group.ID, template.Name).First(&existingTag)
-			
-			if checkResult.Error == gorm.ErrRecordNotFound {
-				// Tag doesn't exist, create it
-				tag := models.CommentTag{
-					GroupID:  group.ID,
-					Name:     template.Name,
-					Color:    template.Color,
-					IsSystem: template.IsSystem,
-				}
-				if err := db.Create(&tag).Error; err != nil {
-					return fmt.Errorf("failed to create default tag %s for group %s: %w", template.Name, group.Name, err)
-				}
-			} else if checkResult.Error != nil {
-				// Some other database error occurred
-				return fmt.Errorf("failed to check for existing comment tag %s in group %s: %w", template.Name, group.Name, checkResult.Error)
+			tag := models.CommentTag{
+				GroupID:  group.ID,
+				Name:     template.Name,
+				Color:    template.Color,
+				IsSystem: template.IsSystem,
 			}
-			// else: tag already exists, skip it
-			
+			// Use upsert to avoid duplicate-key errors under concurrent migrations and
+			// to restore soft-deleted tags (unique index does not include deleted_at).
+			if err := db.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "group_id"}, {Name: "name"}},
+				DoUpdates: clause.Assignments(map[string]interface{}{"deleted_at": gorm.Expr("NULL")}),
+			}).Create(&tag).Error; err != nil {
+				return fmt.Errorf("failed to ensure default comment tag %s for group %s: %w", template.Name, group.Name, err)
+			}
+
 			logging.WithFields(map[string]interface{}{
 				"tag_name":   template.Name,
 				"group_name": group.Name,
@@ -406,27 +404,21 @@ func createDefaultAnimalTags(db *gorm.DB) error {
 
 	for _, group := range groups {
 		for _, template := range defaultTagTemplates {
-			var existingTag models.AnimalTag
-			// Check if tag already exists for this group
-			checkResult := db.Where("group_id = ? AND name = ?", group.ID, template.Name).First(&existingTag)
-			
-			if checkResult.Error == gorm.ErrRecordNotFound {
-				// Tag doesn't exist, create it
-				tag := models.AnimalTag{
-					GroupID:  group.ID,
-					Name:     template.Name,
-					Category: template.Category,
-					Color:    template.Color,
-				}
-				if err := db.Create(&tag).Error; err != nil {
-					return fmt.Errorf("failed to create default animal tag %s for group %s: %w", template.Name, group.Name, err)
-				}
-			} else if checkResult.Error != nil {
-				// Some other database error occurred
-				return fmt.Errorf("failed to check for existing animal tag %s in group %s: %w", template.Name, group.Name, checkResult.Error)
+			tag := models.AnimalTag{
+				GroupID:  group.ID,
+				Name:     template.Name,
+				Category: template.Category,
+				Color:    template.Color,
 			}
-			// else: tag already exists, skip it
-			
+			// Use upsert to avoid duplicate-key errors under concurrent migrations and
+			// to restore soft-deleted tags (unique index does not include deleted_at).
+			if err := db.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "group_id"}, {Name: "name"}},
+				DoUpdates: clause.Assignments(map[string]interface{}{"deleted_at": gorm.Expr("NULL")}),
+			}).Create(&tag).Error; err != nil {
+				return fmt.Errorf("failed to ensure default animal tag %s for group %s: %w", template.Name, group.Name, err)
+			}
+
 			logging.WithFields(map[string]interface{}{
 				"tag_name":   template.Name,
 				"group_name": group.Name,
