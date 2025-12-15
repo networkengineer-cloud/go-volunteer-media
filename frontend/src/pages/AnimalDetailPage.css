@@ -1519,7 +1519,7 @@
 
 .protocol-modal-body {
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   position: relative;
   min-height: 400px;
 }
@@ -1527,11 +1527,13 @@
 .protocol-docx-root {
   width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .protocol-docx-container {
   width: 100%;
-  height: 100%;
+  flex: 1;
   overflow: auto;
   padding: 1rem;
 }

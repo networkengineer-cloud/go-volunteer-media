@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { loginAsAdmin } from './helpers/auth';
+import { testUsers } from './helpers/auth';
 import fs from 'node:fs';
 
 /**
@@ -12,6 +12,8 @@ import fs from 'node:fs';
  */
 
 test.describe('Protocol Document Modal UX', () => {
+  let adminToken: string;
+
   interface ApiGroup {
     id: number;
   }
@@ -81,8 +83,27 @@ test.describe('Protocol Document Modal UX', () => {
     return { groupId, animalId };
   };
 
+  test.beforeAll(async ({ request }) => {
+    const resp = await request.post('/api/login', {
+      data: {
+        username: testUsers.admin.username,
+        password: testUsers.admin.password,
+      },
+    });
+    expect(resp.ok(), `Failed to login via API: ${resp.status()}`).toBeTruthy();
+    const json = (await resp.json()) as { token?: string };
+    expect(json.token, 'Missing token in /api/login response').toBeTruthy();
+    adminToken = json.token as string;
+  });
+
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    await page.addInitScript((token) => {
+      localStorage.setItem('token', token);
+    }, adminToken);
+
+    // Confirm we're authenticated before running the test.
+    await page.goto('/dashboard');
+    await expect(page.getByRole('button', { name: /^logout$/i })).toBeVisible({ timeout: 15000 });
     await getToken(page);
   });
 
