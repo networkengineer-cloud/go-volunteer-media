@@ -24,7 +24,7 @@ func TestServeAnimalProtocolDocument_Security(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Auto-migrate
-	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.Animal{})
+	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{}, &models.Animal{})
 	assert.NoError(t, err)
 
 	// Create test data
@@ -90,7 +90,7 @@ func TestServeAnimalProtocolDocument_Security(t *testing.T) {
 		{
 			name: "unauthenticated request denied",
 			setupAuth: func(c *gin.Context) {
-				// No user in context
+				// No auth context
 			},
 			documentUUID:   documentUUID,
 			expectedStatus: http.StatusUnauthorized,
@@ -99,7 +99,8 @@ func TestServeAnimalProtocolDocument_Security(t *testing.T) {
 		{
 			name: "authorized group member can access",
 			setupAuth: func(c *gin.Context) {
-				c.Set("user", &user1)
+				c.Set("user_id", user1.ID)
+				c.Set("is_admin", false)
 			},
 			documentUUID:   documentUUID,
 			expectedStatus: http.StatusOK,
@@ -107,7 +108,8 @@ func TestServeAnimalProtocolDocument_Security(t *testing.T) {
 		{
 			name: "unauthorized group member denied",
 			setupAuth: func(c *gin.Context) {
-				c.Set("user", &user2) // Cat volunteer trying to access dog document
+				c.Set("user_id", user2.ID) // Cat volunteer trying to access dog document
+				c.Set("is_admin", false)
 			},
 			documentUUID:   documentUUID,
 			expectedStatus: http.StatusForbidden,
@@ -116,7 +118,8 @@ func TestServeAnimalProtocolDocument_Security(t *testing.T) {
 		{
 			name: "admin can access any document",
 			setupAuth: func(c *gin.Context) {
-				c.Set("user", &adminUser)
+				c.Set("user_id", adminUser.ID)
+				c.Set("is_admin", true)
 			},
 			documentUUID:   documentUUID,
 			expectedStatus: http.StatusOK,
@@ -124,7 +127,8 @@ func TestServeAnimalProtocolDocument_Security(t *testing.T) {
 		{
 			name: "non-existent document returns 404",
 			setupAuth: func(c *gin.Context) {
-				c.Set("user", &user1)
+				c.Set("user_id", user1.ID)
+				c.Set("is_admin", false)
 			},
 			documentUUID:   "non-existent-uuid",
 			expectedStatus: http.StatusNotFound,
@@ -182,7 +186,7 @@ func TestServeAnimalProtocolDocument_UUIDEnumeration(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	assert.NoError(t, err)
 
-	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.Animal{})
+	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{}, &models.Animal{})
 	assert.NoError(t, err)
 
 	// Create test group and user
@@ -235,7 +239,8 @@ func TestServeAnimalProtocolDocument_UUIDEnumeration(t *testing.T) {
 		documentUUID := fmt.Sprintf("uuid-%d", i)
 		c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/documents/%s", documentUUID), nil)
 		c.Params = gin.Params{{Key: "uuid", Value: documentUUID}}
-		c.Set("user", &unauthorizedUser)
+		c.Set("user_id", unauthorizedUser.ID)
+		c.Set("is_admin", false)
 
 		handler := ServeAnimalProtocolDocument(db)
 		handler(c)
@@ -253,7 +258,7 @@ func TestServeAnimalProtocolDocument_GroupMembershipValidation(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	assert.NoError(t, err)
 
-	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.Animal{})
+	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{}, &models.Animal{})
 	assert.NoError(t, err)
 
 	// Create multiple groups
@@ -316,7 +321,8 @@ func TestServeAnimalProtocolDocument_GroupMembershipValidation(t *testing.T) {
 
 			c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/documents/%s", tc.uuid), nil)
 			c.Params = gin.Params{{Key: "uuid", Value: tc.uuid}}
-			c.Set("user", &multiGroupUser)
+			c.Set("user_id", multiGroupUser.ID)
+			c.Set("is_admin", false)
 
 			handler := ServeAnimalProtocolDocument(db)
 			handler(c)
@@ -333,7 +339,7 @@ func TestServeAnimalProtocolDocument_EmptyDocumentData(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	assert.NoError(t, err)
 
-	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.Animal{})
+	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{}, &models.Animal{})
 	assert.NoError(t, err)
 
 	group := models.Group{Name: "Dogs", Description: "Dog volunteers"}
@@ -368,7 +374,8 @@ func TestServeAnimalProtocolDocument_EmptyDocumentData(t *testing.T) {
 
 	c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/documents/%s", documentUUID), nil)
 	c.Params = gin.Params{{Key: "uuid", Value: documentUUID}}
-	c.Set("user", &user)
+	c.Set("user_id", user.ID)
+	c.Set("is_admin", false)
 
 	handler := ServeAnimalProtocolDocument(db)
 	handler(c)
