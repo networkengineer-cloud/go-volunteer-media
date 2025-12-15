@@ -455,6 +455,8 @@ export const animalsApi = {
   },
   deleteProtocolDocument: (groupId: number, animalId: number) =>
     api.delete(`/groups/${groupId}/animals/${animalId}/protocol-document`),
+  getProtocolDocument: (uuid: string) =>
+    api.get(`/documents/${uuid}`, { responseType: 'blob' }),
   // Admin and group admin bulk operations
   getAllForAdmin: (status?: string, groupId?: number, name?: string) => {
     const params: Record<string, unknown> = {};

@@ -53,6 +53,9 @@ const AnimalDetailPage: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
   const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const [showProtocolModal, setShowProtocolModal] = useState(false);
+  const [protocolDocumentUrl, setProtocolDocumentUrl] = useState<string | null>(null);
+  const [loadingProtocol, setLoadingProtocol] = useState(false);
   const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
 
@@ -293,6 +296,61 @@ const AnimalDetailPage: React.FC = () => {
     }
   };
 
+  const handleOpenProtocolDocument = async () => {
+    if (!animal?.protocol_document_url) return;
+    
+    setLoadingProtocol(true);
+    setShowProtocolModal(true);
+    
+    try {
+      // Extract UUID from the document URL (format: /api/documents/UUID)
+      const uuid = animal.protocol_document_url.split('/').pop();
+      if (!uuid) {
+        toast.showError('Invalid document URL');
+        setShowProtocolModal(false);
+        return;
+      }
+
+      // Fetch document with authorization header via API client
+      const response = await animalsApi.getProtocolDocument(uuid);
+      
+      // Create blob URL for iframe (headers may be lowercase)
+      const contentType = response.headers['content-type'] || response.headers['Content-Type'] || 'application/pdf';
+      const blob = new Blob([response.data], { type: contentType });
+      const blobUrl = window.URL.createObjectURL(blob);
+      setProtocolDocumentUrl(blobUrl);
+    } catch (error) {
+      console.error('Failed to open protocol document:', error);
+      toast.showError('Failed to open protocol document. Please try again.');
+      setShowProtocolModal(false);
+    } finally {
+      setLoadingProtocol(false);
+    }
+  };
+
+  const handleCloseProtocolModal = () => {
+    setShowProtocolModal(false);
+    // Clean up blob URL
+    if (protocolDocumentUrl) {
+      window.URL.revokeObjectURL(protocolDocumentUrl);
+      setProtocolDocumentUrl(null);
+    }
+  };
+
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showProtocolModal) {
+        handleCloseProtocolModal();
+      }
+    };
+    
+    if (showProtocolModal) {
+      document.addEventListener('keydown', handleEscape);
+      return () => document.removeEventListener('keydown', handleEscape);
+    }
+  }, [showProtocolModal]);
+
   if (loading) {
     return (
       <div className="animal-detail-page">
@@ -475,15 +533,14 @@ const AnimalDetailPage: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <a 
-                      href={animal.protocol_document_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={handleOpenProtocolDocument}
                       className="btn-view-document"
-                      title="Open protocol document in new tab"
+                      title="View protocol document"
+                      aria-label="View protocol document"
                     >
-                      View Document →
-                    </a>
+                      View Protocol →
+                    </button>
                   </div>
                 </div>
               )}
@@ -882,6 +939,51 @@ const AnimalDetailPage: React.FC = () => {
           >
             ↑
           </button>
+        )}
+
+        {/* Protocol Document Modal */}
+        {showProtocolModal && (
+          <div 
+            className="protocol-modal-overlay"
+            onClick={handleCloseProtocolModal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="protocol-modal-title"
+          >
+            <div 
+              className="protocol-modal-content"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="protocol-modal-header">
+                <div>
+                  <h2 id="protocol-modal-title">📋 Protocol Document</h2>
+                  <p className="protocol-modal-filename">{animal?.protocol_document_name}</p>
+                </div>
+                <button
+                  onClick={handleCloseProtocolModal}
+                  className="protocol-modal-close"
+                  aria-label="Close protocol document"
+                  title="Close (Esc)"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="protocol-modal-body">
+                {loadingProtocol ? (
+                  <div className="protocol-loading">
+                    <span className="loading-spinner" aria-label="Loading protocol document"></span>
+                    <p>Loading protocol document...</p>
+                  </div>
+                ) : protocolDocumentUrl ? (
+                  <iframe
+                    src={protocolDocumentUrl}
+                    title={animal?.protocol_document_name || 'Protocol Document'}
+                    className="protocol-iframe"
+                  />
+                ) : null}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
