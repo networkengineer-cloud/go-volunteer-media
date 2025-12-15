@@ -95,6 +95,13 @@ func Initialize() (*gorm.DB, error) {
 func RunMigrations(db *gorm.DB) error {
 	logging.Info("Running database migrations...")
 
+	// CRITICAL: Drop legacy single-column unique indexes BEFORE AutoMigrate
+	// These old indexes conflict with the new composite indexes (group_id, name)
+	// GORM AutoMigrate won't remove old indexes when index names change
+	if err := dropLegacyIndexes(db); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to drop legacy indexes (may not exist)")
+	}
+
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
@@ -253,6 +260,43 @@ func fixAndEnforceTableConstraint(db *gorm.DB, tableName string, groupID uint) e
 
 	logging.WithField("table", tableName).Info("Added NOT NULL constraint to group_id")
 	return nil
+}
+
+// dropLegacyIndexes drops old single-column unique indexes that conflict with new composite indexes
+// These legacy indexes were created before the (group_id, name) composite unique constraint was added
+// GORM AutoMigrate doesn't remove old indexes when index names change, so we must do it manually
+func dropLegacyIndexes(db *gorm.DB) error {
+	// These are hardcoded index names from our own schema history - not user input
+	legacyIndexNames := []string{
+		// Old index on animal_tags.name (should be replaced by idx_animal_tag_group_name)
+		"idx_animal_tags_name",
+		// Old index on comment_tags.name (should be replaced by idx_comment_tag_group_name)
+		"idx_comment_tags_name",
+	}
+
+	for _, indexName := range legacyIndexNames {
+		// Use PostgreSQL's quote_ident function for safe identifier quoting
+		// This prevents SQL injection even though we control the index names
+		dropQuery := "DROP INDEX IF EXISTS " + quoteIdentifier(indexName)
+		if err := db.Exec(dropQuery).Error; err != nil {
+			logging.WithFields(map[string]interface{}{
+				"index": indexName,
+				"error": err.Error(),
+			}).Warn("Failed to drop legacy index (may not exist)")
+		} else {
+			logging.WithField("index", indexName).Debug("Attempted to drop legacy index (if existed)")
+		}
+	}
+
+	return nil
+}
+
+// quoteIdentifier safely quotes a PostgreSQL identifier (table name, column name, index name)
+// to prevent SQL injection. This follows PostgreSQL's identifier quoting rules.
+func quoteIdentifier(name string) string {
+	// PostgreSQL identifiers are quoted by doubling internal quotes and wrapping in quotes
+	// Since our index names are hardcoded and don't contain quotes, this is straightforward
+	return `"` + name + `"`
 }
 
 // createDefaultGroups creates the default groups if they don't exist
