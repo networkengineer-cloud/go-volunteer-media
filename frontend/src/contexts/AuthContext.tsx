@@ -95,7 +95,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         register,
         logout,
-        isAuthenticated: !!token,
+        isAuthenticated: !!token && !!user,
         isAdmin: user?.is_admin || false,
         isGroupAdmin: user?.is_group_admin || false,
       }}

@@ -5,6 +5,7 @@ import { useAuth } from './hooks/useAuth';
 import { ToastProvider } from './contexts/ToastContext';
 import { groupsApi } from './api/client';
 import Navigation from './components/Navigation';
+import LoadingSpinner from './components/LoadingSpinner';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import GroupPage from './pages/GroupPage';
@@ -26,20 +27,20 @@ import './App.css';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
-  if (isLoading) return <div className="loading-spinner">Loading...</div>;
+  if (isLoading) return <LoadingSpinner label="Loading" />;
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 };
 
 
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
-  if (isLoading) return <div className="loading-spinner">Loading...</div>;
+  if (isLoading) return <LoadingSpinner label="Loading" />;
   return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" />;
 };
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isAdmin, isLoading } = useAuth();
-  if (isLoading) return <div className="loading-spinner">Loading...</div>;
+  if (isLoading) return <LoadingSpinner label="Loading" />;
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (!isAdmin) return <Navigate to="/dashboard" />;
   return <>{children}</>;
@@ -74,9 +75,9 @@ const GroupAdminRouteInner: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [groupId, isAdmin]);
 
-  if (isLoading) return <div className="loading-spinner">Loading...</div>;
+  if (isLoading) return <LoadingSpinner label="Loading" />;
   if (!isAuthenticated) return <Navigate to="/login" />;
-  if (hasAccess === null) return <div className="loading-spinner">Loading...</div>;
+  if (hasAccess === null) return <LoadingSpinner label="Loading" />;
   if (!hasAccess) return <Navigate to="/dashboard" />;
   return <>{children}</>;
 };
@@ -91,7 +92,7 @@ const UsersRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Check if user is a group admin (has is_group_admin flag set)
   const isGroupAdmin = isAuthenticated && user ? (user.is_group_admin || false) : false;
 
-  if (isLoading) return <div className="loading-spinner">Loading...</div>;
+  if (isLoading) return <LoadingSpinner label="Loading" />;
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (!isAdmin && !isGroupAdmin) return <Navigate to="/dashboard" />;
   return <>{children}</>;
