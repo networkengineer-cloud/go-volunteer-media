@@ -308,15 +308,15 @@ const AnimalDetailPage: React.FC = () => {
       if (!uuid) {
         toast.showError('Invalid document URL');
         setShowProtocolModal(false);
-        setLoadingProtocol(false);
         return;
       }
 
       // Fetch document with authorization header via API client
       const response = await animalsApi.getProtocolDocument(uuid);
       
-      // Create blob URL for iframe
-      const blob = new Blob([response.data], { type: response.headers['content-type'] });
+      // Create blob URL for iframe (headers may be lowercase)
+      const contentType = response.headers['content-type'] || response.headers['Content-Type'] || 'application/pdf';
+      const blob = new Blob([response.data], { type: contentType });
       const blobUrl = window.URL.createObjectURL(blob);
       setProtocolDocumentUrl(blobUrl);
     } catch (error) {
@@ -349,7 +349,7 @@ const AnimalDetailPage: React.FC = () => {
       document.addEventListener('keydown', handleEscape);
       return () => document.removeEventListener('keydown', handleEscape);
     }
-  }, [showProtocolModal, protocolDocumentUrl]);
+  }, [showProtocolModal]);
 
   if (loading) {
     return (
