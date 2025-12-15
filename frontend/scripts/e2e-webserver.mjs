@@ -83,18 +83,20 @@ async function main() {
 
   // Keep the process alive until Playwright stops the webServer.
   // Playwright sends SIGTERM on shutdown.
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    // If we spawned a child and it died, exit so Playwright fails fast.
+  // Monitor child processes and exit if they crash
+  const checkInterval = setInterval(() => {
     if (backendProcess && backendProcess.exitCode !== null) {
+      clearInterval(checkInterval);
       throw new Error(`Backend exited with code ${backendProcess.exitCode}`);
     }
     if (frontendProcess && frontendProcess.exitCode !== null) {
+      clearInterval(checkInterval);
       throw new Error(`Frontend exited with code ${frontendProcess.exitCode}`);
     }
-    // Sleep-ish
-    await new Promise((r) => setTimeout(r, 1000));
-  }
+  }, 1000);
+
+  // Wait indefinitely for SIGTERM (event-driven approach)
+  await new Promise(() => {});
 }
 
 function shutdown() {

@@ -36,7 +36,7 @@ export default defineConfig({
   webServer: {
     command: 'node scripts/e2e-webserver.mjs',
     url: 'http://localhost:5173',
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
 });
