@@ -305,17 +305,27 @@ func createDefaultCommentTags(db *gorm.DB) error {
 
 	for _, group := range groups {
 		for _, template := range defaultTagTemplates {
-			tag := models.CommentTag{
-				GroupID:  group.ID,
-				Name:     template.Name,
-				Color:    template.Color,
-				IsSystem: template.IsSystem,
+			var existingTag models.CommentTag
+			// Check if tag already exists for this group
+			checkResult := db.Where("group_id = ? AND name = ?", group.ID, template.Name).First(&existingTag)
+			
+			if checkResult.Error == gorm.ErrRecordNotFound {
+				// Tag doesn't exist, create it
+				tag := models.CommentTag{
+					GroupID:  group.ID,
+					Name:     template.Name,
+					Color:    template.Color,
+					IsSystem: template.IsSystem,
+				}
+				if err := db.Create(&tag).Error; err != nil {
+					return fmt.Errorf("failed to create default tag %s for group %s: %w", template.Name, group.Name, err)
+				}
+			} else if checkResult.Error != nil {
+				// Some other database error occurred
+				return fmt.Errorf("failed to check for existing comment tag %s in group %s: %w", template.Name, group.Name, checkResult.Error)
 			}
-			// Use FirstOrCreate to atomically check and insert, handling duplicate key gracefully
-			if err := db.Where("group_id = ? AND name = ?", group.ID, template.Name).
-				FirstOrCreate(&tag).Error; err != nil {
-				return fmt.Errorf("failed to create default tag %s for group %s: %w", template.Name, group.Name, err)
-			}
+			// else: tag already exists, skip it
+			
 			logging.WithFields(map[string]interface{}{
 				"tag_name":   template.Name,
 				"group_name": group.Name,
@@ -352,17 +362,27 @@ func createDefaultAnimalTags(db *gorm.DB) error {
 
 	for _, group := range groups {
 		for _, template := range defaultTagTemplates {
-			tag := models.AnimalTag{
-				GroupID:  group.ID,
-				Name:     template.Name,
-				Category: template.Category,
-				Color:    template.Color,
+			var existingTag models.AnimalTag
+			// Check if tag already exists for this group
+			checkResult := db.Where("group_id = ? AND name = ?", group.ID, template.Name).First(&existingTag)
+			
+			if checkResult.Error == gorm.ErrRecordNotFound {
+				// Tag doesn't exist, create it
+				tag := models.AnimalTag{
+					GroupID:  group.ID,
+					Name:     template.Name,
+					Category: template.Category,
+					Color:    template.Color,
+				}
+				if err := db.Create(&tag).Error; err != nil {
+					return fmt.Errorf("failed to create default animal tag %s for group %s: %w", template.Name, group.Name, err)
+				}
+			} else if checkResult.Error != nil {
+				// Some other database error occurred
+				return fmt.Errorf("failed to check for existing animal tag %s in group %s: %w", template.Name, group.Name, checkResult.Error)
 			}
-			// Use FirstOrCreate to atomically check and insert, handling duplicate key gracefully
-			if err := db.Where("group_id = ? AND name = ?", group.ID, template.Name).
-				FirstOrCreate(&tag).Error; err != nil {
-				return fmt.Errorf("failed to create default animal tag %s for group %s: %w", template.Name, group.Name, err)
-			}
+			// else: tag already exists, skip it
+			
 			logging.WithFields(map[string]interface{}{
 				"tag_name":   template.Name,
 				"group_name": group.Name,
