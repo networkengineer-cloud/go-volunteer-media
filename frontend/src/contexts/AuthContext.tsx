@@ -6,6 +6,7 @@ import type { User } from '../api/client';
 interface AuthContextType {
   user: User | null;
   token: string | null;
+  isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -21,16 +22,35 @@ export { AuthContext };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('token');
+    } catch {
+      return null;
+    }
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(!!token);
 
   useEffect(() => {
     if (token) {
+      setIsLoading(true);
       authApi.getCurrentUser()
-        .then(response => setUser(response.data))
+        .then(response => {
+          setUser(response.data);
+        })
         .catch(() => {
-          localStorage.removeItem('token');
+          try {
+            localStorage.removeItem('token');
+          } catch {
+            // ignore storage errors
+          }
           setToken(null);
+        })
+        .finally(() => {
+          setIsLoading(false);
         });
+    } else {
+      setIsLoading(false);
     }
   }, [token]);
 
@@ -38,20 +58,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const response = await authApi.login(username, password);
     setToken(response.data.token);
     setUser(response.data.user);
-    localStorage.setItem('token', response.data.token);
+    try {
+      localStorage.setItem('token', response.data.token);
+    } catch {
+      // ignore storage errors
+    }
   };
 
   const register = async (username: string, email: string, password: string) => {
     const response = await authApi.register(username, email, password);
     setToken(response.data.token);
     setUser(response.data.user);
-    localStorage.setItem('token', response.data.token);
+    try {
+      localStorage.setItem('token', response.data.token);
+    } catch {
+      // ignore storage errors
+    }
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem('token');
+    try {
+      localStorage.removeItem('token');
+    } catch {
+      // ignore storage errors
+    }
   };
 
   return (
@@ -59,10 +91,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       value={{
         user,
         token,
+        isLoading,
         login,
         register,
         logout,
-        isAuthenticated: !!user,
+        isAuthenticated: !!token && !!user,
         isAdmin: user?.is_admin || false,
         isGroupAdmin: user?.is_group_admin || false,
       }}

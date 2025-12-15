@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Photo Features', () => {
   test.describe('Image Preview in Animal Form', () => {
-    test('should show image preview when URL is provided', async () => {
+    test('should show image preview when URL is provided', async ({ page }) => {
       await page.goto('http://localhost:5173');
       
       // Check that the page loaded
@@ -13,7 +13,7 @@ test.describe('Photo Features', () => {
       console.log('Image preview test - would require full app setup with authentication');
     });
 
-    test('should display preview after image upload', async () => {
+    test('should display preview after image upload', async ({ page }) => {
       await page.goto('http://localhost:5173');
       
       // This would require:
@@ -26,7 +26,7 @@ test.describe('Photo Features', () => {
   });
 
   test.describe('Photo Gallery', () => {
-    test('should navigate to photo gallery from animal detail page', async () => {
+    test('should navigate to photo gallery from animal detail page', async ({ page }) => {
       await page.goto('http://localhost:5173');
       
       // This would require:
@@ -37,14 +37,14 @@ test.describe('Photo Features', () => {
       console.log('Photo gallery navigation test - would require full app setup with authentication');
     });
 
-    test('should display photos in grid layout', async () => {
+    test('should display photos in grid layout', async ({ page }) => {
       await page.goto('http://localhost:5173');
       
       // Verify photo gallery displays photos correctly
       console.log('Photo gallery grid test - would require full app setup with authentication and test data');
     });
 
-    test('should open lightbox when photo is clicked', async () => {
+    test('should open lightbox when photo is clicked', async ({ page }) => {
       await page.goto('http://localhost:5173');
       
       // This would require:
@@ -55,7 +55,7 @@ test.describe('Photo Features', () => {
       console.log('Lightbox test - would require full app setup with authentication and test data');
     });
 
-    test('should navigate photos with keyboard arrows in lightbox', async () => {
+    test('should navigate photos with keyboard arrows in lightbox', async ({ page }) => {
       await page.goto('http://localhost:5173');
       
       // This would require:
@@ -67,7 +67,7 @@ test.describe('Photo Features', () => {
       console.log('Keyboard navigation test - would require full app setup with authentication and test data');
     });
 
-    test('should close lightbox with escape key', async () => {
+    test('should close lightbox with escape key', async ({ page }) => {
       await page.goto('http://localhost:5173');
       
       // This would require:
@@ -79,7 +79,7 @@ test.describe('Photo Features', () => {
   });
 
   test.describe('Photo Upload', () => {
-    test('should upload photo successfully', async () => {
+    test('should upload photo successfully', async ({ page }) => {
       await page.goto('http://localhost:5173');
       
       // This would require:
@@ -91,7 +91,7 @@ test.describe('Photo Features', () => {
       console.log('Photo upload test - would require full app setup with authentication');
     });
 
-    test('should show error for invalid file type', async () => {
+    test('should show error for invalid file type', async ({ page }) => {
       await page.goto('http://localhost:5173');
       
       // This would require:
@@ -106,7 +106,7 @@ test.describe('Photo Features', () => {
 
 // Basic visual test that we can run without backend
 test.describe('Visual Tests', () => {
-  test('homepage should load', async () => {
+  test('homepage should load', async ({ page }) => {
     await page.goto('http://localhost:5173');
     await expect(page.locator('body')).toBeVisible();
     

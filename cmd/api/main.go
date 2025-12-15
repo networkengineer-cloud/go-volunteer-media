@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -124,7 +125,13 @@ func main() {
 	api.GET("/documents/:uuid", handlers.ServeAnimalProtocolDocument(db))
 
 	// Public routes (with rate limiting for auth endpoints)
-	authLimiter := middleware.RateLimit(5, 1*time.Minute) // 5 requests per minute
+	authRateLimit := 5
+	if v := os.Getenv("AUTH_RATE_LIMIT_PER_MINUTE"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			authRateLimit = parsed
+		}
+	}
+	authLimiter := middleware.RateLimit(authRateLimit, 1*time.Minute)
 	api.POST("/login", authLimiter, handlers.Login(db))
 	// Registration disabled - invite-only system. Admins can create users via /api/admin/users
 	// api.POST("/register", authLimiter, handlers.Register(db))

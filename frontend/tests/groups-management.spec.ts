@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Groups Management Feature', () => {
   test.describe('Visual Tests', () => {
-    test('groups page should be accessible via navigation for admin', async () => {
+    test('groups page should be accessible via navigation for admin', async ({ page }) => {
       await page.goto('http://localhost:5173');
       await expect(page.locator('body')).toBeVisible();
       
@@ -10,7 +10,7 @@ test.describe('Groups Management Feature', () => {
       await page.screenshot({ path: 'test-results/groups-home.png', fullPage: true });
     });
 
-    test('groups page component should render correctly', async () => {
+    test('groups page component should render correctly', async ({ page }) => {
       // This test verifies that the GroupsPage component exists and is properly structured
       // In a full test environment with backend, we would:
       // 1. Login as admin
@@ -32,7 +32,7 @@ test.describe('Groups Management Feature', () => {
   });
 
   test.describe('Integration Tests (require backend)', () => {
-    test('should display groups management page for admin', async () => {
+    test('should display groups management page for admin', async ({ page }) => {
       // This would require:
       // 1. Backend running with database
       // 2. Admin user credentials
@@ -50,7 +50,7 @@ test.describe('Groups Management Feature', () => {
       console.log('Groups management integration test - requires full setup');
     });
 
-    test('should create a new group', async () => {
+    test('should create a new group', async ({ page }) => {
       // This would require:
       // 1. Login as admin
       // 2. Navigate to groups page
@@ -62,7 +62,7 @@ test.describe('Groups Management Feature', () => {
       console.log('Create group test - requires authentication and backend');
     });
 
-    test('should edit an existing group', async () => {
+    test('should edit an existing group', async ({ page }) => {
       // This would require:
       // 1. Login as admin
       // 2. Navigate to groups page
@@ -74,7 +74,7 @@ test.describe('Groups Management Feature', () => {
       console.log('Edit group test - requires authentication and backend');
     });
 
-    test('should delete a group with confirmation', async () => {
+    test('should delete a group with confirmation', async ({ page }) => {
       // This would require:
       // 1. Login as admin
       // 2. Navigate to groups page
@@ -85,7 +85,7 @@ test.describe('Groups Management Feature', () => {
       console.log('Delete group test - requires authentication and backend');
     });
 
-    test('should validate form inputs', async () => {
+    test('should validate form inputs', async ({ page }) => {
       // This would test:
       // 1. Name field is required
       // 2. Name min length (2 characters)
@@ -95,7 +95,7 @@ test.describe('Groups Management Feature', () => {
       console.log('Form validation test - requires authentication and backend');
     });
 
-    test('should show error messages on API failure', async () => {
+    test('should show error messages on API failure', async ({ page }) => {
       // This would test error handling:
       // 1. Attempt to create group with duplicate name
       // 2. Verify error message displayed
@@ -108,7 +108,7 @@ test.describe('Groups Management Feature', () => {
 });
 
 test.describe('Navigation', () => {
-  test('admin should see Groups link in navigation', async () => {
+  test('admin should see Groups link in navigation', async ({ page }) => {
     // This would require:
     // 1. Login as admin user
     // 2. Verify "Groups" link is visible in navigation
@@ -117,7 +117,7 @@ test.describe('Navigation', () => {
     console.log('Admin navigation test - requires authentication');
   });
 
-  test('non-admin should not see Groups link in navigation', async () => {
+  test('non-admin should not see Groups link in navigation', async ({ page }) => {
     // This would require:
     // 1. Login as regular user
     // 2. Verify "Groups" link is NOT visible in navigation

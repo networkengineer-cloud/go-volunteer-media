@@ -5,6 +5,7 @@ import { useAuth } from './hooks/useAuth';
 import { ToastProvider } from './contexts/ToastContext';
 import { groupsApi } from './api/client';
 import Navigation from './components/Navigation';
+import LoadingSpinner from './components/LoadingSpinner';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import GroupPage from './pages/GroupPage';
@@ -25,18 +26,21 @@ import AdminDashboard from './pages/AdminDashboard';
 import './App.css';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <LoadingSpinner label="Loading" />;
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 };
 
 
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <LoadingSpinner label="Loading" />;
   return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" />;
 };
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, isLoading } = useAuth();
+  if (isLoading) return <LoadingSpinner label="Loading" />;
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (!isAdmin) return <Navigate to="/dashboard" />;
   return <>{children}</>;
@@ -45,7 +49,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 // GroupAdminRoute - allows access if user is site admin OR group admin for the specific group
 // The groupId is extracted from URL params (supports both :id and :groupId patterns)
 const GroupAdminRouteInner: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, isLoading } = useAuth();
   const params = useParams();
   const groupId = params.groupId || params.id;
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);
@@ -71,8 +75,9 @@ const GroupAdminRouteInner: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [groupId, isAdmin]);
 
+  if (isLoading) return <LoadingSpinner label="Loading" />;
   if (!isAuthenticated) return <Navigate to="/login" />;
-  if (hasAccess === null) return <div className="loading-spinner">Loading...</div>;
+  if (hasAccess === null) return <LoadingSpinner label="Loading" />;
   if (!hasAccess) return <Navigate to="/dashboard" />;
   return <>{children}</>;
 };
@@ -83,10 +88,11 @@ const GroupAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
 // UsersRoute - allows access if user is site admin or group admin
 const UsersRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isAdmin, user } = useAuth();
+  const { isAuthenticated, isAdmin, user, isLoading } = useAuth();
   // Check if user is a group admin (has is_group_admin flag set)
   const isGroupAdmin = isAuthenticated && user ? (user.is_group_admin || false) : false;
 
+  if (isLoading) return <LoadingSpinner label="Loading" />;
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (!isAdmin && !isGroupAdmin) return <Navigate to="/dashboard" />;
   return <>{children}</>;

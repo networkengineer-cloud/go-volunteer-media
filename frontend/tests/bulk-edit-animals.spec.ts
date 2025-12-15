@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Bulk Edit Animals Feature', () => {
   test.describe('Visual Tests', () => {
-    test('bulk edit animals page should be accessible via navigation for admin', async () => {
+    test('bulk edit animals page should be accessible via navigation for admin', async ({ page }) => {
       await page.goto('http://localhost:5173');
       await expect(page.locator('body')).toBeVisible();
       
@@ -10,7 +10,7 @@ test.describe('Bulk Edit Animals Feature', () => {
       await page.screenshot({ path: 'test-results/bulk-edit-home.png', fullPage: true });
     });
 
-    test('bulk edit page component should render correctly', async () => {
+    test('bulk edit page component should render correctly', async ({ page }) => {
       // This test verifies that the BulkEditAnimalsPage component exists and is properly structured
       // In a full test environment with backend, we would:
       // 1. Login as admin

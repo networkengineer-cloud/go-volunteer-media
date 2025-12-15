@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { loginAsVolunteer, testUsers } from './helpers/auth';
 
 /**
  * Toast Positioning E2E Tests
@@ -7,13 +8,7 @@ import { test, expect } from '@playwright/test';
  * the navigation bar and logout button.
  */
 
-const BASE_URL = 'http://localhost:5173';
-
-// Test credentials
-const TEST_USER = {
-  username: 'testuser',
-  password: 'password123'
-};
+const TEST_USER = testUsers.volunteer;
 
 test.describe('Toast Positioning - Desktop', () => {
   test.beforeEach(async ({ page }) => {
@@ -21,15 +16,7 @@ test.describe('Toast Positioning - Desktop', () => {
   });
 
   test('toast should not overlap with navigation on successful login', async ({ page }) => {
-    // Navigate to login page
-    await page.goto(BASE_URL + '/login');
-    
-    // Fill in credentials
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    
-    // Submit the form
-    await page.click('button[type="submit"]');
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     // Wait for navigation and toast to appear
     await page.waitForTimeout(1000);
@@ -63,13 +50,7 @@ test.describe('Toast Positioning - Desktop', () => {
   });
 
   test('logout button should not overlap with toast container', async ({ page }) => {
-    // Navigate to login page
-    await page.goto(BASE_URL + '/login');
-    
-    // Login
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     // Wait for navigation
     await page.waitForTimeout(1500);
@@ -97,13 +78,7 @@ test.describe('Toast Positioning - Desktop', () => {
   });
 
   test('toast close button should be easily clickable without hitting logout', async ({ page }) => {
-    // Navigate to login page
-    await page.goto(BASE_URL + '/login');
-    
-    // Login to trigger success toast
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     await page.waitForTimeout(1000);
     
@@ -147,15 +122,7 @@ test.describe('Toast Positioning - Mobile', () => {
   });
 
   test('toast should not overlap with mobile navigation', async ({ page }) => {
-    // Navigate to login page
-    await page.goto(BASE_URL + '/login');
-    
-    // Fill in credentials
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    
-    // Submit the form
-    await page.click('button[type="submit"]');
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     await page.waitForTimeout(1000);
     
@@ -180,13 +147,7 @@ test.describe('Toast Positioning - Mobile', () => {
   });
 
   test('toast should fit within mobile viewport', async ({ page }) => {
-    // Navigate to login page
-    await page.goto(BASE_URL + '/login');
-    
-    // Login
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     await page.waitForTimeout(1000);
     
@@ -214,15 +175,7 @@ test.describe('Toast Positioning - Tablet', () => {
   });
 
   test('toast should not overlap with tablet navigation', async ({ page }) => {
-    // Navigate to login page
-    await page.goto(BASE_URL + '/login');
-    
-    // Fill in credentials
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    
-    // Submit the form
-    await page.click('button[type="submit"]');
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     await page.waitForTimeout(1000);
     

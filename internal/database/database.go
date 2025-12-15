@@ -259,6 +259,7 @@ func fixAndEnforceTableConstraint(db *gorm.DB, tableName string, groupID uint) e
 func createDefaultGroups(db *gorm.DB) error {
 	defaultGroups := []models.Group{
 		{Name: "modsquad", Description: "Behavior modification volunteers group", HasProtocols: true},
+		{Name: "activity-sandbox", Description: "Empty group reserved for automated tests", HasProtocols: false},
 	}
 
 	for _, group := range defaultGroups {

@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { testUsers } from './helpers/auth';
 
 // Mobile tests will run on the mobile-chrome project configured in playwright.config.ts
 test.describe('Mobile Responsiveness', () => {
-  test('should display mobile navigation menu', async () => {
+  test('should display mobile navigation menu', async ({ page }) => {
     await page.goto('/');
     
     // Check if mobile menu toggle is visible on mobile viewport
@@ -20,11 +21,11 @@ test.describe('Mobile Responsiveness', () => {
     }
   });
 
-  test('should have proper touch targets', async () => {
+  test('should have proper touch targets', async ({ page }) => {
     await page.goto('/login');
     
     // Check input fields have proper height
-    const usernameInput = page.locator('input[name="username"]');
+    const usernameInput = page.getByLabel('Username');
     const box = await usernameInput.boundingBox();
     expect(box?.height).toBeGreaterThanOrEqual(44);
     
@@ -34,7 +35,7 @@ test.describe('Mobile Responsiveness', () => {
     expect(buttonBox?.height).toBeGreaterThanOrEqual(44);
   });
 
-  test('should display readable text on mobile', async () => {
+  test('should display readable text on mobile', async ({ page }) => {
     await page.goto('/');
     
     // Check that font size is at least 16px to prevent zoom on iOS
@@ -44,7 +45,7 @@ test.describe('Mobile Responsiveness', () => {
     expect(parseInt(bodyFontSize)).toBeGreaterThanOrEqual(16);
   });
 
-  test('should have viewport meta tag', async () => {
+  test('should have viewport meta tag', async ({ page }) => {
     await page.goto('/');
     
     const viewportMeta = await page.locator('meta[name="viewport"]').getAttribute('content');
@@ -52,7 +53,7 @@ test.describe('Mobile Responsiveness', () => {
     expect(viewportMeta).toContain('initial-scale=1.0');
   });
 
-  test('should stack form elements vertically on mobile', async () => {
+  test('should stack form elements vertically on mobile', async ({ page }) => {
     await page.goto('/login');
     
     const loginCard = page.locator('.login-card');
@@ -68,12 +69,12 @@ test.describe('Mobile Responsiveness', () => {
     }
   });
 
-  test('should handle mobile form submission', async () => {
+  test('should handle mobile form submission', async ({ page }) => {
     await page.goto('/login');
     
     // Fill form on mobile
-    await page.fill('input[name="username"]', 'testuser');
-    await page.fill('input[name="password"]', 'testpass');
+    await page.getByLabel('Username').fill(testUsers.volunteer.username);
+    await page.getByRole('textbox', { name: /^password/i }).fill(testUsers.volunteer.password);
     
     // Submit button should be visible and clickable
     const submitButton = page.locator('button[type="submit"]');
@@ -83,7 +84,7 @@ test.describe('Mobile Responsiveness', () => {
 });
 
 test.describe('Grid Layout Responsiveness', () => {
-  test('should stack grid items on mobile', async () => {
+  test('should stack grid items on mobile', async ({ page }) => {
     // This test would check dashboard grid layout
     // For now, we'll just verify the page loads
     await page.goto('/');
@@ -92,7 +93,7 @@ test.describe('Grid Layout Responsiveness', () => {
     await expect(body).toBeVisible();
   });
 
-  test('should handle image grids on mobile', async () => {
+  test('should handle image grids on mobile', async ({ page }) => {
     await page.goto('/');
     
     // Check that images are responsive
@@ -113,7 +114,7 @@ test.describe('Grid Layout Responsiveness', () => {
 });
 
 test.describe('Mobile Interactions', () => {
-  test('should handle touch events properly', async () => {
+  test('should handle touch events properly', async ({ page }) => {
     await page.goto('/');
     
     // Test tap on mobile menu if visible
@@ -128,7 +129,7 @@ test.describe('Mobile Interactions', () => {
     }
   });
 
-  test('should close mobile menu when navigating', async () => {
+  test('should close mobile menu when navigating', async ({ page }) => {
     await page.goto('/');
     
     // Open mobile menu if toggle is visible
@@ -147,7 +148,7 @@ test.describe('Mobile Interactions', () => {
     }
   });
 
-  test('should scroll smoothly on mobile', async () => {
+  test('should scroll smoothly on mobile', async ({ page }) => {
     await page.goto('/');
     
     // Scroll down
@@ -163,7 +164,19 @@ test.describe('Mobile Interactions', () => {
 });
 
 test.describe('Dark Mode on Mobile', () => {
-  test('should toggle dark mode on mobile', async () => {
+  test.beforeEach(async ({ page }) => {
+    // These tests are about theme behavior on the public home page;
+    // ensure we are not redirected due to leftover auth state.
+    await page.addInitScript(() => {
+      try {
+        localStorage.removeItem('token');
+      } catch {
+        // ignore
+      }
+    });
+  });
+
+  test('should toggle dark mode on mobile', async ({ page }) => {
     await page.goto('/');
     
     // Open mobile menu to access theme toggle if needed
@@ -187,21 +200,20 @@ test.describe('Dark Mode on Mobile', () => {
     expect(['dark', null]).toContain(dataTheme);
   });
 
-  test('should persist theme preference on mobile', async () => {
+  test('should persist theme preference on mobile', async ({ page }) => {
     await page.goto('/');
-    
-    // Set dark mode
-    await page.evaluate(() => {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      localStorage.setItem('theme', 'dark');
-    });
-    
-    // Reload page
+
+    // Toggle to dark mode via the UI (ensures app state + persistence logic is used).
+    const themeToggle = page.locator('.theme-toggle');
+    await expect(themeToggle).toBeVisible();
+    await themeToggle.click();
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    // Reload page and wait for persisted theme to be re-applied.
     await page.reload();
-    
-    // Check if dark mode persisted
-    const html = page.locator('html');
-    const dataTheme = await html.getAttribute('data-theme');
-    expect(dataTheme).toBe('dark');
+    await expect
+      .poll(async () => page.locator('html').getAttribute('data-theme'), { timeout: 10000 })
+      .toBe('dark');
   });
 });

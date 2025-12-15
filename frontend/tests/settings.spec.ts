@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { loginAsVolunteer, testUsers } from './helpers/auth';
 
 /**
  * Settings Page E2E Tests
@@ -12,22 +13,11 @@ import { test, expect } from '@playwright/test';
  */
 
 const BASE_URL = 'http://localhost:5173';
-
-const TEST_USER = {
-  username: 'testuser',
-  password: 'password123'
-};
+const TEST_USER = testUsers.volunteer;
 
 test.describe('Settings Page', () => {
   test.beforeEach(async ({ page }) => {
-    // Login before accessing settings
-    await page.goto(BASE_URL + '/login');
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
-    
-    // Wait for login to complete
-    await page.waitForURL(/\/(dashboard|groups)/i, { timeout: 10000 });
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     // Navigate to settings
     await page.goto(BASE_URL + '/settings');

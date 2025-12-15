@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { loginAsAdmin } from './helpers/auth';
 
 /**
  * Animal Page UX Fix Tests
@@ -11,12 +12,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Animal Page UX Fixes', () => {
   test.beforeEach(async ({ page }) => {
-    // Login as admin to access all features
-    await page.goto('/login');
-    await page.fill('input[name="email"]', 'admin@example.com');
-    await page.fill('input[name="password"]', 'AdminPass123!');
-    await page.click('button[type="submit"]');
-    await page.waitForURL('/dashboard');
+    await loginAsAdmin(page);
   });
 
   test('animal main info box should have dark mode styling', async ({ page }) => {

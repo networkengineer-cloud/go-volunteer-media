@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { loginAsAdmin } from './helpers/auth';
 
 /**
  * Comments Pagination UX Tests
@@ -14,12 +15,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Comments Pagination UX', () => {
   test.beforeEach(async ({ page }) => {
-    // Login as admin to access all features
-    await page.goto('/login');
-    await page.fill('input[name="email"]', 'admin@example.com');
-    await page.fill('input[name="password"]', 'AdminPass123!');
-    await page.click('button[type="submit"]');
-    await page.waitForURL('/dashboard');
+    await loginAsAdmin(page);
   });
 
   test('should display comment count indicator', async ({ page }) => {

@@ -4,19 +4,18 @@ import { useAuth } from '../hooks/useAuth';
 import './Navigation.css';
 
 const Navigation: React.FC = () => {
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, logout, isAuthenticated, isAdmin, isGroupAdmin } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
-
-  // Check if user is a group admin for any group
-  const isGroupAdmin = React.useMemo(() => {
-    return (user?.groups?.length ?? 0) > 0;
-  }, [user?.groups]);
 
   // Theme state and persistence
   const [theme, setTheme] = React.useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'light';
-    const stored = localStorage.getItem('theme');
-    if (stored === 'light' || stored === 'dark') return stored;
+    try {
+      const stored = localStorage.getItem('theme');
+      if (stored === 'light' || stored === 'dark') return stored;
+    } catch {
+      // ignore read errors (e.g., restricted storage)
+    }
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
       ? 'dark'
       : 'light';
@@ -111,13 +110,13 @@ const Navigation: React.FC = () => {
             <Link to="/login" className="nav-login" onClick={closeMobileMenu}>Login</Link>
           ) : (
             <>
-              {user?.is_admin && (
+              {isAdmin && (
                 <>
                   <Link to="/admin/groups" className="nav-admin-groups" onClick={closeMobileMenu}>Groups</Link>
                   <Link to="/admin/site-settings" className="nav-admin-settings" onClick={closeMobileMenu}>Admin</Link>
                 </>
               )}
-              {(user?.is_admin || isGroupAdmin) && (
+              {(isAdmin || isGroupAdmin) && (
                 <>
                   <Link to="/admin/animals" className="nav-admin-animals" onClick={closeMobileMenu}>Animals</Link>
                   <Link to="/admin/animal-tags" className="nav-admin-tags" onClick={closeMobileMenu}>Tags</Link>
@@ -127,7 +126,7 @@ const Navigation: React.FC = () => {
               <Link to="/settings" className="nav-settings" onClick={closeMobileMenu}>My Settings</Link>
               <span className="nav-user" aria-label={`Logged in as ${user?.username}${user?.is_admin ? ', Admin' : ''}`}>
                 {user?.username}
-                {user?.is_admin && <span className="admin-badge" role="status">Admin</span>}
+                {isAdmin && <span className="admin-badge" role="status">Admin</span>}
               </span>
               <button onClick={() => { logout(); closeMobileMenu(); }} className="nav-logout" aria-label="Logout">Logout</button>
             </>

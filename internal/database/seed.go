@@ -1,6 +1,7 @@
 package database
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -19,7 +20,10 @@ func SeedData(db *gorm.DB, force bool) error {
 	var userCount int64
 	db.Model(&models.User{}).Count(&userCount)
 	if userCount > 0 && !force {
-		logging.Info("Database already contains users - skipping seed data (use --force to override)")
+		if err := ensureSandboxMembership(db); err != nil {
+			return fmt.Errorf("failed to ensure sandbox memberships: %w", err)
+		}
+		logging.Info("Database already contains users - ensured sandbox membership; skipping seed data (use --force to override)")
 		return nil
 	}
 
@@ -211,14 +215,19 @@ func updateGroupImages(db *gorm.DB, groups []models.Group) error {
 }
 
 // assignUsersToGroups assigns demo users to ModSquad group (primary focus)
-// It also sets group admin status for merry and sophia
+// It also sets group admin status for merry and sophia, and enrolls all users
+// into the activity-sandbox group (kept empty for automated tests).
 func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group) error {
 	// Find ModSquad group (primary group for demo)
 	var modsquadGroup models.Group
+	var sandboxGroup *models.Group
 	for _, g := range groups {
-		if g.Name == "modsquad" {
+		switch g.Name {
+		case "modsquad":
 			modsquadGroup = g
-			break
+		case "activity-sandbox":
+			groupCopy := g
+			sandboxGroup = &groupCopy
 		}
 	}
 
@@ -227,6 +236,13 @@ func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group
 	for i := range users {
 		if err := db.Model(&users[i]).Association("Groups").Append(&modsquadGroup); err != nil {
 			return err
+		}
+
+		// Enroll all users in the empty sandbox group for deterministic E2E checks.
+		if sandboxGroup != nil {
+			if err := db.Model(&users[i]).Association("Groups").Append(sandboxGroup); err != nil {
+				return err
+			}
 		}
 
 		// Set group admin status for merry and sophia
@@ -242,6 +258,36 @@ func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group
 	}
 
 	logging.Info("Assigned all users to ModSquad group")
+	return nil
+}
+
+// ensureSandboxMembership backfills access to the empty activity-sandbox group for existing demo users
+// when the main seed routine is skipped due to pre-existing data.
+func ensureSandboxMembership(db *gorm.DB) error {
+	var sandboxGroup models.Group
+	if err := db.Where("name = ?", "activity-sandbox").First(&sandboxGroup).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	usernames := []string{"admin", "merry", "sophia", "terry"}
+	for _, username := range usernames {
+		var user models.User
+		if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return err
+		}
+
+		userGroup := models.UserGroup{UserID: user.ID, GroupID: sandboxGroup.ID}
+		if err := db.Where("user_id = ? AND group_id = ?", user.ID, sandboxGroup.ID).FirstOrCreate(&userGroup).Error; err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

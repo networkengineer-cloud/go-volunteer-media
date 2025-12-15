@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { loginAsAdmin as loginAsAdminHelper, testUsers } from './helpers/auth';
 
 /**
  * Admin Password Reset E2E Tests
@@ -10,94 +11,108 @@ import { test, expect, type Page } from '@playwright/test';
  * - Password validation is enforced
  */
 
-// Test configuration
-const BASE_URL = 'http://localhost:5173';
-
-// Test credentials
-const ADMIN_USER = {
-  username: 'testadmin',
-  password: 'password123'
-};
-
+// Seeded demo credentials
+const ADMIN_USER = testUsers.admin;
 const TEST_USER = {
-  username: 'testuser',
-  password: 'password123',
-  email: 'testuser@example.com'
+  username: 'sophia',
+  password: 'demo1234',
+  email: 'sophia@demo.local',
 };
 
 const NEW_PASSWORD = 'newpassword123';
 
 test.describe('Admin Password Reset', () => {
+  test.describe.configure({ mode: 'serial' });
+
   // Helper function to login as admin
   async function loginAsAdmin(page: Page) {
-    await page.goto(BASE_URL + '/login');
-    await page.fill('input[name="username"]', ADMIN_USER.username);
-    await page.fill('input[name="password"]', ADMIN_USER.password);
-    await page.click('button[type="submit"]');
-    await page.waitForURL(/dashboard|\/$/);
+    await loginAsAdminHelper(page, { waitForUrl: /\/(dashboard|groups)/i });
   }
 
-  test('admin should see Reset Password button in users list', async () => {
+  async function goToUsersPage(page: Page) {
+    // Wait until the authenticated nav is present (avoids route-guard redirects
+    // while auth context is still hydrating).
+    await expect(page.getByRole('button', { name: /^logout$/i })).toBeVisible({ timeout: 15000 });
+
+    // Prefer SPA navigation via the nav link (avoids a full reload).
+    const mobileMenuToggle = page.locator('.mobile-menu-toggle');
+    if (await mobileMenuToggle.isVisible().catch(() => false)) {
+      await mobileMenuToggle.click();
+    }
+    await page.getByRole('link', { name: /^users$/i }).click();
+
+    await expect(page).toHaveURL(/\/users\b/i, { timeout: 15000 });
+    await expect(page.locator('.users-page')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.users-grid, .users-error')).toBeVisible({ timeout: 30000 });
+  }
+
+  async function logout(page: Page) {
+    const mobileMenuToggle = page.locator('.mobile-menu-toggle');
+    if (await mobileMenuToggle.isVisible().catch(() => false)) {
+      await mobileMenuToggle.click();
+    }
+    await page.getByRole('button', { name: /^logout$/i }).click();
+    await expect(page.getByRole('link', { name: /^login$/i })).toBeVisible({ timeout: 15000 });
+    await expect
+      .poll(async () => page.evaluate(() => localStorage.getItem('token')), { timeout: 5000 })
+      .toBeNull();
+  }
+
+  test('admin should see Reset Password button in users list', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
     // Navigate to users page
-    await page.goto(BASE_URL + '/admin/users');
-    
-    // Wait for users to load
-    await page.waitForSelector('.users-table, .users-mobile-cards');
+    await goToUsersPage(page);
     
     // Verify Reset Password button is visible
-    const resetPasswordButtons = page.locator('button:has-text("Reset Password")');
+    const resetPasswordButtons = page.locator('.users-grid').getByRole('button', { name: /^reset password$/i });
     await expect(resetPasswordButtons.first()).toBeVisible();
   });
 
-  test('admin should be able to open password reset modal', async () => {
+  test('admin should be able to open password reset modal', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
     // Navigate to users page
-    await page.goto(BASE_URL + '/admin/users');
-    
-    // Wait for users to load
-    await page.waitForSelector('.users-table, .users-mobile-cards');
+    await goToUsersPage(page);
     
     // Click the first Reset Password button
-    const resetPasswordButtons = page.locator('button:has-text("Reset Password")');
+    const resetPasswordButtons = page.locator('.users-grid').getByRole('button', { name: /^reset password$/i });
     await resetPasswordButtons.first().click();
     
     // Verify modal is displayed
     await expect(page.locator('.group-modal-backdrop')).toBeVisible();
     await expect(page.locator('.group-modal h2')).toContainText(/Reset Password for/i);
+
+    const modal = page.locator('.group-modal');
+    await expect(modal).toBeVisible();
     
     // Verify password input field is present
-    await expect(page.locator('input[type="password"]')).toBeVisible();
+    await expect(page.getByLabel(/^new password$/i)).toBeVisible();
     
     // Verify buttons are present
-    await expect(page.locator('button:has-text("Reset Password")')).toBeVisible();
-    await expect(page.locator('button:has-text("Cancel")')).toBeVisible();
+    await expect(modal.getByRole('button', { name: /^reset password$/i })).toBeVisible();
+    await expect(modal.getByRole('button', { name: /^cancel$/i })).toBeVisible();
   });
 
-  test('password reset modal should validate minimum password length', async () => {
+  test('password reset modal should validate minimum password length', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
     // Navigate to users page
-    await page.goto(BASE_URL + '/admin/users');
-    
-    // Wait for users to load
-    await page.waitForSelector('.users-table, .users-mobile-cards');
+    await goToUsersPage(page);
     
     // Click the first Reset Password button
-    const resetPasswordButtons = page.locator('button:has-text("Reset Password")');
+    const resetPasswordButtons = page.locator('.users-grid').getByRole('button', { name: /^reset password$/i });
     await resetPasswordButtons.first().click();
     
     // Try to enter a short password
-    const passwordInput = page.locator('input[type="password"]');
+    const passwordInput = page.getByLabel(/^new password$/i);
     await passwordInput.fill('short');
     
     // Try to submit
-    await page.locator('button[type="submit"]:has-text("Reset Password")').click();
+    await page.locator('.group-modal button[type="submit"]:has-text("Reset Password")').click();
     
     // The form should have HTML5 validation preventing submission
     // Check that we're still on the modal (not closed)
@@ -109,29 +124,26 @@ test.describe('Admin Password Reset', () => {
     await loginAsAdmin(page);
     
     // Navigate to users page
-    await page.goto(BASE_URL + '/admin/users');
-    
-    // Wait for users to load
-    await page.waitForSelector('.users-table, .users-mobile-cards');
+    await goToUsersPage(page);
     
     // Find the test user row and click Reset Password
     // We need to find the row containing testuser
-    const userRow = page.locator(`tr:has-text("${TEST_USER.username}"), .user-card:has-text("${TEST_USER.username}")`);
+    const userRow = page.locator(`.user-card-new:has-text("${TEST_USER.username}")`);
     await expect(userRow).toBeVisible();
     
     // Click Reset Password button for this user
-    await userRow.locator('button:has-text("Reset Password")').click();
+    await userRow.getByRole('button', { name: /^reset password$/i }).click();
     
     // Wait for modal to appear
     await expect(page.locator('.group-modal-backdrop')).toBeVisible();
     await expect(page.locator('.group-modal h2')).toContainText(TEST_USER.username);
     
     // Enter new password
-    const passwordInput = page.locator('input[type="password"]');
+    const passwordInput = page.getByLabel(/^new password$/i);
     await passwordInput.fill(NEW_PASSWORD);
     
     // Submit the form
-    await page.locator('button[type="submit"]:has-text("Reset Password")').click();
+    await page.locator('.group-modal button[type="submit"]:has-text("Reset Password")').click();
     
     // Wait for success message
     await expect(page.locator('.users-success')).toContainText(/reset.*successfully/i);
@@ -140,77 +152,62 @@ test.describe('Admin Password Reset', () => {
     await page.waitForTimeout(2000); // Wait for auto-close after success
     
     // Logout as admin
-    await page.goto(BASE_URL);
-    const logoutButton = page.locator('button:has-text("Logout"), a:has-text("Logout")');
-    if (await logoutButton.isVisible()) {
-      await logoutButton.click();
-    }
+    await logout(page);
     
     // Try to login as the test user with the NEW password
-    await page.goto(BASE_URL + '/login');
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', NEW_PASSWORD);
-    await page.click('button[type="submit"]');
+    await page.goto('/login');
+    await page.getByRole('textbox', { name: /^username/i }).fill(TEST_USER.username);
+    await page.getByRole('textbox', { name: /^password/i }).fill(NEW_PASSWORD);
+    await page.getByRole('button', { name: /^login$/i }).click();
     
     // Verify successful login - should redirect to dashboard
-    await page.waitForURL(/dashboard|\/$/);
+    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 15000 });
     await expect(page.locator('body')).toContainText(/(dashboard|groups|welcome)/i);
     
     // Logout
-    await page.goto(BASE_URL);
-    const logoutButton2 = page.locator('button:has-text("Logout"), a:has-text("Logout")');
-    if (await logoutButton2.isVisible()) {
-      await logoutButton2.click();
-    }
+    await logout(page);
     
     // Now reset the password back to original for other tests
     await loginAsAdmin(page);
-    await page.goto(BASE_URL + '/admin/users');
-    await page.waitForSelector('.users-table, .users-mobile-cards');
+    await goToUsersPage(page);
     
-    const userRow2 = page.locator(`tr:has-text("${TEST_USER.username}"), .user-card:has-text("${TEST_USER.username}")`);
-    await userRow2.locator('button:has-text("Reset Password")').click();
-    await page.locator('input[type="password"]').fill(TEST_USER.password);
-    await page.locator('button[type="submit"]:has-text("Reset Password")').click();
+    const userRow2 = page.locator(`.user-card-new:has-text("${TEST_USER.username}")`);
+    await userRow2.getByRole('button', { name: /^reset password$/i }).click();
+    await page.getByLabel(/^new password$/i).fill(TEST_USER.password);
+    await page.locator('.group-modal button[type="submit"]:has-text("Reset Password")').click();
     await expect(page.locator('.users-success')).toContainText(/reset.*successfully/i);
   });
 
-  test('should close modal when clicking Cancel button', async () => {
+  test('should close modal when clicking Cancel button', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
     // Navigate to users page
-    await page.goto(BASE_URL + '/admin/users');
-    
-    // Wait for users to load
-    await page.waitForSelector('.users-table, .users-mobile-cards');
+    await goToUsersPage(page);
     
     // Click Reset Password button
-    const resetPasswordButtons = page.locator('button:has-text("Reset Password")');
+    const resetPasswordButtons = page.locator('.users-grid').getByRole('button', { name: /^reset password$/i });
     await resetPasswordButtons.first().click();
     
     // Verify modal is visible
     await expect(page.locator('.group-modal-backdrop')).toBeVisible();
     
     // Click Cancel button
-    await page.locator('button:has-text("Cancel")').click();
+    await page.locator('.group-modal').getByRole('button', { name: /^cancel$/i }).click();
     
     // Verify modal is closed
     await expect(page.locator('.group-modal-backdrop')).not.toBeVisible();
   });
 
-  test('should close modal when clicking backdrop', async () => {
+  test('should close modal when clicking backdrop', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
     // Navigate to users page
-    await page.goto(BASE_URL + '/admin/users');
-    
-    // Wait for users to load
-    await page.waitForSelector('.users-table, .users-mobile-cards');
+    await goToUsersPage(page);
     
     // Click Reset Password button
-    const resetPasswordButtons = page.locator('button:has-text("Reset Password")');
+    const resetPasswordButtons = page.locator('.users-grid').getByRole('button', { name: /^reset password$/i });
     await resetPasswordButtons.first().click();
     
     // Verify modal is visible
@@ -223,21 +220,21 @@ test.describe('Admin Password Reset', () => {
     await expect(page.locator('.group-modal-backdrop')).not.toBeVisible();
   });
 
-  test('Reset Password button should be disabled for deleted users', async () => {
+  test('Reset Password button should be disabled for deleted users', async ({ page }) => {
     // Login as admin
     await loginAsAdmin(page);
     
     // Navigate to users page
-    await page.goto(BASE_URL + '/admin/users');
+    await goToUsersPage(page);
     
     // Click "Show Deleted Users" button
-    await page.click('button:has-text("Show Deleted Users")');
+    await page.getByRole('button', { name: /^show deleted users$/i }).click();
     
     // Wait for deleted users to load
     await page.waitForTimeout(1000);
     
     // Check if there are any deleted users
-    const userRows = page.locator('.users-table tbody tr, .users-mobile-cards .user-card');
+    const userRows = page.locator('.user-card-new');
     const count = await userRows.count();
     
     if (count > 0) {
