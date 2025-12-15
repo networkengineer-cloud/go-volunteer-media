@@ -305,23 +305,21 @@ func createDefaultCommentTags(db *gorm.DB) error {
 
 	for _, group := range groups {
 		for _, template := range defaultTagTemplates {
-			var existing models.CommentTag
-			result := db.Where("name = ? AND group_id = ?", template.Name, group.ID).First(&existing)
-			if result.Error == gorm.ErrRecordNotFound {
-				tag := models.CommentTag{
-					GroupID:  group.ID,
-					Name:     template.Name,
-					Color:    template.Color,
-					IsSystem: template.IsSystem,
-				}
-				if err := db.Create(&tag).Error; err != nil {
-					return fmt.Errorf("failed to create default tag %s for group %s: %w", template.Name, group.Name, err)
-				}
-				logging.WithFields(map[string]interface{}{
-					"tag_name":   template.Name,
-					"group_name": group.Name,
-				}).Info("Created default comment tag for group")
+			tag := models.CommentTag{
+				GroupID:  group.ID,
+				Name:     template.Name,
+				Color:    template.Color,
+				IsSystem: template.IsSystem,
 			}
+			// Use FirstOrCreate to atomically check and insert, handling duplicate key gracefully
+			if err := db.Where("group_id = ? AND name = ?", group.ID, template.Name).
+				FirstOrCreate(&tag).Error; err != nil {
+				return fmt.Errorf("failed to create default tag %s for group %s: %w", template.Name, group.Name, err)
+			}
+			logging.WithFields(map[string]interface{}{
+				"tag_name":   template.Name,
+				"group_name": group.Name,
+			}).Debug("Ensured default comment tag exists for group")
 		}
 	}
 
@@ -354,23 +352,21 @@ func createDefaultAnimalTags(db *gorm.DB) error {
 
 	for _, group := range groups {
 		for _, template := range defaultTagTemplates {
-			var existing models.AnimalTag
-			result := db.Where("name = ? AND group_id = ?", template.Name, group.ID).First(&existing)
-			if result.Error == gorm.ErrRecordNotFound {
-				tag := models.AnimalTag{
-					GroupID:  group.ID,
-					Name:     template.Name,
-					Category: template.Category,
-					Color:    template.Color,
-				}
-				if err := db.Create(&tag).Error; err != nil {
-					return fmt.Errorf("failed to create default animal tag %s for group %s: %w", template.Name, group.Name, err)
-				}
-				logging.WithFields(map[string]interface{}{
-					"tag_name":   template.Name,
-					"group_name": group.Name,
-				}).Info("Created default animal tag for group")
+			tag := models.AnimalTag{
+				GroupID:  group.ID,
+				Name:     template.Name,
+				Category: template.Category,
+				Color:    template.Color,
 			}
+			// Use FirstOrCreate to atomically check and insert, handling duplicate key gracefully
+			if err := db.Where("group_id = ? AND name = ?", group.ID, template.Name).
+				FirstOrCreate(&tag).Error; err != nil {
+				return fmt.Errorf("failed to create default animal tag %s for group %s: %w", template.Name, group.Name, err)
+			}
+			logging.WithFields(map[string]interface{}{
+				"tag_name":   template.Name,
+				"group_name": group.Name,
+			}).Debug("Ensured default animal tag exists for group")
 		}
 	}
 
