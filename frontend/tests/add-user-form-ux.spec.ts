@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { loginAsAdmin } from './helpers/auth';
 
 /**
  * UX Testing for Improved Add User Form
@@ -16,12 +17,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Add User Form UX', () => {
   test.beforeEach(async ({ page }) => {
-    // Login as admin to access user management
-    await page.goto('/login');
-    await page.fill('input[name="username"]', 'admin');
-    await page.fill('input[name="password"]', 'admin123');
-    await page.click('button[type="submit"]');
-    await page.waitForURL('/dashboard');
+    await loginAsAdmin(page);
     
     // Navigate to Users page
     await page.goto('/users');

@@ -1,6 +1,6 @@
 .toast-container {
   position: fixed;
-  top: 5rem;
+  top: 5.5rem;
   right: 1rem;
   z-index: var(--z-tooltip, 1070);
   display: flex;
@@ -13,7 +13,7 @@
 /* Responsive adjustments */
 @media (max-width: 640px) {
   .toast-container {
-    top: 4.5rem;
+    top: 5rem;
     right: 0.5rem;
     left: 0.5rem;
     max-width: none;

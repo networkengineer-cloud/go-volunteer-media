@@ -1,20 +1,17 @@
 import { test, expect, type Page } from '@playwright/test';
+import { loginAsAdmin as loginAsAdminHelper } from './helpers/auth';
 
 test.describe('Animal Tagging System', () => {
   // Helper to login as admin
   async function loginAsAdmin(page: Page) {
-    await page.goto('http://localhost:5173/login');
-    await page.fill('input[name="username"]', 'admin');
-    await page.fill('input[name="password"]', 'admin123');
-    await page.click('button[type="submit"]');
-    await page.waitForURL(/.*dashboard/);
+    await loginAsAdminHelper(page);
   }
 
   test('should only have modsquad as default group', async ({ page }) => {
     await loginAsAdmin(page);
     
     // Navigate to groups management page
-    await page.goto('http://localhost:5173/admin/groups');
+    await page.goto('/admin/groups');
     await page.waitForLoadState('networkidle');
     
     // Check that only modsquad exists or that dogs/cats are not listed
@@ -30,7 +27,7 @@ test.describe('Animal Tagging System', () => {
     await loginAsAdmin(page);
     
     // Navigate to animal tags management
-    await page.goto('http://localhost:5173/admin/animal-tags');
+    await page.goto('/admin/animal-tags');
     await page.waitForLoadState('networkidle');
     
     // Check for behavior tags section (h3 in new layout)
@@ -53,7 +50,7 @@ test.describe('Animal Tagging System', () => {
     await loginAsAdmin(page);
     
     // Navigate to animal tags management
-    await page.goto('http://localhost:5173/admin/animal-tags');
+    await page.goto('/admin/animal-tags');
     await page.waitForLoadState('networkidle');
     
     // Click create button (updated text)
@@ -78,7 +75,7 @@ test.describe('Animal Tagging System', () => {
     
     // First, we need to create an animal with tags
     // Navigate to a group
-    await page.goto('http://localhost:5173/dashboard');
+    await page.goto('/dashboard');
     await page.waitForLoadState('networkidle');
     
     // Try to find a group link or navigate directly

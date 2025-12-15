@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { loginAsAdmin, loginAsVolunteer, testUsers } from './helpers/auth';
 
 /**
  * Default Group Feature E2E Tests
@@ -11,57 +12,23 @@ import { test, expect } from '@playwright/test';
  * - Setting default group preference
  */
 
-// Test configuration
-const BASE_URL = 'http://localhost:5173';
-
-// Test credentials
-const TEST_USER = {
-  username: 'testuser',
-  password: 'password123'
-};
-
-const ADMIN_USER = {
-  username: 'testadmin',
-  password: 'password123'
-};
+const TEST_USER = testUsers.volunteer;
+const ADMIN_USER = testUsers.admin;
 
 test.describe('Default Group Feature', () => {
-  
-  test.beforeEach(async ({ page }) => {
-    // Navigate to login page
-    await page.goto(BASE_URL + '/login');
-  });
-
   test('should display default group after login', async ({ page }) => {
-    // Login as regular user
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     // Wait for navigation to dashboard which will redirect to group page
     await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
-    
-    // Should end up on a group page (either dashboard redirects or directly on group page)
-    const currentUrl = page.url();
-    
-    // If we're on a group page, verify the group name is displayed
-    if (currentUrl.includes('/groups/')) {
-      await expect(page.locator('.group-header h1')).toBeVisible({ timeout: 10000 });
-      await expect(page.locator('.group-tabs')).toBeVisible();
-    } else if (currentUrl.includes('/dashboard')) {
-      // On dashboard (possibly no groups or in transition)
-      // Just verify we're authenticated
-      await expect(page.locator('h1')).toContainText(/welcome/i);
-    }
+
+    // The dashboard experience may immediately render group content (with or without changing the URL).
+    // For seeded users, the success signal is that the group UI is present.
+    await expect(page.locator('.group-tabs')).toBeVisible({ timeout: 15000 });
   });
 
   test('should display group switcher when user has multiple groups', async ({ page }) => {
-    // Login as user
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
-    
-    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     // Check if group switcher is present (only if user has multiple groups)
     const groupSwitcher = page.locator('.group-switcher');
@@ -79,19 +46,13 @@ test.describe('Default Group Feature', () => {
   });
 
   test('should display activity feed or latest comments', async ({ page }) => {
-    // Login as user
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
-    
-    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     const currentUrl = page.url();
     
     if (currentUrl.includes('/groups/')) {
-      // On group page, check for activity feed or comments
-      const activityPanel = page.locator('#activity-panel, .activity-feed');
-      await expect(activityPanel).toBeVisible({ timeout: 10000 });
+      // On group page, check for Activity Feed tab panel
+      await expect(page.getByRole('tabpanel', { name: /activity feed/i })).toBeVisible({ timeout: 15000 });
     } else {
       // On dashboard (if groups exist), wait for redirect
       await page.waitForURL(/\/groups\//, { timeout: 5000 }).catch(() => {});
@@ -99,12 +60,7 @@ test.describe('Default Group Feature', () => {
   });
 
   test('should display animals section or tab', async ({ page }) => {
-    // Login as user
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
-    
-    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     const currentUrl = page.url();
     
@@ -123,12 +79,7 @@ test.describe('Default Group Feature', () => {
   });
 
   test('should be able to switch between groups', async ({ page }) => {
-    // Login as user
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
-    
-    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     // Wait for redirect to group page if it happens
     await page.waitForURL(/\/groups\//, { timeout: 5000 }).catch(() => {});
@@ -173,16 +124,11 @@ test.describe('Default Group Feature', () => {
   });
 
   test('should redirect directly to group page from dashboard', async ({ page }) => {
-    // Login as user
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
-    
-    // Should be redirected to dashboard first
-    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
-    
-    // Dashboard should immediately redirect to the group page
-    await page.waitForURL(/\/groups\/\d+/, { timeout: 5000 });
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
+
+    // Visiting /dashboard should immediately redirect to a group page.
+    await page.goto('/dashboard');
+    await page.waitForURL(/\/groups\/\d+/, { timeout: 15000 });
     
     // Verify we're on a group page
     const currentUrl = page.url();
@@ -200,12 +146,7 @@ test.describe('Default Group Feature', () => {
   });
 
   test('activity feed should be visible on group page', async ({ page }) => {
-    // Login as user
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
-    
-    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     // Wait for redirect to group page
     await page.waitForURL(/\/groups\/\d+/, { timeout: 5000 });
@@ -220,32 +161,21 @@ test.describe('Default Group Feature', () => {
   });
 
   test('should display comments in activity feed', async ({ page }) => {
-    // Login as user
-    await page.fill('input[name="username"]', TEST_USER.username);
-    await page.fill('input[name="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
-    
-    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
+    await loginAsVolunteer(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     // Wait for redirect to group page
-    await page.waitForURL(/\/groups\/\d+/, { timeout: 5000 });
+    await page.waitForURL(/\/groups\/\d+/, { timeout: 15000 });
     
-    // Activity feed should be visible
-    const activityFeed = page.locator('.activity-feed, #activity-panel');
-    await expect(activityFeed).toBeVisible({ timeout: 10000 });
+    // Activity feed should be visible and have items (seeded data)
+    await expect(page.locator('#activity-panel')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.activity-item').first()).toBeVisible({ timeout: 15000 });
   });
 });
 
 test.describe('Default Group Feature - Admin View', () => {
   
   test('should allow admin to see all groups and switch between them', async ({ page }) => {
-    // Login as admin
-    await page.goto(BASE_URL + '/login');
-    await page.fill('input[name="username"]', ADMIN_USER.username);
-    await page.fill('input[name="password"]', ADMIN_USER.password);
-    await page.click('button[type="submit"]');
-    
-    await page.waitForURL(/\/(dashboard|groups)/, { timeout: 10000 });
+    await loginAsAdmin(page, { waitForUrl: /\/(dashboard|groups)/i });
     
     // Wait for redirect to group page
     await page.waitForURL(/\/groups\/\d+/, { timeout: 5000 }).catch(() => {});

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { loginAsAdmin } from './helpers/auth';
 
 /**
  * Dark Mode Contrast & Readability Tests
@@ -15,12 +16,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Dark Mode Contrast & Readability', () => {
   test.beforeEach(async ({ page }) => {
-    // Login as admin to access all features
-    await page.goto('/login');
-    await page.fill('input[name="email"]', 'admin@example.com');
-    await page.fill('input[name="password"]', 'AdminPass123!');
-    await page.click('button[type="submit"]');
-    await page.waitForURL('/dashboard');
+    await loginAsAdmin(page);
     
     // Enable dark mode
     await page.evaluate(() => {

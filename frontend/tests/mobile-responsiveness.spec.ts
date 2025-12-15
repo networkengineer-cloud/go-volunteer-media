@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { testUsers } from './helpers/auth';
 
 // Mobile tests will run on the mobile-chrome project configured in playwright.config.ts
 test.describe('Mobile Responsiveness', () => {
@@ -24,7 +25,7 @@ test.describe('Mobile Responsiveness', () => {
     await page.goto('/login');
     
     // Check input fields have proper height
-    const usernameInput = page.locator('input[name="username"]');
+    const usernameInput = page.getByLabel('Username');
     const box = await usernameInput.boundingBox();
     expect(box?.height).toBeGreaterThanOrEqual(44);
     
@@ -72,8 +73,8 @@ test.describe('Mobile Responsiveness', () => {
     await page.goto('/login');
     
     // Fill form on mobile
-    await page.fill('input[name="username"]', 'testuser');
-    await page.fill('input[name="password"]', 'testpass');
+    await page.getByLabel('Username').fill(testUsers.volunteer.username);
+    await page.getByRole('textbox', { name: /^password/i }).fill(testUsers.volunteer.password);
     
     // Submit button should be visible and clickable
     const submitButton = page.locator('button[type="submit"]');
@@ -163,6 +164,18 @@ test.describe('Mobile Interactions', () => {
 });
 
 test.describe('Dark Mode on Mobile', () => {
+  test.beforeEach(async ({ page }) => {
+    // These tests are about theme behavior on the public home page;
+    // ensure we are not redirected due to leftover auth state.
+    await page.addInitScript(() => {
+      try {
+        localStorage.removeItem('token');
+      } catch {
+        // ignore
+      }
+    });
+  });
+
   test('should toggle dark mode on mobile', async ({ page }) => {
     await page.goto('/');
     
@@ -189,19 +202,18 @@ test.describe('Dark Mode on Mobile', () => {
 
   test('should persist theme preference on mobile', async ({ page }) => {
     await page.goto('/');
-    
-    // Set dark mode
-    await page.evaluate(() => {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      localStorage.setItem('theme', 'dark');
-    });
-    
-    // Reload page
+
+    // Toggle to dark mode via the UI (ensures app state + persistence logic is used).
+    const themeToggle = page.locator('.theme-toggle');
+    await expect(themeToggle).toBeVisible();
+    await themeToggle.click();
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    // Reload page and wait for persisted theme to be re-applied.
     await page.reload();
-    
-    // Check if dark mode persisted
-    const html = page.locator('html');
-    const dataTheme = await html.getAttribute('data-theme');
-    expect(dataTheme).toBe('dark');
+    await expect
+      .poll(async () => page.locator('html').getAttribute('data-theme'), { timeout: 10000 })
+      .toBe('dark');
   });
 });

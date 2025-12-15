@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { loginAsAdmin as loginAsAdminHelper } from './helpers/auth';
 
 /**
  * Animal Form UX E2E Tests
@@ -11,19 +12,9 @@ import { test, expect, type Page } from '@playwright/test';
 
 const BASE_URL = 'http://localhost:5173';
 
-// Test credentials (admin required for animal editing)
-const ADMIN_USER = {
-  username: 'testadmin',
-  password: 'password123'
-};
-
 // Helper function to login
 async function loginAsAdmin(page: Page) {
-  await page.goto(BASE_URL + '/login');
-  await page.fill('input[name="username"]', ADMIN_USER.username);
-  await page.fill('input[name="password"]', ADMIN_USER.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL(/\/(dashboard|groups)/i, { timeout: 10000 });
+  await loginAsAdminHelper(page, { waitForUrl: /\/(dashboard|groups)/i });
 }
 
 test.describe('Animal Form UX Improvements', () => {
