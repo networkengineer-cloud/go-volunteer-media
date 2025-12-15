@@ -140,42 +140,39 @@ func UploadAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 // Requires authentication and verifies user is member of the animal's group
 func ServeAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		documentUUID := c.Param("uuid")
 		documentURL := fmt.Sprintf("/api/documents/%s", documentUUID)
 
-		// Get authenticated user
-		userValue, exists := c.Get("user")
+		// AuthRequired middleware stores user claims in context
+		userIDValue, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
-		user := userValue.(*models.User)
+		userID := userIDValue.(uint)
+
+		isAdminValue, _ := c.Get("is_admin")
+		isAdmin, _ := isAdminValue.(bool)
 
 		// Find animal with the protocol document
 		var animal models.Animal
-		if err := db.Where("protocol_document_url = ?", documentURL).First(&animal).Error; err != nil {
+		if err := db.WithContext(ctx).Where("protocol_document_url = ?", documentURL).First(&animal).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Document not found"})
 			return
 		}
 
 		// Authorization: Verify user is member of the animal's group (or is admin)
-		if !user.IsAdmin {
-			var userGroups []models.Group
-			if err := db.Model(user).Association("Groups").Find(&userGroups); err != nil {
+		if !isAdmin {
+			var count int64
+			if err := db.WithContext(ctx).
+				Model(&models.UserGroup{}).
+				Where("user_id = ? AND group_id = ?", userID, animal.GroupID).
+				Count(&count).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
 				return
 			}
-
-			// Check if user is member of the animal's group
-			isMember := false
-			for _, group := range userGroups {
-				if group.ID == animal.GroupID {
-					isMember = true
-					break
-				}
-			}
-
-			if !isMember {
+			if count == 0 {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: You must be a member of this group to view this document"})
 				return
 			}
