@@ -7,6 +7,7 @@ import { useToast } from '../hooks/useToast';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
+import { renderAsync as renderDocxAsync } from 'docx-preview';
 import './AnimalDetailPage.css';
 
 // Helper function to calculate quarantine end date (10 days, cannot end on weekend)
@@ -55,7 +56,12 @@ const AnimalDetailPage: React.FC = () => {
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [showProtocolModal, setShowProtocolModal] = useState(false);
   const [protocolDocumentUrl, setProtocolDocumentUrl] = useState<string | null>(null);
+  const [protocolDocumentBlob, setProtocolDocumentBlob] = useState<Blob | null>(null);
+  const [protocolDocumentKind, setProtocolDocumentKind] = useState<'pdf' | 'docx' | 'unknown'>('unknown');
+  const [protocolRenderError, setProtocolRenderError] = useState<string | null>(null);
   const [loadingProtocol, setLoadingProtocol] = useState(false);
+  const protocolDocxBodyRef = useRef<HTMLDivElement>(null);
+  const protocolDocxStyleRef = useRef<HTMLDivElement>(null);
   const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
 
@@ -301,6 +307,7 @@ const AnimalDetailPage: React.FC = () => {
     
     setLoadingProtocol(true);
     setShowProtocolModal(true);
+    setProtocolRenderError(null);
     
     try {
       // Extract UUID from the document URL (format: /api/documents/UUID)
@@ -313,16 +320,47 @@ const AnimalDetailPage: React.FC = () => {
 
       // Fetch document with authorization header via API client
       const response = await animalsApi.getProtocolDocument(uuid);
-      
-      // Create blob URL for iframe (headers may be lowercase)
-      const contentType = response.headers['content-type'] || response.headers['Content-Type'] || 'application/pdf';
-      const blob = new Blob([response.data], { type: contentType });
-      const blobUrl = window.URL.createObjectURL(blob);
-      setProtocolDocumentUrl(blobUrl);
+
+      if (!(response.data instanceof Blob)) {
+        throw new Error('Unexpected response type');
+      }
+
+      const responseBlob = response.data;
+      const rawHeaderContentType = response.headers?.['content-type'] || response.headers?.['Content-Type'];
+      const headerContentType = typeof rawHeaderContentType === 'string' ? rawHeaderContentType : undefined;
+      const filename = (animal.protocol_document_name || '').toLowerCase();
+
+      const inferredContentType =
+        responseBlob.type ||
+        headerContentType ||
+        (filename.endsWith('.docx')
+          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : 'application/pdf');
+
+      const isDocx =
+        inferredContentType.includes('officedocument.wordprocessingml.document') ||
+        filename.endsWith('.docx');
+
+      // Clear any previous preview state
+      if (protocolDocumentUrl) {
+        window.URL.revokeObjectURL(protocolDocumentUrl);
+        setProtocolDocumentUrl(null);
+      }
+      setProtocolDocumentBlob(null);
+
+      if (isDocx) {
+        setProtocolDocumentKind('docx');
+        setProtocolDocumentBlob(new Blob([responseBlob], { type: inferredContentType }));
+      } else {
+        setProtocolDocumentKind('pdf');
+        const pdfBlob = new Blob([responseBlob], { type: inferredContentType });
+        const blobUrl = window.URL.createObjectURL(pdfBlob);
+        setProtocolDocumentUrl(blobUrl);
+      }
     } catch (error) {
       console.error('Failed to open protocol document:', error);
       toast.showError('Failed to open protocol document. Please try again.');
-      setShowProtocolModal(false);
+      setProtocolRenderError('Failed to open protocol document. Please try again.');
     } finally {
       setLoadingProtocol(false);
     }
@@ -330,12 +368,46 @@ const AnimalDetailPage: React.FC = () => {
 
   const handleCloseProtocolModal = () => {
     setShowProtocolModal(false);
+    setProtocolRenderError(null);
     // Clean up blob URL
     if (protocolDocumentUrl) {
       window.URL.revokeObjectURL(protocolDocumentUrl);
       setProtocolDocumentUrl(null);
     }
+    setProtocolDocumentBlob(null);
+    setProtocolDocumentKind('unknown');
   };
+
+  useEffect(() => {
+    const shouldRender = showProtocolModal && !loadingProtocol && protocolDocumentKind === 'docx' && protocolDocumentBlob;
+    if (!shouldRender) return;
+
+    const bodyContainer = protocolDocxBodyRef.current;
+    const styleContainer = protocolDocxStyleRef.current;
+    if (!bodyContainer || !styleContainer) return;
+
+    bodyContainer.innerHTML = '';
+    styleContainer.innerHTML = '';
+
+    let cancelled = false;
+    (async () => {
+      try {
+        await renderDocxAsync(protocolDocumentBlob, bodyContainer, styleContainer, {
+          inWrapper: true,
+          breakPages: true,
+          useBase64URL: true,
+        });
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Failed to render protocol DOCX:', err);
+        setProtocolRenderError('Unable to render this DOCX document.');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showProtocolModal, loadingProtocol, protocolDocumentKind, protocolDocumentBlob]);
 
   // Close modal on Escape key
   useEffect(() => {
@@ -973,6 +1045,15 @@ const AnimalDetailPage: React.FC = () => {
                   <div className="protocol-loading">
                     <span className="loading-spinner" aria-label="Loading protocol document"></span>
                     <p>Loading protocol document...</p>
+                  </div>
+                ) : protocolRenderError ? (
+                  <div className="protocol-render-error" role="alert">
+                    <p>{protocolRenderError}</p>
+                  </div>
+                ) : protocolDocumentKind === 'docx' ? (
+                  <div className="protocol-docx-root">
+                    <div ref={protocolDocxStyleRef} />
+                    <div ref={protocolDocxBodyRef} className="protocol-docx-container" />
                   </div>
                 ) : protocolDocumentUrl ? (
                   <iframe

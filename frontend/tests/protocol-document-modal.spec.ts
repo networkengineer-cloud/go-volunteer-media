@@ -1,5 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { loginAsAdmin } from './helpers/auth';
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { testUsers } from './helpers/auth';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 /**
  * Protocol Document Modal UX Tests
@@ -11,21 +14,190 @@ import { loginAsAdmin } from './helpers/auth';
  */
 
 test.describe('Protocol Document Modal UX', () => {
-  test.beforeEach(async ({ page }) => {
-    // Attempt login; if environment is not running backend, skip gracefully
-    try {
-      await loginAsAdmin(page);
-    } catch {
-      // If login fails or no token, skip subsequent steps
-    }
+  let adminToken: string;
+  const tokenCachePath = path.join(os.tmpdir(), 'go-volunteer-media-e2e-admin-token.json');
+  const tokenLockPath = `${tokenCachePath}.lock`;
+
+  interface ApiGroup {
+    id: number;
+  }
+
+  interface ApiAnimal {
+    id: number;
+  }
+
+  const getToken = async (page: Page): Promise<string> => {
     const token = await page.evaluate(() => localStorage.getItem('token'));
-    if (!token) {
-      test.skip();
+    expect(token, 'Missing auth token after login').toBeTruthy();
+    return token as string;
+  };
+
+  const getFirstAnimalIds = async (
+    request: APIRequestContext,
+    token: string
+  ): Promise<{ groupId: number; animalId: number }> => {
+    const groupsResp = await request.get('/api/groups', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(groupsResp.ok(), `Failed to load groups: ${groupsResp.status()}`).toBeTruthy();
+
+    const groups = (await groupsResp.json()) as ApiGroup[];
+    expect(groups.length, 'No groups returned from /api/groups').toBeGreaterThan(0);
+    const groupId = groups[0].id;
+
+    const animalsResp = await request.get(`/api/groups/${groupId}/animals?status=all`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(animalsResp.ok(), `Failed to load animals: ${animalsResp.status()}`).toBeTruthy();
+
+    const animals = (await animalsResp.json()) as ApiAnimal[];
+    expect(animals.length, `No animals returned for group ${groupId}`).toBeGreaterThan(0);
+
+    return { groupId, animalId: animals[0].id };
+  };
+
+  const openAnimalDetailWithProtocol = async (page: Page, request: APIRequestContext) => {
+    const token = await getToken(page);
+    const { groupId, animalId } = await getFirstAnimalIds(request, token);
+
+    await page.goto(`/groups/${groupId}/animals/${animalId}/view`);
+    await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
+
+    // If no protocol document section/button exists, upload a small fixture PDF via authenticated API and reload.
+    const hasProtocolSection = (await page.locator('.protocol-document-section').count()) > 0;
+    const hasViewButton = (await page.locator('.btn-view-document').count()) > 0;
+    if (!hasProtocolSection || !hasViewButton) {
+      const fixtureBuffer = fs.readFileSync(new URL('./fixtures/protocol.pdf', import.meta.url));
+      const resp = await request.post(`/api/groups/${groupId}/animals/${animalId}/protocol-document`, {
+        headers: { Authorization: `Bearer ${token}` },
+        multipart: {
+          document: {
+            name: 'protocol.pdf',
+            mimeType: 'application/pdf',
+            buffer: fixtureBuffer,
+          },
+        },
+      });
+      expect(resp.ok(), `Failed to upload protocol fixture: ${resp.status()}`).toBeTruthy();
+      await page.reload();
+      await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
+    }
+
+    await expect(page.locator('.btn-view-document')).toBeVisible({ timeout: 10000 });
+    return { groupId, animalId };
+  };
+
+  const openProtocolModal = async (page: Page) => {
+    await page.click('.btn-view-document');
+    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 10000 });
+  };
+
+  test.beforeAll(async ({ request }) => {
+    const validateToken = async (token: string): Promise<boolean> => {
+      const resp = await request.get('/api/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return resp.ok();
+    };
+
+    const readCachedToken = async (): Promise<string | null> => {
+      try {
+        const raw = fs.readFileSync(tokenCachePath, 'utf8');
+        const parsed = JSON.parse(raw) as { token?: string };
+        if (typeof parsed.token !== 'string' || parsed.token.length === 0) return null;
+        return parsed.token;
+      } catch {
+        return null;
+      }
+    };
+
+    const writeCachedToken = (token: string) => {
+      fs.writeFileSync(tokenCachePath, JSON.stringify({ token }), 'utf8');
+    };
+
+    const cached = await readCachedToken();
+    if (cached && (await validateToken(cached))) {
+      adminToken = cached;
       return;
+    }
+
+    // Try to acquire a simple file lock so only one project hits /api/login.
+    let lockFd: number | null = null;
+    try {
+      lockFd = fs.openSync(tokenLockPath, 'wx');
+    } catch {
+      lockFd = null;
+    }
+
+    if (lockFd === null) {
+      // Another project is logging in. Wait for the token file to appear.
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        const maybeToken = await readCachedToken();
+        if (maybeToken && (await validateToken(maybeToken))) {
+          adminToken = maybeToken;
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      // Fall through to login attempt if the lock holder failed.
+    }
+
+    try {
+      const maxAttempts = 10;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const resp = await request.post('/api/login', {
+          data: {
+            username: testUsers.admin.username,
+            password: testUsers.admin.password,
+          },
+        });
+
+        if (resp.status() === 429 && attempt < maxAttempts) {
+          const backoffMs = Math.min(1000 * 2 ** (attempt - 1), 10000);
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+          continue;
+        }
+
+        expect(resp.ok(), `Failed to login via API: ${resp.status()}`).toBeTruthy();
+        const json = (await resp.json()) as { token?: string };
+        expect(json.token, 'Missing token in /api/login response').toBeTruthy();
+        adminToken = json.token as string;
+        writeCachedToken(adminToken);
+        return;
+      }
+
+      throw new Error('Failed to login via API after retries');
+    } finally {
+      if (lockFd !== null) {
+        try {
+          fs.closeSync(lockFd);
+        } catch {
+          // ignore
+        }
+        try {
+          fs.unlinkSync(tokenLockPath);
+        } catch {
+          // ignore
+        }
+      }
     }
   });
 
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript((token) => {
+      localStorage.setItem('token', token);
+    }, adminToken);
+
+    // Confirm we're authenticated before running the test.
+    await page.goto('/dashboard');
+    await expect(page.getByRole('button', { name: /^logout$/i })).toBeVisible({ timeout: 15000 });
+    await getToken(page);
+  });
+
   test('should open protocol document in modal instead of new tab', async ({ page, request }) => {
+    await openAnimalDetailWithProtocol(page, request);
+
     // Assert auth header and allow request to continue
     await page.route('**/api/documents/*', async (route) => {
       const req = route.request();
@@ -34,60 +206,14 @@ test.describe('Protocol Document Modal UX', () => {
       expect(auth, 'Authorization header missing on protocol fetch').toMatch(/^Bearer\s.+/);
       await route.continue();
     });
-
-    // Try to find an animal detail page - navigate to dashboard first
-    await page.goto('/dashboard');
     
-    // Try to find any animal link
-    const animalLinks = page.locator('a[href*="/groups/"][href*="/animals/"]').first();
-    const linkCount = await animalLinks.count();
-    
-    // Skip if no animals exist
-    if (linkCount === 0) {
-      test.skip();
-      return;
-    }
-    
-    // Click the first animal link
-    const firstLinkHref = await animalLinks.getAttribute('href');
-    await animalLinks.click();
-    await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
-
-    // Check if protocol document section exists
-    const hasProtocol = await page.locator('.protocol-document-section').count();
-    
-    // If no protocol document, upload a small fixture PDF via authenticated API and reload
-    if (hasProtocol === 0 && firstLinkHref) {
-      const token = await page.evaluate(() => localStorage.getItem('token'));
-      const match = firstLinkHref.match(/\/groups\/(\d+)\/animals\/(\d+)/);
-      if (token && match) {
-        const [_, groupId, animalId] = match;
-        const resp = await request.post(`/api/groups/${groupId}/animals/${animalId}/protocol-document`, {
-          headers: { Authorization: `Bearer ${token}` },
-          multipart: {
-            document: {
-              name: 'protocol.pdf',
-              mimeType: 'application/pdf',
-              file: 'tests/fixtures/protocol.pdf',
-            },
-          },
-        });
-        expect(resp.ok(), `Failed to upload protocol fixture: ${resp.status()}`).toBeTruthy();
-        await page.reload();
-        await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
-      } else {
-        test.skip();
-        return;
-      }
-    }
-    
-    // Click the view protocol button
-    await page.click('.btn-view-document');
-
-    // Wait for the protocol document network response and validate headers
-    const response = await page.waitForResponse((res) => {
-      return res.url().includes('/api/documents/') && res.status() === 200;
-    }, { timeout: 10000 });
+    // Click the view protocol button and wait for the protocol document response (avoid click/response race)
+    const [response] = await Promise.all([
+      page.waitForResponse((res) => {
+        return res.url().includes('/api/documents/') && res.status() === 200;
+      }, { timeout: 20000 }),
+      page.click('.btn-view-document'),
+    ]);
     const contentType = response.headers()['content-type'] ?? '';
     expect(contentType, 'Unexpected content-type for protocol document')
       .toMatch(/^(application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/);
@@ -105,33 +231,30 @@ test.describe('Protocol Document Modal UX', () => {
     // Modal header should show the title
     await expect(page.locator('#protocol-modal-title')).toHaveText(/Protocol Document/);
     
-    // Iframe should render (blob URL)
-    const iframe = page.locator('.protocol-iframe');
-    await expect(iframe).toBeVisible({ timeout: 8000 });
-    const iframeSrc = await iframe.evaluate((el) => (el as HTMLIFrameElement).src);
-    expect(iframeSrc.startsWith('blob:'), 'Protocol iframe should use blob URL').toBeTruthy();
+    if (contentType.startsWith('application/pdf')) {
+      const body = await response.body();
+      expect(body.length, 'Protocol PDF response body should not be empty').toBeGreaterThan(100);
+      expect(body.subarray(0, 4).toString('utf8'), 'Protocol PDF should start with %PDF').toBe('%PDF');
+
+      // Iframe should render (blob URL)
+      const iframe = page.locator('.protocol-iframe');
+      await expect(iframe).toBeVisible({ timeout: 8000 });
+      const iframeSrc = await iframe.evaluate((el) => (el as HTMLIFrameElement).src);
+      expect(iframeSrc.startsWith('blob:'), 'Protocol iframe should use blob URL').toBeTruthy();
+
+      const box = await iframe.boundingBox();
+      expect(box?.width ?? 0, 'Protocol iframe should have a width').toBeGreaterThan(50);
+      expect(box?.height ?? 0, 'Protocol iframe should have a height').toBeGreaterThan(50);
+    } else {
+      // DOCX should render into container (no iframe)
+      await expect(page.locator('.protocol-docx-container')).toBeVisible({ timeout: 8000 });
+    }
   });
 
-  test('should close modal on Escape key press', async ({ page }) => {
-    await page.goto('/dashboard');
-    const animalLinks = page.locator('a[href*="/groups/"][href*="/animals/"]').first();
-    if (await animalLinks.count() === 0) {
-      test.skip();
-      return;
-    }
-    
-    await animalLinks.click();
-    await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
-    
-    const hasProtocol = await page.locator('.protocol-document-section').count();
-    if (hasProtocol === 0) {
-      test.skip();
-      return;
-    }
-    
-    // Open modal
-    await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 5000 });
+  test('should close modal on Escape key press', async ({ page, request }) => {
+    await openAnimalDetailWithProtocol(page, request);
+
+    await openProtocolModal(page);
 
     // Press Escape key
     await page.keyboard.press('Escape');
@@ -140,54 +263,58 @@ test.describe('Protocol Document Modal UX', () => {
     await expect(page.locator('.protocol-modal-overlay')).not.toBeVisible();
   });
 
-  test('should close modal when clicking outside', async ({ page }) => {
-    await page.goto('/dashboard');
-    const animalLinks = page.locator('a[href*="/groups/"][href*="/animals/"]').first();
-    if (await animalLinks.count() === 0) {
-      test.skip();
-      return;
-    }
-    
-    await animalLinks.click();
-    await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
-    
-    const hasProtocol = await page.locator('.protocol-document-section').count();
-    if (hasProtocol === 0) {
-      test.skip();
-      return;
-    }
-    
-    // Open modal
-    await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 5000 });
+  test('should close modal when clicking outside', async ({ page, request }) => {
+    await openAnimalDetailWithProtocol(page, request);
 
-    // Click on overlay (outside modal content)
-    await page.locator('.protocol-modal-overlay').click({ position: { x: 10, y: 10 } });
+    await openProtocolModal(page);
+
+    const overlay = page.locator('.protocol-modal-overlay');
+
+    const clickOutside = async () => {
+      const overlayBox = await overlay.boundingBox();
+      expect(overlayBox, 'Missing overlay bounding box').toBeTruthy();
+
+      const o = overlayBox as NonNullable<typeof overlayBox>;
+      const candidates = [
+        { x: Math.floor(o.x + 2), y: Math.floor(o.y + 2) },
+        { x: Math.floor(o.x + o.width - 2), y: Math.floor(o.y + 2) },
+        { x: Math.floor(o.x + 2), y: Math.floor(o.y + o.height - 2) },
+        { x: Math.floor(o.x + o.width - 2), y: Math.floor(o.y + o.height - 2) },
+      ];
+
+      let target: { x: number; y: number } | null = null;
+      for (const p of candidates) {
+        const isOverlayOutsideContent = await page.evaluate(({ x, y }) => {
+          const el = document.elementFromPoint(x, y);
+          if (!el) return false;
+          if (el.closest('.protocol-modal-content')) return false;
+          return !!el.closest('.protocol-modal-overlay');
+        }, p);
+
+        if (isOverlayOutsideContent) {
+          target = p;
+          break;
+        }
+      }
+
+      test.skip(!target, 'Modal content covers overlay; no outside click target on this viewport');
+      await page.mouse.click((target as { x: number; y: number }).x, (target as { x: number; y: number }).y);
+    };
+
+    await clickOutside();
+    // Retry once for occasional mobile/WebKit gesture quirks.
+    if (await overlay.isVisible()) {
+      await clickOutside();
+    }
 
     // Modal should be closed
-    await expect(page.locator('.protocol-modal-overlay')).not.toBeVisible();
+    await expect(page.locator('.protocol-modal-overlay')).not.toBeVisible({ timeout: 10000 });
   });
 
-  test('should close modal when clicking close button', async ({ page }) => {
-    await page.goto('/dashboard');
-    const animalLinks = page.locator('a[href*="/groups/"][href*="/animals/"]').first();
-    if (await animalLinks.count() === 0) {
-      test.skip();
-      return;
-    }
-    
-    await animalLinks.click();
-    await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
-    
-    const hasProtocol = await page.locator('.protocol-document-section').count();
-    if (hasProtocol === 0) {
-      test.skip();
-      return;
-    }
-    
-    // Open modal
-    await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 5000 });
+  test('should close modal when clicking close button', async ({ page, request }) => {
+    await openAnimalDetailWithProtocol(page, request);
+
+    await openProtocolModal(page);
 
     // Click close button
     await page.click('.protocol-modal-close');
@@ -196,26 +323,10 @@ test.describe('Protocol Document Modal UX', () => {
     await expect(page.locator('.protocol-modal-overlay')).not.toBeVisible();
   });
 
-  test('should have accessible close button with proper attributes', async ({ page }) => {
-    await page.goto('/dashboard');
-    const animalLinks = page.locator('a[href*="/groups/"][href*="/animals/"]').first();
-    if (await animalLinks.count() === 0) {
-      test.skip();
-      return;
-    }
-    
-    await animalLinks.click();
-    await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
-    
-    const hasProtocol = await page.locator('.protocol-document-section').count();
-    if (hasProtocol === 0) {
-      test.skip();
-      return;
-    }
-    
-    // Open modal
-    await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible();
+  test('should have accessible close button with proper attributes', async ({ page, request }) => {
+    await openAnimalDetailWithProtocol(page, request);
+
+    await openProtocolModal(page);
 
     // Close button should have aria-label
     const closeButton = page.locator('.protocol-modal-close');
@@ -225,30 +336,14 @@ test.describe('Protocol Document Modal UX', () => {
     await expect(closeButton).toHaveAttribute('title', 'Close (Esc)');
   });
 
-  test('should not leave page context when viewing protocol', async ({ page, context }) => {
-    await page.goto('/dashboard');
-    const animalLinks = page.locator('a[href*="/groups/"][href*="/animals/"]').first();
-    if (await animalLinks.count() === 0) {
-      test.skip();
-      return;
-    }
-    
-    await animalLinks.click();
-    await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
-    
-    const hasProtocol = await page.locator('.protocol-document-section').count();
-    if (hasProtocol === 0) {
-      test.skip();
-      return;
-    }
-    
+  test('should not leave page context when viewing protocol', async ({ page, context, request }) => {
+    await openAnimalDetailWithProtocol(page, request);
+
     // Track if new tab/page is created
     const pagesBefore = context.pages().length;
     const urlBefore = page.url();
 
-    // Open protocol
-    await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 5000 });
+    await openProtocolModal(page);
 
     // Should not create new tab/page
     const pagesAfter = context.pages().length;
@@ -258,23 +353,9 @@ test.describe('Protocol Document Modal UX', () => {
     expect(page.url()).toBe(urlBefore);
   });
 
-  test('button should have proper styling and be accessible', async ({ page }) => {
-    await page.goto('/dashboard');
-    const animalLinks = page.locator('a[href*="/groups/"][href*="/animals/"]').first();
-    if (await animalLinks.count() === 0) {
-      test.skip();
-      return;
-    }
-    
-    await animalLinks.click();
-    await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
-    
-    const hasProtocol = await page.locator('.protocol-document-section').count();
-    if (hasProtocol === 0) {
-      test.skip();
-      return;
-    }
-    
+  test('button should have proper styling and be accessible', async ({ page, request }) => {
+    await openAnimalDetailWithProtocol(page, request);
+
     const button = page.locator('.btn-view-document');
     
     // Button should be visible
