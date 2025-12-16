@@ -12,6 +12,9 @@ const ProtocolDocxViewer: React.FC<ProtocolDocxViewerProps> = ({ blob, fileName 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Prevent edge clipping on narrow viewports (e.g. 4px padding on each side).
+  const FIT_TO_WIDTH_PADDING_BUDGET_PX = 8;
+
   // Ensure a fresh container node per blob render.
   // `docx-preview` imperatively renders into a provided element; by remounting the
   // container we avoid manual DOM clearing (`innerHTML = ''`) and any accidental
@@ -47,9 +50,10 @@ const ProtocolDocxViewer: React.FC<ProtocolDocxViewerProps> = ({ blob, fileName 
         const pageWidth = firstPage.getBoundingClientRect().width;
         if (!containerWidth || !pageWidth) return;
 
-        // Small padding budget to avoid edge clipping.
-        const paddingBudget = 8;
-        const scale = Math.min(1, Math.max(0.1, (containerWidth - paddingBudget) / pageWidth));
+        const scale = Math.min(
+          1,
+          Math.max(0.1, (containerWidth - FIT_TO_WIDTH_PADDING_BUDGET_PX) / pageWidth)
+        );
 
         wrapper.style.transformOrigin = 'top left';
         wrapper.style.transform = `scale(${scale})`;
@@ -122,7 +126,10 @@ const ProtocolDocxViewer: React.FC<ProtocolDocxViewerProps> = ({ blob, fileName 
       if (rafId != null) cancelAnimationFrame(rafId);
       resizeObserver?.disconnect();
     };
-  }, [blob]);
+    // `containerKey` is derived from `blob` and forces a fresh container element.
+    // Including it makes the dependency relationship explicit and avoids subtle
+    // mismatch between the rendered container node and the effect lifecycle.
+  }, [blob, containerKey]);
 
   if (error) {
     return (
