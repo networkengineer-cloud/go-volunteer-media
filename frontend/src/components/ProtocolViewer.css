@@ -23,7 +23,7 @@
 }
 
 .protocol-viewer-modal {
-  background-color: var(--background);
+  background-color: var(--surface, #ffffff);
   border-radius: 8px;
   width: 100%;
   max-width: 1200px;
@@ -32,6 +32,8 @@
   flex-direction: column;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease-out;
+  /* Ensure modal has solid, opaque background */
+  opacity: 1;
 }
 
 @keyframes slideUp {
@@ -50,7 +52,7 @@
   justify-content: space-between;
   align-items: flex-start;
   padding: 1.5rem;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
   gap: 1rem;
 }
 
@@ -83,7 +85,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.625rem 1rem;
-  background-color: var(--primary);
+  background-color: var(--brand);
   color: white;
   border: none;
   border-radius: 6px;
@@ -95,7 +97,7 @@
 }
 
 .btn-download-protocol:hover:not(:disabled) {
-  background-color: var(--primary-dark, var(--primary));
+  background-color: var(--brand-600);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
@@ -122,15 +124,16 @@
 }
 
 .protocol-viewer-close:hover {
-  background-color: var(--background-secondary);
+  background-color: var(--bg-secondary);
   color: var(--text-primary);
 }
 
 .protocol-viewer-body {
   flex: 1;
-  overflow: hidden;
+  min-height: 0; /* Allow flex child to shrink */
   display: flex;
   flex-direction: column;
+  /* Remove overflow: hidden to allow child viewers to scroll */
 }
 
 .protocol-viewer-loading {
@@ -235,8 +238,8 @@
   display: inline-block;
   width: 2rem;
   height: 2rem;
-  border: 3px solid var(--border-color);
-  border-top-color: var(--primary);
+  border: 3px solid var(--border);
+  border-top-color: var(--brand);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
