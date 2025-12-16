@@ -1,8 +1,10 @@
+/// <reference types="node" />
+
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { testUsers } from './helpers/auth';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 /**
  * Protocol Document Modal UX Tests
@@ -15,6 +17,7 @@ import path from 'node:path';
 
 test.describe('Protocol Document Modal UX', () => {
   let adminToken: string;
+  let createdEntity: { groupId: number; animalId: number } | null = null;
   const tokenCachePath = path.join(os.tmpdir(), 'go-volunteer-media-e2e-admin-token.json');
   const tokenLockPath = `${tokenCachePath}.lock`;
 
@@ -22,9 +25,10 @@ test.describe('Protocol Document Modal UX', () => {
     id: number;
   }
 
-  interface ApiAnimal {
+  interface ApiCreatedAnimal {
     id: number;
   }
+
 
   const getToken = async (page: Page): Promise<string> => {
     const token = await page.evaluate(() => localStorage.getItem('token'));
@@ -32,10 +36,10 @@ test.describe('Protocol Document Modal UX', () => {
     return token as string;
   };
 
-  const getFirstAnimalIds = async (
+  const getFirstGroupId = async (
     request: APIRequestContext,
     token: string
-  ): Promise<{ groupId: number; animalId: number }> => {
+  ): Promise<number> => {
     const groupsResp = await request.get('/api/groups', {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -43,46 +47,49 @@ test.describe('Protocol Document Modal UX', () => {
 
     const groups = (await groupsResp.json()) as ApiGroup[];
     expect(groups.length, 'No groups returned from /api/groups').toBeGreaterThan(0);
-    const groupId = groups[0].id;
-
-    const animalsResp = await request.get(`/api/groups/${groupId}/animals?status=all`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(animalsResp.ok(), `Failed to load animals: ${animalsResp.status()}`).toBeTruthy();
-
-    const animals = (await animalsResp.json()) as ApiAnimal[];
-    expect(animals.length, `No animals returned for group ${groupId}`).toBeGreaterThan(0);
-
-    return { groupId, animalId: animals[0].id };
+    return groups[0].id;
   };
 
   const openAnimalDetailWithProtocol = async (page: Page, request: APIRequestContext) => {
     const token = await getToken(page);
-    const { groupId, animalId } = await getFirstAnimalIds(request, token);
+    const groupId = await getFirstGroupId(request, token);
+
+    // Create a dedicated animal and upload a known-good fixture doc.
+    // This avoids flaky seed-data mutations where protocol_document_url changes mid-test.
+    const animalName = `E2E Protocol Animal ${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const createAnimalResp = await request.post(`/api/groups/${groupId}/animals`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        name: animalName,
+        species: 'Dog',
+        breed: 'Test Breed',
+        age: 2,
+        description: 'E2E protocol document modal test animal',
+        status: 'available',
+      },
+    });
+    expect(createAnimalResp.ok(), `Failed to create test animal: ${createAnimalResp.status()}`).toBeTruthy();
+    const createdAnimal = (await createAnimalResp.json()) as ApiCreatedAnimal;
+    expect(createdAnimal.id, 'Created animal missing id').toBeTruthy();
+
+    const animalId = createdAnimal.id;
+    createdEntity = { groupId, animalId };
+
+    const fixtureBuffer = fs.readFileSync(new URL('./fixtures/protocol.pdf', import.meta.url));
+    const uploadResp = await request.post(`/api/groups/${groupId}/animals/${animalId}/protocol-document`, {
+      headers: { Authorization: `Bearer ${token}` },
+      multipart: {
+        document: {
+          name: 'protocol.pdf',
+          mimeType: 'application/pdf',
+          buffer: fixtureBuffer,
+        },
+      },
+    });
+    expect(uploadResp.ok(), `Failed to upload protocol fixture: ${uploadResp.status()}`).toBeTruthy();
 
     await page.goto(`/groups/${groupId}/animals/${animalId}/view`);
     await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
-
-    // If no protocol document section/button exists, upload a small fixture PDF via authenticated API and reload.
-    const hasProtocolSection = (await page.locator('.protocol-document-section').count()) > 0;
-    const hasViewButton = (await page.locator('.btn-view-document').count()) > 0;
-    if (!hasProtocolSection || !hasViewButton) {
-      const fixtureBuffer = fs.readFileSync(new URL('./fixtures/protocol.pdf', import.meta.url));
-      const resp = await request.post(`/api/groups/${groupId}/animals/${animalId}/protocol-document`, {
-        headers: { Authorization: `Bearer ${token}` },
-        multipart: {
-          document: {
-            name: 'protocol.pdf',
-            mimeType: 'application/pdf',
-            buffer: fixtureBuffer,
-          },
-        },
-      });
-      expect(resp.ok(), `Failed to upload protocol fixture: ${resp.status()}`).toBeTruthy();
-      await page.reload();
-      await page.waitForSelector('.animal-detail-page', { timeout: 10000 });
-    }
-
     await expect(page.locator('.btn-view-document')).toBeVisible({ timeout: 10000 });
     return { groupId, animalId };
   };
@@ -195,6 +202,22 @@ test.describe('Protocol Document Modal UX', () => {
     await getToken(page);
   });
 
+  test.afterEach(async ({ request }) => {
+    if (!createdEntity) return;
+
+    const { groupId, animalId } = createdEntity;
+    createdEntity = null;
+
+    // Best-effort cleanup: if the server was restarted/reseeded, this may 404.
+    try {
+      await request.delete(`/api/groups/${groupId}/animals/${animalId}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+    } catch {
+      // ignore cleanup failures
+    }
+  });
+
   test('should open protocol document in modal instead of new tab', async ({ page, request }) => {
     await openAnimalDetailWithProtocol(page, request);
 
@@ -210,10 +233,11 @@ test.describe('Protocol Document Modal UX', () => {
     // Click the view protocol button and wait for the protocol document response (avoid click/response race)
     const [response] = await Promise.all([
       page.waitForResponse((res) => {
-        return res.url().includes('/api/documents/') && res.status() === 200;
+        return res.url().includes('/api/documents/');
       }, { timeout: 20000 }),
       page.click('.btn-view-document'),
     ]);
+    expect(response.status(), `Protocol document fetch failed: ${response.status()} ${response.url()}`).toBe(200);
     const contentType = response.headers()['content-type'] ?? '';
     expect(contentType, 'Unexpected content-type for protocol document')
       .toMatch(/^(application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/);
