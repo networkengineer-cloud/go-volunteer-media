@@ -25,6 +25,7 @@ func SecurityHeaders() gin.HandlerFunc {
 			"style-src 'self' 'unsafe-inline'; " +
 			"img-src 'self' data: blob: https:; " +
 			"font-src 'self' data:; " +
+			"frame-src 'self' blob:; " +
 			"connect-src 'self'; " +
 			"frame-ancestors 'none'; " +
 			"base-uri 'self'; " +
