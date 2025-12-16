@@ -302,6 +302,42 @@ const AnimalDetailPage: React.FC = () => {
     }
   };
 
+  const handleDownloadProtocolDocument = async () => {
+    if (!animal?.protocol_document_url) return;
+
+    try {
+      // Extract UUID from the document URL (format: /api/documents/UUID)
+      const uuid = animal.protocol_document_url.split('/').pop();
+      if (!uuid) {
+        toast.showError('Invalid document URL');
+        return;
+      }
+
+      // Fetch document with authorization header via API client
+      const response = await animalsApi.getProtocolDocument(uuid);
+
+      if (!(response.data instanceof Blob)) {
+        throw new Error('Unexpected response type');
+      }
+
+      // Create download link
+      const blob = response.data;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = animal.protocol_document_name || 'protocol-document';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.showSuccess('Document downloaded successfully!');
+    } catch (error) {
+      console.error('Failed to download protocol document:', error);
+      toast.showError('Failed to download protocol document. Please try again.');
+    }
+  };
+
   const handleOpenProtocolDocument = async () => {
     if (!animal?.protocol_document_url) return;
     
@@ -1055,9 +1091,24 @@ const AnimalDetailPage: React.FC = () => {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="protocol-modal-header">
-                <div>
-                  <h2 id="protocol-modal-title">📋 Protocol Document</h2>
-                  <p className="protocol-modal-filename">{animal?.protocol_document_name}</p>
+                <div className="protocol-modal-header-content">
+                  <div>
+                    <h2 id="protocol-modal-title">📋 Protocol Document</h2>
+                    <p className="protocol-modal-filename">{animal?.protocol_document_name}</p>
+                  </div>
+                  <button
+                    onClick={handleDownloadProtocolDocument}
+                    className="btn-download-protocol"
+                    aria-label="Download protocol document"
+                    title="Download document"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    <span className="download-label">Download</span>
+                  </button>
                 </div>
                 <button
                   onClick={handleCloseProtocolModal}
@@ -1079,16 +1130,34 @@ const AnimalDetailPage: React.FC = () => {
                     <p>{protocolRenderError}</p>
                   </div>
                 ) : protocolDocumentKind === 'docx' ? (
-                  <div className="protocol-docx-root">
-                    <div ref={protocolDocxStyleRef} />
-                    <div ref={protocolDocxBodyRef} className="protocol-docx-container" />
-                  </div>
+                  <>
+                    <div className="protocol-mobile-hint">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 16v-4M12 8h.01" />
+                      </svg>
+                      <span>Tip: Pinch to zoom or use the download button for better viewing</span>
+                    </div>
+                    <div className="protocol-docx-root">
+                      <div ref={protocolDocxStyleRef} />
+                      <div ref={protocolDocxBodyRef} className="protocol-docx-container" />
+                    </div>
+                  </>
                 ) : protocolDocumentUrl ? (
-                  <iframe
-                    src={protocolDocumentUrl}
-                    title={animal?.protocol_document_name || 'Protocol Document'}
-                    className="protocol-iframe"
-                  />
+                  <>
+                    <div className="protocol-mobile-hint">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 16v-4M12 8h.01" />
+                      </svg>
+                      <span>Tip: Use the download button if the document doesn't display properly</span>
+                    </div>
+                    <iframe
+                      src={protocolDocumentUrl}
+                      title={animal?.protocol_document_name || 'Protocol Document'}
+                      className="protocol-iframe"
+                    />
+                  </>
                 ) : null}
               </div>
             </div>

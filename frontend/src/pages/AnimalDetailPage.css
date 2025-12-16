@@ -1466,10 +1466,59 @@
   justify-content: space-between;
   padding: 1.5rem;
   border-bottom: 1px solid var(--neutral-200);
+  gap: 1rem;
 }
 
 [data-theme='dark'] .protocol-modal-header {
   border-bottom-color: var(--neutral-700);
+}
+
+.protocol-modal-header-content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex: 1;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.btn-download-protocol {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--brand, #0e6c55);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-download-protocol:hover {
+  background: var(--brand-600, #0a5443);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(14, 108, 85, 0.3);
+}
+
+.btn-download-protocol:active {
+  transform: translateY(0);
+}
+
+.btn-download-protocol:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+[data-theme='dark'] .btn-download-protocol {
+  background: var(--teal, #14b8a6);
+}
+
+[data-theme='dark'] .btn-download-protocol:hover {
+  background: var(--teal-600, #0d9488);
 }
 
 .protocol-modal-header h2 {
@@ -1524,11 +1573,45 @@
   min-height: 400px;
 }
 
+.protocol-mobile-hint {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(14, 108, 85, 0.1);
+  border-left: 3px solid var(--brand, #0e6c55);
+  margin: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.protocol-mobile-hint svg {
+  flex-shrink: 0;
+  color: var(--brand, #0e6c55);
+}
+
+[data-theme='dark'] .protocol-mobile-hint {
+  background: rgba(20, 184, 166, 0.1);
+  border-left-color: var(--teal, #14b8a6);
+}
+
+[data-theme='dark'] .protocol-mobile-hint svg {
+  color: var(--teal, #14b8a6);
+}
+
+@media (max-width: 768px) {
+  .protocol-mobile-hint {
+    display: flex;
+  }
+}
+
 .protocol-docx-root {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .protocol-docx-container {
@@ -1536,6 +1619,44 @@
   flex: 1;
   overflow: auto;
   padding: 1rem;
+  /* Ensure content fits within container on mobile */
+  box-sizing: border-box;
+}
+
+/* Scale DOCX content to fit mobile screens */
+.protocol-docx-container > div {
+  max-width: 100%;
+  transform-origin: top left;
+}
+
+/* For narrow viewports, scale down the document to fit */
+@media (max-width: 768px) {
+  .protocol-docx-container {
+    padding: 0.5rem;
+    /* Enable horizontal scrolling as fallback if content still overflows */
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Scale down large DOCX content to fit mobile viewport */
+  .protocol-docx-container > div {
+    /* Allow content to scale down but preserve aspect ratio */
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Ensure tables and images in DOCX fit the viewport */
+  .protocol-docx-container table {
+    max-width: 100% !important;
+    width: auto !important;
+    display: block;
+    overflow-x: auto;
+  }
+  
+  .protocol-docx-container img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
 }
 
 .protocol-render-error {
@@ -1550,8 +1671,18 @@
 .protocol-iframe {
   width: 100%;
   height: 100%;
+  min-height: 500px;
   border: none;
   border-radius: 0 0 12px 12px;
+}
+
+/* Mobile-specific handling for PDF viewer */
+@media (max-width: 768px) {
+  .protocol-iframe {
+    /* Ensure iframe is responsive on mobile */
+    min-height: 400px;
+    border-radius: 0;
+  }
 }
 
 .protocol-loading {
@@ -1603,13 +1734,57 @@
   
   .protocol-modal-header {
     padding: 1rem;
+    flex-wrap: wrap;
+  }
+  
+  .protocol-modal-header-content {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
   }
   
   .protocol-modal-header h2 {
     font-size: 1.25rem;
   }
   
+  .protocol-modal-filename {
+    font-size: 0.8rem;
+    word-break: break-word;
+  }
+  
+  .btn-download-protocol {
+    width: 100%;
+    justify-content: center;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    margin-top: 0.5rem;
+  }
+  
+  .protocol-modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    z-index: 1;
+  }
+  
   .protocol-iframe {
     border-radius: 0;
+  }
+}
+
+/* Very small screens (phones in portrait) */
+@media (max-width: 480px) {
+  .protocol-modal-header h2 {
+    font-size: 1.1rem;
+    padding-right: 2rem;
+  }
+  
+  .download-label {
+    display: inline;
+  }
+  
+  .btn-download-protocol svg {
+    width: 18px;
+    height: 18px;
   }
 }
