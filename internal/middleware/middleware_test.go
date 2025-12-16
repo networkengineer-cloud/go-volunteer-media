@@ -538,6 +538,7 @@ func TestSecurityHeaders(t *testing.T) {
 			// Verify CSP contains key directives
 			expectedCSPDirectives := []string{
 				"default-src 'self'",
+				"frame-src 'self' blob:",
 				"frame-ancestors 'none'",
 				"base-uri 'self'",
 			}
