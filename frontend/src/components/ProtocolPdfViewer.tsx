@@ -2,8 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import './ProtocolPdfViewer.css';
 
-// Configure PDF.js worker to use local bundled worker (avoids CDN dependency)
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+// Import worker as a URL using Vite's ?url suffix
+// This tells Vite to emit the file and provide its URL at build time
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+// Configure PDF.js worker with the bundled worker URL
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 interface ProtocolPdfViewerProps {
   blob: Blob;

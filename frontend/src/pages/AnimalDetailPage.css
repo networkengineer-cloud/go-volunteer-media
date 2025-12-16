@@ -1317,6 +1317,7 @@
   border-radius: 12px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   transition: all 0.2s ease;
+  max-width: 700px;
 }
 
 .protocol-document-card:hover {
@@ -1349,6 +1350,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .protocol-document-name {
@@ -1378,6 +1380,7 @@
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-view-document:visited {
