@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ProtocolPdfViewer from './ProtocolPdfViewer';
 import ProtocolDocxViewer from './ProtocolDocxViewer';
 import { animalsApi } from '../api/client';
@@ -18,11 +18,16 @@ const ProtocolViewer: React.FC<ProtocolViewerProps> = ({
   documentName,
   onClose 
 }) => {
+  const overlayRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [documentBlob, setDocumentBlob] = useState<Blob | null>(null);
   const [documentKind, setDocumentKind] = useState<DocumentKind>('unknown');
+
+  useEffect(() => {
+    overlayRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     const loadDocument = async () => {
@@ -130,6 +135,7 @@ const ProtocolViewer: React.FC<ProtocolViewerProps> = ({
   return (
     <div 
       className="protocol-viewer-overlay"
+      ref={overlayRef}
       onClick={onClose}
       onKeyDown={handleKeyDown}
       role="dialog"

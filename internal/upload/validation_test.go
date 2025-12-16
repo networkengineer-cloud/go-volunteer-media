@@ -60,7 +60,7 @@ func TestValidateImageUpload(t *testing.T) {
 			content:     []byte("This is not an image file"),
 			maxSize:     MaxImageSize,
 			wantErr:     ErrInvalidFileType,
-			errContains: "file content type is",
+			errContains: "file does not appear to be a valid image",
 		},
 		{
 			name:     "valid WebP image",

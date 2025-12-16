@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { renderAsync } from 'docx-preview';
 import './ProtocolDocxViewer.css';
 
@@ -12,49 +12,61 @@ const ProtocolDocxViewer: React.FC<ProtocolDocxViewerProps> = ({ blob, fileName 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Ensure a fresh container node per blob render.
+  // `docx-preview` imperatively renders into a provided element; by remounting the
+  // container we avoid manual DOM clearing (`innerHTML = ''`) and any accidental
+  // cross-render state.
+  const containerKey = useMemo(() => {
+    const nonce = Math.random().toString(36).slice(2);
+    return `docx-${Date.now()}-${nonce}`;
+  }, [blob]);
+
   useEffect(() => {
-    let isMounted = true;
+    let cancelled = false;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    let resizeObserver: ResizeObserver | null = null;
+    let rafId: number | null = null;
 
     const applyFitToWidth = () => {
-      const container = containerRef.current;
-      if (!container) return;
+      try {
+        const wrapper = container.querySelector('.docx-wrapper') as HTMLElement | null;
+        const firstPage = container.querySelector('.docx-wrapper > section.docx') as HTMLElement | null;
+        if (!wrapper || !firstPage) return;
 
-      const wrapper = container.querySelector('.docx-wrapper') as HTMLElement | null;
-      const firstPage = container.querySelector('.docx-wrapper > section.docx') as HTMLElement | null;
-      if (!wrapper || !firstPage) return;
+        // Reset to measure accurately.
+        wrapper.style.transform = '';
+        wrapper.style.transformOrigin = '';
 
-      // Reset to measure accurately.
-      wrapper.style.transform = '';
-      wrapper.style.transformOrigin = '';
+        // Ensure we are not horizontally scrolled.
+        container.scrollLeft = 0;
 
-      // Ensure we are not horizontally scrolled.
-      container.scrollLeft = 0;
+        const containerWidth = container.clientWidth;
+        const pageWidth = firstPage.getBoundingClientRect().width;
+        if (!containerWidth || !pageWidth) return;
 
-      const containerWidth = container.clientWidth;
-      const pageWidth = firstPage.getBoundingClientRect().width;
-      if (!containerWidth || !pageWidth) return;
+        // Small padding budget to avoid edge clipping.
+        const paddingBudget = 8;
+        const scale = Math.min(1, Math.max(0.1, (containerWidth - paddingBudget) / pageWidth));
 
-      // Small padding budget to avoid edge clipping.
-      const paddingBudget = 8;
-      const scale = Math.min(1, Math.max(0.1, (containerWidth - paddingBudget) / pageWidth));
-
-      wrapper.style.transformOrigin = 'top left';
-      wrapper.style.transform = `scale(${scale})`;
+        wrapper.style.transformOrigin = 'top left';
+        wrapper.style.transform = `scale(${scale})`;
+      } catch (err) {
+        // Best-effort: sizing issues should not fail rendering.
+        console.warn('DOCX fit-to-width failed:', err);
+      }
     };
 
     const renderDocument = async () => {
-      if (!containerRef.current) return;
-
       try {
         setLoading(true);
         setError(null);
 
-        // Clear any previous content
-        containerRef.current.innerHTML = '';
-
         // Render the DOCX using docx-preview library
         // Pass partial options - all missing properties use defaults
-        await renderAsync(blob, containerRef.current, undefined, {
+        await renderAsync(blob, container, undefined, {
           className: 'docx-preview-wrapper',
           inWrapper: true,
           ignoreWidth: true, // Allow width to be responsive
@@ -68,10 +80,10 @@ const ProtocolDocxViewer: React.FC<ProtocolDocxViewerProps> = ({ blob, fileName 
           useBase64URL: true,
         });
 
-        if (!isMounted) return;
+        if (cancelled) return;
 
         // Post-process: add security attributes to external links
-        const links = containerRef.current.querySelectorAll('a[href]');
+        const links = container.querySelectorAll('a[href]');
         links.forEach((link) => {
           const href = link.getAttribute('href');
           if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
@@ -82,14 +94,14 @@ const ProtocolDocxViewer: React.FC<ProtocolDocxViewerProps> = ({ blob, fileName 
 
         // Fit the rendered page(s) to the current viewport width.
         // Use rAF to ensure layout is complete before measurement.
-        requestAnimationFrame(() => {
+        rafId = requestAnimationFrame(() => {
           applyFitToWidth();
         });
 
         setLoading(false);
       } catch (err) {
         console.error('Failed to render DOCX:', err);
-        if (isMounted) {
+        if (!cancelled) {
           setError('Failed to display DOCX document. The file may be corrupted or in an unsupported format.');
           setLoading(false);
         }
@@ -98,22 +110,17 @@ const ProtocolDocxViewer: React.FC<ProtocolDocxViewerProps> = ({ blob, fileName 
 
     renderDocument();
 
-    const resizeObserver = typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(() => {
-          applyFitToWidth();
-        })
-      : null;
-
-    if (containerRef.current && resizeObserver) {
-      resizeObserver.observe(containerRef.current);
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        applyFitToWidth();
+      });
+      resizeObserver.observe(container);
     }
 
     return () => {
-      isMounted = false;
+      cancelled = true;
+      if (rafId != null) cancelAnimationFrame(rafId);
       resizeObserver?.disconnect();
-      if (containerRef.current) {
-        containerRef.current.innerHTML = '';
-      }
     };
   }, [blob]);
 
@@ -134,6 +141,7 @@ const ProtocolDocxViewer: React.FC<ProtocolDocxViewerProps> = ({ blob, fileName 
         </div>
       )}
       <div 
+        key={containerKey}
         ref={containerRef} 
         className="protocol-docx-content"
         role="document"

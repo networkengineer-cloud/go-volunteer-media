@@ -140,7 +140,7 @@ test.describe('Protocol Document Visual Comparison @visual', () => {
 
     // Open protocol modal
     await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.protocol-viewer-overlay')).toBeVisible({ timeout: 10000 });
 
     // Wait for content to load
     await page.waitForTimeout(1000);
@@ -163,7 +163,7 @@ test.describe('Protocol Document Visual Comparison @visual', () => {
 
     // Open protocol modal
     await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.protocol-viewer-overlay')).toBeVisible({ timeout: 10000 });
 
     // Wait for content to load
     await page.waitForTimeout(1000);
@@ -186,7 +186,7 @@ test.describe('Protocol Document Visual Comparison @visual', () => {
 
     // Open protocol modal
     await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.protocol-viewer-overlay')).toBeVisible({ timeout: 10000 });
 
     // Wait for content to load
     await page.waitForTimeout(1000);
@@ -209,7 +209,7 @@ test.describe('Protocol Document Visual Comparison @visual', () => {
 
     // Open protocol modal
     await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.protocol-viewer-overlay')).toBeVisible({ timeout: 10000 });
 
     // Wait for content to load
     await page.waitForTimeout(1000);

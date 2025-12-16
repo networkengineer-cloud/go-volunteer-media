@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import Modal from './Modal';
@@ -216,6 +216,8 @@ describe('Modal', () => {
     });
 
     it('should preserve focus in textarea when parent re-renders', async () => {
+      let triggerRerender: (() => void) | null = null;
+
       const TestComponent = () => {
         const [isOpen, setIsOpen] = React.useState(true);
         const [renderCount, setRenderCount] = React.useState(0);
@@ -225,9 +227,15 @@ describe('Modal', () => {
           setIsOpen(false);
         }, []);
 
+        React.useEffect(() => {
+          triggerRerender = () => setRenderCount((c) => c + 1);
+          return () => {
+            triggerRerender = null;
+          };
+        }, []);
+
         return (
           <div>
-            <button onClick={() => setRenderCount(c => c + 1)}>Force Re-render</button>
             <Modal isOpen={isOpen} onClose={handleClose} title="Test Modal">
               <textarea id="test-textarea" placeholder="Type here" />
               <div>Renders: {renderCount}</div>
@@ -250,8 +258,10 @@ describe('Modal', () => {
       expect(textarea.value).toBe('Test');
 
       // Trigger parent re-render
-      const button = screen.getByText('Force Re-render');
-      await user.click(button);
+      act(() => {
+        if (!triggerRerender) throw new Error('triggerRerender not set');
+        triggerRerender();
+      });
 
       // Focus should still be on textarea
       expect(document.activeElement).toBe(textarea);
