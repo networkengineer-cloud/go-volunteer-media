@@ -1,8 +1,10 @@
 .protocol-pdf-viewer {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0; /* Allow flex child to shrink and enable scrolling */
   width: 100%;
+  overflow: hidden; /* Contain child overflow */
 }
 
 .protocol-pdf-controls {
@@ -10,8 +12,8 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 1rem;
-  background-color: var(--background-secondary);
-  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
   gap: 1rem;
 }
 
@@ -26,18 +28,18 @@
   align-items: center;
   justify-content: center;
   padding: 0.375rem;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background-color: var(--background);
+  background-color: var(--surface);
   color: var(--text-primary);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .btn-zoom:hover:not(:disabled) {
-  background-color: var(--primary);
+  background-color: var(--brand);
   color: white;
-  border-color: var(--primary);
+  border-color: var(--brand);
 }
 
 .btn-zoom:disabled {
@@ -47,9 +49,9 @@
 
 .btn-reset-zoom {
   padding: 0.375rem 0.75rem;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background-color: var(--background);
+  background-color: var(--surface);
   color: var(--text-primary);
   cursor: pointer;
   font-size: 0.875rem;
@@ -57,9 +59,9 @@
 }
 
 .btn-reset-zoom:hover {
-  background-color: var(--primary);
+  background-color: var(--brand);
   color: white;
-  border-color: var(--primary);
+  border-color: var(--brand);
 }
 
 .zoom-level {
@@ -77,14 +79,19 @@
 
 .protocol-pdf-container {
   flex: 1;
+  min-height: 0; /* Critical for flex scrolling */
   overflow-y: auto;
   overflow-x: auto;
   padding: 1.5rem;
-  background-color: var(--background-tertiary);
+  background-color: var(--bg-secondary, #f3f4f6);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1rem;
+  /* Enable smooth scrolling for better UX */
+  scroll-behavior: smooth;
+  /* Ensure scrollbar is always visible on desktop for discoverability */
+  -webkit-overflow-scrolling: touch;
 }
 
 .pdf-page-wrapper {
