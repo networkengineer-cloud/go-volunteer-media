@@ -32,11 +32,6 @@ test.describe('Protocol Document Mobile Responsiveness', () => {
     id: number;
   }
 
-  const getToken = async (page: Page): Promise<string> => {
-    const token = await page.evaluate(() => localStorage.getItem('token'));
-    expect(token, 'Missing auth token after login').toBeTruthy();
-    return token as string;
-  };
 
   const getFirstGroupId = async (
     request: APIRequestContext,
