@@ -57,6 +57,20 @@ const ProtocolDocxViewer: React.FC<ProtocolDocxViewerProps> = ({ blob, fileName 
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = sanitizedHtml;
         
+        // Remove inline color and background-color styles that might cause visibility issues
+        // Mammoth sometimes adds inline styles that can make text invisible in dark mode
+        const allElements = tempDiv.querySelectorAll('*');
+        allElements.forEach((element) => {
+          if (element instanceof HTMLElement) {
+            // Remove inline color and background-color styles
+            element.style.removeProperty('color');
+            element.style.removeProperty('background-color');
+            element.style.removeProperty('background');
+            
+            // Keep other useful styles like font-weight, font-style, text-decoration
+          }
+        });
+        
         // Add rel and target attributes to external links
         const links = tempDiv.querySelectorAll('a[href]');
         links.forEach((link) => {
