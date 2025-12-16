@@ -116,7 +116,11 @@ const ProtocolDocxViewer: React.FC<ProtocolDocxViewerProps> = ({ blob, fileName 
 
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => {
-        applyFitToWidth();
+        try {
+          applyFitToWidth();
+        } catch (err) {
+          console.warn('DOCX resize failed:', err);
+        }
       });
       resizeObserver.observe(container);
     }
