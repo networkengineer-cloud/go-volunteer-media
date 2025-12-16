@@ -1,0 +1,248 @@
+.protocol-viewer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.protocol-viewer-modal {
+  background-color: var(--background);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 1200px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.protocol-viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  gap: 1rem;
+}
+
+.protocol-viewer-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex: 1;
+  gap: 1rem;
+}
+
+.protocol-viewer-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.protocol-viewer-filename {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.btn-download-protocol {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-download-protocol:hover:not(:disabled) {
+  background-color: var(--primary-dark, var(--primary));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-download-protocol:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.protocol-viewer-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: none;
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.protocol-viewer-close:hover {
+  background-color: var(--background-secondary);
+  color: var(--text-primary);
+}
+
+.protocol-viewer-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.protocol-viewer-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 400px;
+  gap: 1rem;
+  color: var(--text-secondary);
+}
+
+.protocol-viewer-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 400px;
+  gap: 1rem;
+  color: var(--danger);
+  padding: 2rem;
+  text-align: center;
+}
+
+.protocol-viewer-error svg {
+  color: var(--danger);
+}
+
+.protocol-viewer-error p {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.error-hint {
+  font-size: 0.875rem !important;
+  color: var(--text-secondary) !important;
+  margin-top: 0.5rem !important;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .protocol-viewer-overlay {
+    padding: 0;
+  }
+
+  .protocol-viewer-modal {
+    max-width: 100%;
+    max-height: 100vh;
+    height: 100vh;
+    border-radius: 0;
+  }
+
+  .protocol-viewer-header {
+    flex-direction: column;
+    padding: 1rem;
+  }
+
+  .protocol-viewer-header-content {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .protocol-viewer-header h2 {
+    font-size: 1.25rem;
+  }
+
+  .btn-download-protocol {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .download-label {
+    display: inline;
+  }
+
+  .protocol-viewer-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+  }
+}
+
+@media (min-width: 769px) {
+  .download-label {
+    display: inline;
+  }
+}
+
+/* Tablet optimizations */
+@media (min-width: 481px) and (max-width: 1024px) {
+  .protocol-viewer-modal {
+    max-width: 95%;
+    max-height: 85vh;
+  }
+}
+
+/* Loading spinner animation */
+.loading-spinner {
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, Suspense, lazy } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi } from '../api/client';
 import type { Animal, AnimalComment, CommentTag, Group, GroupMembership } from '../api/client';
@@ -7,8 +7,11 @@ import { useToast } from '../hooks/useToast';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
-import { renderAsync as renderDocxAsync } from 'docx-preview';
+import ProtocolViewerErrorBoundary from '../components/ProtocolViewerErrorBoundary';
 import './AnimalDetailPage.css';
+
+// Lazy load ProtocolViewer to reduce initial bundle size (~350KB savings)
+const ProtocolViewer = lazy(() => import('../components/ProtocolViewer'));
 
 // Helper function to calculate quarantine end date (10 days, cannot end on weekend)
 const calculateQuarantineEndDate = (startDateString?: string): string => {
@@ -55,13 +58,6 @@ const AnimalDetailPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [showProtocolModal, setShowProtocolModal] = useState(false);
-  const [protocolDocumentUrl, setProtocolDocumentUrl] = useState<string | null>(null);
-  const [protocolDocumentBlob, setProtocolDocumentBlob] = useState<Blob | null>(null);
-  const [protocolDocumentKind, setProtocolDocumentKind] = useState<'pdf' | 'docx' | 'unknown'>('unknown');
-  const [protocolRenderError, setProtocolRenderError] = useState<string | null>(null);
-  const [loadingProtocol, setLoadingProtocol] = useState(false);
-  const protocolDocxBodyRef = useRef<HTMLDivElement>(null);
-  const protocolDocxStyleRef = useRef<HTMLDivElement>(null);
   const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
 
@@ -302,190 +298,14 @@ const AnimalDetailPage: React.FC = () => {
     }
   };
 
-  const handleDownloadProtocolDocument = async () => {
+  const handleOpenProtocolDocument = () => {
     if (!animal?.protocol_document_url) return;
-
-    try {
-      // Extract UUID from the document URL (format: /api/documents/UUID)
-      const uuid = animal.protocol_document_url.split('/').pop();
-      if (!uuid) {
-        toast.showError('Invalid document URL');
-        return;
-      }
-
-      // Fetch document with authorization header via API client
-      const response = await animalsApi.getProtocolDocument(uuid);
-
-      if (!(response.data instanceof Blob)) {
-        throw new Error('Unexpected response type');
-      }
-
-      // Create download link
-      const blob = response.data;
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = animal.protocol_document_name || 'protocol-document';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      toast.showSuccess('Document downloaded successfully!');
-    } catch (error) {
-      console.error('Failed to download protocol document:', error);
-      toast.showError('Failed to download protocol document. Please try again.');
-    }
-  };
-
-  const handleOpenProtocolDocument = async () => {
-    if (!animal?.protocol_document_url) return;
-    
-    setLoadingProtocol(true);
     setShowProtocolModal(true);
-    setProtocolRenderError(null);
-    
-    try {
-      // Extract UUID from the document URL (format: /api/documents/UUID)
-      const uuid = animal.protocol_document_url.split('/').pop();
-      if (!uuid) {
-        toast.showError('Invalid document URL');
-        setShowProtocolModal(false);
-        return;
-      }
-
-      // Fetch document with authorization header via API client
-      const response = await animalsApi.getProtocolDocument(uuid);
-
-      if (!(response.data instanceof Blob)) {
-        throw new Error('Unexpected response type');
-      }
-
-      const responseBlob = response.data;
-      const rawHeaderContentType = response.headers?.['content-type'] || response.headers?.['Content-Type'];
-      const headerContentType = typeof rawHeaderContentType === 'string' ? rawHeaderContentType : undefined;
-      const filename = (animal.protocol_document_name || '').toLowerCase();
-
-      const normalizeContentType = (value?: string) => {
-        if (!value) return undefined;
-        const normalized = value.split(';')[0]?.trim().toLowerCase();
-        return normalized || undefined;
-      };
-
-      const headerType = normalizeContentType(headerContentType);
-      const blobType = normalizeContentType(responseBlob.type);
-
-      const kindFromFilename: 'pdf' | 'docx' | undefined = filename.endsWith('.pdf')
-        ? 'pdf'
-        : filename.endsWith('.docx')
-          ? 'docx'
-          : undefined;
-
-      const kindFromType: 'pdf' | 'docx' | undefined =
-        blobType === 'application/pdf' || headerType === 'application/pdf'
-          ? 'pdf'
-          : (blobType?.includes('officedocument.wordprocessingml.document') ||
-              headerType?.includes('officedocument.wordprocessingml.document'))
-            ? 'docx'
-            : undefined;
-
-      const protocolKind: 'pdf' | 'docx' | 'unknown' = kindFromFilename || kindFromType || 'unknown';
-
-      const effectiveContentType =
-        protocolKind === 'docx'
-          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-          : protocolKind === 'pdf'
-            ? 'application/pdf'
-            : undefined;
-
-      // Clear any previous preview state
-      if (protocolDocumentUrl) {
-        window.URL.revokeObjectURL(protocolDocumentUrl);
-        setProtocolDocumentUrl(null);
-      }
-      setProtocolDocumentBlob(null);
-
-      if (protocolKind === 'docx' && effectiveContentType) {
-        setProtocolDocumentKind('docx');
-        setProtocolDocumentBlob(new Blob([responseBlob], { type: effectiveContentType }));
-        return;
-      }
-
-      if (protocolKind === 'pdf' && effectiveContentType) {
-        setProtocolDocumentKind('pdf');
-        const pdfBlob = new Blob([responseBlob], { type: effectiveContentType });
-        const blobUrl = window.URL.createObjectURL(pdfBlob);
-        setProtocolDocumentUrl(blobUrl);
-        return;
-      }
-
-      setProtocolDocumentKind('unknown');
-      setProtocolRenderError('Unsupported protocol document type. Please upload a PDF or DOCX.');
-    } catch (error) {
-      console.error('Failed to open protocol document:', error);
-      toast.showError('Failed to open protocol document. Please try again.');
-      setProtocolRenderError('Failed to open protocol document. Please try again.');
-    } finally {
-      setLoadingProtocol(false);
-    }
   };
 
   const handleCloseProtocolModal = () => {
     setShowProtocolModal(false);
-    setProtocolRenderError(null);
-    // Clean up blob URL
-    if (protocolDocumentUrl) {
-      window.URL.revokeObjectURL(protocolDocumentUrl);
-      setProtocolDocumentUrl(null);
-    }
-    setProtocolDocumentBlob(null);
-    setProtocolDocumentKind('unknown');
   };
-
-  useEffect(() => {
-    const shouldRender = showProtocolModal && !loadingProtocol && protocolDocumentKind === 'docx' && protocolDocumentBlob;
-    if (!shouldRender) return;
-
-    const bodyContainer = protocolDocxBodyRef.current;
-    const styleContainer = protocolDocxStyleRef.current;
-    if (!bodyContainer || !styleContainer) return;
-
-    bodyContainer.innerHTML = '';
-    styleContainer.innerHTML = '';
-
-    let cancelled = false;
-    (async () => {
-      try {
-        await renderDocxAsync(protocolDocumentBlob, bodyContainer, styleContainer, {
-          inWrapper: true,
-          breakPages: true,
-          useBase64URL: true,
-        });
-      } catch (err) {
-        if (cancelled) return;
-        console.error('Failed to render protocol DOCX:', err);
-        setProtocolRenderError('Unable to render this DOCX document.');
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [showProtocolModal, loadingProtocol, protocolDocumentKind, protocolDocumentBlob]);
-
-  // Close modal on Escape key
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showProtocolModal) {
-        handleCloseProtocolModal();
-      }
-    };
-    
-    if (showProtocolModal) {
-      document.addEventListener('keydown', handleEscape);
-      return () => document.removeEventListener('keydown', handleEscape);
-    }
-  }, [showProtocolModal]);
 
   if (loading) {
     return (
@@ -1078,90 +898,43 @@ const AnimalDetailPage: React.FC = () => {
         )}
 
         {/* Protocol Document Modal */}
-        {showProtocolModal && (
-          <div 
-            className="protocol-modal-overlay"
-            onClick={handleCloseProtocolModal}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="protocol-modal-title"
-          >
-            <div 
-              className="protocol-modal-content"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="protocol-modal-header">
-                <div className="protocol-modal-header-content">
-                  <div>
-                    <h2 id="protocol-modal-title">📋 Protocol Document</h2>
-                    <p className="protocol-modal-filename">{animal?.protocol_document_name}</p>
-                  </div>
-                  <button
-                    onClick={handleDownloadProtocolDocument}
-                    className="btn-download-protocol"
-                    aria-label="Download protocol document"
-                    title="Download document"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    <span className="download-label">Download</span>
-                  </button>
+        {showProtocolModal && animal?.protocol_document_url && (
+          <ProtocolViewerErrorBoundary onError={(error) => {
+            console.error('Protocol viewer error:', error);
+            toast.showError('Failed to display protocol document. Please try downloading it.');
+          }}>
+            <Suspense fallback={
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+              }}>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  color: 'white',
+                }}>
+                  <span className="loading-spinner" aria-label="Loading protocol viewer"></span>
+                  <p>Loading protocol viewer...</p>
                 </div>
-                <button
-                  onClick={handleCloseProtocolModal}
-                  className="protocol-modal-close"
-                  aria-label="Close protocol document"
-                  title="Close (Esc)"
-                >
-                  ✕
-                </button>
               </div>
-              <div className="protocol-modal-body">
-                {loadingProtocol ? (
-                  <div className="protocol-loading">
-                    <span className="loading-spinner" aria-label="Loading protocol document"></span>
-                    <p>Loading protocol document...</p>
-                  </div>
-                ) : protocolRenderError ? (
-                  <div className="protocol-render-error" role="alert">
-                    <p>{protocolRenderError}</p>
-                  </div>
-                ) : protocolDocumentKind === 'docx' ? (
-                  <>
-                    <div className="protocol-mobile-hint">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M12 16v-4M12 8h.01" />
-                      </svg>
-                      <span>Tip: Pinch to zoom or use the download button for better viewing</span>
-                    </div>
-                    <div className="protocol-docx-root">
-                      <div ref={protocolDocxStyleRef} />
-                      <div ref={protocolDocxBodyRef} className="protocol-docx-container" />
-                    </div>
-                  </>
-                ) : protocolDocumentUrl ? (
-                  <>
-                    <div className="protocol-mobile-hint">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M12 16v-4M12 8h.01" />
-                      </svg>
-                      <span>Tip: Use the download button if the document doesn't display properly</span>
-                    </div>
-                    <iframe
-                      src={protocolDocumentUrl}
-                      title={animal?.protocol_document_name || 'Protocol Document'}
-                      className="protocol-iframe"
-                    />
-                  </>
-                ) : null}
-              </div>
-            </div>
-          </div>
+            }>
+              <ProtocolViewer
+                documentUrl={animal.protocol_document_url}
+                documentName={animal.protocol_document_name}
+                onClose={handleCloseProtocolModal}
+              />
+            </Suspense>
+          </ProtocolViewerErrorBoundary>
         )}
       </div>
     </div>
