@@ -330,16 +330,37 @@ const AnimalDetailPage: React.FC = () => {
       const headerContentType = typeof rawHeaderContentType === 'string' ? rawHeaderContentType : undefined;
       const filename = (animal.protocol_document_name || '').toLowerCase();
 
-      const inferredContentType =
-        responseBlob.type ||
-        headerContentType ||
-        (filename.endsWith('.docx')
-          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-          : 'application/pdf');
+      const normalizeContentType = (value?: string) => {
+        if (!value) return undefined;
+        const normalized = value.split(';')[0]?.trim().toLowerCase();
+        return normalized || undefined;
+      };
 
-      const isDocx =
-        inferredContentType.includes('officedocument.wordprocessingml.document') ||
-        filename.endsWith('.docx');
+      const headerType = normalizeContentType(headerContentType);
+      const blobType = normalizeContentType(responseBlob.type);
+
+      const kindFromFilename: 'pdf' | 'docx' | undefined = filename.endsWith('.pdf')
+        ? 'pdf'
+        : filename.endsWith('.docx')
+          ? 'docx'
+          : undefined;
+
+      const kindFromType: 'pdf' | 'docx' | undefined =
+        blobType === 'application/pdf' || headerType === 'application/pdf'
+          ? 'pdf'
+          : (blobType?.includes('officedocument.wordprocessingml.document') ||
+              headerType?.includes('officedocument.wordprocessingml.document'))
+            ? 'docx'
+            : undefined;
+
+      const protocolKind: 'pdf' | 'docx' | 'unknown' = kindFromFilename || kindFromType || 'unknown';
+
+      const effectiveContentType =
+        protocolKind === 'docx'
+          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : protocolKind === 'pdf'
+            ? 'application/pdf'
+            : undefined;
 
       // Clear any previous preview state
       if (protocolDocumentUrl) {
@@ -348,15 +369,22 @@ const AnimalDetailPage: React.FC = () => {
       }
       setProtocolDocumentBlob(null);
 
-      if (isDocx) {
+      if (protocolKind === 'docx' && effectiveContentType) {
         setProtocolDocumentKind('docx');
-        setProtocolDocumentBlob(new Blob([responseBlob], { type: inferredContentType }));
-      } else {
+        setProtocolDocumentBlob(new Blob([responseBlob], { type: effectiveContentType }));
+        return;
+      }
+
+      if (protocolKind === 'pdf' && effectiveContentType) {
         setProtocolDocumentKind('pdf');
-        const pdfBlob = new Blob([responseBlob], { type: inferredContentType });
+        const pdfBlob = new Blob([responseBlob], { type: effectiveContentType });
         const blobUrl = window.URL.createObjectURL(pdfBlob);
         setProtocolDocumentUrl(blobUrl);
+        return;
       }
+
+      setProtocolDocumentKind('unknown');
+      setProtocolRenderError('Unsupported protocol document type. Please upload a PDF or DOCX.');
     } catch (error) {
       console.error('Failed to open protocol document:', error);
       toast.showError('Failed to open protocol document. Please try again.');
