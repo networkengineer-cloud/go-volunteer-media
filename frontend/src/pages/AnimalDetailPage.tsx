@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, Suspense, lazy } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi } from '../api/client';
 import type { Animal, AnimalComment, CommentTag, Group, GroupMembership } from '../api/client';
@@ -7,9 +7,11 @@ import { useToast } from '../hooks/useToast';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
-import ProtocolViewer from '../components/ProtocolViewer';
 import ProtocolViewerErrorBoundary from '../components/ProtocolViewerErrorBoundary';
 import './AnimalDetailPage.css';
+
+// Lazy load ProtocolViewer to reduce initial bundle size (~350KB savings)
+const ProtocolViewer = lazy(() => import('../components/ProtocolViewer'));
 
 // Helper function to calculate quarantine end date (10 days, cannot end on weekend)
 const calculateQuarantineEndDate = (startDateString?: string): string => {
@@ -901,11 +903,37 @@ const AnimalDetailPage: React.FC = () => {
             console.error('Protocol viewer error:', error);
             toast.showError('Failed to display protocol document. Please try downloading it.');
           }}>
-            <ProtocolViewer
-              documentUrl={animal.protocol_document_url}
-              documentName={animal.protocol_document_name}
-              onClose={handleCloseProtocolModal}
-            />
+            <Suspense fallback={
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+              }}>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  color: 'white',
+                }}>
+                  <span className="loading-spinner" aria-label="Loading protocol viewer"></span>
+                  <p>Loading protocol viewer...</p>
+                </div>
+              </div>
+            }>
+              <ProtocolViewer
+                documentUrl={animal.protocol_document_url}
+                documentName={animal.protocol_document_name}
+                onClose={handleCloseProtocolModal}
+              />
+            </Suspense>
           </ProtocolViewerErrorBoundary>
         )}
       </div>

@@ -13,6 +13,7 @@ interface ProtocolPdfViewerProps {
 const ProtocolPdfViewer: React.FC<ProtocolPdfViewerProps> = ({ blob, fileName }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [scale, setScale] = useState(1.0);
   const [loading, setLoading] = useState(true);
@@ -109,15 +110,52 @@ const ProtocolPdfViewer: React.FC<ProtocolPdfViewerProps> = ({ blob, fileName })
       canvasRefs.current.clear();
     }
 
-    // Render all pages
+    // Render all pages in parallel for better performance
     const renderAllPages = async () => {
-      for (let i = 1; i <= totalPages; i++) {
-        await renderPage(i);
-      }
+      // Render pages in parallel instead of sequentially
+      const renderPromises = Array.from({ length: totalPages }, (_, i) => renderPage(i + 1));
+      await Promise.all(renderPromises);
     };
 
     renderAllPages();
   }, [pdf, scale, totalPages]);
+
+  // Track current visible page with Intersection Observer
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Find the most visible page
+        let maxVisibleRatio = 0;
+        let mostVisiblePage = 1;
+
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio > maxVisibleRatio) {
+            maxVisibleRatio = entry.intersectionRatio;
+            const pageNum = parseInt(entry.target.getAttribute('data-page-num') || '1', 10);
+            mostVisiblePage = pageNum;
+          }
+        });
+
+        if (maxVisibleRatio > 0) {
+          setCurrentPage(mostVisiblePage);
+        }
+      },
+      {
+        root: containerRef.current,
+        threshold: [0, 0.25, 0.5, 0.75, 1.0],
+      }
+    );
+
+    // Observe all page wrappers
+    const pageWrappers = containerRef.current.querySelectorAll('.pdf-page-wrapper');
+    pageWrappers.forEach((wrapper) => observer.observe(wrapper));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [pdf, totalPages]);
 
   const handleZoomIn = () => {
     setScale(prev => Math.min(prev + 0.25, 3.0));
