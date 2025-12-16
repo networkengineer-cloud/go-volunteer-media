@@ -96,7 +96,7 @@ test.describe('Protocol Document Modal UX', () => {
 
   const openProtocolModal = async (page: Page) => {
     await page.click('.btn-view-document');
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.protocol-viewer-overlay')).toBeVisible({ timeout: 10000 });
   };
 
   test.beforeAll(async ({ request }) => {
@@ -243,35 +243,38 @@ test.describe('Protocol Document Modal UX', () => {
       .toMatch(/^(application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/);
 
     // Modal should appear
-    await expect(page.locator('.protocol-modal-overlay')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.protocol-viewer-overlay')).toBeVisible({ timeout: 5000 });
     
     // Modal content should be visible
-    await expect(page.locator('.protocol-modal-content')).toBeVisible();
+    await expect(page.locator('.protocol-viewer-modal')).toBeVisible();
     
     // Modal should have proper ARIA attributes
-    await expect(page.locator('.protocol-modal-overlay')).toHaveAttribute('role', 'dialog');
-    await expect(page.locator('.protocol-modal-overlay')).toHaveAttribute('aria-modal', 'true');
+    await expect(page.locator('.protocol-viewer-overlay')).toHaveAttribute('role', 'dialog');
+    await expect(page.locator('.protocol-viewer-overlay')).toHaveAttribute('aria-modal', 'true');
     
     // Modal header should show the title
-    await expect(page.locator('#protocol-modal-title')).toHaveText(/Protocol Document/);
+    await expect(page.locator('#protocol-viewer-title')).toHaveText(/Protocol Document/);
     
     if (contentType.startsWith('application/pdf')) {
       const body = await response.body();
       expect(body.length, 'Protocol PDF response body should not be empty').toBeGreaterThan(100);
       expect(body.subarray(0, 4).toString('utf8'), 'Protocol PDF should start with %PDF').toBe('%PDF');
 
-      // Iframe should render (blob URL)
-      const iframe = page.locator('.protocol-iframe');
-      await expect(iframe).toBeVisible({ timeout: 8000 });
-      const iframeSrc = await iframe.evaluate((el) => (el as HTMLIFrameElement).src);
-      expect(iframeSrc.startsWith('blob:'), 'Protocol iframe should use blob URL').toBeTruthy();
-
-      const box = await iframe.boundingBox();
-      expect(box?.width ?? 0, 'Protocol iframe should have a width').toBeGreaterThan(50);
-      expect(box?.height ?? 0, 'Protocol iframe should have a height').toBeGreaterThan(50);
+      // PDF should render with PDF.js viewer (canvas-based, not iframe)
+      const pdfViewer = page.locator('.protocol-pdf-viewer');
+      await expect(pdfViewer).toBeVisible({ timeout: 8000 });
+      
+      // PDF controls should be visible
+      const pdfControls = page.locator('.protocol-pdf-controls');
+      await expect(pdfControls).toBeVisible();
+      
+      // PDF canvas should be rendered
+      const pdfCanvas = page.locator('.pdf-page-canvas');
+      await expect(pdfCanvas.first()).toBeVisible({ timeout: 8000 });
     } else {
-      // DOCX should render into container (no iframe)
-      await expect(page.locator('.protocol-docx-container')).toBeVisible({ timeout: 8000 });
+      // DOCX should render into container with converted HTML content
+      await expect(page.locator('.protocol-docx-viewer')).toBeVisible({ timeout: 8000 });
+      await expect(page.locator('.protocol-docx-content')).toBeVisible({ timeout: 8000 });
     }
   });
 
@@ -284,7 +287,7 @@ test.describe('Protocol Document Modal UX', () => {
     await page.keyboard.press('Escape');
 
     // Modal should be closed
-    await expect(page.locator('.protocol-modal-overlay')).not.toBeVisible();
+    await expect(page.locator('.protocol-viewer-overlay')).not.toBeVisible();
   });
 
   test('should close modal when clicking outside', async ({ page, request }) => {
@@ -292,7 +295,7 @@ test.describe('Protocol Document Modal UX', () => {
 
     await openProtocolModal(page);
 
-    const overlay = page.locator('.protocol-modal-overlay');
+    const overlay = page.locator('.protocol-viewer-overlay');
 
     const clickOutside = async () => {
       const overlayBox = await overlay.boundingBox();
@@ -311,8 +314,8 @@ test.describe('Protocol Document Modal UX', () => {
         const isOverlayOutsideContent = await page.evaluate(({ x, y }) => {
           const el = document.elementFromPoint(x, y);
           if (!el) return false;
-          if (el.closest('.protocol-modal-content')) return false;
-          return !!el.closest('.protocol-modal-overlay');
+          if (el.closest('.protocol-viewer-modal')) return false;
+          return !!el.closest('.protocol-viewer-overlay');
         }, p);
 
         if (isOverlayOutsideContent) {
@@ -332,7 +335,7 @@ test.describe('Protocol Document Modal UX', () => {
     }
 
     // Modal should be closed
-    await expect(page.locator('.protocol-modal-overlay')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.protocol-viewer-overlay')).not.toBeVisible({ timeout: 10000 });
   });
 
   test('should close modal when clicking close button', async ({ page, request }) => {
@@ -341,10 +344,10 @@ test.describe('Protocol Document Modal UX', () => {
     await openProtocolModal(page);
 
     // Click close button
-    await page.click('.protocol-modal-close');
+    await page.click('.protocol-viewer-close');
 
     // Modal should be closed
-    await expect(page.locator('.protocol-modal-overlay')).not.toBeVisible();
+    await expect(page.locator('.protocol-viewer-overlay')).not.toBeVisible();
   });
 
   test('should have accessible close button with proper attributes', async ({ page, request }) => {
@@ -353,7 +356,7 @@ test.describe('Protocol Document Modal UX', () => {
     await openProtocolModal(page);
 
     // Close button should have aria-label
-    const closeButton = page.locator('.protocol-modal-close');
+    const closeButton = page.locator('.protocol-viewer-close');
     await expect(closeButton).toHaveAttribute('aria-label', 'Close protocol document');
     
     // Close button should have title
