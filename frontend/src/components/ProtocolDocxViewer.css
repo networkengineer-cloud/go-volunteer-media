@@ -1,9 +1,11 @@
+/* Base container styling */
 .protocol-docx-viewer {
   flex: 1;
   min-height: 0; /* Critical for flex scrolling */
   width: 100%;
   overflow-y: auto;
-  overflow-x: hidden;
+  /* Allow horizontal scroll as a safe fallback on small screens */
+  overflow-x: auto;
   /* Enable smooth scrolling for better UX */
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
@@ -13,14 +15,24 @@
 .protocol-docx-content {
   padding: 1rem;
   min-height: 100%;
+  /* Force container to respect boundaries */
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  /* Allow horizontal scroll as a safe fallback on small screens */
+  overflow-x: auto;
 }
 
 /* docx-preview wrapper styles */
 .protocol-docx-content .docx-preview-wrapper {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* Left-align pages so we never "center-crop" on narrow viewports */
+  align-items: flex-start;
   gap: 1rem;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: visible;
 }
 
 /* Style the document wrapper that docx-preview creates */
@@ -29,9 +41,13 @@
   padding: 1rem;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* Left-align pages so we never "center-crop" on narrow viewports */
+  align-items: flex-start;
   gap: 20px;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: visible;
 }
 
 /* Style each page section */
@@ -40,8 +56,15 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   border-radius: 4px;
   max-width: 100%;
+  width: 100%;
   /* docx-preview sets padding via inline styles, but we ensure it's readable */
   min-height: 200px;
+  /* Force content to fit container width */
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  /* Let the container decide overflow; don't clip text */
+  overflow-x: visible;
 }
 
 /* Ensure text is visible and readable */
@@ -49,12 +72,15 @@
 .protocol-docx-content .docx-wrapper section.docx span,
 .protocol-docx-content .docx-wrapper section.docx div {
   color: #000000;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 /* Table styling */
 .protocol-docx-content .docx-wrapper table {
   border-collapse: collapse;
   max-width: 100%;
+  width: 100%;
   overflow-x: auto;
 }
 
@@ -62,6 +88,8 @@
 .protocol-docx-content .docx-wrapper th {
   border: 1px solid #ddd;
   padding: 8px;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 /* Image styling */
@@ -74,6 +102,8 @@
 .protocol-docx-content .docx-wrapper a {
   color: #0066cc;
   text-decoration: underline;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 .protocol-docx-content .docx-wrapper a:hover {
@@ -104,14 +134,25 @@
 /* Mobile optimizations */
 @media (max-width: 768px) {
   .protocol-docx-content {
+    padding: 0.25rem;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .protocol-docx-content .docx-wrapper {
     padding: 0.5rem;
+    gap: 10px;
+    width: 100%;
+    max-width: 100%;
   }
 
   .protocol-docx-content .docx-wrapper > section.docx {
-    /* Allow document to scale down on mobile */
-    transform-origin: top left;
+    /* Keep spacing compact on mobile */
     max-width: 100%;
-    overflow-x: auto;
+    width: auto;
+    font-size: 14px;
+    line-height: 1.4;
+    box-sizing: border-box;
   }
 }
 
@@ -128,5 +169,26 @@
   .protocol-docx-content .docx-wrapper > section.docx {
     box-shadow: none;
     border-radius: 0;
+  }
+}
+
+/* Extra small mobile screens */
+@media (max-width: 480px) {
+  .protocol-docx-content {
+    padding: 0.125rem;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .protocol-docx-content .docx-wrapper {
+    padding: 0.25rem;
+    gap: 5px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .protocol-docx-content .docx-wrapper > section.docx {
+    font-size: 12px;
+    line-height: 1.3;
   }
 }

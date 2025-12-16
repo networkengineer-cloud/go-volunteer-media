@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
@@ -72,7 +72,7 @@ class ProtocolViewerErrorBoundary extends Component<Props, State> {
           <p style={{ margin: '0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
             Please try using the Download button to access the document directly.
           </p>
-          {process.env.NODE_ENV === 'development' && this.state.error && (
+          {import.meta.env.MODE === 'development' && this.state.error && (
             <details style={{ marginTop: '1rem', textAlign: 'left', width: '100%' }}>
               <summary style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>
                 Error Details (Development Only)
