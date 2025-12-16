@@ -245,4 +245,10 @@ UPDATE users SET is_admin = true WHERE username = 'your-username';
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### Third-Party Licenses
+
+This project uses various open-source libraries. For detailed information about third-party licenses and attributions, see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+All dependencies use licenses compatible with the MIT license (MIT, Apache-2.0, BSD, ISC). No GPL or copyleft licenses are used.
