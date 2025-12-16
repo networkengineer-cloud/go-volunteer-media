@@ -221,7 +221,7 @@ describe('ConfirmDialog', () => {
       expect(handleCancel).toHaveBeenCalledTimes(1);
     });
 
-    it('should set autoFocus on cancel button', () => {
+    it('should focus cancel button on open', () => {
       render(
         <ConfirmDialog
           isOpen={true}
@@ -233,7 +233,7 @@ describe('ConfirmDialog', () => {
       );
       
       const cancelButton = screen.getByRole('button', { name: /cancel/i });
-      expect(cancelButton).toHaveAttribute('autofocus');
+      expect(document.activeElement).toBe(cancelButton);
     });
   });
 

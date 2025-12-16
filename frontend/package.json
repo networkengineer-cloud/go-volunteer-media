@@ -21,7 +21,6 @@
     "axios": "^1.12.2",
     "docx-preview": "0.3.7",
     "dompurify": "^3.2.3",
-    "mammoth": "^1.8.0",
     "pdfjs-dist": "^4.9.155",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

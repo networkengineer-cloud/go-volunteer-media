@@ -53,6 +53,12 @@ test-results/
 playwright-report/
 playwright/.cache/
 
+# Playwright MCP artifacts (local dev)
+.playwright-mcp/
+
+# Local stray screenshots
+file.png
+
 # Go build artifacts
 main
 *.exe

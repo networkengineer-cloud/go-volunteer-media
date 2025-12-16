@@ -15,10 +15,22 @@ func SetupTestDB(t *testing.T) *gorm.DB {
 	// Set JWT_SECRET for testing - must be random and secure for validation to pass
 	os.Setenv("JWT_SECRET", "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1fG3hI5jK7lM9nO1pQ3")
 
+	// IMPORTANT: SQLite in-memory databases are per-connection.
+	// GORM's connection pool may open multiple connections, which can lead to
+	// flaky "no such table" errors if migrations run on one connection and
+	// queries execute on another.
+	// We force a single connection for deterministic tests.
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("Failed to get database instance: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
 	// Run migrations for all models
 	err = db.AutoMigrate(

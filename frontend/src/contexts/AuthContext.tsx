@@ -32,27 +32,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(!!token);
 
   useEffect(() => {
-    if (token) {
-      setIsLoading(true);
-      authApi.getCurrentUser()
-        .then(response => {
-          setUser(response.data);
-        })
-        .catch(() => {
-          try {
-            localStorage.removeItem('token');
-          } catch {
-            // ignore storage errors
-          }
-          setToken(null);
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    } else {
+    if (!token) {
       setIsLoading(false);
+      return;
     }
-  }, [token]);
+
+    // If we already have a user (e.g. immediately after login/register),
+    // don't refetch on mount/rehydration.
+    if (user) {
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    authApi
+      .getCurrentUser()
+      .then((response) => {
+        setUser(response.data);
+      })
+      .catch(() => {
+        try {
+          localStorage.removeItem('token');
+        } catch {
+          // ignore storage errors
+        }
+        setToken(null);
+        setUser(null);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [token, user]);
 
   const login = async (username: string, password: string) => {
     const response = await authApi.login(username, password);

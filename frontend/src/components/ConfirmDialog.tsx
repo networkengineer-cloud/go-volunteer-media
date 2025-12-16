@@ -23,11 +23,12 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onCancel,
 }) => {
   const dialogRef = React.useRef<HTMLDivElement>(null);
+  const cancelButtonRef = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => {
     if (isOpen) {
-      // Focus the dialog when it opens
-      dialogRef.current?.focus();
+      // Focus the cancel button when it opens (safer default)
+      cancelButtonRef.current?.focus();
       
       // Handle escape key
       const handleEscape = (e: KeyboardEvent) => {
@@ -96,6 +97,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             className="btn-secondary"
             onClick={onCancel}
             autoFocus
+            ref={cancelButtonRef}
           >
             {cancelLabel}
           </button>
