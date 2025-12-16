@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import './ProtocolPdfViewer.css';
 
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Configure PDF.js worker to use local bundled worker (avoids CDN dependency)
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 interface ProtocolPdfViewerProps {
   blob: Blob;
@@ -21,6 +21,8 @@ const ProtocolPdfViewer: React.FC<ProtocolPdfViewerProps> = ({ blob, fileName })
 
   useEffect(() => {
     let isMounted = true;
+    let pdfDocument: pdfjsLib.PDFDocumentProxy | null = null;
+    
     const loadPdf = async () => {
       try {
         setLoading(true);
@@ -28,9 +30,13 @@ const ProtocolPdfViewer: React.FC<ProtocolPdfViewerProps> = ({ blob, fileName })
 
         const arrayBuffer = await blob.arrayBuffer();
         const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-        const pdfDocument = await loadingTask.promise;
+        pdfDocument = await loadingTask.promise;
 
-        if (!isMounted) return;
+        if (!isMounted) {
+          // Clean up if component unmounted during load
+          pdfDocument.destroy();
+          return;
+        }
 
         setPdf(pdfDocument);
         setTotalPages(pdfDocument.numPages);
@@ -48,8 +54,9 @@ const ProtocolPdfViewer: React.FC<ProtocolPdfViewerProps> = ({ blob, fileName })
 
     return () => {
       isMounted = false;
-      if (pdf) {
-        pdf.destroy();
+      // Properly clean up the pdfDocument from this effect's scope
+      if (pdfDocument) {
+        pdfDocument.destroy();
       }
     };
   }, [blob]);

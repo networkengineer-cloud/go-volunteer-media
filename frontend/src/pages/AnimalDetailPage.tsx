@@ -8,6 +8,7 @@ import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import ProtocolViewer from '../components/ProtocolViewer';
+import ProtocolViewerErrorBoundary from '../components/ProtocolViewerErrorBoundary';
 import './AnimalDetailPage.css';
 
 // Helper function to calculate quarantine end date (10 days, cannot end on weekend)
@@ -896,11 +897,16 @@ const AnimalDetailPage: React.FC = () => {
 
         {/* Protocol Document Modal */}
         {showProtocolModal && animal?.protocol_document_url && (
-          <ProtocolViewer
-            documentUrl={animal.protocol_document_url}
-            documentName={animal.protocol_document_name}
-            onClose={handleCloseProtocolModal}
-          />
+          <ProtocolViewerErrorBoundary onError={(error) => {
+            console.error('Protocol viewer error:', error);
+            toast.showError('Failed to display protocol document. Please try downloading it.');
+          }}>
+            <ProtocolViewer
+              documentUrl={animal.protocol_document_url}
+              documentName={animal.protocol_document_name}
+              onClose={handleCloseProtocolModal}
+            />
+          </ProtocolViewerErrorBoundary>
         )}
       </div>
     </div>
