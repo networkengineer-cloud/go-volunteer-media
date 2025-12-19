@@ -765,7 +765,8 @@
 }
 
 .activity-filter-bar .filter-select,
-.activity-filter-bar .filter-input {
+.activity-filter-bar .filter-input,
+.activity-filter-bar input[type="date"] {
   flex: 1;
   min-width: 150px;
   padding: 0.625rem;
@@ -778,21 +779,25 @@
 }
 
 [data-theme='dark'] .activity-filter-bar .filter-select,
-[data-theme='dark'] .activity-filter-bar .filter-input {
+[data-theme='dark'] .activity-filter-bar .filter-input,
+[data-theme='dark'] .activity-filter-bar input[type="date"] {
   background: var(--neutral-900);
   border-color: var(--neutral-700);
   color: var(--text-primary);
+  color-scheme: dark; /* Ensures date picker uses dark theme */
 }
 
 .activity-filter-bar .filter-select:focus,
-.activity-filter-bar .filter-input:focus {
+.activity-filter-bar .filter-input:focus,
+.activity-filter-bar input[type="date"]:focus {
   outline: none;
   border-color: var(--brand);
   box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.1);
 }
 
 [data-theme='dark'] .activity-filter-bar .filter-select:focus,
-[data-theme='dark'] .activity-filter-bar .filter-input:focus {
+[data-theme='dark'] .activity-filter-bar .filter-input:focus,
+[data-theme='dark'] .activity-filter-bar input[type="date"]:focus {
   box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.2);
 }
 
