@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { groupsApi, animalsApi, commentTagsApi } from '../api/client';
-import type { ActivityItem, Animal, CommentTag } from '../api/client';
+import { groupsApi, animalsApi } from '../api/client';
+import type { ActivityItem, Animal } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
@@ -12,7 +12,7 @@ import './ActivityFeedPage.css';
 const ActivityFeedPage: React.FC = () => {
   const { id: groupId } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, isAdmin } = useAuth();
+  useAuth(); // Ensure user is authenticated
   const toast = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -32,7 +32,6 @@ const ActivityFeedPage: React.FC = () => {
 
   // Data for filters
   const [animals, setAnimals] = useState<Animal[]>([]);
-  const [availableTags, setAvailableTags] = useState<CommentTag[]>([]);
 
   // Summary stats
   const [summary, setSummary] = useState<{
@@ -46,7 +45,6 @@ const ActivityFeedPage: React.FC = () => {
     if (groupId) {
       loadActivityFeed(true);
       loadAnimals();
-      loadTags();
     }
   }, [groupId, filterType, filterAnimal, filterTags, filterRating, filterDateFrom, filterDateTo]);
 
@@ -100,16 +98,6 @@ const ActivityFeedPage: React.FC = () => {
       setAnimals(response.data);
     } catch (err) {
       console.error('Failed to load animals:', err);
-    }
-  };
-
-  const loadTags = async () => {
-    if (!groupId) return;
-    try {
-      const response = await commentTagsApi.getAll(Number(groupId));
-      setAvailableTags(response.data);
-    } catch (err) {
-      console.error('Failed to load tags:', err);
     }
   };
 
