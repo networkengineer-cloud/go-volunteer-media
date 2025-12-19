@@ -33,13 +33,6 @@ const ActivityFeedPage: React.FC = () => {
   // Data for filters
   const [animals, setAnimals] = useState<Animal[]>([]);
 
-  // Summary stats
-  const [summary, setSummary] = useState<{
-    behavior_concerns_count: number;
-    medical_concerns_count: number;
-    poor_sessions_count: number;
-  } | null>(null);
-
   // Load initial data
   useEffect(() => {
     if (groupId) {
@@ -79,7 +72,6 @@ const ActivityFeedPage: React.FC = () => {
       
       setTotal(response.data.total);
       setHasMore(response.data.hasMore);
-      setSummary(response.data.summary || null);
       setError('');
     } catch (err: any) {
       console.error('Failed to load activity feed:', err);
@@ -163,33 +155,6 @@ const ActivityFeedPage: React.FC = () => {
           ← Back to Group
         </Link>
       </div>
-
-      {/* Summary Stats */}
-      {summary && (
-        <div className="activity-summary">
-          <div className="summary-card">
-            <span className="summary-icon">⚠️</span>
-            <div className="summary-content">
-              <span className="summary-value">{summary.behavior_concerns_count}</span>
-              <span className="summary-label">Behavior Concerns</span>
-            </div>
-          </div>
-          <div className="summary-card">
-            <span className="summary-icon">🏥</span>
-            <div className="summary-content">
-              <span className="summary-value">{summary.medical_concerns_count}</span>
-              <span className="summary-label">Medical Concerns</span>
-            </div>
-          </div>
-          <div className="summary-card">
-            <span className="summary-icon">😟</span>
-            <div className="summary-content">
-              <span className="summary-value">{summary.poor_sessions_count}</span>
-              <span className="summary-label">Poor Sessions</span>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Filter Bar */}
       <div className="filter-bar">
