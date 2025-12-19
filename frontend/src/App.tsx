@@ -23,6 +23,7 @@ import ResetPassword from './pages/ResetPassword';
 import Settings from './pages/Settings';
 import UserProfilePage from './pages/UserProfilePage';
 import AdminDashboard from './pages/AdminDashboard';
+import ActivityFeedPage from './pages/ActivityFeedPage';
 import './App.css';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -143,6 +144,14 @@ function App() {
             element={
               <PrivateRoute>
                 <GroupPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/groups/:id/activity-feed"
+            element={
+              <PrivateRoute>
+                <ActivityFeedPage />
               </PrivateRoute>
             }
           />

@@ -257,6 +257,20 @@ export interface ActivityItem {
   animal_id?: number;
   animal?: Animal;
   tags?: CommentTag[];
+  metadata?: SessionMetadata;
+}
+
+export interface ActivityFeedResponse {
+  items: ActivityItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  summary?: {
+    behavior_concerns_count: number;
+    medical_concerns_count: number;
+    poor_sessions_count: number;
+  };
 }
 
 export interface ActivityFeedResponse {
@@ -394,11 +408,25 @@ export const groupsApi = {
     const params = limit ? { limit } : {};
     return api.get<CommentWithAnimal[]>('/groups/' + id + '/latest-comments', { params });
   },
-  getActivityFeed: (id: number, options?: { limit?: number; offset?: number; type?: 'all' | 'comments' | 'announcements' }) => {
+  getActivityFeed: (id: number, options?: { 
+    limit?: number; 
+    offset?: number; 
+    type?: 'all' | 'comments' | 'announcements';
+    animal?: number;
+    tags?: string;
+    rating?: string;
+    from?: string;
+    to?: string;
+  }) => {
     const params: Record<string, unknown> = {};
     if (options?.limit) params.limit = options.limit;
     if (options?.offset) params.offset = options.offset;
     if (options?.type && options.type !== 'all') params.type = options.type;
+    if (options?.animal) params.animal = options.animal;
+    if (options?.tags) params.tags = options.tags;
+    if (options?.rating) params.rating = options.rating;
+    if (options?.from) params.from = options.from;
+    if (options?.to) params.to = options.to;
     return api.get<ActivityFeedResponse>('/groups/' + id + '/activity-feed', { params });
   },
   create: (name: string, description: string, image_url?: string, hero_image_url?: string, has_protocols?: boolean, groupme_bot_id?: string, groupme_enabled?: boolean) =>

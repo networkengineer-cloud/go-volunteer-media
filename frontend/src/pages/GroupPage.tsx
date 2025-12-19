@@ -325,6 +325,9 @@ const GroupPage: React.FC = () => {
                 <option value="announcements">Announcements Only</option>
               </select>
             </div>
+            <Link to={`/groups/${id}/activity-feed`} className="btn-view-full-feed">
+              📰 View Full Activity Feed →
+            </Link>
           </div>
 
           {/* Activity Feed Component */}
