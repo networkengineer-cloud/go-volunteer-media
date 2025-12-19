@@ -225,11 +225,6 @@ const GroupPage: React.FC = () => {
     animal.name.toLowerCase().includes(animalSearchQuery.toLowerCase())
   );
 
-  // Get selected animal name
-  const selectedAnimalName = filterAnimal 
-    ? animals.find(a => a.id.toString() === filterAnimal)?.name || ''
-    : '';
-
   // Handle animal selection from dropdown
   const selectAnimal = (animalId: number, animalName: string) => {
     setFilterAnimal(animalId.toString());

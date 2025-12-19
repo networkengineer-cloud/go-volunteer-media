@@ -806,6 +806,7 @@
   position: relative;
   flex: 1;
   min-width: 200px;
+  max-width: 300px;
 }
 
 .animal-filter-clear {
