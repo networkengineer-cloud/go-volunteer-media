@@ -77,5 +77,3 @@ terraform.rc
 crash.log
 crash.*.log
 
-# Claude
-.claude/.env
