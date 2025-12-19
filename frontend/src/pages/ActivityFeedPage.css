@@ -99,6 +99,69 @@
   border-color: #374151;
 }
 
+.filter-bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.filter-bar-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-color, #111827);
+  margin: 0;
+}
+
+[data-theme="dark"] .filter-bar-title {
+  color: #f3f4f6;
+}
+
+.filter-toggle-btn {
+  padding: 0.5rem 1rem;
+  background: var(--input-bg, #f9fafb);
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 6px;
+  color: var(--text-color, #374151);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+[data-theme="dark"] .filter-toggle-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: #374151;
+  color: #f3f4f6;
+}
+
+.filter-toggle-btn:hover {
+  background: var(--primary-color, #0e6c55);
+  color: white;
+  border-color: var(--primary-color, #0e6c55);
+}
+
+.filter-toggle-btn:focus {
+  outline: 2px solid var(--primary-color, #0e6c55);
+  outline-offset: 2px;
+}
+
+.filter-content {
+  margin-top: 1.5rem;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .filter-row {
   display: flex;
   flex-wrap: wrap;
@@ -432,6 +495,10 @@
     width: 100%;
   }
 
+  .btn-clear-filters {
+    width: 100%;
+  }
+
   .quick-filters {
     flex-direction: column;
     align-items: stretch;
@@ -454,6 +521,31 @@
   .btn-view-profile {
     width: 100%;
     text-align: center;
+  }
+}
+
+/* Tablet Optimizations (Bug Fix #2: Better spacing for Clear Filters button) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .filter-row {
+    gap: 0.75rem;
+  }
+
+  .filter-select,
+  .filter-input {
+    flex: 1 1 calc(50% - 0.75rem);
+    min-width: 140px;
+  }
+
+  .btn-clear-filters {
+    flex: 0 0 auto;
+    margin-top: 0.75rem;
+    width: 100%;
+  }
+
+  /* Ensure date inputs don't get squeezed */
+  .filter-input[type="date"] {
+    flex: 1 1 calc(50% - 0.75rem);
+    min-width: 150px;
   }
 }
 

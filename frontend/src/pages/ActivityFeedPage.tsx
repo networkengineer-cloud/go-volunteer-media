@@ -23,6 +23,7 @@ const ActivityFeedPage: React.FC = () => {
   const [error, setError] = useState('');
 
   // Filter state
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'comments' | 'announcements'>('all');
   const [filterAnimal, setFilterAnimal] = useState<string>('');
   const [filterTags, setFilterTags] = useState<string[]>([]);
@@ -73,9 +74,9 @@ const ActivityFeedPage: React.FC = () => {
       setTotal(response.data.total);
       setHasMore(response.data.hasMore);
       setError('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load activity feed:', err);
-      const errorMessage = err.response?.data?.error || 'Failed to load activity feed. Please try again.';
+      const errorMessage = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to load activity feed. Please try again.';
       setError(errorMessage);
       toast.showError(errorMessage);
     } finally {
@@ -89,8 +90,9 @@ const ActivityFeedPage: React.FC = () => {
     try {
       const response = await animalsApi.getAll(Number(groupId));
       setAnimals(response.data);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to load animals:', err);
+      toast.showError('Failed to load animals for filtering');
     }
   };
 
@@ -116,6 +118,18 @@ const ActivityFeedPage: React.FC = () => {
   };
 
   const hasActiveFilters = filterType !== 'all' || filterAnimal || filterTags.length > 0 || filterRating || filterDateFrom || filterDateTo;
+
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (filterType !== 'all') count++;
+    if (filterAnimal) count++;
+    if (filterTags.length > 0) count += filterTags.length;
+    if (filterRating) count++;
+    if (filterDateFrom || filterDateTo) count++;
+    return count;
+  };
+
+  const activeFilterCount = getActiveFilterCount();
 
   if (loading) {
     return (
@@ -158,87 +172,106 @@ const ActivityFeedPage: React.FC = () => {
 
       {/* Filter Bar */}
       <div className="filter-bar">
-        <div className="filter-row">
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as any)}
-            className="filter-select"
+        <div className="filter-bar-header">
+          <h2 className="filter-bar-title">Filters</h2>
+          <button 
+            onClick={() => setFiltersExpanded(!filtersExpanded)}
+            className="filter-toggle-btn"
+            aria-expanded={filtersExpanded}
+            aria-controls="filter-content"
           >
-            <option value="all">All Activity</option>
-            <option value="comments">Comments Only</option>
-            <option value="announcements">Announcements Only</option>
-          </select>
-
-          <select
-            value={filterAnimal}
-            onChange={(e) => setFilterAnimal(e.target.value)}
-            className="filter-select"
-          >
-            <option value="">All Animals</option>
-            {animals.map(animal => (
-              <option key={animal.id} value={animal.id}>{animal.name}</option>
-            ))}
-          </select>
-
-          <select
-            value={filterRating}
-            onChange={(e) => setFilterRating(e.target.value)}
-            className="filter-select"
-          >
-            <option value="">All Ratings</option>
-            <option value="5">😄 Great (5)</option>
-            <option value="4">🙂 Good (4)</option>
-            <option value="3">😐 Okay (3)</option>
-            <option value="2">😕 Fair (2)</option>
-            <option value="1">😟 Poor (1)</option>
-            <option value="poor">😟 Poor Sessions (1-2)</option>
-          </select>
-
-          <input
-            type="date"
-            value={filterDateFrom}
-            onChange={(e) => setFilterDateFrom(e.target.value)}
-            className="filter-input"
-            placeholder="From date"
-          />
-
-          <input
-            type="date"
-            value={filterDateTo}
-            onChange={(e) => setFilterDateTo(e.target.value)}
-            className="filter-input"
-            placeholder="To date"
-          />
-
-          {hasActiveFilters && (
-            <button onClick={clearFilters} className="btn-clear-filters">
-              Clear Filters
-            </button>
-          )}
-        </div>
-
-        {/* Quick Filters */}
-        <div className="quick-filters">
-          <span className="quick-filters-label">Quick Filters:</span>
-          <button
-            className={`quick-filter-btn ${filterTags.includes('behavior') ? 'active' : ''}`}
-            onClick={() => toggleTag('behavior')}
-          >
-            ⚠️ Behavior
-          </button>
-          <button
-            className={`quick-filter-btn ${filterTags.includes('medical') ? 'active' : ''}`}
-            onClick={() => toggleTag('medical')}
-          >
-            🏥 Medical
-          </button>
-          <button
-            className={`quick-filter-btn ${filterRating === 'poor' ? 'active' : ''}`}
-            onClick={() => setFilterRating(filterRating === 'poor' ? '' : 'poor')}
-          >
-            😟 Poor Sessions
+            {filtersExpanded 
+              ? '▲ Hide Filters' 
+              : `▼ Show Filters${activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''}`
+            }
           </button>
         </div>
+        
+        {filtersExpanded && (
+          <div id="filter-content" className="filter-content">
+            <div className="filter-row">
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as 'all' | 'comments' | 'announcements')}
+                className="filter-select"
+              >
+                <option value="all">All Activity</option>
+                <option value="comments">Comments Only</option>
+                <option value="announcements">Announcements Only</option>
+              </select>
+
+              <select
+                value={filterAnimal}
+                onChange={(e) => setFilterAnimal(e.target.value)}
+                className="filter-select"
+              >
+                <option value="">All Animals</option>
+                {animals.map(animal => (
+                  <option key={animal.id} value={animal.id}>{animal.name}</option>
+                ))}
+              </select>
+
+              <select
+                value={filterRating}
+                onChange={(e) => setFilterRating(e.target.value)}
+                className="filter-select"
+              >
+                <option value="">All Ratings</option>
+                <option value="5">😄 Great (5)</option>
+                <option value="4">🙂 Good (4)</option>
+                <option value="3">😐 Okay (3)</option>
+                <option value="2">😕 Fair (2)</option>
+                <option value="1">😟 Poor (1)</option>
+                <option value="poor">😟 Poor Sessions (1-2)</option>
+              </select>
+
+              <input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="filter-input"
+                placeholder="From date"
+              />
+
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="filter-input"
+                placeholder="To date"
+              />
+
+              {hasActiveFilters && (
+                <button onClick={clearFilters} className="btn-clear-filters">
+                  Clear Filters
+                </button>
+              )}
+            </div>
+
+            {/* Quick Filters */}
+            <div className="quick-filters">
+              <span className="quick-filters-label">Quick Filters:</span>
+              <button
+                className={`quick-filter-btn ${filterTags.includes('behavior') ? 'active' : ''}`}
+                onClick={() => toggleTag('behavior')}
+              >
+                ⚠️ Behavior
+              </button>
+              <button
+                className={`quick-filter-btn ${filterTags.includes('medical') ? 'active' : ''}`}
+                onClick={() => toggleTag('medical')}
+              >
+                🏥 Medical
+              </button>
+              <button
+                className={`quick-filter-btn ${filterRating === 'poor' ? 'active' : ''}`}
+                onClick={() => setFilterRating(filterRating === 'poor' ? '' : 'poor')}
+              >
+                😟 Poor Sessions
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Activity List */}
@@ -258,7 +291,7 @@ const ActivityFeedPage: React.FC = () => {
               <div key={`${activity.type}-${activity.id}`} className="activity-card">
                 <div className="activity-header">
                   {activity.animal && (
-                    <Link to={`/groups/${groupId}/animals/${activity.animal.id}`} className="activity-animal">
+                    <Link to={`/groups/${groupId}/animals/${activity.animal.id}/view`} className="activity-animal">
                       🐕 {activity.animal.name}
                     </Link>
                   )}
@@ -289,7 +322,7 @@ const ActivityFeedPage: React.FC = () => {
                   )}
 
                   {activity.type === 'comment' ? (
-                    <SessionCommentDisplay comment={activity as any} />
+                    <SessionCommentDisplay comment={activity as ActivityItem & { type: 'comment' }} />
                   ) : (
                     <p className="activity-text">{activity.content}</p>
                   )}
@@ -301,7 +334,7 @@ const ActivityFeedPage: React.FC = () => {
 
                 {activity.animal && (
                   <div className="activity-footer">
-                    <Link to={`/groups/${groupId}/animals/${activity.animal.id}`} className="btn-view-profile">
+                    <Link to={`/groups/${groupId}/animals/${activity.animal.id}/view`} className="btn-view-profile">
                       View {activity.animal.name}'s Profile →
                     </Link>
                   </div>
