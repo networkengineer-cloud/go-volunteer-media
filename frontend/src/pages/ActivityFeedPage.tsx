@@ -90,8 +90,9 @@ const ActivityFeedPage: React.FC = () => {
     try {
       const response = await animalsApi.getAll(Number(groupId));
       setAnimals(response.data);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to load animals:', err);
+      toast.showError('Failed to load animals for filtering');
     }
   };
 
@@ -117,6 +118,18 @@ const ActivityFeedPage: React.FC = () => {
   };
 
   const hasActiveFilters = filterType !== 'all' || filterAnimal || filterTags.length > 0 || filterRating || filterDateFrom || filterDateTo;
+
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (filterType !== 'all') count++;
+    if (filterAnimal) count++;
+    if (filterTags.length > 0) count += filterTags.length;
+    if (filterRating) count++;
+    if (filterDateFrom || filterDateTo) count++;
+    return count;
+  };
+
+  const activeFilterCount = getActiveFilterCount();
 
   if (loading) {
     return (
@@ -167,7 +180,10 @@ const ActivityFeedPage: React.FC = () => {
             aria-expanded={filtersExpanded}
             aria-controls="filter-content"
           >
-            {filtersExpanded ? '▲ Hide Filters' : '▼ Show Filters'}
+            {filtersExpanded 
+              ? '▲ Hide Filters' 
+              : `▼ Show Filters${activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''}`
+            }
           </button>
         </div>
         
