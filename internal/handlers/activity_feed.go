@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -221,14 +222,10 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		// Sort all items by creation time (newest first)
-		for i := 0; i < len(activityItems); i++ {
-			for j := i + 1; j < len(activityItems); j++ {
-				if activityItems[i].CreatedAt.Before(activityItems[j].CreatedAt) {
-					activityItems[i], activityItems[j] = activityItems[j], activityItems[i]
-				}
-			}
-		}
+		// Sort all items by creation time (newest first) - O(n log n)
+		sort.Slice(activityItems, func(i, j int) bool {
+			return activityItems[i].CreatedAt.After(activityItems[j].CreatedAt)
+		})
 
 		// Calculate summary statistics
 		summary := ActivityFeedSummary{}

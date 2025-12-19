@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"html"
 	"net/http"
 	"strconv"
 	"strings"
@@ -44,6 +45,20 @@ func validateSessionMetadata(metadata *models.SessionMetadata) error {
 	}
 
 	return nil
+}
+
+// sanitizeSessionMetadata sanitizes all text fields in metadata to prevent XSS attacks
+func sanitizeSessionMetadata(metadata *models.SessionMetadata) {
+	if metadata == nil {
+		return
+	}
+
+	// HTML escape all text fields to prevent XSS
+	metadata.SessionGoal = html.EscapeString(metadata.SessionGoal)
+	metadata.SessionOutcome = html.EscapeString(metadata.SessionOutcome)
+	metadata.BehaviorNotes = html.EscapeString(metadata.BehaviorNotes)
+	metadata.MedicalNotes = html.EscapeString(metadata.MedicalNotes)
+	metadata.OtherNotes = html.EscapeString(metadata.OtherNotes)
 }
 
 // GetAnimalComments returns comments for an animal with pagination support
@@ -178,6 +193,9 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Sanitize metadata to prevent XSS
+		sanitizeSessionMetadata(req.Metadata)
+
 		aid, err := strconv.ParseUint(animalID, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid animal ID"})
@@ -265,6 +283,9 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+
+		// Sanitize metadata to prevent XSS
+		sanitizeSessionMetadata(req.Metadata)
 
 		// Update comment fields
 		comment.Content = req.Content

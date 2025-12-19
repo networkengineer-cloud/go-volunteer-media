@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { CommentTag, SessionMetadata } from '../api/client';
 import './SessionReportForm.css';
 
@@ -43,24 +43,50 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   // Mobile accordion state
   const [expandedSection, setExpandedSection] = useState<'goals' | 'concerns' | 'rating' | null>('goals');
 
-  // Draft management helper functions
-  const getDraftKey = () => `session_draft_${animalId}`;
+  // Use refs to access current state in interval callback
+  const stateRef = useRef({
+    mode,
+    sessionGoal,
+    sessionOutcome,
+    behaviorNotes,
+    medicalNotes,
+    sessionRating,
+    otherNotes
+  });
 
-  const saveDraft = () => {
-    if (mode !== 'structured') return; // Only save drafts for structured mode
-    
-    const draft = {
+  // Update ref whenever state changes
+  useEffect(() => {
+    stateRef.current = {
+      mode,
       sessionGoal,
       sessionOutcome,
       behaviorNotes,
       medicalNotes,
       sessionRating,
-      otherNotes,
+      otherNotes
+    };
+  }, [mode, sessionGoal, sessionOutcome, behaviorNotes, medicalNotes, sessionRating, otherNotes]);
+
+  // Draft management helper functions
+  const getDraftKey = () => `session_draft_${animalId}`;
+
+  const saveDraft = () => {
+    const state = stateRef.current;
+    if (state.mode !== 'structured') return; // Only save drafts for structured mode
+    
+    const draft = {
+      sessionGoal: state.sessionGoal,
+      sessionOutcome: state.sessionOutcome,
+      behaviorNotes: state.behaviorNotes,
+      medicalNotes: state.medicalNotes,
+      sessionRating: state.sessionRating,
+      otherNotes: state.otherNotes,
       savedAt: new Date().toISOString(),
     };
     
     // Only save if there's actual content
-    const hasContent = sessionGoal || sessionOutcome || behaviorNotes || medicalNotes || sessionRating > 0 || otherNotes;
+    const hasContent = state.sessionGoal || state.sessionOutcome || state.behaviorNotes || 
+                       state.medicalNotes || state.sessionRating > 0 || state.otherNotes;
     if (hasContent) {
       localStorage.setItem(getDraftKey(), JSON.stringify(draft));
       setDraftSaved(true);
@@ -91,7 +117,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     }
   }, []);
 
-  // Auto-save draft every 30 seconds
+  // Auto-save draft every 30 seconds - using callback to access current state
   useEffect(() => {
     if (mode !== 'structured') return;
     
@@ -100,7 +126,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     }, 30000); // 30 seconds
     
     return () => clearInterval(interval);
-  }, [mode, sessionGoal, sessionOutcome, behaviorNotes, medicalNotes, sessionRating, otherNotes]);
+  }, [mode]); // Only depend on mode, saveDraft uses ref for current values
 
   const handleRestoreDraft = () => {
     const draft = restoreDraft();

@@ -273,14 +273,6 @@ export interface ActivityFeedResponse {
   };
 }
 
-export interface ActivityFeedResponse {
-  items: ActivityItem[];
-  total: number;
-  limit: number;
-  offset: number;
-  hasMore: boolean;
-}
-
 export interface GroupStatistics {
   group_id: number;
   user_count: number;
