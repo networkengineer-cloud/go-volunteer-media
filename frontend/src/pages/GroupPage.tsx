@@ -512,23 +512,27 @@ const GroupPage: React.FC = () => {
                 <option value="poor">😟 Poor Sessions (1-2)</option>
               </select>
 
-              <input
-                type="date"
-                value={filterDateFrom}
-                onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="filter-input"
-                placeholder="From date"
-                aria-label="Filter from date"
-              />
-
-              <input
-                type="date"
-                value={filterDateTo}
-                onChange={(e) => setFilterDateTo(e.target.value)}
-                className="filter-input"
-                placeholder="To date"
-                aria-label="Filter to date"
-              />
+              <div className="date-range-group" aria-label="Date range">
+                <div className="date-range-inputs">
+                  <input
+                    type="date"
+                    value={filterDateFrom}
+                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                    className="filter-input"
+                    placeholder="From"
+                    aria-label="Filter from date"
+                  />
+                  <span className="date-range-separator" aria-hidden="true">–</span>
+                  <input
+                    type="date"
+                    value={filterDateTo}
+                    onChange={(e) => setFilterDateTo(e.target.value)}
+                    className="filter-input"
+                    placeholder="To"
+                    aria-label="Filter to date"
+                  />
+                </div>
+              </div>
 
               {hasActiveActivityFilters && (
                 <button onClick={clearActivityFilters} className="btn-clear-filters">
@@ -591,7 +595,26 @@ const GroupPage: React.FC = () => {
                   <div className="activity-header">
                     {activity.animal && (
                       <Link to={`/groups/${id}/animals/${activity.animal.id}`} className="activity-animal">
-                        🐕 {activity.animal.name}
+                        <span
+                          className={`activity-animal-avatar ${activity.animal.image_url ? '' : 'avatar-missing'}`}
+                          aria-hidden="true"
+                        >
+                          {activity.animal.image_url && (
+                            <img
+                              src={activity.animal.image_url}
+                              alt=""
+                              loading="lazy"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.parentElement?.classList.add('avatar-missing');
+                              }}
+                            />
+                          )}
+                          <span className="avatar-fallback">
+                            {(activity.animal.name?.trim()[0] || '?').toUpperCase()}
+                          </span>
+                        </span>
+                        <span className="activity-animal-name">{activity.animal.name}</span>
                       </Link>
                     )}
                     <span className="activity-meta">
