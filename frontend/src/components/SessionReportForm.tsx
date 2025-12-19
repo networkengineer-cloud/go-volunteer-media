@@ -39,6 +39,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   const [otherNotes, setOtherNotes] = useState('');
   const [draftSaved, setDraftSaved] = useState(false);
   const [showRestoreDraft, setShowRestoreDraft] = useState(false);
+  
+  // Mobile accordion state
+  const [expandedSection, setExpandedSection] = useState<'goals' | 'concerns' | 'rating' | null>('goals');
 
   // Draft management helper functions
   const getDraftKey = () => `session_draft_${animalId}`;
@@ -258,6 +261,24 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     }
   };
 
+  const toggleSection = (section: 'goals' | 'concerns' | 'rating') => {
+    setExpandedSection(expandedSection === section ? null : section);
+  };
+
+  const getConcernCount = () => {
+    let count = 0;
+    if (behaviorNotes.trim()) count++;
+    if (medicalNotes.trim()) count++;
+    return count;
+  };
+
+  const getRatingCount = () => {
+    let count = 0;
+    if (sessionRating > 0) count++;
+    if (otherNotes.trim()) count++;
+    return count;
+  };
+
   return (
     <form onSubmit={handleSubmit} className="session-report-form">
       {/* Draft Restore Prompt */}
@@ -326,22 +347,213 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       ) : (
         // Structured Session Report Mode
         <div className="structured-mode">
-          {/* Session Goal */}
-          <div className="form-field">
-            <label htmlFor="session-goal">
-              🎯 Session Goal <span className="optional-label">(optional)</span>
-            </label>
-            <input
-              id="session-goal"
-              type="text"
-              placeholder="e.g., leash training, socialization, enrichment"
-              value={sessionGoal}
-              onChange={(e) => setSessionGoal(e.target.value)}
-              maxLength={FIELD_LIMITS.session_goal}
-              disabled={submitting}
-              aria-label="Session goal"
-            />
-            <span className="char-count">
+          {/* Mobile Accordion Sections */}
+          <div className="accordion-sections mobile-only">
+            {/* Goals & Outcome Section */}
+            <div className="accordion-section">
+              <button
+                type="button"
+                className={`accordion-header ${expandedSection === 'goals' ? 'expanded' : ''}`}
+                onClick={() => toggleSection('goals')}
+                aria-expanded={expandedSection === 'goals'}
+                data-testid="accordion-goals"
+              >
+                <span className="accordion-icon">{expandedSection === 'goals' ? '▼' : '▶'}</span>
+                <span className="accordion-title">🎯 Goals & Outcome</span>
+              </button>
+              {expandedSection === 'goals' && (
+                <div className="accordion-content" data-testid="section-goals">
+                  {/* Session Goal */}
+                  <div className="form-field">
+                    <label htmlFor="session-goal-mobile">
+                      Session Goal <span className="optional-label">(optional)</span>
+                    </label>
+                    <input
+                      id="session-goal-mobile"
+                      type="text"
+                      placeholder="e.g., leash training"
+                      value={sessionGoal}
+                      onChange={(e) => setSessionGoal(e.target.value)}
+                      maxLength={FIELD_LIMITS.session_goal}
+                      disabled={submitting}
+                      aria-label="Session goal"
+                    />
+                    <span className="char-count">
+                      {sessionGoal.length} / {FIELD_LIMITS.session_goal}
+                    </span>
+                  </div>
+
+                  {/* Session Outcome */}
+                  <div className="form-field">
+                    <label htmlFor="session-outcome-mobile">
+                      Session Outcome <span className="optional-label">(optional)</span>
+                    </label>
+                    <textarea
+                      id="session-outcome-mobile"
+                      placeholder="How did it go?"
+                      value={sessionOutcome}
+                      onChange={(e) => setSessionOutcome(e.target.value)}
+                      rows={3}
+                      maxLength={FIELD_LIMITS.session_outcome}
+                      disabled={submitting}
+                      aria-label="Session outcome"
+                    />
+                    <span className="char-count">
+                      {sessionOutcome.length} / {FIELD_LIMITS.session_outcome}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Concerns Section */}
+            <div className="accordion-section">
+              <button
+                type="button"
+                className={`accordion-header ${expandedSection === 'concerns' ? 'expanded' : ''}`}
+                onClick={() => toggleSection('concerns')}
+                aria-expanded={expandedSection === 'concerns'}
+                data-testid="accordion-concerns"
+              >
+                <span className="accordion-icon">{expandedSection === 'concerns' ? '▼' : '▶'}</span>
+                <span className="accordion-title">⚠️ Concerns ({getConcernCount()})</span>
+              </button>
+              {expandedSection === 'concerns' && (
+                <div className="accordion-content">
+                  {/* Behavior Concerns */}
+                  <div className="form-field concern-field">
+                    <label htmlFor="behavior-notes-mobile">
+                      🐕 Behavior <span className="optional-label">(optional)</span>
+                    </label>
+                    <textarea
+                      id="behavior-notes-mobile"
+                      data-testid="behavior-concerns"
+                      placeholder="Any behavior observations?"
+                      value={behaviorNotes}
+                      onChange={(e) => setBehaviorNotes(e.target.value)}
+                      rows={3}
+                      maxLength={FIELD_LIMITS.behavior_notes}
+                      disabled={submitting}
+                      aria-label="Behavior concerns"
+                    />
+                    <span className="char-count">
+                      {behaviorNotes.length} / {FIELD_LIMITS.behavior_notes}
+                    </span>
+                    {behaviorNotes.trim() && findTagByType(availableTags, 'behavior') && (
+                      <span className="auto-tag-indicator" role="status">
+                        Auto-tag: 🏷️ behavior
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Medical Concerns */}
+                  <div className="form-field concern-field">
+                    <label htmlFor="medical-notes-mobile">
+                      🏥 Medical <span className="optional-label">(optional)</span>
+                    </label>
+                    <textarea
+                      id="medical-notes-mobile"
+                      placeholder="Any medical observations?"
+                      value={medicalNotes}
+                      onChange={(e) => setMedicalNotes(e.target.value)}
+                      rows={3}
+                      maxLength={FIELD_LIMITS.medical_notes}
+                      disabled={submitting}
+                      aria-label="Medical concerns"
+                    />
+                    <span className="char-count">
+                      {medicalNotes.length} / {FIELD_LIMITS.medical_notes}
+                    </span>
+                    {medicalNotes.trim() && findTagByType(availableTags, 'medical') && (
+                      <span className="auto-tag-indicator" role="status">
+                        Auto-tag: 🏷️ medical
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Rating & Notes Section */}
+            <div className="accordion-section">
+              <button
+                type="button"
+                className={`accordion-header ${expandedSection === 'rating' ? 'expanded' : ''}`}
+                onClick={() => toggleSection('rating')}
+                aria-expanded={expandedSection === 'rating'}
+              >
+                <span className="accordion-icon">{expandedSection === 'rating' ? '▼' : '▶'}</span>
+                <span className="accordion-title">⭐ Rating & Notes ({getRatingCount()})</span>
+              </button>
+              {expandedSection === 'rating' && (
+                <div className="accordion-content">
+                  {/* Session Rating */}
+                  <div className="form-field">
+                    <label>Session Success <span className="optional-label">(optional)</span></label>
+                    <div className="rating-selector" role="radiogroup" aria-label="Session rating">
+                      {[1, 2, 3, 4, 5].map((rating) => (
+                        <label
+                          key={rating}
+                          className={`rating-option ${sessionRating === rating ? 'selected' : ''}`}
+                        >
+                          <input
+                            type="radio"
+                            name="session-rating-mobile"
+                            value={rating}
+                            checked={sessionRating === rating}
+                            onChange={() => setSessionRating(rating)}
+                            disabled={submitting}
+                            aria-label={`${getRatingLabel(rating)} (${rating} out of 5)`}
+                          />
+                          <span className="rating-emoji">{getRatingEmoji(rating)}</span>
+                          <span className="rating-label">{getRatingLabel(rating)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Other Notes */}
+                  <div className="form-field">
+                    <label htmlFor="other-notes-mobile">
+                      Other Comments <span className="optional-label">(optional)</span>
+                    </label>
+                    <textarea
+                      id="other-notes-mobile"
+                      placeholder="Anything else..."
+                      value={otherNotes}
+                      onChange={(e) => setOtherNotes(e.target.value)}
+                      rows={2}
+                      maxLength={FIELD_LIMITS.other_notes}
+                      disabled={submitting}
+                      aria-label="Other comments"
+                    />
+                    <span className="char-count">
+                      {otherNotes.length} / {FIELD_LIMITS.other_notes}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Desktop Non-Accordion Layout */}
+          <div className="desktop-only">
+            {/* Session Goal */}
+            <div className="form-field">
+              <label htmlFor="session-goal">
+                🎯 Session Goal <span className="optional-label">(optional)</span>
+              </label>
+              <input
+                id="session-goal"
+                type="text"
+                placeholder="e.g., leash training, socialization, enrichment"
+                value={sessionGoal}
+                onChange={(e) => setSessionGoal(e.target.value)}
+                maxLength={FIELD_LIMITS.session_goal}
+                disabled={submitting}
+                aria-label="Session goal"
+              />
+              <span className="char-count">
               {sessionGoal.length} / {FIELD_LIMITS.session_goal}
             </span>
           </div>
@@ -463,6 +675,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             <span className="char-count">
               {otherNotes.length} / {FIELD_LIMITS.other_notes}
             </span>
+          </div>
           </div>
         </div>
       )}
