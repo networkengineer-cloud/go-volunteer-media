@@ -1,6 +1,8 @@
 package models
 
 import (
+	"database/sql/driver"
+	"encoding/json"
 	"time"
 
 	"gorm.io/gorm"
@@ -166,6 +168,26 @@ type SessionMetadata struct {
 	MedicalNotes   string `json:"medical_notes,omitempty"`
 	SessionRating  int    `json:"session_rating,omitempty"` // 1-5 (Poor, Fair, Okay, Good, Great)
 	OtherNotes     string `json:"other_notes,omitempty"`
+}
+
+// Scan implements sql.Scanner interface to convert database value to SessionMetadata
+func (sm *SessionMetadata) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok {
+		return nil
+	}
+	return json.Unmarshal(bytes, &sm)
+}
+
+// Value implements driver.Valuer interface to convert SessionMetadata to database value
+func (sm *SessionMetadata) Value() (driver.Value, error) {
+	if sm == nil {
+		return nil, nil
+	}
+	return json.Marshal(sm)
 }
 
 // CommentTag represents a tag that can be applied to comments
