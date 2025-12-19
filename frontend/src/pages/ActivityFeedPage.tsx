@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { groupsApi, animalsApi, commentTagsApi } from '../api/client';
 import type { ActivityItem, Animal, CommentTag } from '../api/client';
