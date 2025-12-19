@@ -57,6 +57,19 @@ Other Comments:
 3. **Tag-Assisted Entry:** Auto-apply tags based on field usage
 4. **Mode Toggle:** Quick note vs. Structured session report
 
+### Standardized Field Names
+
+Throughout this document, the following consistent terminology is used:
+
+| Field Label | Internal Name | Description |
+|-------------|---------------|-------------|
+| Session Goal | `session_goal` | What the volunteer planned to do |
+| Session Outcome | `session_outcome` | What actually happened |
+| Behavior Concerns | `behavior_notes` | Behavioral observations |
+| Medical Concerns | `medical_notes` | Health/medical observations |
+| Session Rating | `session_rating` | 1-4 scale (Poor/Okay/Good/Great) |
+| Additional Notes | `other_notes` | Catch-all for other comments |
+
 ### Form Modes
 
 #### Mode 1: Quick Note (Default)
@@ -130,8 +143,51 @@ When volunteers fill in specific fields, tags are automatically applied:
 
 | Field Used | Auto-Applied Tag |
 |------------|------------------|
-| Behavior Concerns | `behavior` (system tag) |
-| Medical Concerns | `medical` (system tag or create if missing) |
+| Behavior Concerns | `behavior` tag |
+| Medical Concerns | `medical` tag |
+
+### Tag Identification Strategy
+
+Tags are identified using a combination of name matching and system flags:
+
+```typescript
+// Tag lookup logic (frontend)
+const findTagByType = (
+  tags: CommentTag[], 
+  type: 'behavior' | 'medical'
+): CommentTag | null => {
+  // 1. First, try exact name match (case-insensitive)
+  const byName = tags.find(
+    t => t.name.toLowerCase() === type.toLowerCase()
+  );
+  if (byName) return byName;
+  
+  // 2. Fallback: look for system tags with matching names
+  const systemTag = tags.find(
+    t => t.is_system && t.name.toLowerCase().includes(type)
+  );
+  if (systemTag) return systemTag;
+  
+  // 3. No matching tag found
+  return null;
+};
+```
+
+### Graceful Degradation
+
+When the expected tag doesn't exist for a group:
+
+| Scenario | Behavior |
+|----------|----------|
+| Tag exists | Auto-select and show indicator: "Auto-tag: 🏷️ behavior" |
+| Tag missing | Hide auto-tag indicator; volunteer can manually select tags |
+| Tag created later | New session reports will auto-tag; existing comments unchanged |
+
+**Implementation notes:**
+- The frontend should cache available tags on form mount
+- If a tag is missing, the field still works - just without auto-tagging
+- Admin can create missing tags via Tag Management page
+- Consider adding a one-time migration to ensure `behavior` and `medical` tags exist for all groups
 
 ### Why This Works
 
@@ -139,6 +195,7 @@ When volunteers fill in specific fields, tags are automatically applied:
 2. **Improves Searchability:** All behavior/medical notes are properly categorized
 3. **Backwards Compatible:** Existing tag filters continue to work
 4. **Admin Visibility:** Behavior/medical concerns surface in filtered views
+5. **Graceful Degradation:** Form works even if tags don't exist yet
 
 ### Tag Display Enhancement
 
@@ -173,6 +230,138 @@ On mobile devices (< 640px):
 2. **Collapsible Sections:** Advanced fields behind "Show More"
 3. **Large Touch Targets:** 44px minimum for all buttons
 4. **Swipe to Submit:** Optional gesture for quick posts
+
+### Mobile Form Complexity Mitigation
+
+The Session Report mode has 6 fields which can be overwhelming on mobile. Three approaches to reduce complexity:
+
+#### Option A: Accordion Sections (Recommended)
+Group fields into collapsible sections. Only one section expanded at a time.
+
+```
+┌──────────────────────────────┐
+│ 📋 Session Report            │
+├──────────────────────────────┤
+│                              │
+│ ▼ 🎯 Goals & Outcome         │
+│ ┌──────────────────────────┐ │
+│ │ Session Goal             │ │
+│ │ ┌──────────────────────┐ │ │
+│ │ │ e.g., leash training │ │ │
+│ │ └──────────────────────┘ │ │
+│ │ Session Outcome          │ │
+│ │ ┌──────────────────────┐ │ │
+│ │ │ How did it go?       │ │ │
+│ │ └──────────────────────┘ │ │
+│ └──────────────────────────┘ │
+│                              │
+│ ▶ ⚠️ Concerns (0)            │
+│ ▶ ⭐ Rating & Notes          │
+│                              │
+│ ┌──────────────────────────┐ │
+│ │   Post Session Report    │ │
+│ └──────────────────────────┘ │
+└──────────────────────────────┘
+```
+
+#### Option B: Stepped Wizard
+Multi-step form with progress indicator. Best for onboarding new volunteers.
+
+```
+┌──────────────────────────────┐
+│ 📋 Session Report            │
+│ Step 1 of 3: Goals           │
+├──────────────────────────────┤
+│ ○───○───○                    │
+│ 1   2   3                    │
+│                              │
+│ 🎯 What was your goal?       │
+│ ┌──────────────────────────┐ │
+│ │ e.g., leash training     │ │
+│ └──────────────────────────┘ │
+│                              │
+│ 📝 What happened?            │
+│ ┌──────────────────────────┐ │
+│ │ How did the session go?  │ │
+│ │                          │ │
+│ └──────────────────────────┘ │
+│                              │
+│ ┌────────┐ ┌───────────────┐ │
+│ │ Cancel │ │ Next: Concerns│ │
+│ └────────┘ └───────────────┘ │
+└──────────────────────────────┘
+```
+
+#### Option C: "Add More Details" Progressive Disclosure
+Start with just Goal and Outcome, offer to add concerns.
+
+```
+┌──────────────────────────────┐
+│ 📋 Session Report            │
+├──────────────────────────────┤
+│                              │
+│ 🎯 Session Goal              │
+│ ┌──────────────────────────┐ │
+│ │ e.g., leash training     │ │
+│ └──────────────────────────┘ │
+│                              │
+│ 📝 What happened?            │
+│ ┌──────────────────────────┐ │
+│ │ How did it go?           │ │
+│ │                          │ │
+│ └──────────────────────────┘ │
+│                              │
+│ ┌──────────────────────────┐ │
+│ │ + Add behavior/medical   │ │
+│ │   concerns               │ │
+│ └──────────────────────────┘ │
+│                              │
+│ ┌──────────────────────────┐ │
+│ │   Post Session Report    │ │
+│ └──────────────────────────┘ │
+└──────────────────────────────┘
+```
+
+### Save Draft Feature
+
+For complex session reports, support saving drafts:
+
+```typescript
+interface SessionDraft {
+  animal_id: number;
+  session_goal?: string;
+  session_outcome?: string;
+  behavior_notes?: string;
+  medical_notes?: string;
+  session_rating?: number;
+  other_notes?: string;
+  saved_at: string;
+}
+
+// Save to localStorage
+const saveDraft = (draft: SessionDraft) => {
+  const key = `session_draft_${draft.animal_id}`;
+  localStorage.setItem(key, JSON.stringify(draft));
+};
+
+// Restore draft on form mount
+const restoreDraft = (animalId: number): SessionDraft | null => {
+  const key = `session_draft_${animalId}`;
+  const saved = localStorage.getItem(key);
+  return saved ? JSON.parse(saved) : null;
+};
+
+// Clear draft on successful submit
+const clearDraft = (animalId: number) => {
+  localStorage.removeItem(`session_draft_${animalId}`);
+};
+```
+
+**Draft UX:**
+- Auto-save every 30 seconds while typing
+- Show "Draft saved" indicator
+- Prompt to restore on form re-open: "You have an unsaved draft. Restore?"
+- Clear draft after successful submission
 
 ### Desktop Enhancement
 
@@ -367,11 +556,341 @@ Use radio button group with emoji labels for visual feedback.
 
 ---
 
+## 🧪 Testing Strategy
+
+### Unit Tests (Vitest)
+
+Test the core logic components in isolation:
+
+```typescript
+// frontend/src/components/SessionReportForm.test.tsx
+
+describe('SessionReportForm', () => {
+  describe('Tag Auto-Application', () => {
+    it('should auto-select behavior tag when behavior field has content', () => {
+      // Arrange
+      const mockTags = [{ id: 1, name: 'behavior' }, { id: 2, name: 'medical' }];
+      
+      // Act
+      render(<SessionReportForm tags={mockTags} />);
+      fireEvent.change(screen.getByLabelText('Behavior Concerns'), {
+        target: { value: 'Dog reactive' }
+      });
+      
+      // Assert
+      expect(getSelectedTagIds()).toContain(1);
+    });
+
+    it('should not auto-select tag when behavior tag is missing', () => {
+      const mockTags = [{ id: 2, name: 'medical' }]; // No behavior tag
+      render(<SessionReportForm tags={mockTags} />);
+      
+      fireEvent.change(screen.getByLabelText('Behavior Concerns'), {
+        target: { value: 'Dog reactive' }
+      });
+      
+      // Should not throw, form still works
+      expect(screen.getByLabelText('Behavior Concerns')).toHaveValue('Dog reactive');
+    });
+
+    it('should remove auto-tag when field is cleared', () => {
+      const mockTags = [{ id: 1, name: 'behavior' }];
+      render(<SessionReportForm tags={mockTags} />);
+      
+      const field = screen.getByLabelText('Behavior Concerns');
+      fireEvent.change(field, { target: { value: 'Dog reactive' } });
+      fireEvent.change(field, { target: { value: '' } });
+      
+      expect(getSelectedTagIds()).not.toContain(1);
+    });
+  });
+
+  describe('Form Mode Toggle', () => {
+    it('should switch from Quick Note to Session Report mode', () => {
+      render(<SessionReportForm />);
+      
+      fireEvent.click(screen.getByText('📋 Session Report'));
+      
+      expect(screen.getByLabelText('Session Goal')).toBeInTheDocument();
+      expect(screen.getByLabelText('Session Outcome')).toBeInTheDocument();
+    });
+  });
+
+  describe('Markdown Output', () => {
+    it('should format structured data as Markdown', () => {
+      const output = formatSessionAsMarkdown({
+        session_goal: 'Leash training',
+        session_outcome: 'Went well',
+        session_rating: 3
+      });
+      
+      expect(output).toContain('## Session Goal');
+      expect(output).toContain('Leash training');
+    });
+  });
+
+  describe('Draft Save/Restore', () => {
+    it('should save draft to localStorage', () => {
+      render(<SessionReportForm animalId={123} />);
+      
+      fireEvent.change(screen.getByLabelText('Session Goal'), {
+        target: { value: 'Training' }
+      });
+      
+      // Wait for auto-save
+      jest.advanceTimersByTime(30000);
+      
+      expect(localStorage.getItem('session_draft_123')).toBeTruthy();
+    });
+  });
+});
+```
+
+### E2E Tests (Playwright)
+
+Test the complete user journey:
+
+```typescript
+// frontend/tests/session-report.spec.ts
+
+import { test, expect } from '@playwright/test';
+
+test.describe('Session Report Form', () => {
+  test.beforeEach(async ({ page }) => {
+    // Login and navigate to animal detail page
+    await page.goto('/login');
+    await page.fill('[name="username"]', 'volunteer1');
+    await page.fill('[name="password"]', 'password123');
+    await page.click('button[type="submit"]');
+    await page.goto('/groups/1/animals/1');
+  });
+
+  test('should submit a quick note successfully', async ({ page }) => {
+    await page.fill('[data-testid="comment-input"]', 'Great walk today!');
+    await page.click('button:has-text("Post Comment")');
+    
+    await expect(page.locator('.comment-card')).toContainText('Great walk today!');
+  });
+
+  test('should switch to Session Report mode', async ({ page }) => {
+    await page.click('button:has-text("📋 Session Report")');
+    
+    await expect(page.locator('[data-testid="session-goal"]')).toBeVisible();
+    await expect(page.locator('[data-testid="session-outcome"]')).toBeVisible();
+  });
+
+  test('should auto-apply behavior tag when filling behavior field', async ({ page }) => {
+    await page.click('button:has-text("📋 Session Report")');
+    await page.fill('[data-testid="behavior-concerns"]', 'Jumpy with strangers');
+    
+    // Check that behavior tag is selected
+    await expect(page.locator('.tag-selected:has-text("behavior")')).toBeVisible();
+  });
+
+  test('should submit session report with all fields', async ({ page }) => {
+    await page.click('button:has-text("📋 Session Report")');
+    
+    await page.fill('[data-testid="session-goal"]', 'Leash training');
+    await page.fill('[data-testid="session-outcome"]', 'Made good progress');
+    await page.fill('[data-testid="behavior-concerns"]', 'Still reactive to dogs');
+    await page.click('[data-testid="rating-3"]'); // Good
+    
+    await page.click('button:has-text("Post Session Report")');
+    
+    // Verify comment appears with structured display
+    await expect(page.locator('.comment-card')).toContainText('Session Goal');
+    await expect(page.locator('.comment-card')).toContainText('Leash training');
+    await expect(page.locator('.tag-badge:has-text("behavior")')).toBeVisible();
+  });
+
+  test('should save and restore draft on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    
+    await page.click('button:has-text("📋 Session Report")');
+    await page.fill('[data-testid="session-goal"]', 'Training session');
+    
+    // Navigate away and back
+    await page.goto('/groups/1');
+    await page.goto('/groups/1/animals/1');
+    
+    // Should prompt to restore draft
+    await expect(page.locator('text=Restore draft?')).toBeVisible();
+    await page.click('button:has-text("Restore")');
+    
+    await expect(page.locator('[data-testid="session-goal"]')).toHaveValue('Training session');
+  });
+
+  test('should work with accordion sections on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    
+    await page.click('button:has-text("📋 Session Report")');
+    
+    // Only first section should be expanded
+    await expect(page.locator('[data-testid="section-goals"]')).toBeVisible();
+    
+    // Click concerns section header
+    await page.click('[data-testid="accordion-concerns"]');
+    
+    // Concerns section should expand
+    await expect(page.locator('[data-testid="behavior-concerns"]')).toBeVisible();
+  });
+});
+
+test.describe('Session Report Accessibility', () => {
+  test('should be keyboard navigable', async ({ page }) => {
+    await page.goto('/groups/1/animals/1');
+    
+    // Tab through form elements
+    await page.keyboard.press('Tab');
+    await expect(page.locator('[data-testid="comment-input"]')).toBeFocused();
+    
+    await page.keyboard.press('Tab');
+    await expect(page.locator('button:has-text("📋 Session Report")')).toBeFocused();
+  });
+
+  test('should have proper ARIA labels', async ({ page }) => {
+    await page.goto('/groups/1/animals/1');
+    await page.click('button:has-text("📋 Session Report")');
+    
+    await expect(page.locator('[aria-label="Session goal"]')).toBeVisible();
+    await expect(page.locator('[aria-describedby]')).toBeVisible();
+  });
+
+  test('should announce errors to screen readers', async ({ page }) => {
+    await page.goto('/groups/1/animals/1');
+    await page.click('button:has-text("📋 Session Report")');
+    
+    // Try to submit empty form (if validation exists)
+    await page.click('button:has-text("Post Session Report")');
+    
+    // Error should have role="alert"
+    await expect(page.locator('[role="alert"]')).toBeVisible();
+  });
+});
+```
+
+### Test Coverage Targets
+
+| Area | Target Coverage |
+|------|-----------------|
+| Tag auto-application logic | 100% |
+| Form mode toggle | 100% |
+| Markdown formatting | 100% |
+| Draft save/restore | 90% |
+| Form validation | 100% |
+| E2E happy path | Covered |
+| E2E edge cases | Covered |
+| Mobile responsive behavior | Covered |
+| Accessibility | WCAG AA audit |
+
+---
+
 ## 🔒 Security Considerations
 
+### Input Validation & Sanitization
+
 1. **Input Sanitization:** All text fields sanitized before storage
-2. **XSS Prevention:** Markdown rendering with safe parser
+2. **XSS Prevention:** Markdown rendering with safe parser (e.g., `marked` with `sanitize: true`)
 3. **CSRF Protection:** Existing token implementation covers new form
+
+### Content Length Limits
+
+Prevent abuse and ensure reasonable data sizes:
+
+| Field | Max Length | Rationale |
+|-------|------------|-----------|
+| Session Goal | 200 chars | Brief objective |
+| Session Outcome | 2000 chars | Detailed narrative |
+| Behavior Concerns | 1000 chars | Important observations |
+| Medical Concerns | 1000 chars | Critical health info |
+| Additional Notes | 1000 chars | Supplementary details |
+| Total content | 5000 chars | Database efficiency |
+
+```typescript
+// Frontend validation
+const FIELD_LIMITS = {
+  session_goal: 200,
+  session_outcome: 2000,
+  behavior_notes: 1000,
+  medical_notes: 1000,
+  other_notes: 1000,
+} as const;
+
+// Backend validation (Go)
+func validateSessionReport(metadata SessionMetadata) error {
+  if len(metadata.SessionGoal) > 200 {
+    return errors.New("session goal exceeds 200 character limit")
+  }
+  // ... additional validations
+}
+```
+
+### Rate Limiting for Session Reports
+
+Structured reports require more processing; consider separate rate limits:
+
+| Operation | Rate Limit | Window |
+|-----------|------------|--------|
+| Quick Note | 30/minute | Per user |
+| Session Report | 10/minute | Per user |
+| With Medical Concerns | 10/minute | Per user, logged |
+
+```go
+// Rate limiter configuration example
+sessionReportLimiter := middleware.NewRateLimiter(
+  10,           // requests
+  time.Minute,  // window
+  "session_report",
+)
+```
+
+### Medical Data Sensitivity
+
+Medical concerns may contain sensitive health information. Consider:
+
+1. **Access Control:** Only group members can view medical notes
+2. **Audit Logging:** Log access to comments tagged with `medical`
+3. **Data Retention:** Define retention policy for medical observations
+4. **Export Restrictions:** Medical data excluded from bulk exports (or require admin approval)
+5. **Disclaimer:** Add note that this is not a substitute for professional veterinary records
+
+```typescript
+// Display disclaimer when medical field is used
+{showMedicalField && (
+  <div className="medical-disclaimer" role="note">
+    <strong>Note:</strong> Medical observations recorded here are for volunteer 
+    awareness only. Please report urgent health concerns to staff immediately.
+  </div>
+)}
+```
+
+### Validation Flow
+
+```
+┌─────────────────┐
+│ User Input      │
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ Frontend        │
+│ - Length check  │
+│ - XSS sanitize  │
+│ - Rate limit    │
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ Backend API     │
+│ - Auth check    │
+│ - Re-sanitize   │
+│ - Length verify │
+│ - Rate limit    │
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ Database        │
+│ - Stored safely │
+└─────────────────┘
+```
 
 ---
 
