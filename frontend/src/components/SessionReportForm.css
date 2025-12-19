@@ -564,22 +564,22 @@ details[open] .tags-toggle::before {
   }
 }
 
-/* Mobile/Desktop Visibility */
+/* Mobile/Desktop Visibility - Using !important to ensure proper separation */
 .mobile-only {
-  display: block;
+  display: block !important;
 }
 
 .desktop-only {
-  display: none;
+  display: none !important;
 }
 
 @media (min-width: 640px) {
   .mobile-only {
-    display: none;
+    display: none !important;
   }
 
   .desktop-only {
-    display: block;
+    display: block !important;
   }
 }
 
