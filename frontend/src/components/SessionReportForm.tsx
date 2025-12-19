@@ -37,6 +37,86 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   const [medicalNotes, setMedicalNotes] = useState('');
   const [sessionRating, setSessionRating] = useState<number>(0);
   const [otherNotes, setOtherNotes] = useState('');
+  const [draftSaved, setDraftSaved] = useState(false);
+  const [showRestoreDraft, setShowRestoreDraft] = useState(false);
+
+  // Draft management helper functions
+  const getDraftKey = () => `session_draft_${animalId}`;
+
+  const saveDraft = () => {
+    if (mode !== 'structured') return; // Only save drafts for structured mode
+    
+    const draft = {
+      sessionGoal,
+      sessionOutcome,
+      behaviorNotes,
+      medicalNotes,
+      sessionRating,
+      otherNotes,
+      savedAt: new Date().toISOString(),
+    };
+    
+    // Only save if there's actual content
+    const hasContent = sessionGoal || sessionOutcome || behaviorNotes || medicalNotes || sessionRating > 0 || otherNotes;
+    if (hasContent) {
+      localStorage.setItem(getDraftKey(), JSON.stringify(draft));
+      setDraftSaved(true);
+      setTimeout(() => setDraftSaved(false), 2000); // Hide indicator after 2s
+    }
+  };
+
+  const restoreDraft = () => {
+    const saved = localStorage.getItem(getDraftKey());
+    if (!saved) return null;
+    
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return null;
+    }
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem(getDraftKey());
+  };
+
+  // On mount, check for existing draft
+  useEffect(() => {
+    const draft = restoreDraft();
+    if (draft) {
+      setShowRestoreDraft(true);
+    }
+  }, []);
+
+  // Auto-save draft every 30 seconds
+  useEffect(() => {
+    if (mode !== 'structured') return;
+    
+    const interval = setInterval(() => {
+      saveDraft();
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [mode, sessionGoal, sessionOutcome, behaviorNotes, medicalNotes, sessionRating, otherNotes]);
+
+  const handleRestoreDraft = () => {
+    const draft = restoreDraft();
+    if (draft) {
+      setMode('structured');
+      setSessionGoal(draft.sessionGoal || '');
+      setSessionOutcome(draft.sessionOutcome || '');
+      setBehaviorNotes(draft.behaviorNotes || '');
+      setMedicalNotes(draft.medicalNotes || '');
+      setSessionRating(draft.sessionRating || 0);
+      setOtherNotes(draft.otherNotes || '');
+      setShowRestoreDraft(false);
+    }
+  };
+
+  const handleDismissDraft = () => {
+    clearDraft();
+    setShowRestoreDraft(false);
+  };
 
   // Auto-tag logic
   useEffect(() => {
@@ -138,6 +218,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     
     await onSubmit(content, commentImage, selectedTags, metadata);
     
+    // Clear draft on successful submission
+    clearDraft();
+    
     // Reset form
     setCommentText('');
     setCommentImage('');
@@ -177,12 +260,45 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="session-report-form">
+      {/* Draft Restore Prompt */}
+      {showRestoreDraft && (
+        <div className="draft-restore-prompt" role="alert">
+          <div className="draft-prompt-content">
+            <span className="draft-icon">📝</span>
+            <span className="draft-text">You have an unsaved draft from a previous session.</span>
+          </div>
+          <div className="draft-prompt-actions">
+            <button
+              type="button"
+              onClick={handleRestoreDraft}
+              className="btn-restore-draft"
+            >
+              Restore Draft
+            </button>
+            <button
+              type="button"
+              onClick={handleDismissDraft}
+              className="btn-dismiss-draft"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="form-mode-header">
         <div className="mode-title">
           {mode === 'quick' ? (
             <span className="form-hint">💬 Add a comment</span>
           ) : (
-            <span className="form-hint">📋 Session Report</span>
+            <>
+              <span className="form-hint">📋 Session Report</span>
+              {draftSaved && (
+                <span className="draft-saved-indicator" role="status" aria-live="polite">
+                  ✓ Draft saved
+                </span>
+              )}
+            </>
           )}
         </div>
         <button
