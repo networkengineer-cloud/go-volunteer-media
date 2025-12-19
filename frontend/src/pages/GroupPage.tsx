@@ -594,7 +594,7 @@ const GroupPage: React.FC = () => {
                 <div key={`${activity.type}-${activity.id}`} className="activity-card">
                   <div className="activity-header">
                     {activity.animal && (
-                      <Link to={`/groups/${id}/animals/${activity.animal.id}`} className="activity-animal">
+                      <Link to={`/groups/${id}/animals/${activity.animal.id}/view`} className="activity-animal">
                         <span
                           className={`activity-animal-avatar ${activity.animal.image_url ? '' : 'avatar-missing'}`}
                           aria-hidden="true"
@@ -656,7 +656,7 @@ const GroupPage: React.FC = () => {
 
                   {activity.animal && (
                     <div className="activity-footer">
-                      <Link to={`/groups/${id}/animals/${activity.animal.id}`} className="btn-view-profile">
+                      <Link to={`/groups/${id}/animals/${activity.animal.id}/view`} className="btn-view-profile">
                         View {activity.animal.name}'s Profile →
                       </Link>
                     </div>
