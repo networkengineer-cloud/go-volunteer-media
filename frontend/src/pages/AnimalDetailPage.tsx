@@ -9,6 +9,7 @@ import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import ProtocolViewerErrorBoundary from '../components/ProtocolViewerErrorBoundary';
 import SessionReportForm from '../components/SessionReportForm';
+import SessionCommentDisplay from '../components/SessionCommentDisplay';
 import './AnimalDetailPage.css';
 
 // Lazy load ProtocolViewer to reduce initial bundle size (~350KB savings)
@@ -621,7 +622,7 @@ const AnimalDetailPage: React.FC = () => {
                       ))}
                     </div>
                   )}
-                  <p className="comment-content">{comment.content}</p>
+                  <SessionCommentDisplay comment={comment} />
                   {comment.image_url && (
                     <img
                       src={comment.image_url}
@@ -757,7 +758,7 @@ const AnimalDetailPage: React.FC = () => {
                         ))}
                       </div>
                     )}
-                    <p className="comment-content">{comment.content}</p>
+                    <SessionCommentDisplay comment={comment} />
                     {comment.image_url && (
                       <img
                         src={comment.image_url}
