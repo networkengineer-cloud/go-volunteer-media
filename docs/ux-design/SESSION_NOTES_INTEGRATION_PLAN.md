@@ -34,7 +34,7 @@ Other Comments:
 
 | Component | Purpose | Current State |
 |-----------|---------|---------------|
-| `AnimalComment` | Free-text notes with optional image | ✅ Working well |
+| `AnimalComment` | Free-text notes | ✅ Working well |
 | `CommentTag` | Categorize comments (behavior, medical, etc.) | ✅ In place |
 | `AnimalTag` | Persistent animal traits (behavior, walker status) | ✅ Separate from session notes |
 | Comment Form | Simple textarea + tag selection | ✅ Functional but unguided |
@@ -67,13 +67,13 @@ Throughout this document, the following consistent terminology is used:
 | Session Outcome | `session_outcome` | What actually happened |
 | Behavior Concerns | `behavior_notes` | Behavioral observations |
 | Medical Concerns | `medical_notes` | Health/medical observations |
-| Session Rating | `session_rating` | 1-4 scale (Poor/Okay/Good/Great) |
+| Session Rating | `session_rating` | 1-5 scale (Poor/Fair/Okay/Good/Great) |
 | Additional Notes | `other_notes` | Catch-all for other comments |
 
 ### Form Modes
 
 #### Mode 1: Quick Note (Default)
-For everyday updates, photos, and brief observations.
+For everyday updates and brief observations.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -84,7 +84,7 @@ For everyday updates, photos, and brief observations.
 │ │                                                     │ │
 │ └─────────────────────────────────────────────────────┘ │
 │                                                         │
-│ 📷 Add Photo    🏷️ Tags ▾    [📋 Session Report]       │
+│ 🏷️ Tags ▾             [📋 Session Report]              │
 │                                                         │
 │                                      [ Post Comment ]   │
 └─────────────────────────────────────────────────────────┘
@@ -119,7 +119,7 @@ For structured session documentation with guided fields.
 │                                                         │
 │ ⭐ Session Success                                      │
 │ ┌─────────────────────────────────────────────────────┐ │
-│ │  😟 Poor    😐 Okay    🙂 Good    😄 Great          │ │
+│ │  😟 Poor   😕 Fair   😐 Okay   🙂 Good   😄 Great   │ │
 │ └─────────────────────────────────────────────────────┘ │
 │                                                         │
 │ 💭 Other Comments (optional)                            │
@@ -127,7 +127,7 @@ For structured session documentation with guided fields.
 │ │ Anything else worth noting...                       │ │
 │ └─────────────────────────────────────────────────────┘ │
 │                                                         │
-│ 📷 Add Photo    🏷️ Additional Tags ▾                   │
+│ 🏷️ Additional Tags ▾                                   │
 │                                                         │
 │                                [ Post Session Report ]  │
 └─────────────────────────────────────────────────────────┘
@@ -231,12 +231,9 @@ On mobile devices (< 640px):
 3. **Large Touch Targets:** 44px minimum for all buttons
 4. **Swipe to Submit:** Optional gesture for quick posts
 
-### Mobile Form Complexity Mitigation
+### Mobile Form Design: Accordion Sections
 
-The Session Report mode has 6 fields which can be overwhelming on mobile. Three approaches to reduce complexity:
-
-#### Option A: Accordion Sections (Recommended)
-Group fields into collapsible sections. Only one section expanded at a time.
+The Session Report mode has 6 fields which can be overwhelming on mobile. Use accordion sections to group fields into collapsible sections with only one section expanded at a time.
 
 ```
 ┌──────────────────────────────┐
@@ -257,64 +254,6 @@ Group fields into collapsible sections. Only one section expanded at a time.
 │                              │
 │ ▶ ⚠️ Concerns (0)            │
 │ ▶ ⭐ Rating & Notes          │
-│                              │
-│ ┌──────────────────────────┐ │
-│ │   Post Session Report    │ │
-│ └──────────────────────────┘ │
-└──────────────────────────────┘
-```
-
-#### Option B: Stepped Wizard
-Multi-step form with progress indicator. Best for onboarding new volunteers.
-
-```
-┌──────────────────────────────┐
-│ 📋 Session Report            │
-│ Step 1 of 3: Goals           │
-├──────────────────────────────┤
-│ ○───○───○                    │
-│ 1   2   3                    │
-│                              │
-│ 🎯 What was your goal?       │
-│ ┌──────────────────────────┐ │
-│ │ e.g., leash training     │ │
-│ └──────────────────────────┘ │
-│                              │
-│ 📝 What happened?            │
-│ ┌──────────────────────────┐ │
-│ │ How did the session go?  │ │
-│ │                          │ │
-│ └──────────────────────────┘ │
-│                              │
-│ ┌────────┐ ┌───────────────┐ │
-│ │ Cancel │ │ Next: Concerns│ │
-│ └────────┘ └───────────────┘ │
-└──────────────────────────────┘
-```
-
-#### Option C: "Add More Details" Progressive Disclosure
-Start with just Goal and Outcome, offer to add concerns.
-
-```
-┌──────────────────────────────┐
-│ 📋 Session Report            │
-├──────────────────────────────┤
-│                              │
-│ 🎯 Session Goal              │
-│ ┌──────────────────────────┐ │
-│ │ e.g., leash training     │ │
-│ └──────────────────────────┘ │
-│                              │
-│ 📝 What happened?            │
-│ ┌──────────────────────────┐ │
-│ │ How did it go?           │ │
-│ │                          │ │
-│ └──────────────────────────┘ │
-│                              │
-│ ┌──────────────────────────┐ │
-│ │ + Add behavior/medical   │ │
-│ │   concerns               │ │
-│ └──────────────────────────┘ │
 │                              │
 │ ┌──────────────────────────┐ │
 │ │   Post Session Report    │ │
@@ -396,32 +335,11 @@ Each field should have:
 
 ---
 
-## 🔄 Data Model Considerations
+## 🔄 Data Model
 
-### Option A: Structured Fields in Comment Content (Recommended)
+### Structured Metadata Field
 
-Store structured data as formatted content in the existing `content` field:
-
-```json
-{
-  "content": "## Session Goal\nLeash training practice\n\n## Outcome\nPulled hard when seeing another dog...\n\n## Behavior Concerns\nDog-reactive, lunged at Lab.\n\n## Medical Concerns\nLimping slightly on left back leg.\n\n## Session Rating\n3/4 (Good)\n\n## Other Notes\n...",
-  "tag_ids": [1, 2]
-}
-```
-
-**Pros:**
-- No database changes required
-- Backwards compatible with existing comments
-- Searchable via full-text search
-- Renders well as Markdown
-
-**Cons:**
-- Harder to extract individual fields for analytics
-- No strict schema enforcement
-
-### Option B: Structured Metadata Field (Future Enhancement)
-
-Add a JSONB `metadata` field to `AnimalComment`:
+Add a JSONB `metadata` field to `AnimalComment` to store structured session data:
 
 ```go
 type AnimalComment struct {
@@ -434,23 +352,16 @@ type SessionMetadata struct {
   SessionOutcome  string `json:"session_outcome,omitempty"`
   BehaviorNotes   string `json:"behavior_notes,omitempty"`
   MedicalNotes    string `json:"medical_notes,omitempty"`
-  SessionRating   int    `json:"session_rating,omitempty"` // 1-4
+  SessionRating   int    `json:"session_rating,omitempty"` // 1-5
+  OtherNotes      string `json:"other_notes,omitempty"`
 }
 ```
 
-**Pros:**
-- Structured data for analytics
-- Easy to query specific fields
-- Can enforce schema
-
-**Cons:**
-- Database migration required
-- More complex API
-- Need to handle migration of existing data
-
-### Recommendation
-
-**Start with Option A (formatted content)** for MVP. This allows immediate implementation without database changes. Plan for Option B in a future release if structured analytics become important.
+**Benefits:**
+- Structured data for analytics and filtering
+- Easy to query specific fields (behavior/medical concerns)
+- Supports Activity Feed filtering and summary statistics
+- Backwards compatible - existing comments have `metadata: null`
 
 ---
 
@@ -464,9 +375,8 @@ type SessionMetadata struct {
 | Session Outcome | Textarea | No | "What happened during the session?" |
 | Behavior Concerns | Textarea | No | "Any behavior observations to note?" |
 | Medical Concerns | Textarea | No | "Any health or medical observations?" |
-| Session Rating | Rating Selector | No | 4-point scale with emoji |
-| Other Comments | Textarea | No | "Anything else worth noting..." |
-| Photo | File Upload | No | Existing implementation |
+| Session Rating | Rating Selector | No | 5-point scale with emoji |
+| Additional Notes | Textarea | No | "Anything else worth noting..." |
 
 ### Color Palette for Concerns
 
@@ -488,56 +398,55 @@ type SessionMetadata struct {
 
 ```
 Session Success:
-😟 Poor      😐 Okay      🙂 Good      😄 Great
-  (1)         (2)          (3)          (4)
+😟 Poor      😕 Fair      😐 Okay      🙂 Good      😄 Great
+  (1)         (2)          (3)          (4)          (5)
 ```
 
 Use radio button group with emoji labels for visual feedback.
 
 ---
 
-## 🛠️ Implementation Phases
+## 🛠️ Implementation Plan
 
-### Phase 1: Quick Wins (No Backend Changes)
+This document targets the complete solution with all features included. The following components should be implemented:
 
-1. **Update Comment Form UI**
-   - Add "Session Report" toggle button
-   - Create expandable form section
-   - Format output as structured Markdown
+### Frontend Components
 
-2. **Automatic Tag Application**
-   - Detect when behavior/medical fields have content
-   - Auto-select corresponding tags
+1. **Session Report Form**
+   - Dual-mode: Quick Note (default) and Session Report (structured)
+   - Accordion sections for mobile UX
+   - Auto-tag behavior/medical fields
+   - Save draft with localStorage
+   - 5-point rating selector
 
-3. **Mobile Optimization**
-   - Responsive layout for form sections
-   - Touch-friendly controls
+2. **Activity Feed Page**
+   - Unified timeline of all session notes and quick comments
+   - Filter bar: concern type, rating, animal, date range
+   - Quick filters for behavior/medical concerns
+   - Summary stats at the top
+   - Parsed display of structured session reports
 
-### Phase 2: Enhanced Display
+3. **Enhanced Comment Display**
+   - Detect and render structured comments with highlighted sections
+   - Show rating visually with emoji
+   - Prominent tag display for concerns
 
-1. **Parsed Session Display**
-   - Detect structured comments
-   - Render with highlighted sections
-   - Show rating visually
+### Backend Components
 
-2. **Filter Enhancements**
-   - "Sessions with concerns" filter
-   - Rating-based filtering
+1. **JSONB Metadata Field**
+   - Add `metadata` column to `AnimalComment` model
+   - Store structured session data
+   - Support querying by individual fields
 
-### Phase 3: Analytics & Activity Feed (Optional Future)
+2. **Activity Feed API Endpoint**
+   - `GET /api/groups/:id/activity-feed`
+   - Support filtering by concern type, rating, date range
+   - Return summary statistics
+   - Paginated response
 
-1. **Metadata Field Migration**
-   - Add JSONB column
-   - Migrate existing structured comments
-
-2. **Reporting Dashboard**
-   - Session rating trends
-   - Concern frequency by animal
-
-3. **Enhanced Activity Feed**
-   - Unified view of all activity across animals
-   - Filterable by concern type, rating, date
-   - Aggregated analytics per animal
+3. **Tag Auto-Creation**
+   - Ensure `behavior` and `medical` tags exist for each group
+   - Migration to create default tags
 
 ---
 
@@ -912,9 +821,7 @@ Medical concerns may contain sensitive health information. Consider:
 │ │                          │ │
 │ └──────────────────────────┘ │
 │                              │
-│ ┌────────┐ ┌────────────┐   │
-│ │📷 Photo│ │🏷️ Tags    ▾│   │
-│ └────────┘ └────────────┘   │
+│ 🏷️ Tags ▾                    │
 │                              │
 │ ┌──────────────────────────┐ │
 │ │ 📋 Switch to Session     │ │
@@ -962,7 +869,7 @@ Medical concerns may contain sensitive health information. Consider:
 │                              │
 │ ⭐ Session Rating            │
 │ ┌──────────────────────────┐ │
-│ │ 😟  😐  🙂  😄            │ │
+│ │ 😟 😕 😐 🙂 😄            │ │
 │ └──────────────────────────┘ │
 │                              │
 │ 💭 Other Comments            │
@@ -971,9 +878,7 @@ Medical concerns may contain sensitive health information. Consider:
 │ │                          │ │
 │ └──────────────────────────┘ │
 │                              │
-│ ┌────────┐ ┌────────────┐   │
-│ │📷 Photo│ │🏷️ More Tags▾│   │
-│ └────────┘ └────────────┘   │
+│ 🏷️ More Tags ▾               │
 │                              │
 │ ┌──────────────────────────┐ │
 │ │   Post Session Report    │ │
@@ -1015,7 +920,7 @@ Medical concerns may contain sensitive health information. Consider:
 │                                                                                │
 │ ┌────────────────────────────────────────────────────────────────────────────┐ │
 │ │ ⭐ Session Success                                                          │ │
-│ │    ○ 😟 Poor     ○ 😐 Okay     ○ 🙂 Good     ○ 😄 Great                    │ │
+│ │    ○ 😟 Poor   ○ 😕 Fair   ○ 😐 Okay   ○ 🙂 Good   ○ 😄 Great              │ │
 │ └────────────────────────────────────────────────────────────────────────────┘ │
 │                                                                                │
 │ ┌────────────────────────────────────────────────────────────────────────────┐ │
@@ -1026,9 +931,7 @@ Medical concerns may contain sensitive health information. Consider:
 │ │ └────────────────────────────────────────────────────────────────────────┘ │ │
 │ └────────────────────────────────────────────────────────────────────────────┘ │
 │                                                                                │
-│ ┌─────────────────┐  ┌───────────────────────┐                                │
-│ │ 📷 Add Photo    │  │ 🏷️ Additional Tags ▾  │                                │
-│ └─────────────────┘  └───────────────────────┘                                │
+│ 🏷️ Additional Tags ▾                                                          │
 │                                                                                │
 │                                                       [ Post Session Report ]  │
 └────────────────────────────────────────────────────────────────────────────────┘
@@ -1039,10 +942,11 @@ Medical concerns may contain sensitive health information. Consider:
 ## ✅ Next Steps
 
 1. **Review this plan** with stakeholders
-2. **Prioritize phases** based on timeline and resources
-3. **Create GitHub issues** for Phase 1 tasks
-4. **Design review** for wireframes
-5. **Implement Phase 1** frontend changes
+2. **Create GitHub issues** for implementation tasks
+3. **Database migration** for JSONB metadata field
+4. **Implement frontend** - Session Report form with accordion mobile UX
+5. **Implement backend** - Activity Feed API endpoint
+6. **Testing** - Unit tests and E2E tests per testing strategy
 
 ---
 
@@ -1055,9 +959,9 @@ Medical concerns may contain sensitive health information. Consider:
 
 ---
 
-## 📰 Appendix: Activity Feed Design (Phase 3)
+## 📰 Activity Feed Design
 
-> This section describes the enhanced activity feed assuming Phase 3 (Analytics & Activity Feed) is complete.
+> This section describes the enhanced activity feed for the complete implementation.
 
 ### Design Principles for Activity Feed
 
@@ -1066,7 +970,7 @@ Medical concerns may contain sensitive health information. Consider:
 3. **Structured data parsing** - Session reports display with parsed sections and ratings
 4. **Filtering by concern type** - Quickly surface behavior or medical concerns across all animals
 
-### A4: Group Activity Feed (Desktop - Phase 3 Complete)
+### A4: Group Activity Feed (Desktop)
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
@@ -1178,7 +1082,7 @@ Medical concerns may contain sensitive health information. Consider:
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### A6: Activity Feed (Mobile - Phase 3 Complete)
+### A6: Activity Feed (Mobile)
 
 ```
 ┌──────────────────────────────┐
@@ -1300,7 +1204,7 @@ interface SessionActivity {
     session_outcome?: string;
     behavior_notes?: string;
     medical_notes?: string;
-    session_rating?: number; // 1-4
+    session_rating?: number; // 1-5
   };
 }
 ```
