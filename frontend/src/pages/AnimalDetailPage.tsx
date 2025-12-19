@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useRef, useCallback, Suspense, lazy } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi } from '../api/client';
-import type { Animal, AnimalComment, CommentTag, Group, GroupMembership } from '../api/client';
+import type { Animal, AnimalComment, CommentTag, Group, GroupMembership, SessionMetadata } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import ProtocolViewerErrorBoundary from '../components/ProtocolViewerErrorBoundary';
+import SessionReportForm from '../components/SessionReportForm';
 import './AnimalDetailPage.css';
 
 // Lazy load ProtocolViewer to reduce initial bundle size (~350KB savings)
@@ -42,11 +43,8 @@ const AnimalDetailPage: React.FC = () => {
   const [deletedComments, setDeletedComments] = useState<AnimalComment[]>([]);
   const [showDeleted, setShowDeleted] = useState(false);
   const [availableTags, setAvailableTags] = useState<CommentTag[]>([]);
-  const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [filterTags, setFilterTags] = useState<string[]>([]); // Tags selected for filtering
   const [loading, setLoading] = useState(true);
-  const [commentText, setCommentText] = useState('');
-  const [commentImage, setCommentImage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showCommentForm, setShowCommentForm] = useState(true);
   const [error, setError] = useState<string>('');
@@ -190,9 +188,8 @@ const AnimalDetailPage: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const handleSubmitComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!commentText.trim() && !commentImage) {
+  const handleSubmitComment = async (content: string, imageUrl: string, tagIds: number[], metadata?: SessionMetadata) => {
+    if (!content.trim() && !imageUrl) {
       toast.showWarning('Please write a comment');
       return;
     }
@@ -202,9 +199,10 @@ const AnimalDetailPage: React.FC = () => {
       const newComment = await animalCommentsApi.create(
         Number(groupId),
         Number(id),
-        commentText,
-        commentImage,
-        selectedTags.length > 0 ? selectedTags : undefined
+        content,
+        imageUrl,
+        tagIds.length > 0 ? tagIds : undefined,
+        metadata
       );
       
       // Add new comment to the beginning or end based on sort order
@@ -215,14 +213,12 @@ const AnimalDetailPage: React.FC = () => {
       }
       
       setTotalComments(prev => prev + 1);
-      setCommentText('');
-      setCommentImage('');
-      setSelectedTags([]);
       toast.showSuccess('Comment posted successfully!');
     } catch (error: unknown) {
       console.error('Failed to post comment:', error);
       const errorMsg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to post comment. Please try again.';
       toast.showError(errorMsg);
+      throw error; // Re-throw so SessionReportForm doesn't reset on error
     } finally {
       setSubmitting(false);
     }
@@ -560,81 +556,12 @@ const AnimalDetailPage: React.FC = () => {
           </div>
 
           {showCommentForm && (
-            <form onSubmit={handleSubmitComment} className="comment-form">
-              <div className="form-section-header">
-                <span className="form-hint">💬 Add a comment about this animal</span>
-              </div>
-              <textarea
-                placeholder="Add a comment..."
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                rows={3}
-                disabled={submitting}
-              />
-              {commentImage && (
-                <div className="comment-image-preview">
-                  <img src={commentImage} alt="Preview" />
-                  <button
-                    type="button"
-                    onClick={() => setCommentImage('')}
-                    className="remove-image"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-              <div className="comment-tags-selection">
-                <label htmlFor="tag-select" className="tag-select-label">Tags (optional):</label>
-                <select
-                  id="tag-select"
-                  multiple
-                  size={3}
-                  value={selectedTags.map(String)}
-                  onChange={(e) => {
-                    const options = Array.from(e.target.selectedOptions);
-                    setSelectedTags(options.map(opt => Number(opt.value)));
-                  }}
-                  className="tag-multi-select"
-                >
-                  {availableTags.map((tag) => (
-                    <option key={tag.id} value={tag.id}>
-                      {tag.name}
-                    </option>
-                  ))}
-                </select>
-                <span className="tag-select-hint">Hold Ctrl/Cmd to select multiple tags</span>
-                {selectedTags.length > 0 && (
-                  <div className="selected-tags-preview">
-                    {selectedTags.map(tagId => {
-                      const tag = availableTags.find(t => t.id === tagId);
-                      return tag ? (
-                        <span key={tagId} className="tag-badge" style={{ backgroundColor: tag.color }}>
-                          {tag.name}
-                          <button
-                            type="button"
-                            className="remove-tag"
-                            onClick={() => setSelectedTags(selectedTags.filter(t => t !== tagId))}
-                            aria-label={`Remove ${tag.name}`}
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ) : null;
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="comment-form-actions">
-                <button 
-                  type="submit" 
-                  className="btn-post" 
-                  disabled={submitting || (!commentText.trim() && !commentImage)}
-                  title={!commentText.trim() && !commentImage ? 'Add a comment or photo first' : 'Post comment'}
-                >
-                  {submitting ? 'Posting...' : 'Post Comment'}
-                </button>
-              </div>
-            </form>
+            <SessionReportForm
+              animalId={Number(id)}
+              availableTags={availableTags}
+              onSubmit={handleSubmitComment}
+              submitting={submitting}
+            />
           )}
 
           {/* Admin: Show Deleted Comments Toggle - HIGH VISIBILITY */}

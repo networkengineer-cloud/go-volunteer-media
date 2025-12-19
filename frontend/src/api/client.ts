@@ -523,11 +523,12 @@ export const animalCommentsApi = {
     if (options?.order) params.order = options.order;
     return api.get<PaginatedCommentsResponse>('/groups/' + groupId + '/animals/' + animalId + '/comments', { params });
   },
-  create: (groupId: number, animalId: number, content: string, image_url?: string, tag_ids?: number[]) =>
+  create: (groupId: number, animalId: number, content: string, image_url?: string, tag_ids?: number[], metadata?: SessionMetadata) =>
     api.post<AnimalComment>('/groups/' + groupId + '/animals/' + animalId + '/comments', {
       content,
       image_url,
       tag_ids,
+      metadata,
     }),
   delete: (groupId: number, animalId: number, commentId: number) =>
     api.delete('/groups/' + groupId + '/animals/' + animalId + '/comments/' + commentId),
