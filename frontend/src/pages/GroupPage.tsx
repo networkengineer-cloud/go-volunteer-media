@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { groupsApi, animalsApi, authApi } from '../api/client';
-import type { Group, Animal, GroupMembership } from '../api/client';
+import type { Group, Animal, GroupMembership, ActivityItem } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
-import ActivityFeed from '../components/ActivityFeed';
+import { useToast } from '../hooks/useToast';
+import SessionCommentDisplay from '../components/SessionCommentDisplay';
 import AnnouncementForm from '../components/AnnouncementForm';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
@@ -19,6 +20,7 @@ const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   useAuth(); // Ensure user is authenticated
   const navigate = useNavigate();
+  const toast = useToast();
   const [searchParams] = useSearchParams();
   
   // Get initial view mode from URL parameter (default to 'activity')
@@ -38,6 +40,19 @@ const GroupPage: React.FC = () => {
   const [showProtocolForm, setShowProtocolForm] = useState(false);
   const [activityFeedKey, setActivityFeedKey] = useState(0);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
+  
+  // Activity Feed state (integrated from ActivityFeedPage)
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [activityTotal, setActivityTotal] = useState(0);
+  const [activityHasMore, setActivityHasMore] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityLoadingMore, setActivityLoadingMore] = useState(false);
+  const [activityError, setActivityError] = useState('');
+  const [filterAnimal, setFilterAnimal] = useState<string>('');
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [filterRating, setFilterRating] = useState<string>('');
+  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
+  const [filterDateTo, setFilterDateTo] = useState<string>('');
 
   // Load group data and membership info
   const loadGroupData = async (groupId: number) => {
@@ -129,9 +144,85 @@ const GroupPage: React.FC = () => {
 
   const handleAnnouncementSuccess = () => {
     setShowAnnouncementForm(false);
-    // Refresh activity feed by changing key
-    setActivityFeedKey(prev => prev + 1);
+    // Refresh activity feed
+    if (id) {
+      loadActivityFeed(Number(id), true);
+    }
   };
+
+  // Load activity feed with filters (integrated from ActivityFeedPage)
+  const loadActivityFeed = async (groupId: number, reset = false) => {
+    if (reset) {
+      setActivityLoading(true);
+      setActivities([]);
+    } else {
+      setActivityLoadingMore(true);
+    }
+
+    try {
+      const offset = reset ? 0 : activities.length;
+      const response = await groupsApi.getActivityFeed(groupId, {
+        limit: 20,
+        offset,
+        type: filterType,
+        animal: filterAnimal ? Number(filterAnimal) : undefined,
+        tags: filterTags.length > 0 ? filterTags.join(',') : undefined,
+        rating: filterRating || undefined,
+        from: filterDateFrom || undefined,
+        to: filterDateTo || undefined,
+      });
+
+      if (reset) {
+        setActivities(response.data.items);
+      } else {
+        setActivities([...activities, ...response.data.items]);
+      }
+      
+      setActivityTotal(response.data.total);
+      setActivityHasMore(response.data.hasMore);
+      setActivityError('');
+    } catch (err: any) {
+      console.error('Failed to load activity feed:', err);
+      const errorMessage = err.response?.data?.error || 'Failed to load activity feed. Please try again.';
+      setActivityError(errorMessage);
+      toast.showError(errorMessage);
+    } finally {
+      setActivityLoading(false);
+      setActivityLoadingMore(false);
+    }
+  };
+
+  const handleLoadMoreActivity = () => {
+    if (id) {
+      loadActivityFeed(Number(id), false);
+    }
+  };
+
+  const clearActivityFilters = () => {
+    setFilterType('all');
+    setFilterAnimal('');
+    setFilterTags([]);
+    setFilterRating('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+  };
+
+  const toggleTag = (tagName: string) => {
+    if (filterTags.includes(tagName)) {
+      setFilterTags(filterTags.filter(t => t !== tagName));
+    } else {
+      setFilterTags([...filterTags, tagName]);
+    }
+  };
+
+  const hasActiveActivityFilters = filterType !== 'all' || filterAnimal || filterTags.length > 0 || filterRating || filterDateFrom || filterDateTo;
+
+  // Load activity feed when filters change or view mode switches to activity
+  useEffect(() => {
+    if (id && viewMode === 'activity') {
+      loadActivityFeed(Number(id), true);
+    }
+  }, [id, viewMode, filterType, filterAnimal, filterTags, filterRating, filterDateFrom, filterDateTo]);
 
   if (loading) {
     return (
@@ -309,33 +400,193 @@ const GroupPage: React.FC = () => {
           aria-labelledby="activity-tab"
           className="group-content"
         >
-          {/* Activity Filter */}
-          <div className="quick-actions-bar">
-            <div className="quick-actions-bar__filters">
-              <label htmlFor="activity-filter" className="sr-only">Filter activity type</label>
+          {/* Enhanced Activity Filter Bar */}
+          <div className="activity-filter-bar">
+            <div className="filter-row">
               <select
                 id="activity-filter"
-                className="quick-actions-bar__select"
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as FilterType)}
+                className="filter-select"
                 aria-label="Filter activity by type"
               >
                 <option value="all">All Activity</option>
                 <option value="comments">Comments Only</option>
                 <option value="announcements">Announcements Only</option>
               </select>
+
+              <select
+                value={filterAnimal}
+                onChange={(e) => setFilterAnimal(e.target.value)}
+                className="filter-select"
+                aria-label="Filter by animal"
+              >
+                <option value="">All Animals</option>
+                {animals.map(animal => (
+                  <option key={animal.id} value={animal.id}>{animal.name}</option>
+                ))}
+              </select>
+
+              <select
+                value={filterRating}
+                onChange={(e) => setFilterRating(e.target.value)}
+                className="filter-select"
+                aria-label="Filter by rating"
+              >
+                <option value="">All Ratings</option>
+                <option value="5">😄 Great (5)</option>
+                <option value="4">🙂 Good (4)</option>
+                <option value="3">😐 Okay (3)</option>
+                <option value="2">😕 Fair (2)</option>
+                <option value="1">😟 Poor (1)</option>
+                <option value="poor">😟 Poor Sessions (1-2)</option>
+              </select>
+
+              <input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="filter-input"
+                placeholder="From date"
+                aria-label="Filter from date"
+              />
+
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="filter-input"
+                placeholder="To date"
+                aria-label="Filter to date"
+              />
+
+              {hasActiveActivityFilters && (
+                <button onClick={clearActivityFilters} className="btn-clear-filters">
+                  Clear Filters
+                </button>
+              )}
             </div>
-            <Link to={`/groups/${id}/activity-feed`} className="btn-view-full-feed">
-              📰 View Full Activity Feed →
-            </Link>
+
+            {/* Quick Filters */}
+            <div className="quick-filters">
+              <span className="quick-filters-label">Quick Filters:</span>
+              <button
+                className={`quick-filter-btn ${filterTags.includes('behavior') ? 'active' : ''}`}
+                onClick={() => toggleTag('behavior')}
+                aria-pressed={filterTags.includes('behavior')}
+              >
+                ⚠️ Behavior
+              </button>
+              <button
+                className={`quick-filter-btn ${filterTags.includes('medical') ? 'active' : ''}`}
+                onClick={() => toggleTag('medical')}
+                aria-pressed={filterTags.includes('medical')}
+              >
+                🏥 Medical
+              </button>
+              <button
+                className={`quick-filter-btn ${filterRating === 'poor' ? 'active' : ''}`}
+                onClick={() => setFilterRating(filterRating === 'poor' ? '' : 'poor')}
+                aria-pressed={filterRating === 'poor'}
+              >
+                😟 Poor Sessions
+              </button>
+            </div>
           </div>
 
-          {/* Activity Feed Component */}
-          <ActivityFeed 
-            key={activityFeedKey}
-            groupId={Number(id)} 
-            filterType={filterType} 
-          />
+          {/* Activity Feed Content */}
+          {activityLoading ? (
+            <div className="activity-list">
+              <SkeletonLoader variant="comment" count={5} />
+            </div>
+          ) : activityError ? (
+            <ErrorState
+              title="Unable to Load Activity Feed"
+              message={activityError}
+              onRetry={() => id && loadActivityFeed(Number(id), true)}
+            />
+          ) : activities.length === 0 ? (
+            <div className="empty-state">
+              <p>No activity found</p>
+              {hasActiveActivityFilters && (
+                <button onClick={clearActivityFilters} className="btn-primary">
+                  Clear Filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="activity-list">
+              {activities.map((activity) => (
+                <div key={`${activity.type}-${activity.id}`} className="activity-card">
+                  <div className="activity-header">
+                    {activity.animal && (
+                      <Link to={`/groups/${id}/animals/${activity.animal.id}`} className="activity-animal">
+                        🐕 {activity.animal.name}
+                      </Link>
+                    )}
+                    <span className="activity-meta">
+                      by {activity.user?.username} • {new Date(activity.created_at).toLocaleDateString()} at{' '}
+                      {new Date(activity.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+
+                  {activity.tags && activity.tags.length > 0 && (
+                    <div className="activity-tags">
+                      {activity.tags.map((tag) => (
+                        <span key={tag.id} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                          🏷️ {tag.name}
+                        </span>
+                      ))}
+                      {activity.metadata?.session_rating && (
+                        <span className="session-rating-badge">
+                          Session: {['', '😟', '😕', '😐', '🙂', '😄'][activity.metadata.session_rating]}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="activity-content">
+                    {activity.type === 'announcement' && activity.title && (
+                      <h3 className="activity-title">{activity.title}</h3>
+                    )}
+
+                    {activity.type === 'comment' ? (
+                      <SessionCommentDisplay comment={activity as any} />
+                    ) : (
+                      <p className="activity-text">{activity.content}</p>
+                    )}
+
+                    {activity.image_url && (
+                      <img src={activity.image_url} alt="Activity" className="activity-image" />
+                    )}
+                  </div>
+
+                  {activity.animal && (
+                    <div className="activity-footer">
+                      <Link to={`/groups/${id}/animals/${activity.animal.id}`} className="btn-view-profile">
+                        View {activity.animal.name}'s Profile →
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {activityHasMore && (
+                <div className="load-more-container">
+                  <button
+                    onClick={handleLoadMoreActivity}
+                    className="btn-load-more"
+                    disabled={activityLoadingMore}
+                  >
+                    {activityLoadingMore ? 'Loading...' : 'Load More Activity'}
+                  </button>
+                  <span className="results-info">
+                    Showing {activities.length} of {activityTotal}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
