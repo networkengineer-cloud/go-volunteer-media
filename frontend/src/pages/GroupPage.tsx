@@ -49,6 +49,8 @@ const GroupPage: React.FC = () => {
   const [activityLoadingMore, setActivityLoadingMore] = useState(false);
   const [activityError, setActivityError] = useState('');
   const [filterAnimal, setFilterAnimal] = useState<string>('');
+  const [animalSearchQuery, setAnimalSearchQuery] = useState<string>('');
+  const [showAnimalDropdown, setShowAnimalDropdown] = useState(false);
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [filterRating, setFilterRating] = useState<string>('');
   const [filterDateFrom, setFilterDateFrom] = useState<string>('');
@@ -201,6 +203,7 @@ const GroupPage: React.FC = () => {
   const clearActivityFilters = () => {
     setFilterType('all');
     setFilterAnimal('');
+    setAnimalSearchQuery('');
     setFilterTags([]);
     setFilterRating('');
     setFilterDateFrom('');
@@ -217,12 +220,51 @@ const GroupPage: React.FC = () => {
 
   const hasActiveActivityFilters = filterType !== 'all' || filterAnimal || filterTags.length > 0 || filterRating || filterDateFrom || filterDateTo;
 
+  // Filter animals based on search query
+  const filteredAnimals = animals.filter(animal =>
+    animal.name.toLowerCase().includes(animalSearchQuery.toLowerCase())
+  );
+
+  // Get selected animal name
+  const selectedAnimalName = filterAnimal 
+    ? animals.find(a => a.id.toString() === filterAnimal)?.name || ''
+    : '';
+
+  // Handle animal selection from dropdown
+  const selectAnimal = (animalId: number, animalName: string) => {
+    setFilterAnimal(animalId.toString());
+    setAnimalSearchQuery(animalName);
+    setShowAnimalDropdown(false);
+  };
+
+  // Clear animal filter
+  const clearAnimalFilter = () => {
+    setFilterAnimal('');
+    setAnimalSearchQuery('');
+    setShowAnimalDropdown(false);
+  };
+
   // Load activity feed when filters change or view mode switches to activity
   useEffect(() => {
     if (id && viewMode === 'activity') {
       loadActivityFeed(Number(id), true);
     }
   }, [id, viewMode, filterType, filterAnimal, filterTags, filterRating, filterDateFrom, filterDateTo]);
+
+  // Close animal dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.animal-filter-autocomplete')) {
+        setShowAnimalDropdown(false);
+      }
+    };
+
+    if (showAnimalDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showAnimalDropdown]);
 
   if (loading) {
     return (
@@ -415,17 +457,50 @@ const GroupPage: React.FC = () => {
                 <option value="announcements">Announcements Only</option>
               </select>
 
-              <select
-                value={filterAnimal}
-                onChange={(e) => setFilterAnimal(e.target.value)}
-                className="filter-select"
-                aria-label="Filter by animal"
-              >
-                <option value="">All Animals</option>
-                {animals.map(animal => (
-                  <option key={animal.id} value={animal.id}>{animal.name}</option>
-                ))}
-              </select>
+              {/* Searchable Animal Filter with Autocomplete */}
+              <div className="animal-filter-autocomplete">
+                <input
+                  type="text"
+                  value={animalSearchQuery}
+                  onChange={(e) => {
+                    setAnimalSearchQuery(e.target.value);
+                    setShowAnimalDropdown(true);
+                  }}
+                  onFocus={() => setShowAnimalDropdown(true)}
+                  placeholder="Search animals..."
+                  className="filter-input"
+                  aria-label="Search and filter by animal"
+                />
+                {animalSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={clearAnimalFilter}
+                    className="animal-filter-clear"
+                    aria-label="Clear animal filter"
+                  >
+                    ×
+                  </button>
+                )}
+                {showAnimalDropdown && filteredAnimals.length > 0 && (
+                  <div className="animal-dropdown">
+                    {filteredAnimals.slice(0, 10).map(animal => (
+                      <button
+                        key={animal.id}
+                        type="button"
+                        onClick={() => selectAnimal(animal.id, animal.name)}
+                        className="animal-dropdown-item"
+                      >
+                        🐕 {animal.name}
+                      </button>
+                    ))}
+                    {filteredAnimals.length > 10 && (
+                      <div className="animal-dropdown-more">
+                        +{filteredAnimals.length - 10} more animals...
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <select
                 value={filterRating}
