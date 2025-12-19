@@ -45,6 +45,7 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
       {metadata.session_goal && (
         <div className="session-field">
           <span className="session-field-label">🎯 Session Goal:</span>
+          {/* Safe to render - content is HTML-escaped on server before storage */}
           <p className="session-field-content">{metadata.session_goal}</p>
         </div>
       )}
@@ -53,6 +54,7 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
       {metadata.session_outcome && (
         <div className="session-field">
           <span className="session-field-label">📝 Session Outcome:</span>
+          {/* Safe to render - content is HTML-escaped on server before storage */}
           <p className="session-field-content">{metadata.session_outcome}</p>
         </div>
       )}
@@ -67,6 +69,7 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
                 <span className="concern-icon">⚠️</span>
                 <span className="concern-title">Behavior</span>
               </div>
+              {/* Safe to render - content is HTML-escaped on server before storage */}
               <p className="concern-content">{metadata.behavior_notes}</p>
             </div>
           )}
@@ -78,6 +81,7 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
                 <span className="concern-icon">🏥</span>
                 <span className="concern-title">Medical</span>
               </div>
+              {/* Safe to render - content is HTML-escaped on server before storage */}
               <p className="concern-content">{metadata.medical_notes}</p>
             </div>
           )}
@@ -98,6 +102,7 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
       {metadata.other_notes && (
         <div className="session-field">
           <span className="session-field-label">💭 Other Notes:</span>
+          {/* Safe to render - content is HTML-escaped on server before storage */}
           <p className="session-field-content">{metadata.other_notes}</p>
         </div>
       )}

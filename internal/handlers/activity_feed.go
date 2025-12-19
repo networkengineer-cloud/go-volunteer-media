@@ -275,47 +275,15 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 
 // splitAndTrim splits a comma-separated string and trims whitespace
 func splitAndTrim(s string) []string {
+	if s == "" {
+		return []string{}
+	}
 	parts := []string{}
-	for _, part := range splitString(s, ",") {
-		trimmed := trimString(part)
+	for _, part := range strings.Split(s, ",") {
+		trimmed := strings.TrimSpace(part)
 		if trimmed != "" {
 			parts = append(parts, trimmed)
 		}
 	}
 	return parts
-}
-
-func splitString(s, sep string) []string {
-	if s == "" {
-		return []string{}
-	}
-	result := []string{}
-	current := ""
-	for _, char := range s {
-		if string(char) == sep {
-			result = append(result, current)
-			current = ""
-		} else {
-			current += string(char)
-		}
-	}
-	result = append(result, current)
-	return result
-}
-
-func trimString(s string) string {
-	start := 0
-	end := len(s)
-	
-	// Trim leading whitespace
-	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
-		start++
-	}
-	
-	// Trim trailing whitespace
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
-		end--
-	}
-	
-	return s[start:end]
 }

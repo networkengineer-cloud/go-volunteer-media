@@ -81,10 +81,11 @@ const ActivityFeedPage: React.FC = () => {
       setHasMore(response.data.hasMore);
       setSummary(response.data.summary || null);
       setError('');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load activity feed:', err);
-      setError('Failed to load activity feed');
-      toast.showError('Failed to load activity feed');
+      const errorMessage = err.response?.data?.error || 'Failed to load activity feed. Please try again.';
+      setError(errorMessage);
+      toast.showError(errorMessage);
     } finally {
       setLoading(false);
       setLoadingMore(false);

@@ -40,6 +40,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   const [draftSaved, setDraftSaved] = useState(false);
   const [showRestoreDraft, setShowRestoreDraft] = useState(false);
   
+  // Track which tags were auto-applied vs manually selected
+  const [autoAppliedTags, setAutoAppliedTags] = useState<number[]>([]);
+  
   // Mobile accordion state
   const [expandedSection, setExpandedSection] = useState<'goals' | 'concerns' | 'rating' | null>('goals');
 
@@ -153,31 +156,49 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     const medicalTag = findTagByType(availableTags, 'medical');
     
     const newTags = [...selectedTags];
+    const newAutoAppliedTags = [...autoAppliedTags];
     
     // Auto-select behavior tag if behavior notes have content
     if (behaviorNotes.trim() && behaviorTag && !newTags.includes(behaviorTag.id)) {
       newTags.push(behaviorTag.id);
+      newAutoAppliedTags.push(behaviorTag.id);
     } else if (!behaviorNotes.trim() && behaviorTag && newTags.includes(behaviorTag.id)) {
-      // Remove behavior tag if field is cleared (but only if user didn't manually select it)
-      const index = newTags.indexOf(behaviorTag.id);
-      if (index > -1) {
-        newTags.splice(index, 1);
+      // Only remove behavior tag if it was auto-applied (not manually selected)
+      if (autoAppliedTags.includes(behaviorTag.id)) {
+        const index = newTags.indexOf(behaviorTag.id);
+        if (index > -1) {
+          newTags.splice(index, 1);
+        }
+        const autoIndex = newAutoAppliedTags.indexOf(behaviorTag.id);
+        if (autoIndex > -1) {
+          newAutoAppliedTags.splice(autoIndex, 1);
+        }
       }
     }
     
     // Auto-select medical tag if medical notes have content
     if (medicalNotes.trim() && medicalTag && !newTags.includes(medicalTag.id)) {
       newTags.push(medicalTag.id);
+      newAutoAppliedTags.push(medicalTag.id);
     } else if (!medicalNotes.trim() && medicalTag && newTags.includes(medicalTag.id)) {
-      // Remove medical tag if field is cleared
-      const index = newTags.indexOf(medicalTag.id);
-      if (index > -1) {
-        newTags.splice(index, 1);
+      // Only remove medical tag if it was auto-applied (not manually selected)
+      if (autoAppliedTags.includes(medicalTag.id)) {
+        const index = newTags.indexOf(medicalTag.id);
+        if (index > -1) {
+          newTags.splice(index, 1);
+        }
+        const autoIndex = newAutoAppliedTags.indexOf(medicalTag.id);
+        if (autoIndex > -1) {
+          newAutoAppliedTags.splice(autoIndex, 1);
+        }
       }
     }
     
     if (newTags.length !== selectedTags.length || !newTags.every((id, i) => id === selectedTags[i])) {
       setSelectedTags(newTags);
+    }
+    if (newAutoAppliedTags.length !== autoAppliedTags.length || !newAutoAppliedTags.every((id, i) => id === autoAppliedTags[i])) {
+      setAutoAppliedTags(newAutoAppliedTags);
     }
   }, [behaviorNotes, medicalNotes, availableTags]);
 
