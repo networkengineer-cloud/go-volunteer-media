@@ -574,6 +574,13 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 			UserID:    users[1].ID,   // merry
 			Content:   "Luna is doing fantastic in her foster home! She's settling in beautifully and learning quickly.",
 			CreatedAt: yesterday,
+			Metadata: &models.SessionMetadata{
+				SessionGoal:    "Loose leash walking in the neighborhood",
+				SessionOutcome: "Maintained slack leash for 80% of the 20-minute walk",
+				BehaviorNotes:  "Mild reactivity to bikes; recovered with treat scatter",
+				SessionRating:  4,
+				OtherNotes:     "Try front-clip harness for next walk",
+			},
 		},
 		{
 			AnimalID:  animals[2].ID, // Charlie
@@ -593,6 +600,12 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 			Content:   "Daisy learned three new tricks today - she's incredibly smart! Would excel at agility.",
 			Tags:      []models.CommentTag{behaviorTag},
 			CreatedAt: yesterday,
+			Metadata: &models.SessionMetadata{
+				SessionGoal:    "Shaping focus during agility warmup",
+				SessionOutcome: "Held focus through three obstacle reps",
+				BehaviorNotes:  "High engagement; brief sniffing when new dogs entered",
+				SessionRating:  5,
+			},
 		},
 		{
 			AnimalID:  animals[6].ID, // Cooper
@@ -606,6 +619,12 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 			Content:   "Bella had a vet checkup today - everything looks great! She has lots of energy.",
 			Tags:      []models.CommentTag{medicalTag},
 			CreatedAt: twoDaysAgo,
+			Metadata: &models.SessionMetadata{
+				SessionGoal:    "Post-vet decompression walk",
+				SessionOutcome: "Settled after 10 minutes; loose body language",
+				MedicalNotes:   "Vet cleared for light exercise only",
+				SessionRating:  3,
+			},
 		},
 		{
 			AnimalID:  animals[8].ID, // Zeus

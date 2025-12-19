@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"html"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,9 +13,52 @@ import (
 )
 
 type AnimalCommentRequest struct {
-	Content  string `json:"content" binding:"required"`
-	ImageURL string `json:"image_url"`
-	TagIDs   []uint `json:"tag_ids"` // Array of tag IDs to attach
+	Content  string                  `json:"content" binding:"required"`
+	ImageURL string                  `json:"image_url"`
+	TagIDs   []uint                  `json:"tag_ids"`  // Array of tag IDs to attach
+	Metadata *models.SessionMetadata `json:"metadata"` // Optional structured session data
+}
+
+// validateSessionMetadata validates the structured session metadata field lengths
+func validateSessionMetadata(metadata *models.SessionMetadata) error {
+	if metadata == nil {
+		return nil
+	}
+
+	if len(metadata.SessionGoal) > 200 {
+		return errors.New("session goal exceeds 200 character limit")
+	}
+	if len(metadata.SessionOutcome) > 2000 {
+		return errors.New("session outcome exceeds 2000 character limit")
+	}
+	if len(metadata.BehaviorNotes) > 1000 {
+		return errors.New("behavior notes exceed 1000 character limit")
+	}
+	if len(metadata.MedicalNotes) > 1000 {
+		return errors.New("medical notes exceed 1000 character limit")
+	}
+	if len(metadata.OtherNotes) > 1000 {
+		return errors.New("other notes exceed 1000 character limit")
+	}
+	if metadata.SessionRating < 0 || metadata.SessionRating > 5 {
+		return errors.New("session rating must be between 1 and 5 (or 0 for not set)")
+	}
+
+	return nil
+}
+
+// sanitizeSessionMetadata sanitizes all text fields in metadata to prevent XSS attacks
+func sanitizeSessionMetadata(metadata *models.SessionMetadata) {
+	if metadata == nil {
+		return
+	}
+
+	// HTML escape all text fields to prevent XSS
+	metadata.SessionGoal = html.EscapeString(metadata.SessionGoal)
+	metadata.SessionOutcome = html.EscapeString(metadata.SessionOutcome)
+	metadata.BehaviorNotes = html.EscapeString(metadata.BehaviorNotes)
+	metadata.MedicalNotes = html.EscapeString(metadata.MedicalNotes)
+	metadata.OtherNotes = html.EscapeString(metadata.OtherNotes)
 }
 
 // GetAnimalComments returns comments for an animal with pagination support
@@ -142,6 +187,15 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Validate metadata if provided
+		if err := validateSessionMetadata(req.Metadata); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Sanitize metadata to prevent XSS
+		sanitizeSessionMetadata(req.Metadata)
+
 		aid, err := strconv.ParseUint(animalID, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid animal ID"})
@@ -153,6 +207,7 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			UserID:   userID.(uint),
 			Content:  req.Content,
 			ImageURL: req.ImageURL,
+			Metadata: req.Metadata,
 		}
 
 		if err := db.Create(&comment).Error; err != nil {
@@ -223,9 +278,19 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Validate metadata if provided
+		if err := validateSessionMetadata(req.Metadata); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Sanitize metadata to prevent XSS
+		sanitizeSessionMetadata(req.Metadata)
+
 		// Update comment fields
 		comment.Content = req.Content
 		comment.ImageURL = req.ImageURL
+		comment.Metadata = req.Metadata
 
 		if err := db.Save(&comment).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update comment"})
