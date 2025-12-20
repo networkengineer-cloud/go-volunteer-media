@@ -253,7 +253,7 @@ variable "custom_domain_certificate_id" {
 # Frontend Configuration
 variable "frontend_url" {
   type        = string
-  description = "Frontend URL for password reset links and CORS"
+  description = "Frontend URL for password reset links and CORS. Must be accessible by end users receiving emails. Used in password reset email links and API CORS configuration."
   default     = "https://dev.myhaws.org"
   
   validation {

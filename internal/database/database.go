@@ -71,12 +71,8 @@ func Initialize() (*gorm.DB, error) {
 	case "info":
 		logLevel = logger.Info
 	default:
-		// Sensible default: reduce noise in non-dev, be chatty in dev if desired
-		if strings.ToLower(os.Getenv("ENV")) == "development" {
-			logLevel = logger.Warn
-		} else {
-			logLevel = logger.Warn
-		}
+		// Default to warn level to reduce noise without hiding important errors
+		logLevel = logger.Warn
 	}
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{

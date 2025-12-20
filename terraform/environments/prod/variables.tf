@@ -246,7 +246,7 @@ variable "github_container_registry_password" {
 # Frontend Configuration
 variable "frontend_url" {
   type        = string
-  description = "Frontend URL for password reset links and CORS"
+  description = "Frontend URL for password reset links and CORS. Must be accessible by end users receiving emails. Used in password reset email links and API CORS configuration."
   default     = "https://myhaws.org"
   
   validation {
