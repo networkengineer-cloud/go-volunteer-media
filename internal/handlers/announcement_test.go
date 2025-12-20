@@ -230,7 +230,7 @@ func TestCreateAnnouncement(t *testing.T) {
 			user := createAnnouncementTestUser(t, db, "admin", "admin@example.com", tt.isAdmin)
 
 			// Create a mock email service (not configured)
-			emailService := &email.Service{}
+			emailService := createTestEmailService(false)
 
 			// Create GroupMe service (will be used if requested)
 			groupMeService := groupme.NewService()
@@ -347,14 +347,7 @@ func TestSendAnnouncementEmails(t *testing.T) {
 				user2 := createAnnouncementTestUser(t, db, "user2", "user2@example.com", false)
 				db.Model(&models.User{}).Where("id = ?", user2.ID).Update("email_notifications_enabled", true)
 			},
-			emailService: &email.Service{
-				SMTPHost:     "smtp.example.com",
-				SMTPPort:     "587",
-				SMTPUsername: "user",
-				SMTPPassword: "pass",
-				FromEmail:    "noreply@example.com",
-				FromName:     "Test Service",
-			},
+			emailService:  createTestEmailService(true),
 			title:         "Test Announcement",
 			content:       "This is a test announcement content.",
 			expectedError: false,
@@ -366,14 +359,7 @@ func TestSendAnnouncementEmails(t *testing.T) {
 				createAnnouncementTestUser(t, db, "user3", "user3@example.com", false)
 				createAnnouncementTestUser(t, db, "user4", "user4@example.com", false)
 			},
-			emailService: &email.Service{
-				SMTPHost:     "smtp.example.com",
-				SMTPPort:     "587",
-				SMTPUsername: "user",
-				SMTPPassword: "pass",
-				FromEmail:    "noreply@example.com",
-				FromName:     "Test Service",
-			},
+			emailService:  createTestEmailService(true),
 			title:         "Test Announcement",
 			content:       "This is a test announcement content.",
 			expectedError: false,
@@ -383,14 +369,7 @@ func TestSendAnnouncementEmails(t *testing.T) {
 			setupFunc: func(db *gorm.DB) {
 				// No users
 			},
-			emailService: &email.Service{
-				SMTPHost:     "smtp.example.com",
-				SMTPPort:     "587",
-				SMTPUsername: "user",
-				SMTPPassword: "pass",
-				FromEmail:    "noreply@example.com",
-				FromName:     "Test Service",
-			},
+			emailService:  createTestEmailService(true),
 			title:         "Test Announcement",
 			content:       "This is a test announcement content.",
 			expectedError: false,
@@ -445,7 +424,7 @@ func TestCreateAnnouncementErrorPaths(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := setupAnnouncementTestDB(t)
-			emailService := &email.Service{}
+			emailService := createTestEmailService(false)
 			groupMeService := groupme.NewService()
 
 			gin.SetMode(gin.TestMode)
@@ -491,14 +470,7 @@ func TestCreateAnnouncementWithConfiguredEmail(t *testing.T) {
 	db.Model(&models.User{}).Where("id = ?", user1.ID).Update("email_notifications_enabled", true)
 
 	// Create a configured email service
-	emailService := &email.Service{
-		SMTPHost:     "smtp.example.com",
-		SMTPPort:     "587",
-		SMTPUsername: "user",
-		SMTPPassword: "pass",
-		FromEmail:    "noreply@example.com",
-		FromName:     "Test Service",
-	}
+	emailService := createTestEmailService(true)
 
 	groupMeService := groupme.NewService()
 
@@ -693,7 +665,7 @@ func TestCreateAnnouncementWithGroupMe(t *testing.T) {
 				tt.setupGroups(db)
 			}
 
-			emailService := &email.Service{}
+			emailService := createTestEmailService(false)
 			groupMeService := groupme.NewService()
 
 			c, w := setupAnnouncementTestContext(user.ID, true)
