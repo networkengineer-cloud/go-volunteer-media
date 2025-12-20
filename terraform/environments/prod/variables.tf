@@ -247,7 +247,7 @@ variable "github_container_registry_password" {
 variable "frontend_url" {
   type        = string
   description = "Frontend URL for password reset links and CORS"
-  default     = "https://t-wallace.com"
+  default     = "https://myhaws.org"
   
   validation {
     condition     = can(regex("^https?://", var.frontend_url))

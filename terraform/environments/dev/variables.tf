@@ -240,7 +240,7 @@ variable "allowed_origins" {
 
 variable "custom_domain" {
   type        = string
-  description = "Custom domain name for the Container App (e.g., dev.t-wallace.com)"
+  description = "Custom domain name for the Container App (e.g., dev.myhaws.org)"
   default     = ""
 }
 
@@ -254,7 +254,7 @@ variable "custom_domain_certificate_id" {
 variable "frontend_url" {
   type        = string
   description = "Frontend URL for password reset links and CORS"
-  default     = "https://dev.t-wallace.com"
+  default     = "https://dev.myhaws.org"
   
   validation {
     condition     = can(regex("^https?://", var.frontend_url))
