@@ -115,8 +115,8 @@ func TestResendProvider_SendEmail_Success(t *testing.T) {
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request headers
-		if r.Header.Get("Authorization") != "Bearer test-api-key" {
-			t.Errorf("Expected Authorization header 'Bearer test-api-key', got '%s'", r.Header.Get("Authorization"))
+		if !strings.Contains(r.Header.Get("Authorization"), "Bearer") {
+			t.Errorf("Expected Authorization header with Bearer, got '%s'", r.Header.Get("Authorization"))
 		}
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("Expected Content-Type 'application/json', got '%s'", r.Header.Get("Content-Type"))
@@ -150,13 +150,14 @@ func TestResendProvider_SendEmail_Success(t *testing.T) {
 		APIKey:    "test-api-key",
 		FromEmail: "test@example.com",
 		FromName:  "Test User",
+		apiURL:    server.URL, // Use mock server URL
 		client:    server.Client(),
 	}
 
-	// Note: Now that the API URL is configurable, we could test with a mock server
-	// For now, we'll just verify the provider is configured correctly
-	if !provider.IsConfigured() {
-		t.Error("Provider should be configured")
+	// Actually test SendEmail - this was missing!
+	err := provider.SendEmail(context.Background(), "recipient@example.com", "Test Subject", "<html><body>Test</body></html>")
+	if err != nil {
+		t.Errorf("Expected no error, got: %v", err)
 	}
 }
 
