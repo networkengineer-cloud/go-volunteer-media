@@ -291,7 +291,30 @@ resource "azurerm_container_app" "main" {
         value = "require"
       }
       
-      # Resend SMTP Configuration
+      # Database Logging (reduce verbosity)
+      env {
+        name  = "DB_LOG_LEVEL"
+        value = "warn"
+      }
+      
+      # Email Configuration (DISABLED for dev)
+      env {
+        name  = "EMAIL_ENABLED"
+        value = "false"
+      }
+      
+      env {
+        name  = "EMAIL_PROVIDER"
+        value = "resend"
+      }
+      
+      # Frontend URL (for password reset links when email is enabled)
+      env {
+        name  = "FRONTEND_URL"
+        value = var.frontend_url
+      }
+      
+      # Resend SMTP Configuration (placeholder - email disabled)
       env {
         name  = "SMTP_HOST"
         value = "smtp.resend.com"

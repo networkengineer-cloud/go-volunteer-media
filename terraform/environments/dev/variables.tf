@@ -250,6 +250,18 @@ variable "custom_domain_certificate_id" {
   default     = ""
 }
 
+# Frontend Configuration
+variable "frontend_url" {
+  type        = string
+  description = "Frontend URL for password reset links and CORS"
+  default     = "https://dev.t-wallace.com"
+  
+  validation {
+    condition     = can(regex("^https?://", var.frontend_url))
+    error_message = "Frontend URL must start with http:// or https://"
+  }
+}
+
 variable "github_container_registry_username" {
   type        = string
   description = "GitHub username for GHCR authentication"
