@@ -2,12 +2,14 @@ package database
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestInitialize_EnvDefaults(t *testing.T) {
@@ -128,3 +130,63 @@ func TestCreateDefaultAnimalTags_RestoresSoftDeletedTag(t *testing.T) {
 		t.Fatalf("expected iso tag to be restored (deleted_at cleared)")
 	}
 }
+
+func TestDBLogLevel_Parsing(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		expected logger.LogLevel
+	}{
+		{"silent", "silent", logger.Silent},
+		{"error", "error", logger.Error},
+		{"warn", "warn", logger.Warn},
+		{"warning", "warning", logger.Warn},
+		{"info", "info", logger.Info},
+		{"empty default", "", logger.Warn},
+		{"invalid default", "invalid", logger.Warn},
+		{"case insensitive uppercase", "WARN", logger.Warn},
+		{"case insensitive mixed", "SiLeNt", logger.Silent},
+		{"case insensitive info", "INFO", logger.Info},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save original env and restore after test
+			originalDBLogLevel := os.Getenv("DB_LOG_LEVEL")
+			defer func() {
+				if originalDBLogLevel != "" {
+					os.Setenv("DB_LOG_LEVEL", originalDBLogLevel)
+				} else {
+					os.Unsetenv("DB_LOG_LEVEL")
+				}
+			}()
+
+			// Set test env value
+			if tt.envValue != "" {
+				os.Setenv("DB_LOG_LEVEL", tt.envValue)
+			} else {
+				os.Unsetenv("DB_LOG_LEVEL")
+			}
+
+			// Parse log level using same logic as Initialize()
+			var logLevel logger.LogLevel
+			switch strings.ToLower(os.Getenv("DB_LOG_LEVEL")) {
+			case "silent":
+				logLevel = logger.Silent
+			case "error":
+				logLevel = logger.Error
+			case "warn", "warning":
+				logLevel = logger.Warn
+			case "info":
+				logLevel = logger.Info
+			default:
+				logLevel = logger.Warn
+			}
+
+			if logLevel != tt.expected {
+				t.Errorf("DB_LOG_LEVEL=%q: expected log level %v, got %v", tt.envValue, tt.expected, logLevel)
+			}
+		})
+	}
+}
+

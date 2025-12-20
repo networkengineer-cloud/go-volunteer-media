@@ -266,7 +266,30 @@ resource "azurerm_container_app" "main" {
         value = "require"
       }
       
-      # SendGrid SMTP Configuration
+      # Database Logging (reduce verbosity)
+      env {
+        name  = "DB_LOG_LEVEL"
+        value = "warn"
+      }
+      
+      # Email Configuration (DISABLED until ready)
+      env {
+        name  = "EMAIL_ENABLED"
+        value = "false"
+      }
+      
+      env {
+        name  = "EMAIL_PROVIDER"
+        value = "smtp"
+      }
+      
+      # Frontend URL (for password reset links when email is enabled)
+      env {
+        name  = "FRONTEND_URL"
+        value = var.frontend_url
+      }
+      
+      # SendGrid SMTP Configuration (placeholder - email disabled)
       env {
         name  = "SMTP_HOST"
         value = "smtp.sendgrid.net"

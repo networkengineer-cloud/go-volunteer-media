@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
@@ -57,8 +58,25 @@ func Initialize() (*gorm.DB, error) {
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		dbHost, dbPort, dbUser, dbPassword, dbName, dbSSLMode)
 
+	// Configure GORM logger level via env var to control verbosity
+	// Accepted values: silent, error, warn, info
+	var logLevel logger.LogLevel
+	switch strings.ToLower(os.Getenv("DB_LOG_LEVEL")) {
+	case "silent":
+		logLevel = logger.Silent
+	case "error":
+		logLevel = logger.Error
+	case "warn", "warning":
+		logLevel = logger.Warn
+	case "info":
+		logLevel = logger.Info
+	default:
+		// Default to warn level to reduce noise without hiding important errors
+		logLevel = logger.Warn
+	}
+
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logLevel),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)

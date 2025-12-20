@@ -240,7 +240,7 @@ variable "allowed_origins" {
 
 variable "custom_domain" {
   type        = string
-  description = "Custom domain name for the Container App (e.g., dev.t-wallace.com)"
+  description = "Custom domain name for the Container App (e.g., dev.myhaws.org)"
   default     = ""
 }
 
@@ -248,6 +248,18 @@ variable "custom_domain_certificate_id" {
   type        = string
   description = "Resource ID of the managed certificate for custom domain (leave empty to create managed certificate)"
   default     = ""
+}
+
+# Frontend Configuration
+variable "frontend_url" {
+  type        = string
+  description = "Frontend URL for password reset links and CORS. Must be accessible by end users receiving emails. Used in password reset email links and API CORS configuration."
+  default     = "https://dev.myhaws.org"
+  
+  validation {
+    condition     = can(regex("^https?://", var.frontend_url))
+    error_message = "Frontend URL must start with http:// or https://"
+  }
 }
 
 variable "github_container_registry_username" {
