@@ -2,6 +2,7 @@ package email
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,7 +12,7 @@ import (
 )
 
 const (
-	resendAPIURL = "https://api.resend.com/emails"
+	defaultResendAPIURL = "https://api.resend.com/emails"
 )
 
 // ResendProvider implements the Provider interface using Resend
@@ -20,14 +21,21 @@ type ResendProvider struct {
 	FromEmail string
 	FromName  string
 	client    *http.Client
+	apiURL    string // Configurable API URL for testing
 }
 
 // NewResendProvider creates a new Resend provider from environment variables
 func NewResendProvider() *ResendProvider {
+	apiURL := os.Getenv("RESEND_API_URL")
+	if apiURL == "" {
+		apiURL = defaultResendAPIURL
+	}
+	
 	return &ResendProvider{
 		APIKey:    os.Getenv("RESEND_API_KEY"),
 		FromEmail: os.Getenv("RESEND_FROM_EMAIL"),
 		FromName:  os.Getenv("RESEND_FROM_NAME"),
+		apiURL:    apiURL,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -61,7 +69,7 @@ type ResendEmailResponse struct {
 }
 
 // SendEmail sends an email using Resend API
-func (p *ResendProvider) SendEmail(to, subject, htmlBody string) error {
+func (p *ResendProvider) SendEmail(ctx context.Context, to, subject, htmlBody string) error {
 	if !p.IsConfigured() {
 		return fmt.Errorf("Resend provider is not configured")
 	}
@@ -85,8 +93,8 @@ func (p *ResendProvider) SendEmail(to, subject, htmlBody string) error {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequest(http.MethodPost, resendAPIURL, bytes.NewBuffer(jsonData))
+	// Create HTTP request with context
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

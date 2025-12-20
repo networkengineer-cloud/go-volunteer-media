@@ -1,6 +1,7 @@
 package email
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -101,7 +102,7 @@ func TestResendProvider_SendEmail_NotConfigured(t *testing.T) {
 		FromEmail: "",
 	}
 
-	err := provider.SendEmail("test@example.com", "Test Subject", "<html><body>Test Body</body></html>")
+	err := provider.SendEmail(context.Background(), "test@example.com", "Test Subject", "<html><body>Test Body</body></html>")
 	if err == nil {
 		t.Error("Expected error when provider is not configured, got nil")
 	}
@@ -152,17 +153,8 @@ func TestResendProvider_SendEmail_Success(t *testing.T) {
 		client:    server.Client(),
 	}
 
-	// Override API URL for testing
-	// Since we can't easily override the const, we'll test with the mock server URL
-	// In a real scenario, you might want to make the URL configurable
-	originalURL := resendAPIURL
-	defer func() {
-		// Note: We can't actually restore this since it's a const
-		// In production, consider making this configurable
-		_ = originalURL
-	}()
-
-	// For this test, we'll just verify the provider is configured correctly
+	// Note: Now that the API URL is configurable, we could test with a mock server
+	// For now, we'll just verify the provider is configured correctly
 	if !provider.IsConfigured() {
 		t.Error("Provider should be configured")
 	}
@@ -185,13 +177,16 @@ func TestResendProvider_SendEmail_APIError(t *testing.T) {
 	provider := &ResendProvider{
 		APIKey:    "test-api-key",
 		FromEmail: "test@example.com",
+		apiURL:    server.URL, // Use mock server URL
 		client:    server.Client(),
 	}
 
-	// We can't easily test the actual API call without modifying the URL
-	// but we can verify the provider is set up correctly
-	if !provider.IsConfigured() {
-		t.Error("Provider should be configured")
+	err := provider.SendEmail(context.Background(), "invalid", "Test", "<html><body>Test</body></html>")
+	if err == nil {
+		t.Error("Expected error for API error response")
+	}
+	if !strings.Contains(err.Error(), "Invalid email address") {
+		t.Errorf("Expected error message to contain 'Invalid email address', got: %v", err)
 	}
 }
 

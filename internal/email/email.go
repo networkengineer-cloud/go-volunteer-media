@@ -1,11 +1,17 @@
 package email
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"os"
+	"regexp"
 	"strings"
+	"time"
 )
+
+// emailRegex is a basic RFC 5322 compliant email validation pattern
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 // Service represents an email service that uses a Provider for sending emails
 type Service struct {
@@ -33,13 +39,27 @@ func (s *Service) IsConfigured() bool {
 	return s.provider != nil && s.provider.IsConfigured()
 }
 
+// isValidEmail validates an email address using basic RFC 5322 rules
+func isValidEmail(email string) bool {
+	return emailRegex.MatchString(email)
+}
+
 // SendEmail sends an email using the configured provider
 func (s *Service) SendEmail(to, subject, htmlBody string) error {
 	if !s.IsConfigured() {
 		return fmt.Errorf("email service is not configured")
 	}
 
-	return s.provider.SendEmail(to, subject, htmlBody)
+	// Validate email address before attempting to send
+	if !isValidEmail(to) {
+		return fmt.Errorf("invalid email address: %s", to)
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	return s.provider.SendEmail(ctx, to, subject, htmlBody)
 }
 
 // SendPasswordResetEmail sends a password reset email

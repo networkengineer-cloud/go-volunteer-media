@@ -1,6 +1,7 @@
 package email
 
 import (
+	"context"
 	"fmt"
 	"os"
 )
@@ -9,7 +10,8 @@ import (
 // This allows easy swapping between different email services (SMTP, Resend, SendGrid, etc.)
 type Provider interface {
 	// SendEmail sends an email to a single recipient
-	SendEmail(to, subject, htmlBody string) error
+	// Context can be used for timeouts, cancellation, and tracing
+	SendEmail(ctx context.Context, to, subject, htmlBody string) error
 	
 	// IsConfigured returns true if the provider is properly configured
 	IsConfigured() bool
@@ -27,7 +29,14 @@ const (
 )
 
 // NewProvider creates an email provider based on environment configuration
+// Returns nil provider if EMAIL_ENABLED is set to "false" or "0"
 func NewProvider() (Provider, error) {
+	// Check if email is explicitly disabled
+	emailEnabled := os.Getenv("EMAIL_ENABLED")
+	if emailEnabled == "false" || emailEnabled == "0" {
+		return nil, nil // Email disabled - return nil provider without error
+	}
+
 	providerType := os.Getenv("EMAIL_PROVIDER")
 	if providerType == "" {
 		providerType = string(ProviderTypeSMTP) // Default to SMTP for backwards compatibility

@@ -64,6 +64,12 @@ The application uses a provider-based email system that supports multiple email 
 
 ## Environment Variables
 
+### Email Enable/Disable
+```env
+EMAIL_ENABLED=true  # Set to "false" or "0" to disable email
+```
+By default, email is enabled. Set `EMAIL_ENABLED=false` or `EMAIL_ENABLED=0` to completely disable email functionality. This is useful for development and testing environments where you don't want to send actual emails.
+
 ### Provider Selection
 ```env
 EMAIL_PROVIDER=resend  # or "smtp"
@@ -75,12 +81,15 @@ Defaults to `smtp` if not set (for backwards compatibility).
 RESEND_API_KEY=re_xxxxxxxxxxxx                      # Required: Your Resend API key
 RESEND_FROM_EMAIL=noreply@notifications.myhaws.org  # Required: Verified sender email (use YOUR domain)
 RESEND_FROM_NAME=Haws Volunteers                    # Optional: Sender display name
+RESEND_API_URL=https://api.resend.com/emails        # Optional: Override for testing (uses default if omitted)
 ```
 
 **Domain Flexibility:** You can use **any domain** you own and have verified in Resend. Examples:
 - `noreply@notifications.myhaws.org`
 - `alerts@yourdomain.com`
 - `volunteers@example.org`
+
+**Testing:** The `RESEND_API_URL` can be overridden to point to a mock server for testing purposes.
 
 ### SMTP Configuration
 ```env

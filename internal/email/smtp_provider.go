@@ -1,6 +1,7 @@
 package email
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net/smtp"
@@ -39,10 +40,25 @@ func (p *SMTPProvider) GetProviderName() string {
 	return "smtp"
 }
 
+// getTLSConfig returns the TLS configuration for SMTP connections
+func (p *SMTPProvider) getTLSConfig() *tls.Config {
+	return &tls.Config{
+		ServerName:         p.Host,
+		InsecureSkipVerify: false, // Always verify certificates in production
+	}
+}
+
 // SendEmail sends an email using SMTP
-func (p *SMTPProvider) SendEmail(to, subject, htmlBody string) error {
+func (p *SMTPProvider) SendEmail(ctx context.Context, to, subject, htmlBody string) error {
 	if !p.IsConfigured() {
 		return fmt.Errorf("SMTP provider is not configured")
+	}
+
+	// Check if context is already cancelled
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
 	}
 
 	from := p.FromEmail
@@ -66,10 +82,7 @@ func (p *SMTPProvider) SendEmail(to, subject, htmlBody string) error {
 	addr := fmt.Sprintf("%s:%s", p.Host, p.Port)
 
 	// Try to send with TLS
-	tlsConfig := &tls.Config{
-		ServerName:         p.Host,
-		InsecureSkipVerify: false, // Always verify certificates in production
-	}
+	tlsConfig := p.getTLSConfig()
 
 	conn, err := tls.Dial("tcp", addr, tlsConfig)
 	if err != nil {

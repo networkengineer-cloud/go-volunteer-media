@@ -1,43 +1,74 @@
 package email
 
 import (
+	"context"
 	"os"
 	"testing"
 )
 
 func TestNewProvider(t *testing.T) {
-	// Save original env var
+	// Save original env vars
 	origProvider := os.Getenv("EMAIL_PROVIDER")
-	defer os.Setenv("EMAIL_PROVIDER", origProvider)
+	origEnabled := os.Getenv("EMAIL_ENABLED")
+	defer func() {
+		os.Setenv("EMAIL_PROVIDER", origProvider)
+		os.Setenv("EMAIL_ENABLED", origEnabled)
+	}()
 
 	tests := []struct {
 		name          string
 		envProvider   string
+		envEnabled    string
 		wantType      string
+		wantNil       bool
 		wantErr       bool
 	}{
 		{
 			name:        "default to SMTP when not set",
 			envProvider: "",
+			envEnabled:  "",
 			wantType:    "smtp",
+			wantNil:     false,
 			wantErr:     false,
 		},
 		{
 			name:        "explicitly set to SMTP",
 			envProvider: "smtp",
+			envEnabled:  "",
 			wantType:    "smtp",
+			wantNil:     false,
 			wantErr:     false,
 		},
 		{
 			name:        "set to Resend",
 			envProvider: "resend",
+			envEnabled:  "",
 			wantType:    "resend",
+			wantNil:     false,
+			wantErr:     false,
+		},
+		{
+			name:        "email disabled with false",
+			envProvider: "smtp",
+			envEnabled:  "false",
+			wantType:    "",
+			wantNil:     true,
+			wantErr:     false,
+		},
+		{
+			name:        "email disabled with 0",
+			envProvider: "resend",
+			envEnabled:  "0",
+			wantType:    "",
+			wantNil:     true,
 			wantErr:     false,
 		},
 		{
 			name:        "unsupported provider",
 			envProvider: "sendgrid",
+			envEnabled:  "",
 			wantType:    "",
+			wantNil:     false,
 			wantErr:     true,
 		},
 	}
@@ -45,6 +76,7 @@ func TestNewProvider(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			os.Setenv("EMAIL_PROVIDER", tt.envProvider)
+			os.Setenv("EMAIL_ENABLED", tt.envEnabled)
 
 			provider, err := NewProvider()
 
@@ -57,6 +89,13 @@ func TestNewProvider(t *testing.T) {
 
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+
+			if tt.wantNil {
+				if provider != nil {
+					t.Error("Expected nil provider when email is disabled")
+				}
 				return
 			}
 
@@ -100,7 +139,8 @@ func TestProviderInterface(t *testing.T) {
 
 			// Test that SendEmail with unconfigured provider returns error
 			if !tt.provider.IsConfigured() {
-				err := tt.provider.SendEmail("test@example.com", "Test", "<html><body>Test</body></html>")
+				ctx := context.Background()
+				err := tt.provider.SendEmail(ctx, "test@example.com", "Test", "<html><body>Test</body></html>")
 				if err == nil {
 					t.Error("Expected error when sending email with unconfigured provider")
 				}

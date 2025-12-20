@@ -1,6 +1,7 @@
 package email
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -164,7 +165,7 @@ func TestSMTPProvider_SendEmail_NotConfigured(t *testing.T) {
 		FromEmail: "",
 	}
 
-	err := provider.SendEmail("test@example.com", "Test Subject", "<html><body>Test Body</body></html>")
+	err := provider.SendEmail(context.Background(), "test@example.com", "Test Subject", "<html><body>Test Body</body></html>")
 	if err == nil {
 		t.Error("Expected error when provider is not configured, got nil")
 	}
@@ -185,7 +186,7 @@ func TestSMTPProvider_SendEmail_ValidatesRecipient(t *testing.T) {
 
 	// Note: This will fail at the connection stage with a real SMTP server
 	// but we're testing that the provider attempts to send
-	err := provider.SendEmail("", "Test", "<html><body>Test</body></html>")
+	err := provider.SendEmail(context.Background(), "", "Test", "<html><body>Test</body></html>")
 	if err == nil {
 		t.Error("Expected error when sending to empty recipient")
 	}

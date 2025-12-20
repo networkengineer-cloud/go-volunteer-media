@@ -1,6 +1,7 @@
 package email
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -276,7 +277,7 @@ type sentEmail struct {
 	body    string
 }
 
-func (m *mockEmailProvider) SendEmail(to, subject, htmlBody string) error {
+func (m *mockEmailProvider) SendEmail(ctx context.Context, to, subject, htmlBody string) error {
 	if !m.configured {
 		return fmt.Errorf("mock provider not configured")
 	}
