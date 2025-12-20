@@ -84,7 +84,7 @@ EMAIL_PROVIDER=resend
 
 # Resend Configuration (recommended - get API key from https://resend.com)
 RESEND_API_KEY=re_your_api_key_here
-RESEND_FROM_EMAIL=noreply@yourdomain.com
+RESEND_FROM_EMAIL=noreply@notifications.myhaws.org  # Use YOUR verified domain
 RESEND_FROM_NAME=Haws Volunteers
 
 # SMTP Configuration (alternative - for Gmail, use app password)
@@ -92,7 +92,7 @@ RESEND_FROM_NAME=Haws Volunteers
 # SMTP_PORT=587
 # SMTP_USERNAME=your-email@gmail.com
 # SMTP_PASSWORD=your-app-password
-# SMTP_FROM_EMAIL=noreply@yourdomain.com
+# SMTP_FROM_EMAIL=noreply@yourdomain.com  # Use YOUR domain
 # SMTP_FROM_NAME=Haws Volunteers
 
 # Frontend URL (for password reset links)
@@ -110,12 +110,14 @@ The application supports two email providers:
 - Sign up at [resend.com](https://resend.com)
 - Get your API key from the dashboard
 - Set `EMAIL_PROVIDER=resend` in `.env`
+- **Domain flexibility**: Works with any domain you verify in Resend (e.g., `notifications.myhaws.org`)
 
 **Option 2: SMTP (Legacy)**
 - Traditional SMTP email
 - Works with Gmail, SendGrid, Mailgun, etc.
 - For Gmail: Use [App Passwords](https://support.google.com/accounts/answer/185833)
 - Set `EMAIL_PROVIDER=smtp` in `.env`
+- **Domain flexibility**: Works with any email address/domain you control
 
 **Features Requiring Email:**
 - Password reset functionality

@@ -9,6 +9,8 @@ The application uses a provider-based email system that supports multiple email 
 - **Resend** (Recommended) - Modern email API with excellent developer experience
 - **SMTP** (Legacy) - Traditional SMTP for services like Gmail, SendGrid, Mailgun, etc.
 
+**⚠️ Domain Flexibility:** The email system is fully flexible and works with **any domain you control**. All domains are configured via environment variables, so you can use your organization's domain (e.g., `notifications.myhaws.org`, `noreply@yourdomain.com`, etc.) without any code changes.
+
 ## Quick Start
 
 ### Using Resend (Recommended)
@@ -26,15 +28,16 @@ The application uses a provider-based email system that supports multiple email 
    ```env
    EMAIL_PROVIDER=resend
    RESEND_API_KEY=re_your_api_key_here
-   RESEND_FROM_EMAIL=noreply@yourdomain.com
+   RESEND_FROM_EMAIL=noreply@notifications.myhaws.org  # Use YOUR verified domain
    RESEND_FROM_NAME=Haws Volunteers
    FRONTEND_URL=http://localhost:5173
    ```
 
 4. **Domain verification** (for production)
-   - Add your domain in Resend dashboard
-   - Verify DNS records
+   - Add your domain in Resend dashboard (e.g., `notifications.myhaws.org`)
+   - Verify DNS records (SPF, DKIM, DMARC)
    - Use your verified domain in `RESEND_FROM_EMAIL`
+   - **Note:** You can use any domain you control - the system is completely flexible
 
 ### Using SMTP (Gmail Example)
 
@@ -69,20 +72,27 @@ Defaults to `smtp` if not set (for backwards compatibility).
 
 ### Resend Configuration
 ```env
-RESEND_API_KEY=re_xxxxxxxxxxxx          # Required: Your Resend API key
-RESEND_FROM_EMAIL=noreply@yourdomain.com # Required: Verified sender email
-RESEND_FROM_NAME=Haws Volunteers         # Optional: Sender display name
+RESEND_API_KEY=re_xxxxxxxxxxxx                      # Required: Your Resend API key
+RESEND_FROM_EMAIL=noreply@notifications.myhaws.org  # Required: Verified sender email (use YOUR domain)
+RESEND_FROM_NAME=Haws Volunteers                    # Optional: Sender display name
 ```
+
+**Domain Flexibility:** You can use **any domain** you own and have verified in Resend. Examples:
+- `noreply@notifications.myhaws.org`
+- `alerts@yourdomain.com`
+- `volunteers@example.org`
 
 ### SMTP Configuration
 ```env
-SMTP_HOST=smtp.example.com              # Required: SMTP server hostname
-SMTP_PORT=587                            # Required: Port (587 for TLS, 465 for SSL)
-SMTP_USERNAME=user@example.com          # Required: SMTP username
-SMTP_PASSWORD=your-password             # Required: SMTP password
-SMTP_FROM_EMAIL=noreply@example.com     # Required: From email address
-SMTP_FROM_NAME=Haws Volunteers          # Optional: Sender display name
+SMTP_HOST=smtp.example.com                      # Required: SMTP server hostname
+SMTP_PORT=587                                    # Required: Port (587 for TLS, 465 for SSL)
+SMTP_USERNAME=user@example.com                  # Required: SMTP username
+SMTP_PASSWORD=your-password                     # Required: SMTP password
+SMTP_FROM_EMAIL=noreply@notifications.myhaws.org # Required: From email (use YOUR domain)
+SMTP_FROM_NAME=Haws Volunteers                  # Optional: Sender display name
 ```
+
+**Domain Flexibility:** SMTP works with any email address/domain you have access to. No hardcoded restrictions.
 
 ### Frontend URL
 ```env
@@ -192,9 +202,9 @@ provider, err := email.NewProvider()
 **Solutions:**
 - **Resend:**
   - Check API key is valid
-  - Verify domain in Resend dashboard
+  - Verify domain in Resend dashboard (e.g., `notifications.myhaws.org`)
   - Check Resend logs for errors
-  - Ensure sender email uses verified domain
+  - Ensure sender email uses YOUR verified domain (the `RESEND_FROM_EMAIL` must match a domain you've verified)
   
 - **SMTP:**
   - Verify SMTP credentials
@@ -251,9 +261,9 @@ To switch from SMTP to Resend (or vice versa):
 
 2. **Add new provider configuration**
    ```env
-   # Add Resend config
+   # Add Resend config with YOUR domain
    RESEND_API_KEY=re_xxxxxxxxxxxx
-   RESEND_FROM_EMAIL=noreply@yourdomain.com
+   RESEND_FROM_EMAIL=noreply@notifications.myhaws.org  # Use your verified domain
    ```
 
 3. **Restart application**
