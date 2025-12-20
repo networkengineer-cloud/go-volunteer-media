@@ -216,8 +216,14 @@ resource "azurerm_container_app" "main" {
   
   # Container configuration
   template {
-    min_replicas = var.min_replicas
+    min_replicas = 1  # Always keep minimum 1 replica running
     max_replicas = var.max_replicas
+    
+    # HTTP-based autoscaling
+    http_scale_rule {
+      name                = "http-scaler"
+      concurrent_requests = "10"
+    }
     
     container {
       name   = "volunteer-media-api"

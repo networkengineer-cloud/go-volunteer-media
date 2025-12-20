@@ -84,11 +84,11 @@ variable "container_memory" {
 variable "min_replicas" {
   type        = number
   description = "Minimum number of container replicas"
-  default     = 0  # Scale to zero in dev
+  default     = 1  # Keep at least 1 replica running
   
   validation {
-    condition     = var.min_replicas >= 0 && var.min_replicas <= 30
-    error_message = "Min replicas must be between 0 and 30."
+    condition     = var.min_replicas >= 1 && var.min_replicas <= 30
+    error_message = "Min replicas must be between 1 and 30."
   }
 }
 
