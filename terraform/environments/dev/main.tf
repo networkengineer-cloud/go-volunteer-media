@@ -430,6 +430,16 @@ resource "azurerm_container_app" "main" {
   tags = azurerm_resource_group.main.tags
 }
 
+# Custom Domain Configuration (only if custom domain is provided)
+# Bind custom domain to Container App
+resource "azurerm_container_app_custom_domain" "main" {
+  count = var.custom_domain != "" ? 1 : 0
+  
+  name                  = var.custom_domain
+  container_app_id      = azurerm_container_app.main.id
+  certificate_binding_type = var.custom_domain_certificate_id != "" ? "SniEnabled" : "Disabled"
+}
+
 # Grant Container App managed identity access to Key Vault
 resource "azurerm_key_vault_access_policy" "container_app" {
   key_vault_id = azurerm_key_vault.main.id

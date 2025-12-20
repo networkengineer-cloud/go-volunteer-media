@@ -254,3 +254,21 @@ variable "frontend_url" {
     error_message = "Frontend URL must start with http:// or https://"
   }
 }
+
+# Custom Domain Configuration
+variable "custom_domain" {
+  type        = string
+  description = "Custom domain name for Container App (e.g., myhaws.org for prod, dev.myhaws.org for dev). Leave empty to disable custom domain."
+  default     = "myhaws.org"
+  
+  validation {
+    condition     = var.custom_domain == "" || can(regex("^([a-z0-9]([a-z0-9-]*[a-z0-9])?.)+[a-z]{2,}$", var.custom_domain))
+    error_message = "Custom domain must be a valid domain name or empty string."
+  }
+}
+
+variable "custom_domain_certificate_id" {
+  type        = string
+  description = "Resource ID of the managed certificate for custom domain. If empty, a self-managed certificate will be created."
+  default     = ""
+}

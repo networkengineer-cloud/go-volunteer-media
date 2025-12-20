@@ -391,25 +391,18 @@ resource "azurerm_container_app" "main" {
     name  = "storage-account-key"
     value = azurerm_storage_account.main.primary_access_key
   }
-  
-  # Registry configuration for GHCR (if credentials provided)
-  dynamic "registry" {
-    for_each = var.github_container_registry_username != "" ? [1] : []
-    
-    content {
-      server               = var.container_registry_url
-      username             = var.github_container_registry_username
-      password_secret_name = "ghcr-password"
-    }
+
+  # Conditionally add GHCR credentials secret if password is provided
+  secret {
+    name  = "ghcr-password"
+    value = var.github_container_registry_password
   }
   
-  dynamic "secret" {
-    for_each = var.github_container_registry_password != "" ? [1] : []
-    
-    content {
-      name  = "ghcr-password"
-      value = var.github_container_registry_password
-    }
+  # Registry configuration for GHCR (if credentials provided)
+  registry {
+    server               = var.container_registry_url
+    username             = var.github_container_registry_username
+    password_secret_name = "ghcr-password"
   }
   
   # Managed Identity
@@ -418,6 +411,16 @@ resource "azurerm_container_app" "main" {
   }
   
   tags = azurerm_resource_group.main.tags
+}
+
+# Custom Domain Configuration (only if custom domain is provided)
+# Bind custom domain to Container App
+resource "azurerm_container_app_custom_domain" "main" {
+  count = var.custom_domain != "" ? 1 : 0
+  
+  name                  = var.custom_domain
+  container_app_id      = azurerm_container_app.main.id
+  certificate_binding_type = var.custom_domain_certificate_id != "" ? "SniEnabled" : "Disabled"
 }
 
 # Grant Container App managed identity access to Key Vault
