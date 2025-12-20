@@ -77,6 +77,55 @@ DB_USER=postgres
 DB_PASSWORD=postgres
 DB_NAME=volunteer_media_dev
 DB_SSLMODE=disable
+
+# Email Configuration (Optional)
+# Choose provider: "resend" (recommended) or "smtp"
+EMAIL_PROVIDER=resend
+
+# Resend Configuration (recommended - get API key from https://resend.com)
+RESEND_API_KEY=re_your_api_key_here
+RESEND_FROM_EMAIL=noreply@notifications.myhaws.org  # Use YOUR verified domain
+RESEND_FROM_NAME=Haws Volunteers
+
+# SMTP Configuration (alternative - for Gmail, use app password)
+# SMTP_HOST=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_USERNAME=your-email@gmail.com
+# SMTP_PASSWORD=your-app-password
+# SMTP_FROM_EMAIL=noreply@yourdomain.com  # Use YOUR domain
+# SMTP_FROM_NAME=Haws Volunteers
+
+# Frontend URL (for password reset links)
+FRONTEND_URL=http://localhost:5173
+```
+
+#### Email Provider Configuration
+
+The application supports two email providers:
+
+**Option 1: Resend (Recommended)**
+- Modern, developer-friendly email API
+- Easy to set up and test
+- Free tier: 100 emails/day, 3,000 emails/month
+- Sign up at [resend.com](https://resend.com)
+- Get your API key from the dashboard
+- Set `EMAIL_PROVIDER=resend` in `.env`
+- **Domain flexibility**: Works with any domain you verify in Resend (e.g., `notifications.myhaws.org`)
+
+**Option 2: SMTP (Legacy)**
+- Traditional SMTP email
+- Works with Gmail, SendGrid, Mailgun, etc.
+- For Gmail: Use [App Passwords](https://support.google.com/accounts/answer/185833)
+- Set `EMAIL_PROVIDER=smtp` in `.env`
+- **Domain flexibility**: Works with any email address/domain you control
+
+**Features Requiring Email:**
+- Password reset functionality
+- Announcement email notifications
+- User email preferences
+
+**Development Mode:**
+If email is not configured, the application will start normally but password reset and email notifications will be disabled. The system logs will indicate that email is not configured.
 ```
 
 ### Step 3: Start the Backend

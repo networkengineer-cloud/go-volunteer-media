@@ -15,6 +15,23 @@ import (
 	"gorm.io/gorm"
 )
 
+// createTestEmailService creates a mock email service for testing
+func createTestEmailService(configured bool) *email.Service {
+	if configured {
+		// Create a service with a mock SMTP provider
+		provider := &email.SMTPProvider{
+			Host:      "smtp.example.com",
+			Port:      "587",
+			Username:  "user",
+			Password:  "pass",
+			FromEmail: "noreply@example.com",
+		}
+		return email.NewServiceWithProvider(provider)
+	}
+	// Return unconfigured service
+	return email.NewServiceWithProvider(nil)
+}
+
 func TestRequestPasswordReset(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -34,13 +51,7 @@ func TestRequestPasswordReset(t *testing.T) {
 			setupDB: func(db *gorm.DB) {
 				createTestUser(t, db, "testuser", "test@example.com", "password123", false)
 			},
-			emailService: &email.Service{
-				SMTPHost:     "smtp.example.com",
-				SMTPPort:     "587",
-				SMTPUsername: "user",
-				SMTPPassword: "pass",
-				FromEmail:    "noreply@example.com",
-			},
+			emailService: createTestEmailService(true),
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, resp map[string]interface{}, db *gorm.DB) {
 				// Check that reset token was set in database
@@ -62,13 +73,7 @@ func TestRequestPasswordReset(t *testing.T) {
 			payload: map[string]interface{}{
 				"email": "nonexistent@example.com",
 			},
-			emailService: &email.Service{
-				SMTPHost:     "smtp.example.com",
-				SMTPPort:     "587",
-				SMTPUsername: "user",
-				SMTPPassword: "pass",
-				FromEmail:    "noreply@example.com",
-			},
+			emailService: createTestEmailService(true),
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, resp map[string]interface{}, db *gorm.DB) {
 				if msg, ok := resp["message"].(string); !ok || msg == "" {
@@ -84,7 +89,7 @@ func TestRequestPasswordReset(t *testing.T) {
 			setupDB: func(db *gorm.DB) {
 				createTestUser(t, db, "testuser", "test@example.com", "password123", false)
 			},
-			emailService:   &email.Service{}, // Not configured
+			emailService:   createTestEmailService(false), // Not configured
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -92,7 +97,7 @@ func TestRequestPasswordReset(t *testing.T) {
 			payload: map[string]interface{}{
 				"email": "not-an-email",
 			},
-			emailService:   &email.Service{},
+			emailService:   createTestEmailService(false),
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -100,7 +105,7 @@ func TestRequestPasswordReset(t *testing.T) {
 			payload: map[string]interface{}{
 				// No email field
 			},
-			emailService:   &email.Service{},
+			emailService:   createTestEmailService(false),
 			expectedStatus: http.StatusBadRequest,
 		},
 	}

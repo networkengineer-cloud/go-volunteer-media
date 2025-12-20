@@ -1,6 +1,8 @@
 package email
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -8,6 +10,7 @@ import (
 
 func TestNewService(t *testing.T) {
 	// Save original env vars
+	origProvider := os.Getenv("EMAIL_PROVIDER")
 	origHost := os.Getenv("SMTP_HOST")
 	origPort := os.Getenv("SMTP_PORT")
 	origUsername := os.Getenv("SMTP_USERNAME")
@@ -15,7 +18,8 @@ func TestNewService(t *testing.T) {
 	origFromEmail := os.Getenv("SMTP_FROM_EMAIL")
 	origFromName := os.Getenv("SMTP_FROM_NAME")
 
-	// Set test env vars
+	// Set test env vars for SMTP provider
+	os.Setenv("EMAIL_PROVIDER", "smtp")
 	os.Setenv("SMTP_HOST", "smtp.example.com")
 	os.Setenv("SMTP_PORT", "587")
 	os.Setenv("SMTP_USERNAME", "testuser")
@@ -25,26 +29,20 @@ func TestNewService(t *testing.T) {
 
 	service := NewService()
 
-	if service.SMTPHost != "smtp.example.com" {
-		t.Errorf("Expected SMTPHost to be smtp.example.com, got %s", service.SMTPHost)
+	if service == nil {
+		t.Fatal("Expected service to be non-nil")
 	}
-	if service.SMTPPort != "587" {
-		t.Errorf("Expected SMTPPort to be 587, got %s", service.SMTPPort)
+
+	if service.provider == nil {
+		t.Error("Expected provider to be non-nil")
 	}
-	if service.SMTPUsername != "testuser" {
-		t.Errorf("Expected SMTPUsername to be testuser, got %s", service.SMTPUsername)
-	}
-	if service.SMTPPassword != "testpass" {
-		t.Errorf("Expected SMTPPassword to be testpass, got %s", service.SMTPPassword)
-	}
-	if service.FromEmail != "test@example.com" {
-		t.Errorf("Expected FromEmail to be test@example.com, got %s", service.FromEmail)
-	}
-	if service.FromName != "Test User" {
-		t.Errorf("Expected FromName to be Test User, got %s", service.FromName)
+
+	if !service.IsConfigured() {
+		t.Error("Expected service to be configured")
 	}
 
 	// Restore original env vars
+	os.Setenv("EMAIL_PROVIDER", origProvider)
 	os.Setenv("SMTP_HOST", origHost)
 	os.Setenv("SMTP_PORT", origPort)
 	os.Setenv("SMTP_USERNAME", origUsername)
@@ -53,86 +51,42 @@ func TestNewService(t *testing.T) {
 	os.Setenv("SMTP_FROM_NAME", origFromName)
 }
 
-func TestIsConfigured(t *testing.T) {
+func TestService_IsConfigured(t *testing.T) {
 	tests := []struct {
 		name    string
 		service *Service
 		want    bool
 	}{
 		{
-			name: "fully configured",
+			name: "configured service",
 			service: &Service{
-				SMTPHost:     "smtp.example.com",
-				SMTPPort:     "587",
-				SMTPUsername: "user",
-				SMTPPassword: "pass",
-				FromEmail:    "test@example.com",
+				provider: &SMTPProvider{
+					Host:      "smtp.example.com",
+					Port:      "587",
+					Username:  "user",
+					Password:  "pass",
+					FromEmail: "test@example.com",
+				},
 			},
 			want: true,
 		},
 		{
-			name: "missing host",
+			name: "nil provider",
 			service: &Service{
-				SMTPHost:     "",
-				SMTPPort:     "587",
-				SMTPUsername: "user",
-				SMTPPassword: "pass",
-				FromEmail:    "test@example.com",
+				provider: nil,
 			},
 			want: false,
 		},
 		{
-			name: "missing port",
+			name: "unconfigured provider",
 			service: &Service{
-				SMTPHost:     "smtp.example.com",
-				SMTPPort:     "",
-				SMTPUsername: "user",
-				SMTPPassword: "pass",
-				FromEmail:    "test@example.com",
-			},
-			want: false,
-		},
-		{
-			name: "missing username",
-			service: &Service{
-				SMTPHost:     "smtp.example.com",
-				SMTPPort:     "587",
-				SMTPUsername: "",
-				SMTPPassword: "pass",
-				FromEmail:    "test@example.com",
-			},
-			want: false,
-		},
-		{
-			name: "missing password",
-			service: &Service{
-				SMTPHost:     "smtp.example.com",
-				SMTPPort:     "587",
-				SMTPUsername: "user",
-				SMTPPassword: "",
-				FromEmail:    "test@example.com",
-			},
-			want: false,
-		},
-		{
-			name: "missing from email",
-			service: &Service{
-				SMTPHost:     "smtp.example.com",
-				SMTPPort:     "587",
-				SMTPUsername: "user",
-				SMTPPassword: "pass",
-				FromEmail:    "",
-			},
-			want: false,
-		},
-		{
-			name: "completely empty",
-			service: &Service{
-				SMTPHost:     "",
-				SMTPPort:     "",
-				SMTPUsername: "",
-				SMTPPassword: "",
-				FromEmail:    "",
+				provider: &SMTPProvider{
+					Host:      "",
+					Port:      "",
+					Username:  "",
+					Password:  "",
+					FromEmail: "",
+				},
 			},
 			want: false,
 		},
@@ -148,16 +102,12 @@ func TestIsConfigured(t *testing.T) {
 	}
 }
 
-func TestSendEmail_NotConfigured(t *testing.T) {
+func TestService_SendEmail_NotConfigured(t *testing.T) {
 	service := &Service{
-		SMTPHost:     "",
-		SMTPPort:     "",
-		SMTPUsername: "",
-		SMTPPassword: "",
-		FromEmail:    "",
+		provider: nil,
 	}
 
-	err := service.SendEmail("test@example.com", "Test Subject", "Test Body")
+	err := service.SendEmail("test@example.com", "Test Subject", "<html><body>Test Body</body></html>")
 	if err == nil {
 		t.Error("Expected error when service is not configured, got nil")
 	}
@@ -167,9 +117,6 @@ func TestSendEmail_NotConfigured(t *testing.T) {
 }
 
 func TestSendPasswordResetEmail_Structure(t *testing.T) {
-	// We can't actually send emails in tests, but we can verify the structure
-	// by checking if the method constructs the right parameters
-
 	// Save original env var
 	origFrontendURL := os.Getenv("FRONTEND_URL")
 
@@ -196,11 +143,7 @@ func TestSendPasswordResetEmail_Structure(t *testing.T) {
 
 			// Create unconfigured service to avoid actual email sending
 			service := &Service{
-				SMTPHost:     "",
-				SMTPPort:     "",
-				SMTPUsername: "",
-				SMTPPassword: "",
-				FromEmail:    "",
+				provider: nil,
 			}
 
 			err := service.SendPasswordResetEmail("test@example.com", "testuser", "test-token-123")
@@ -222,11 +165,7 @@ func TestSendPasswordResetEmail_Structure(t *testing.T) {
 func TestSendAnnouncementEmail_Structure(t *testing.T) {
 	// Create unconfigured service to avoid actual email sending
 	service := &Service{
-		SMTPHost:     "",
-		SMTPPort:     "",
-		SMTPUsername: "",
-		SMTPPassword: "",
-		FromEmail:    "",
+		provider: nil,
 	}
 
 	err := service.SendAnnouncementEmail(
@@ -244,33 +183,116 @@ func TestSendAnnouncementEmail_Structure(t *testing.T) {
 	}
 }
 
-func TestServiceStructure(t *testing.T) {
-	service := &Service{
-		SMTPHost:     "smtp.example.com",
-		SMTPPort:     "587",
-		SMTPUsername: "user",
-		SMTPPassword: "pass",
-		FromEmail:    "from@example.com",
-		FromName:     "From Name",
+func TestService_SendPasswordResetEmail_WithConfiguredProvider(t *testing.T) {
+	// Create a mock provider
+	mockProvider := &mockEmailProvider{
+		configured: true,
+		sentEmails: []sentEmail{},
 	}
 
-	// Verify all fields are accessible
-	if service.SMTPHost == "" {
-		t.Error("SMTPHost should not be empty")
+	service := &Service{
+		provider: mockProvider,
 	}
-	if service.SMTPPort == "" {
-		t.Error("SMTPPort should not be empty")
+
+	// Save and set frontend URL
+	origFrontendURL := os.Getenv("FRONTEND_URL")
+	os.Setenv("FRONTEND_URL", "https://test.com")
+	defer os.Setenv("FRONTEND_URL", origFrontendURL)
+
+	err := service.SendPasswordResetEmail("user@example.com", "testuser", "token123")
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
 	}
-	if service.SMTPUsername == "" {
-		t.Error("SMTPUsername should not be empty")
+
+	if len(mockProvider.sentEmails) != 1 {
+		t.Fatalf("Expected 1 email to be sent, got %d", len(mockProvider.sentEmails))
 	}
-	if service.SMTPPassword == "" {
-		t.Error("SMTPPassword should not be empty")
+
+	email := mockProvider.sentEmails[0]
+	if email.to != "user@example.com" {
+		t.Errorf("Expected to 'user@example.com', got '%s'", email.to)
 	}
-	if service.FromEmail == "" {
-		t.Error("FromEmail should not be empty")
+	if !strings.Contains(email.subject, "Password Reset") {
+		t.Errorf("Expected subject to contain 'Password Reset', got '%s'", email.subject)
 	}
-	if service.FromName == "" {
-		t.Error("FromName should not be empty")
+	if !strings.Contains(email.body, "testuser") {
+		t.Error("Expected body to contain username")
 	}
+	if !strings.Contains(email.body, "token123") {
+		t.Error("Expected body to contain token")
+	}
+	if !strings.Contains(email.body, "https://test.com/reset-password?token=token123") {
+		t.Error("Expected body to contain reset link")
+	}
+}
+
+func TestService_SendAnnouncementEmail_WithConfiguredProvider(t *testing.T) {
+	// Create a mock provider
+	mockProvider := &mockEmailProvider{
+		configured: true,
+		sentEmails: []sentEmail{},
+	}
+
+	service := &Service{
+		provider: mockProvider,
+	}
+
+	err := service.SendAnnouncementEmail("user@example.com", "Important Notice", "This is the content\nLine 2")
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	if len(mockProvider.sentEmails) != 1 {
+		t.Fatalf("Expected 1 email to be sent, got %d", len(mockProvider.sentEmails))
+	}
+
+	email := mockProvider.sentEmails[0]
+	if email.to != "user@example.com" {
+		t.Errorf("Expected to 'user@example.com', got '%s'", email.to)
+	}
+	if !strings.Contains(email.subject, "Important Notice") {
+		t.Errorf("Expected subject to contain 'Important Notice', got '%s'", email.subject)
+	}
+	if !strings.Contains(email.body, "Important Notice") {
+		t.Error("Expected body to contain title")
+	}
+	if !strings.Contains(email.body, "This is the content") {
+		t.Error("Expected body to contain content")
+	}
+	// HTML should convert newlines to <br>
+	if !strings.Contains(email.body, "<br>") {
+		t.Error("Expected body to contain HTML line breaks")
+	}
+}
+
+// Mock provider for testing
+type mockEmailProvider struct {
+	configured bool
+	sentEmails []sentEmail
+}
+
+type sentEmail struct {
+	to      string
+	subject string
+	body    string
+}
+
+func (m *mockEmailProvider) SendEmail(ctx context.Context, to, subject, htmlBody string) error {
+	if !m.configured {
+		return fmt.Errorf("mock provider not configured")
+	}
+	m.sentEmails = append(m.sentEmails, sentEmail{
+		to:      to,
+		subject: subject,
+		body:    htmlBody,
+	})
+	return nil
+}
+
+func (m *mockEmailProvider) IsConfigured() bool {
+	return m.configured
+}
+
+func (m *mockEmailProvider) GetProviderName() string {
+	return "mock"
 }

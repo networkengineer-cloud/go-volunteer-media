@@ -1,119 +1,65 @@
 package email
 
 import (
-	"crypto/tls"
+	"context"
 	"fmt"
 	"html"
-	"net/smtp"
 	"os"
+	"regexp"
 	"strings"
+	"time"
 )
 
-// Service represents an email service
+// emailRegex is a basic RFC 5322 compliant email validation pattern
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+// Service represents an email service that uses a Provider for sending emails
 type Service struct {
-	SMTPHost     string
-	SMTPPort     string
-	SMTPUsername string
-	SMTPPassword string
-	FromEmail    string
-	FromName     string
+	provider Provider
 }
 
-// NewService creates a new email service from environment variables
+// NewService creates a new email service using the configured provider
 func NewService() *Service {
-	return &Service{
-		SMTPHost:     os.Getenv("SMTP_HOST"),
-		SMTPPort:     os.Getenv("SMTP_PORT"),
-		SMTPUsername: os.Getenv("SMTP_USERNAME"),
-		SMTPPassword: os.Getenv("SMTP_PASSWORD"),
-		FromEmail:    os.Getenv("SMTP_FROM_EMAIL"),
-		FromName:     os.Getenv("SMTP_FROM_NAME"),
+	provider, err := NewProvider()
+	if err != nil {
+		// If provider creation fails, return a service with nil provider
+		// This allows the application to start even if email is misconfigured
+		return &Service{provider: nil}
 	}
+	return &Service{provider: provider}
+}
+
+// NewServiceWithProvider creates a new email service with a specific provider (for testing)
+func NewServiceWithProvider(provider Provider) *Service {
+	return &Service{provider: provider}
 }
 
 // IsConfigured checks if the email service is properly configured
 func (s *Service) IsConfigured() bool {
-	return s.SMTPHost != "" && s.SMTPPort != "" && s.SMTPUsername != "" && s.SMTPPassword != "" && s.FromEmail != ""
+	return s.provider != nil && s.provider.IsConfigured()
 }
 
-// SendEmail sends an email
-func (s *Service) SendEmail(to, subject, body string) error {
+// isValidEmail validates an email address using basic RFC 5322 rules
+func isValidEmail(email string) bool {
+	return emailRegex.MatchString(email)
+}
+
+// SendEmail sends an email using the configured provider
+func (s *Service) SendEmail(to, subject, htmlBody string) error {
 	if !s.IsConfigured() {
 		return fmt.Errorf("email service is not configured")
 	}
 
-	from := s.FromEmail
-	if s.FromName != "" {
-		from = fmt.Sprintf("%s <%s>", s.FromName, s.FromEmail)
+	// Validate email address before attempting to send
+	if !isValidEmail(to) {
+		return fmt.Errorf("invalid email address: %s", to)
 	}
 
-	// Build email message
-	msg := []byte(fmt.Sprintf("From: %s\r\n"+
-		"To: %s\r\n"+
-		"Subject: %s\r\n"+
-		"MIME-Version: 1.0\r\n"+
-		"Content-Type: text/html; charset=UTF-8\r\n"+
-		"\r\n"+
-		"%s\r\n", from, to, subject, body))
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	// Set up authentication
-	auth := smtp.PlainAuth("", s.SMTPUsername, s.SMTPPassword, s.SMTPHost)
-
-	// Connect to SMTP server with TLS
-	addr := fmt.Sprintf("%s:%s", s.SMTPHost, s.SMTPPort)
-
-	// Try to send with TLS
-	tlsConfig := &tls.Config{
-		ServerName:         s.SMTPHost,
-		InsecureSkipVerify: false, // Always verify certificates in production
-	}
-
-	conn, err := tls.Dial("tcp", addr, tlsConfig)
-	if err != nil {
-		// If TLS connection fails, try STARTTLS
-		return s.sendWithSTARTTLS(addr, auth, s.FromEmail, to, msg)
-	}
-	defer conn.Close()
-
-	client, err := smtp.NewClient(conn, s.SMTPHost)
-	if err != nil {
-		return fmt.Errorf("failed to create SMTP client: %w", err)
-	}
-	defer client.Close()
-
-	if err = client.Auth(auth); err != nil {
-		return fmt.Errorf("failed to authenticate: %w", err)
-	}
-
-	if err = client.Mail(s.FromEmail); err != nil {
-		return fmt.Errorf("failed to set sender: %w", err)
-	}
-
-	if err = client.Rcpt(to); err != nil {
-		return fmt.Errorf("failed to set recipient: %w", err)
-	}
-
-	w, err := client.Data()
-	if err != nil {
-		return fmt.Errorf("failed to get data writer: %w", err)
-	}
-
-	_, err = w.Write(msg)
-	if err != nil {
-		return fmt.Errorf("failed to write message: %w", err)
-	}
-
-	err = w.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close writer: %w", err)
-	}
-
-	return client.Quit()
-}
-
-// sendWithSTARTTLS sends email using STARTTLS
-func (s *Service) sendWithSTARTTLS(addr string, auth smtp.Auth, from, to string, msg []byte) error {
-	return smtp.SendMail(addr, auth, from, []string{to}, msg)
+	return s.provider.SendEmail(ctx, to, subject, htmlBody)
 }
 
 // SendPasswordResetEmail sends a password reset email
