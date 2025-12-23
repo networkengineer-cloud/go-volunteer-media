@@ -84,11 +84,11 @@ variable "container_memory" {
 variable "min_replicas" {
   type        = number
   description = "Minimum number of container replicas"
-  default     = 0  # Scale to zero in dev
+  default     = 1  # Keep at least 1 replica running
   
   validation {
-    condition     = var.min_replicas >= 0 && var.min_replicas <= 30
-    error_message = "Min replicas must be between 0 and 30."
+    condition     = var.min_replicas >= 1 && var.min_replicas <= 30
+    error_message = "Min replicas must be between 1 and 30."
   }
 }
 
@@ -246,9 +246,32 @@ variable "custom_domain" {
 
 variable "custom_domain_certificate_id" {
   type        = string
-  description = "Resource ID of the managed certificate for custom domain (leave empty to create managed certificate)"
+  description = "Resource ID of a Container App Environment Certificate to bind via SNI. Leave empty to use Azure Managed Certificate."
   default     = ""
 }
+
+variable "cloudflare_zone_id" {
+  type        = string
+  description = "Cloudflare Zone ID for the domain (e.g., myhaws.org)."
+  default     = ""
+  
+  validation {
+    condition     = var.custom_domain == "" || var.cloudflare_zone_id != ""
+    error_message = "cloudflare_zone_id must be set when custom_domain is provided."
+  }
+}
+
+# variable "cloudflare_api_token" {
+#   type        = string
+#   description = "Cloudflare API token with DNS edit permissions for the zone."
+#   sensitive   = true
+#   default     = ""
+  
+#   validation {
+#     condition     = var.custom_domain == "" || var.cloudflare_api_token != ""
+#     error_message = "cloudflare_api_token must be set when custom_domain is provided."
+#   }
+# }
 
 # Frontend Configuration
 variable "frontend_url" {

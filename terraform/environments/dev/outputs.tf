@@ -139,20 +139,20 @@ output "database_auto_pause_config" {
 
 # Custom domain configuration
 output "custom_domain_setup" {
-  description = "Instructions for setting up custom domain with managed certificate"
+  description = "Custom domain setup status and guidance"
   value = var.custom_domain != "" ? {
-    step_1_dns = "Add CNAME record in your DNS provider:"
+    step_1_dns = "✅ CNAME and TXT records created in Cloudflare"
     cname_record = "${var.custom_domain} -> ${azurerm_container_app.main.ingress[0].fqdn}"
-    
-    step_2_verify = "Wait for DNS propagation (use: dig ${var.custom_domain})"
-    
-    step_3_add_domain = "Add custom domain with managed certificate using Azure CLI:"
-    cli_command = "az containerapp hostname add --hostname ${var.custom_domain} --resource-group ${azurerm_resource_group.main.name} --name ${azurerm_container_app.main.name} --location ${azurerm_resource_group.main.location}"
-    
-    step_4_bind_cert = "Bind managed certificate (Azure will auto-provision a free certificate):"
-    bind_command = "az containerapp hostname bind --hostname ${var.custom_domain} --resource-group ${azurerm_resource_group.main.name} --name ${azurerm_container_app.main.name} --environment ${azurerm_container_app_environment.main.name} --validation-method CNAME"
-    
-    note = "Azure will automatically provision a free managed certificate after DNS validation completes"
+    txt_record = "asuid.${var.custom_domain} -> ${azurerm_container_app.main.custom_domain_verification_id}"
+
+    step_2_verify_dns = "Wait for DNS propagation: dig ${var.custom_domain}"
+
+    step_3_managed_cert = "⚠️ Azure Managed Certificate requires CLI (Terraform provider limitation):"
+    cli_command = "az containerapp hostname bind --hostname ${var.custom_domain} --resource-group ${azurerm_resource_group.main.name} --name ${azurerm_container_app.main.name} --environment ${azurerm_container_app_environment.main.name} --validation-method CNAME"
+
+    step_4_refresh = "After CLI binding completes, run: terraform refresh"
+
+    note = "Alternative: Provide 'custom_domain_certificate_id' to bind an uploaded certificate via Terraform."
   } : {
     message = "No custom domain configured. Set 'custom_domain' variable to enable."
   }

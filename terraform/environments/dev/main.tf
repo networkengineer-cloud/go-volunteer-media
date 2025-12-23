@@ -235,8 +235,14 @@ resource "azurerm_container_app" "main" {
   
   # Container configuration
   template {
-    min_replicas = var.min_replicas  # Can scale to zero in dev
+    min_replicas = 1  # Always keep minimum 1 replica running
     max_replicas = var.max_replicas
+    
+    # HTTP-based autoscaling
+    http_scale_rule {
+      name                = "http-scaler"
+      concurrent_requests = "100"
+    }
     
     container {
       name   = "volunteer-media-api"
@@ -422,6 +428,44 @@ resource "azurerm_container_app" "main" {
   }
   
   tags = azurerm_resource_group.main.tags
+}
+
+# Custom Domain Configuration (only if custom domain is provided)
+# Bind custom domain to Container App
+
+# Path A: Managed certificate (recommended for dev) — let Azure create and manage the cert
+resource "azurerm_container_app_custom_domain" "managed" {
+  count = var.custom_domain != "" && var.custom_domain_certificate_id == "" ? 1 : 0
+
+  name                     = var.custom_domain
+  container_app_id         = azurerm_container_app.main.id
+  certificate_binding_type = "SniEnabled"
+
+  # When using Azure Managed Certificate, certificate_id is populated by Azure after cert provisioning
+  lifecycle {
+    ignore_changes = [container_app_environment_certificate_id]
+  }
+
+  # Ensure DNS verification TXT and CNAME are present before binding
+  depends_on = [
+    cloudflare_dns_record.custom_domain_verification,
+    cloudflare_dns_record.domain,
+  ]
+}
+
+# Path B: Explicit certificate — bind to an environment certificate by ID
+resource "azurerm_container_app_custom_domain" "cert" {
+  count = var.custom_domain != "" && var.custom_domain_certificate_id != "" ? 1 : 0
+
+  name                                     = var.custom_domain
+  container_app_id                         = azurerm_container_app.main.id
+  container_app_environment_certificate_id = var.custom_domain_certificate_id
+  certificate_binding_type                 = "SniEnabled"
+
+  depends_on = [
+    cloudflare_dns_record.custom_domain_verification,
+    cloudflare_dns_record.domain,
+  ]
 }
 
 # Grant Container App managed identity access to Key Vault
