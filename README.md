@@ -8,6 +8,9 @@ Social Media app for volunteers to get updates, share photos and experiences wit
 - **Password Reset**: Self-service password reset via email (Resend or SMTP)
 - **Group Management**: Organize volunteers into groups (dogs, cats, modsquad, etc.)
 - **Animal CRUD**: Create, read, update, and delete animal profiles within groups
+- **Image Gallery**: Upload and manage multiple images per animal with profile picture support
+- **Protocol Documents**: Upload and share protocol documents (PDF/DOCX) for animals
+- **Flexible Storage**: Feature-flagged storage with PostgreSQL (default) or Azure Blob Storage
 - **Bulk Animal Management**: Bulk edit, CSV import/export for efficient animal management
 - **Updates Feed**: Share experiences and photos with group members
 - **Email Notifications**: Announcement emails to users (configurable per user)
@@ -186,6 +189,59 @@ This will start:
 - Secure Dockerfile with non-root user
 - Multi-stage Docker build
 - No sensitive data in container image
+
+## Storage Architecture
+
+The application supports flexible storage for images and documents through a feature-flagged system:
+
+### Storage Providers
+
+1. **PostgreSQL (Default)**: Stores binary data directly in the database
+   - Zero configuration required
+   - Works out of the box
+   - Best for small to medium deployments
+
+2. **Azure Blob Storage (Recommended for Production)**: Offloads binary storage to Azure
+   - Significantly reduces database size and costs
+   - Better performance and scalability
+   - Support for future video files
+   - CDN integration ready
+
+### Configuration
+
+Set the storage provider via environment variable:
+
+```bash
+# Use PostgreSQL (default)
+STORAGE_PROVIDER=postgres
+
+# Use Azure Blob Storage
+STORAGE_PROVIDER=azure
+AZURE_STORAGE_ACCOUNT_NAME=youraccount
+AZURE_STORAGE_ACCOUNT_KEY=yourkey
+AZURE_STORAGE_CONTAINER_NAME=volunteer-media-storage
+```
+
+### Local Testing with Azurite
+
+Test Azure Blob Storage locally using Azurite:
+
+```bash
+# Start Azurite
+docker run -p 10000:10000 mcr.microsoft.com/azure-storage/azurite
+
+# Configure environment
+export STORAGE_PROVIDER=azure
+export AZURE_STORAGE_ACCOUNT_NAME=devstoreaccount1
+export AZURE_STORAGE_ACCOUNT_KEY=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+export AZURE_STORAGE_CONTAINER_NAME=volunteer-media-storage
+export AZURE_STORAGE_ENDPOINT=http://127.0.0.1:10000/devstoreaccount1
+
+# Start application
+make dev-backend
+```
+
+For detailed documentation, see [STORAGE.md](STORAGE.md).
 
 ## Development
 
