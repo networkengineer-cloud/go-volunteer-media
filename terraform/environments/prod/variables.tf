@@ -269,6 +269,29 @@ variable "custom_domain" {
 
 variable "custom_domain_certificate_id" {
   type        = string
-  description = "Resource ID of the managed certificate for custom domain. If empty, a self-managed certificate will be created."
+  description = "Resource ID of a Container App Environment Certificate to bind via SNI. Leave empty to use Azure Managed Certificate."
   default     = ""
 }
+
+variable "cloudflare_zone_id" {
+  type        = string
+  description = "Cloudflare Zone ID for the domain (e.g., myhaws.org)."
+  default     = ""
+  
+  validation {
+    condition     = var.custom_domain == "" || var.cloudflare_zone_id != ""
+    error_message = "cloudflare_zone_id must be set when custom_domain is provided."
+  }
+}
+
+# variable "cloudflare_api_token" {
+#   type        = string
+#   description = "Cloudflare API token with DNS edit permissions for the zone."
+#   sensitive   = true
+#   default     = ""
+  
+#   validation {
+#     condition     = var.custom_domain == "" || var.cloudflare_api_token != ""
+#     error_message = "cloudflare_api_token must be set when custom_domain is provided."
+#   }
+# }

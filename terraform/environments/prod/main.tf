@@ -415,12 +415,39 @@ resource "azurerm_container_app" "main" {
 
 # Custom Domain Configuration (only if custom domain is provided)
 # Bind custom domain to Container App
-resource "azurerm_container_app_custom_domain" "main" {
-  count = var.custom_domain != "" ? 1 : 0
-  
-  name                  = var.custom_domain
-  container_app_id      = azurerm_container_app.main.id
-  certificate_binding_type = var.custom_domain_certificate_id != "" ? "SniEnabled" : "Disabled"
+
+# Path A: Managed certificate — omit cert ID and let Azure provision/bind after verification
+resource "azurerm_container_app_custom_domain" "managed" {
+  count = var.custom_domain != "" && var.custom_domain_certificate_id == "" ? 1 : 0
+
+  name                     = var.custom_domain
+  container_app_id         = azurerm_container_app.main.id
+  certificate_binding_type = "SniEnabled"
+
+  # Azure populates container_app_environment_certificate_id after managed cert provisioning
+  lifecycle {
+    ignore_changes = [container_app_environment_certificate_id]
+  }
+
+  depends_on = [
+    cloudflare_dns_record.custom_domain_verification,
+    cloudflare_dns_record.domain,
+  ]
+}
+
+# Path B: Explicit certificate — bind via SNI to provided environment certificate
+resource "azurerm_container_app_custom_domain" "cert" {
+  count = var.custom_domain != "" && var.custom_domain_certificate_id != "" ? 1 : 0
+
+  name                                     = var.custom_domain
+  container_app_id                         = azurerm_container_app.main.id
+  container_app_environment_certificate_id = var.custom_domain_certificate_id
+  certificate_binding_type                 = "SniEnabled"
+
+  depends_on = [
+    cloudflare_dns_record.custom_domain_verification,
+    cloudflare_dns_record.domain,
+  ]
 }
 
 # Grant Container App managed identity access to Key Vault

@@ -83,6 +83,7 @@ resource "cloudflare_dns_record" "custom_domain_verification" {
   comment = "Azure Container Apps custom domain verification"
 }
 
+# CNAME record for application hostname
 resource "cloudflare_dns_record" "domain" {
   count = var.custom_domain != "" && var.cloudflare_zone_id != "" ? 1 : 0
 
@@ -94,5 +95,4 @@ resource "cloudflare_dns_record" "domain" {
   proxied = false
 
   comment = "CNAME record for Azure Container App custom domain"
-  
 }
