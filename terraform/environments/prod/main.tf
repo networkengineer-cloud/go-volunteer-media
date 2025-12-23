@@ -216,8 +216,14 @@ resource "azurerm_container_app" "main" {
   
   # Container configuration
   template {
-    min_replicas = var.min_replicas
+    min_replicas = 1  # Always keep minimum 1 replica running
     max_replicas = var.max_replicas
+    
+    # HTTP-based autoscaling
+    http_scale_rule {
+      name                = "http-scaler"
+      concurrent_requests = "100"
+    }
     
     container {
       name   = "volunteer-media-api"
@@ -385,25 +391,18 @@ resource "azurerm_container_app" "main" {
     name  = "storage-account-key"
     value = azurerm_storage_account.main.primary_access_key
   }
-  
-  # Registry configuration for GHCR (if credentials provided)
-  dynamic "registry" {
-    for_each = var.github_container_registry_username != "" ? [1] : []
-    
-    content {
-      server               = var.container_registry_url
-      username             = var.github_container_registry_username
-      password_secret_name = "ghcr-password"
-    }
+
+  # Conditionally add GHCR credentials secret if password is provided
+  secret {
+    name  = "ghcr-password"
+    value = var.github_container_registry_password
   }
   
-  dynamic "secret" {
-    for_each = var.github_container_registry_password != "" ? [1] : []
-    
-    content {
-      name  = "ghcr-password"
-      value = var.github_container_registry_password
-    }
+  # Registry configuration for GHCR (if credentials provided)
+  registry {
+    server               = var.container_registry_url
+    username             = var.github_container_registry_username
+    password_secret_name = "ghcr-password"
   }
   
   # Managed Identity
@@ -412,6 +411,43 @@ resource "azurerm_container_app" "main" {
   }
   
   tags = azurerm_resource_group.main.tags
+}
+
+# Custom Domain Configuration (only if custom domain is provided)
+# Bind custom domain to Container App
+
+# Path A: Managed certificate — omit cert ID and let Azure provision/bind after verification
+resource "azurerm_container_app_custom_domain" "managed" {
+  count = var.custom_domain != "" && var.custom_domain_certificate_id == "" ? 1 : 0
+
+  name                     = var.custom_domain
+  container_app_id         = azurerm_container_app.main.id
+  certificate_binding_type = "SniEnabled"
+
+  # Azure populates container_app_environment_certificate_id after managed cert provisioning
+  lifecycle {
+    ignore_changes = [container_app_environment_certificate_id]
+  }
+
+  depends_on = [
+    cloudflare_dns_record.custom_domain_verification,
+    cloudflare_dns_record.domain,
+  ]
+}
+
+# Path B: Explicit certificate — bind via SNI to provided environment certificate
+resource "azurerm_container_app_custom_domain" "cert" {
+  count = var.custom_domain != "" && var.custom_domain_certificate_id != "" ? 1 : 0
+
+  name                                     = var.custom_domain
+  container_app_id                         = azurerm_container_app.main.id
+  container_app_environment_certificate_id = var.custom_domain_certificate_id
+  certificate_binding_type                 = "SniEnabled"
+
+  depends_on = [
+    cloudflare_dns_record.custom_domain_verification,
+    cloudflare_dns_record.domain,
+  ]
 }
 
 # Grant Container App managed identity access to Key Vault

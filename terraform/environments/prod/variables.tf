@@ -254,3 +254,44 @@ variable "frontend_url" {
     error_message = "Frontend URL must start with http:// or https://"
   }
 }
+
+# Custom Domain Configuration
+variable "custom_domain" {
+  type        = string
+  description = "Custom domain name for Container App (e.g., myhaws.org for prod, dev.myhaws.org for dev). Leave empty to disable custom domain."
+  default     = "myhaws.org"
+  
+  validation {
+    condition     = var.custom_domain == "" || can(regex("^([a-z0-9]([a-z0-9-]*[a-z0-9])?.)+[a-z]{2,}$", var.custom_domain))
+    error_message = "Custom domain must be a valid domain name or empty string."
+  }
+}
+
+variable "custom_domain_certificate_id" {
+  type        = string
+  description = "Resource ID of a Container App Environment Certificate to bind via SNI. Leave empty to use Azure Managed Certificate."
+  default     = ""
+}
+
+variable "cloudflare_zone_id" {
+  type        = string
+  description = "Cloudflare Zone ID for the domain (e.g., myhaws.org)."
+  default     = ""
+  
+  validation {
+    condition     = var.custom_domain == "" || var.cloudflare_zone_id != ""
+    error_message = "cloudflare_zone_id must be set when custom_domain is provided."
+  }
+}
+
+# variable "cloudflare_api_token" {
+#   type        = string
+#   description = "Cloudflare API token with DNS edit permissions for the zone."
+#   sensitive   = true
+#   default     = ""
+  
+#   validation {
+#     condition     = var.custom_domain == "" || var.cloudflare_api_token != ""
+#     error_message = "cloudflare_api_token must be set when custom_domain is provided."
+#   }
+# }

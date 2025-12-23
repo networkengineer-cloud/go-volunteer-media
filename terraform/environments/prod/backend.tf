@@ -15,6 +15,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.7"  # Require 3.7+ for latest features
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.0"  # Cloudflare provider for DNS TXT verification
+    }
   }
   
   # HCP Terraform backend configuration with remote execution
