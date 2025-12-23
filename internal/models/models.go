@@ -71,12 +71,14 @@ type Animal struct {
 	LastStatusChange       *time.Time          `json:"last_status_change"`                                              // Timestamp of last status change
 	ReturnCount            int                 `gorm:"default:0" json:"return_count"`                                   // Number of times animal has returned to shelter after being archived
 	IsReturned             bool                `gorm:"default:false" json:"is_returned"`                                // Indicates if archived animal is a return (not all archived animals are returns)
-	ProtocolDocumentURL    string              `json:"protocol_document_url"`                                           // URL to protocol document (PDF/DOCX)
-	ProtocolDocumentName   string              `json:"protocol_document_name"`                                          // Original filename of protocol document
-	ProtocolDocumentData   []byte              `gorm:"type:bytea" json:"-"`                                             // Binary data of protocol document
-	ProtocolDocumentType   string              `json:"protocol_document_type"`                                          // MIME type of protocol document
-	ProtocolDocumentSize   int                 `json:"protocol_document_size"`                                          // Size in bytes
-	ProtocolDocumentUserID *uint               `json:"protocol_document_user_id"`                                       // User who uploaded the protocol document
+	ProtocolDocumentURL          string              `json:"protocol_document_url"`                                           // URL to protocol document (PDF/DOCX)
+	ProtocolDocumentName         string              `json:"protocol_document_name"`                                          // Original filename of protocol document
+	ProtocolDocumentData         []byte              `gorm:"type:bytea" json:"-"`                                             // Binary data of protocol document (null when using Azure)
+	ProtocolDocumentType         string              `json:"protocol_document_type"`                                          // MIME type of protocol document
+	ProtocolDocumentSize         int                 `json:"protocol_document_size"`                                          // Size in bytes
+	ProtocolDocumentUserID       *uint               `json:"protocol_document_user_id"`                                       // User who uploaded the protocol document
+	ProtocolDocumentProvider     string              `gorm:"default:'postgres'" json:"-"`                                     // Storage backend: "postgres" or "azure"
+	ProtocolDocumentBlobIdentifier string            `json:"-"`                                                               // Azure blob identifier (UUID without extension)
 	Tags                   []AnimalTag         `gorm:"many2many:animal_animal_tags;" json:"tags,omitempty"`             // Tags associated with this animal
 	NameHistory            []AnimalNameHistory `gorm:"foreignKey:AnimalID" json:"name_history,omitempty"`               // History of name changes for this animal
 	Images                 []AnimalImage       `gorm:"foreignKey:AnimalID" json:"images,omitempty"`                     // Images uploaded for this animal
@@ -247,13 +249,15 @@ type AnimalImage struct {
 	AnimalID         *uint          `gorm:"index:idx_animal_image_animal" json:"animal_id"` // Nullable for unlinked images
 	UserID           uint           `gorm:"not null;index" json:"user_id"`
 	ImageURL         string         `gorm:"not null" json:"image_url"`
-	ImageData        []byte         `gorm:"type:bytea" json:"-"`           // Binary image data stored in DB
-	MimeType         string         `gorm:"default:'image/jpeg'" json:"-"` // MIME type of the image
+	ImageData        []byte         `gorm:"type:bytea" json:"-"`              // Binary image data stored in DB (null when using Azure)
+	MimeType         string         `gorm:"default:'image/jpeg'" json:"-"`    // MIME type of the image
 	Caption          string         `json:"caption"`
 	IsProfilePicture bool           `gorm:"default:false" json:"is_profile_picture"`
 	Width            int            `json:"width"`
 	Height           int            `json:"height"`
-	FileSize         int            `json:"file_size"` // in bytes
+	FileSize         int            `json:"file_size"`                        // in bytes
+	StorageProvider  string         `gorm:"default:'postgres'" json:"-"`      // Storage backend: "postgres" or "azure"
+	BlobIdentifier   string         `json:"-"`                                // Azure blob identifier (UUID without extension)
 	User             User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Animal           Animal         `gorm:"foreignKey:AnimalID" json:"animal,omitempty"`
 }
