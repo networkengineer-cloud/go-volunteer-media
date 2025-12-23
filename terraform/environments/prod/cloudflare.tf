@@ -1,6 +1,7 @@
 # Cloudflare integration for Azure Container Apps
 # This configuration restricts access to only Cloudflare IP ranges
 
+# Set env variable CLOUDFLARE_API_TOKEN with the API token before applying Terraform
 provider "cloudflare" {
   # api_token = var.cloudflare_api_token
 }
