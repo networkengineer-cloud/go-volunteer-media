@@ -121,6 +121,13 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		now := time.Now()
+		
+		// Use provided arrival_date if available, otherwise use current time
+		arrivalDate := &now
+		if req.ArrivalDate.Valid && req.ArrivalDate.Time != nil {
+			arrivalDate = req.ArrivalDate.Time
+		}
+		
 		animal := models.Animal{
 			GroupID:          uint(gid),
 			Name:             req.Name,
@@ -130,7 +137,7 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 			Description:      req.Description,
 			ImageURL:         req.ImageURL,
 			Status:           req.Status,
-			ArrivalDate:      &now,
+			ArrivalDate:      arrivalDate,
 			LastStatusChange: &now,
 		}
 
@@ -162,6 +169,16 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 		if err := db.Create(&animal).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create animal"})
 			return
+		}
+
+		// If an image_url was provided, link any unlinked images with this URL to this animal
+		if req.ImageURL != "" {
+			if err := db.Model(&models.AnimalImage{}).
+				Where("image_url = ? AND animal_id IS NULL", req.ImageURL).
+				Update("animal_id", animal.ID).Error; err != nil {
+				// Log error but don't fail the creation
+				c.Error(err)
+			}
 		}
 
 		c.JSON(http.StatusCreated, animal)
@@ -223,6 +240,8 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				// When moving back to available from archived, increment return count
 				if oldStatus == "archived" {
 					animal.ReturnCount++
+					// Reset arrival date when animal returns to shelter
+					animal.ArrivalDate = &now
 				}
 				// Clear specific status dates
 				animal.FosterStartDate = nil
@@ -261,6 +280,11 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			animal.IsReturned = *req.IsReturned
 		}
 
+		// Update arrival_date if provided
+		if req.ArrivalDate.Valid && req.ArrivalDate.Time != nil {
+			animal.ArrivalDate = req.ArrivalDate.Time
+		}
+
 		// Update other fields
 		animal.Name = req.Name
 		animal.Species = req.Species
@@ -272,6 +296,16 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 		if err := db.Save(&animal).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal"})
 			return
+		}
+
+		// If an image_url was provided, link any unlinked images with this URL to this animal
+		if req.ImageURL != "" {
+			if err := db.Model(&models.AnimalImage{}).
+				Where("image_url = ? AND animal_id IS NULL", req.ImageURL).
+				Update("animal_id", animal.ID).Error; err != nil {
+				// Log error but don't fail the update
+				c.Error(err)
+			}
 		}
 
 		c.JSON(http.StatusOK, animal)
