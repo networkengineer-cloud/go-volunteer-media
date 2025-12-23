@@ -77,6 +77,7 @@ type AnimalRequest struct {
 	ImageURL            string       `json:"image_url,omitempty"`
 	Status              string       `json:"status"`
 	GroupID             uint         `json:"group_id,omitempty"`
+	ArrivalDate         NullableTime `json:"arrival_date,omitempty"` // Date animal entered shelter
 	QuarantineStartDate NullableTime `json:"quarantine_start_date,omitempty"`
 	IsReturned          *bool        `json:"is_returned,omitempty"` // Pointer to distinguish null from false
 }

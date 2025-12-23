@@ -39,6 +39,7 @@ const AnimalForm: React.FC = () => {
     description: '',
     image_url: '',
     status: 'available',
+    arrival_date: '',
     quarantine_start_date: '',
     is_returned: false,
     protocol_document_url: '',
@@ -101,7 +102,8 @@ const AnimalForm: React.FC = () => {
       const animal = response.data;
       setFormData({
         ...animal,
-        quarantine_start_date: animal.quarantine_start_date || '',
+        arrival_date: animal.arrival_date ? animal.arrival_date.split('T')[0] : '',
+        quarantine_start_date: animal.quarantine_start_date ? animal.quarantine_start_date.split('T')[0] : '',
         protocol_document_url: animal.protocol_document_url || '',
         protocol_document_name: animal.protocol_document_name || '',
       });
@@ -676,6 +678,23 @@ const AnimalForm: React.FC = () => {
               </select>
               <p className="form-field__helper">Current status of the animal</p>
             </div>
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="arrival_date" className="form-field__label">
+              Date in Shelter
+            </label>
+            <input
+              id="arrival_date"
+              type="date"
+              value={formData.arrival_date}
+              onChange={(e) => setFormData({ ...formData, arrival_date: e.target.value })}
+              className="form-field__input"
+              max={new Date().toISOString().split('T')[0]}
+            />
+            <p className="form-field__helper">
+              Date the animal entered the shelter. Used to calculate length of stay. Leave empty to use today's date.
+            </p>
           </div>
 
           <div className="form-field">
