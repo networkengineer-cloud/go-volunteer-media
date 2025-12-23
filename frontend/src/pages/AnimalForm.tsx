@@ -696,7 +696,6 @@ const AnimalForm: React.FC = () => {
               Date the animal entered the shelter. Used to calculate length of stay. Leave empty to use today's date.
             </p>
           </div>
-          </div>
 
           <div className="form-field">
             <label htmlFor="image_upload" className="form-field__label">
