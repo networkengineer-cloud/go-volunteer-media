@@ -1,5 +1,100 @@
 # Storage Architecture Documentation
 
+## Quick Start Guide
+
+### Local Development with Postgres (Default)
+
+No configuration needed! The application defaults to storing files in PostgreSQL:
+
+```bash
+# Just start the application normally
+make dev-backend
+```
+
+### Local Testing with Azurite (Azure Storage Emulator)
+
+1. **Start Azurite** (Azure Storage Emulator):
+   ```bash
+   docker run -p 10000:10000 -p 10001:10001 -p 10002:10002 \
+     mcr.microsoft.com/azure-storage/azurite
+   ```
+
+2. **Configure environment variables**:
+   ```bash
+   export STORAGE_PROVIDER=azure
+   export AZURE_STORAGE_ACCOUNT_NAME=devstoreaccount1
+   export AZURE_STORAGE_ACCOUNT_KEY=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+   export AZURE_STORAGE_CONTAINER_NAME=volunteer-media-storage
+   export AZURE_STORAGE_ENDPOINT=http://127.0.0.1:10000/devstoreaccount1
+   ```
+
+3. **Start the application**:
+   ```bash
+   make dev-backend
+   ```
+
+4. **Upload a file** - the application will automatically create the container and store files in Azurite
+
+5. **Verify files in Azurite** using Azure Storage Explorer or:
+   ```bash
+   curl http://127.0.0.1:10000/devstoreaccount1/volunteer-media-storage?restype=container&comp=list
+   ```
+
+### Production Deployment with Azure Blob Storage
+
+1. **Create Azure Storage Account**:
+   ```bash
+   az storage account create \
+     --name myvolunteerstorage \
+     --resource-group my-resource-group \
+     --location eastus \
+     --sku Standard_LRS
+   ```
+
+2. **Create container**:
+   ```bash
+   az storage container create \
+     --name volunteer-media-storage \
+     --account-name myvolunteerstorage \
+     --public-access off
+   ```
+
+3. **Get access key** (or use Managed Identity):
+   ```bash
+   az storage account keys list \
+     --account-name myvolunteerstorage \
+     --resource-group my-resource-group \
+     --query '[0].value' -o tsv
+   ```
+
+4. **Set environment variables** in Azure Container Apps:
+   ```bash
+   az containerapp update \
+     --name volunteer-media \
+     --resource-group my-resource-group \
+     --set-env-vars \
+       STORAGE_PROVIDER=azure \
+       AZURE_STORAGE_ACCOUNT_NAME=myvolunteerstorage \
+       AZURE_STORAGE_ACCOUNT_KEY=<your-key> \
+       AZURE_STORAGE_CONTAINER_NAME=volunteer-media-storage
+   ```
+
+5. **Deploy and verify** - new uploads will use Azure Blob Storage
+
+### Switching Between Providers
+
+The feature flag allows seamless switching:
+
+```bash
+# Use Postgres (default, no change needed)
+export STORAGE_PROVIDER=postgres
+
+# Use Azure Blob Storage
+export STORAGE_PROVIDER=azure
+```
+
+**Note**: Existing files remain accessible regardless of provider. The application will serve files from their original storage location based on the `StorageProvider` field in the database.
+
 ## Problem Statement
 
 Currently, all images and documents (PDFs, DOCX files) are stored directly in PostgreSQL as binary data (`bytea` type). While this approach works for small-scale deployments, it has several limitations:
@@ -545,7 +640,30 @@ Serve files through Azure CDN for:
 
 ---
 
-**Status**: Design Phase Complete  
-**Next Steps**: Begin implementation of storage interface and providers  
+**Status**: Implementation Complete (Phase 1)  
+**Next Steps**: Handler integration, integration testing with Azurite, production rollout  
 **Owner**: Development Team  
 **Last Updated**: 2024-12-23
+
+## Implementation Status
+
+### ✅ Completed
+- Storage interface design and implementation
+- PostgresProvider for backward compatibility
+- AzureBlobProvider with full Azure SDK integration
+- Feature flag configuration system
+- Database model updates (StorageProvider, BlobIdentifier fields)
+- Unit tests (100% passing)
+- Comprehensive documentation
+
+### 🚧 In Progress
+- Handler integration (images and documents)
+- Integration testing with Azurite
+- End-to-end testing
+
+### 📋 Pending
+- Production deployment guide
+- Migration script for existing data
+- Performance benchmarking
+- CDN integration (optional enhancement)
+
