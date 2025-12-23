@@ -57,6 +57,12 @@ allowed_origins = [
   "https://www.yourdomain.com"
 ]
 
+# Custom Domain (optional)
+# custom_domain               = "app.yourdomain.com"
+# custom_domain_certificate_id = ""  # Provide if using an existing cert
+# cloudflare_zone_id          = "your-cloudflare-zone-id"
+# cloudflare_api_token        = "cf_api_token_with_dns_edit"
+
 # Monitoring Configuration
 log_retention_days = 30  # 30-730 days
 

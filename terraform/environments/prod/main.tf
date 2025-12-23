@@ -222,7 +222,7 @@ resource "azurerm_container_app" "main" {
     # HTTP-based autoscaling
     http_scale_rule {
       name                = "http-scaler"
-      concurrent_requests = "10"
+      concurrent_requests = "100"
     }
     
     container {
