@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -172,12 +173,19 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// If an image_url was provided, link any unlinked images with this URL to this animal
+		// Only link images uploaded by the current user to prevent race conditions
 		if req.ImageURL != "" {
+			userIDUint := userID.(uint)
 			if err := db.Model(&models.AnimalImage{}).
-				Where("image_url = ? AND animal_id IS NULL", req.ImageURL).
+				Where("image_url = ? AND animal_id IS NULL AND user_id = ?", req.ImageURL, userIDUint).
 				Update("animal_id", animal.ID).Error; err != nil {
-				// Log error but don't fail the creation
-				c.Error(err)
+				// Log error with context but don't fail the creation
+				logger := middleware.GetLogger(c)
+				logger.WithFields(map[string]interface{}{
+					"animal_id": animal.ID,
+					"image_url": req.ImageURL,
+					"user_id":   userIDUint,
+				}).Error("Failed to link uploaded images to animal", err)
 			}
 		}
 
@@ -299,12 +307,19 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// If an image_url was provided, link any unlinked images with this URL to this animal
+		// Only link images uploaded by the current user to prevent race conditions
 		if req.ImageURL != "" {
+			userIDUint := userID.(uint)
 			if err := db.Model(&models.AnimalImage{}).
-				Where("image_url = ? AND animal_id IS NULL", req.ImageURL).
+				Where("image_url = ? AND animal_id IS NULL AND user_id = ?", req.ImageURL, userIDUint).
 				Update("animal_id", animal.ID).Error; err != nil {
-				// Log error but don't fail the update
-				c.Error(err)
+				// Log error with context but don't fail the update
+				logger := middleware.GetLogger(c)
+				logger.WithFields(map[string]interface{}{
+					"animal_id": animal.ID,
+					"image_url": req.ImageURL,
+					"user_id":   userIDUint,
+				}).Error("Failed to link uploaded images to animal", err)
 			}
 		}
 
