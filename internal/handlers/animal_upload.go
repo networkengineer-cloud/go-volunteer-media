@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 	"github.com/nfnt/resize"
 	"gorm.io/gorm"
@@ -152,36 +153,59 @@ func UploadAnimalImage(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// ServeImage serves an image from the database by its URL path
-func ServeImage(db *gorm.DB) gin.HandlerFunc {
+// ServeImage serves an image using the configured storage provider
+func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		imageUUID := c.Param("uuid")
 		imageURL := fmt.Sprintf("/api/images/%s", imageUUID)
 
+		// First, get the image metadata from database
 		var animalImage models.AnimalImage
 		if err := db.Where("image_url = ?", imageURL).First(&animalImage).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Image not found"})
 			return
 		}
 
-		if len(animalImage.ImageData) == 0 {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Image data not available"})
-			return
+		// Check which storage provider was used for this image
+		if animalImage.StorageProvider == "azure" && animalImage.BlobIdentifier != "" {
+			// Retrieve from Azure Blob Storage
+			data, mimeType, err := storageProvider.GetImage(ctx, animalImage.BlobIdentifier)
+			if err != nil {
+				if err == storage.ErrNotFound {
+					c.JSON(http.StatusNotFound, gin.H{"error": "Image not found in storage"})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve image"})
+				}
+				return
+			}
+
+			// Set caching headers (images don't change)
+			c.Header("Cache-Control", "public, max-age=31536000") // 1 year
+			c.Header("Content-Type", mimeType)
+			c.Header("Content-Length", strconv.Itoa(len(data)))
+			c.Data(http.StatusOK, mimeType, data)
+		} else {
+			// Legacy: retrieve from PostgreSQL database
+			if len(animalImage.ImageData) == 0 {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Image data not available"})
+				return
+			}
+
+			// Set caching headers (images don't change)
+			c.Header("Cache-Control", "public, max-age=31536000") // 1 year
+			c.Header("Content-Type", animalImage.MimeType)
+			c.Header("Content-Length", strconv.Itoa(len(animalImage.ImageData)))
+			c.Data(http.StatusOK, animalImage.MimeType, animalImage.ImageData)
 		}
-
-		// Set caching headers (images don't change)
-		c.Header("Cache-Control", "public, max-age=31536000") // 1 year
-		c.Header("Content-Type", animalImage.MimeType)
-		c.Header("Content-Length", strconv.Itoa(len(animalImage.ImageData)))
-
-		c.Data(http.StatusOK, animalImage.MimeType, animalImage.ImageData)
 	}
 }
 
 // UploadAnimalImageSimple handles simple image upload without animal context
 // Used for profile picture uploads before animal is fully created
-func UploadAnimalImageSimple(db *gorm.DB) gin.HandlerFunc {
+func UploadAnimalImageSimple(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 
 		// Get user ID from context
@@ -266,20 +290,49 @@ func UploadAnimalImageSimple(db *gorm.DB) gin.HandlerFunc {
 
 		// Generate unique image identifier
 		imageUUID := uuid.New().String()
-		imageURL := fmt.Sprintf("/api/images/%s", imageUUID)
+
+		// Upload to storage provider
+		metadata := map[string]string{
+			"width":  strconv.Itoa(finalBounds.Dx()),
+			"height": strconv.Itoa(finalBounds.Dy()),
+		}
+
+		storageURL, blobIdentifier, err := storageProvider.UploadImage(ctx, imageData, "image/jpeg", metadata)
+		var imageURL string
+		var imageDataForDB []byte
+		var storageProviderName string
+
+		if err != nil {
+			// If Azure upload fails, fall back to PostgreSQL
+			logger.WithFields(map[string]interface{}{
+				"error": err.Error(),
+			}).Warn("Failed to upload to storage provider, falling back to PostgreSQL")
+
+			imageURL = fmt.Sprintf("/api/images/%s", imageUUID)
+			imageDataForDB = imageData
+			storageProviderName = "postgres"
+			blobIdentifier = ""
+		} else {
+			// Successfully uploaded to storage provider
+			imageURL = storageURL
+			imageDataForDB = nil // Don't store in DB when using external storage
+			storageProviderName = "azure"
+		}
 
 		// Create image record in database with AnimalID = nil (will be linked later)
 		animalImage := models.AnimalImage{
-			AnimalID:  nil, // Will be linked when animal is created/updated
-			UserID:    userID,
-			ImageURL:  imageURL,
-			ImageData: imageData,
-			MimeType:  "image/jpeg",
-			Width:     finalBounds.Dx(),
-			Height:    finalBounds.Dy(),
-			FileSize:  len(imageData),
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			AnimalID:        nil, // Will be linked when animal is created/updated
+			UserID:          userID,
+			ImageURL:        imageURL,
+			ImageData:       imageDataForDB,
+			MimeType:        "image/jpeg",
+			Width:           finalBounds.Dx(),
+			Height:          finalBounds.Dy(),
+			FileSize:        len(imageData),
+			StorageProvider: storageProviderName,
+			BlobIdentifier:  blobIdentifier,
+			CreatedAt:       time.Now(),
+			UpdatedAt:       time.Now(),
 		}
 
 		if err := db.Create(&animalImage).Error; err != nil {
@@ -289,10 +342,11 @@ func UploadAnimalImageSimple(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		logger.WithFields(map[string]interface{}{
-			"image_id": animalImage.ID,
-			"url":      imageURL,
-			"size":     len(imageData),
-		}).Info("Image uploaded and stored in database (unlinked)")
+			"image_id":         animalImage.ID,
+			"url":              imageURL,
+			"size":             len(imageData),
+			"storage_provider": storageProviderName,
+		}).Info("Image uploaded and stored (unlinked)")
 
 		c.JSON(http.StatusOK, gin.H{"url": imageURL})
 	}
