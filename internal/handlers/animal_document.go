@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strconv"
 	"time"
 
@@ -12,13 +13,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 	"gorm.io/gorm"
 )
 
 // UploadAnimalProtocolDocument handles uploading a protocol document (PDF or DOCX) for an animal
-func UploadAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
+func UploadAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 
 		// Get animal ID from URL parameter
@@ -93,23 +96,55 @@ func UploadAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 
 		// Determine MIME type based on file extension
 		var mimeType string
-		if file.Filename[len(file.Filename)-4:] == ".pdf" {
+		ext := path.Ext(file.Filename)
+		switch ext {
+		case ".pdf":
 			mimeType = "application/pdf"
-		} else if file.Filename[len(file.Filename)-5:] == ".docx" {
+		case ".docx":
 			mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		default:
+			mimeType = "application/octet-stream"
 		}
 
 		// Generate unique document identifier
 		documentUUID := uuid.New().String()
-		documentURL := fmt.Sprintf("/api/documents/%s", documentUUID)
+
+		// Upload to storage provider
+		storageURL, blobUUID, blobExt, err := storageProvider.UploadDocument(ctx, documentData, mimeType, file.Filename)
+		var documentURL string
+		var documentDataForDB []byte
+		var storageProviderName string
+		var blobIdentifier string
+
+		if err != nil {
+			// If storage provider upload fails, fall back to PostgreSQL
+			logger.WithFields(map[string]interface{}{
+				"error": err.Error(),
+			}).Warn("Failed to upload to storage provider, falling back to PostgreSQL")
+
+			documentURL = fmt.Sprintf("/api/documents/%s", documentUUID)
+			documentDataForDB = documentData
+			storageProviderName = "postgres"
+			blobIdentifier = ""
+		} else {
+			// Successfully uploaded to storage provider
+			documentURL = storageURL
+			documentDataForDB = nil // Don't store in DB when using external storage
+			storageProviderName = storageProvider.Name()
+			// Combine UUID and extension for identifier
+			blobIdentifier = blobUUID + blobExt
+		}
 
 		// Update animal record with protocol document
 		animal.ProtocolDocumentURL = documentURL
 		animal.ProtocolDocumentName = file.Filename
-		animal.ProtocolDocumentData = documentData
+		animal.ProtocolDocumentData = documentDataForDB
 		animal.ProtocolDocumentType = mimeType
 		animal.ProtocolDocumentSize = len(documentData)
 		animal.ProtocolDocumentUserID = &userID
+		animal.ProtocolDocumentProvider = storageProviderName
+		animal.ProtocolDocumentBlobIdentifier = blobIdentifier
+		animal.ProtocolDocumentBlobExtension = blobExt
 		animal.UpdatedAt = time.Now()
 
 		if err := db.Save(&animal).Error; err != nil {
@@ -119,11 +154,12 @@ func UploadAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		logger.WithFields(map[string]interface{}{
-			"animal_id":     animalID,
-			"group_id":      groupID,
-			"document_url":  documentURL,
-			"document_name": file.Filename,
-			"size":          len(documentData),
+			"animal_id":        animalID,
+			"group_id":         groupID,
+			"document_url":     documentURL,
+			"document_name":    file.Filename,
+			"size":             len(documentData),
+			"storage_provider": storageProviderName,
 		}).Info("Protocol document uploaded successfully")
 
 		c.JSON(http.StatusOK, gin.H{
@@ -136,9 +172,9 @@ func UploadAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// ServeAnimalProtocolDocument serves a protocol document from the database
+// ServeAnimalProtocolDocument serves a protocol document using the configured storage provider
 // Requires authentication and verifies user is member of the animal's group
-func ServeAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
+func ServeAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		documentUUID := c.Param("uuid")
@@ -178,24 +214,46 @@ func ServeAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		if len(animal.ProtocolDocumentData) == 0 {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Document data not available"})
-			return
+		// Check which storage provider was used for this document
+		if animal.ProtocolDocumentProvider == "azure" && animal.ProtocolDocumentBlobIdentifier != "" {
+			// Retrieve from Azure Blob Storage
+			data, mimeType, err := storageProvider.GetDocument(ctx, animal.ProtocolDocumentBlobIdentifier)
+			if err != nil {
+				if err == storage.ErrNotFound {
+					c.JSON(http.StatusNotFound, gin.H{"error": "Document not found in storage"})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve document"})
+				}
+				return
+			}
+
+			// Set headers for document download
+			c.Header("Content-Type", mimeType)
+			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", animal.ProtocolDocumentName))
+			c.Header("Content-Length", strconv.Itoa(len(data)))
+			c.Header("Cache-Control", "private, max-age=3600") // Cache for 1 hour
+			c.Data(http.StatusOK, mimeType, data)
+		} else {
+			// Legacy: retrieve from PostgreSQL database
+			if len(animal.ProtocolDocumentData) == 0 {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Document data not available"})
+				return
+			}
+
+			// Set headers for document download
+			c.Header("Content-Type", animal.ProtocolDocumentType)
+			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", animal.ProtocolDocumentName))
+			c.Header("Content-Length", strconv.Itoa(len(animal.ProtocolDocumentData)))
+			c.Header("Cache-Control", "private, max-age=3600") // Cache for 1 hour
+			c.Data(http.StatusOK, animal.ProtocolDocumentType, animal.ProtocolDocumentData)
 		}
-
-		// Set headers for document download
-		c.Header("Content-Type", animal.ProtocolDocumentType)
-		c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", animal.ProtocolDocumentName))
-		c.Header("Content-Length", strconv.Itoa(len(animal.ProtocolDocumentData)))
-		c.Header("Cache-Control", "private, max-age=3600") // Cache for 1 hour
-
-		c.Data(http.StatusOK, animal.ProtocolDocumentType, animal.ProtocolDocumentData)
 	}
 }
 
 // DeleteAnimalProtocolDocument removes the protocol document from an animal
-func DeleteAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
+func DeleteAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 
 		// Get animal ID from URL parameter
@@ -226,6 +284,16 @@ func DeleteAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Delete from storage provider if using Azure
+		if animal.ProtocolDocumentProvider == "azure" && animal.ProtocolDocumentBlobIdentifier != "" {
+			if err := storageProvider.DeleteDocument(ctx, animal.ProtocolDocumentBlobIdentifier); err != nil {
+				logger.WithFields(map[string]interface{}{
+					"error":           err.Error(),
+					"blob_identifier": animal.ProtocolDocumentBlobIdentifier,
+				}).Warn("Failed to delete document from storage provider, continuing with database deletion")
+			}
+		}
+
 		// Clear protocol document fields
 		animal.ProtocolDocumentURL = ""
 		animal.ProtocolDocumentName = ""
@@ -233,6 +301,9 @@ func DeleteAnimalProtocolDocument(db *gorm.DB) gin.HandlerFunc {
 		animal.ProtocolDocumentType = ""
 		animal.ProtocolDocumentSize = 0
 		animal.ProtocolDocumentUserID = nil
+		animal.ProtocolDocumentProvider = ""
+		animal.ProtocolDocumentBlobIdentifier = ""
+		animal.ProtocolDocumentBlobExtension = ""
 		animal.UpdatedAt = time.Now()
 
 		if err := db.Save(&animal).Error; err != nil {
