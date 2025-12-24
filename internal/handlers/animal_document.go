@@ -110,10 +110,11 @@ func UploadAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider)
 		documentUUID := uuid.New().String()
 
 		// Upload to storage provider
-		storageURL, blobIdentifier, err := storageProvider.UploadDocument(ctx, documentData, mimeType, file.Filename)
+		storageURL, blobUUID, blobExt, err := storageProvider.UploadDocument(ctx, documentData, mimeType, file.Filename)
 		var documentURL string
 		var documentDataForDB []byte
 		var storageProviderName string
+		var blobIdentifier string
 
 		if err != nil {
 			// If storage provider upload fails, fall back to PostgreSQL
@@ -129,7 +130,9 @@ func UploadAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider)
 			// Successfully uploaded to storage provider
 			documentURL = storageURL
 			documentDataForDB = nil // Don't store in DB when using external storage
-			storageProviderName = "azure"
+			storageProviderName = storageProvider.Name()
+			// Combine UUID and extension for identifier
+			blobIdentifier = blobUUID + blobExt
 		}
 
 		// Update animal record with protocol document
@@ -141,6 +144,7 @@ func UploadAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider)
 		animal.ProtocolDocumentUserID = &userID
 		animal.ProtocolDocumentProvider = storageProviderName
 		animal.ProtocolDocumentBlobIdentifier = blobIdentifier
+		animal.ProtocolDocumentBlobExtension = blobExt
 		animal.UpdatedAt = time.Now()
 
 		if err := db.Save(&animal).Error; err != nil {
@@ -299,6 +303,7 @@ func DeleteAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider)
 		animal.ProtocolDocumentUserID = nil
 		animal.ProtocolDocumentProvider = ""
 		animal.ProtocolDocumentBlobIdentifier = ""
+		animal.ProtocolDocumentBlobExtension = ""
 		animal.UpdatedAt = time.Now()
 
 		if err := db.Save(&animal).Error; err != nil {

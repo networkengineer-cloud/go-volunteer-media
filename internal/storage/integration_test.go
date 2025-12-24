@@ -58,14 +58,15 @@ func TestAzureBlobProviderIntegration(t *testing.T) {
 		}
 
 		// Upload image
-		url, identifier, err := provider.UploadImage(ctx, imageData, "image/jpeg", metadata)
+		url, uuid, ext, err := provider.UploadImage(ctx, imageData, "image/jpeg", metadata)
 		if err != nil {
 			t.Fatalf("Failed to upload image: %v", err)
 		}
-		if url == "" || identifier == "" {
-			t.Error("Expected non-empty URL and identifier")
+		if url == "" || uuid == "" || ext == "" {
+			t.Error("Expected non-empty URL, identifier, and extension")
 		}
-		t.Logf("Uploaded image: URL=%s, ID=%s", url, identifier)
+		identifier := uuid + ext // Combine for retrieval
+		t.Logf("Uploaded image: URL=%s, UUID=%s, Extension=%s, Combined ID=%s", url, uuid, ext, identifier)
 
 		// Retrieve image
 		retrievedData, mimeType, err := provider.GetImage(ctx, identifier)
@@ -99,14 +100,15 @@ func TestAzureBlobProviderIntegration(t *testing.T) {
 		filename := "test-protocol.pdf"
 
 		// Upload document
-		url, identifier, err := provider.UploadDocument(ctx, documentData, "application/pdf", filename)
+		url, uuid, ext, err := provider.UploadDocument(ctx, documentData, "application/pdf", filename)
 		if err != nil {
 			t.Fatalf("Failed to upload document: %v", err)
 		}
-		if url == "" || identifier == "" {
-			t.Error("Expected non-empty URL and identifier")
+		if url == "" || uuid == "" || ext == "" {
+			t.Error("Expected non-empty URL, identifier, and extension")
 		}
-		t.Logf("Uploaded document: URL=%s, ID=%s", url, identifier)
+		identifier := uuid + ext // Combine for retrieval
+		t.Logf("Uploaded document: URL=%s, UUID=%s, Extension=%s, Combined ID=%s", url, uuid, ext, identifier)
 
 		// Retrieve document
 		retrievedData, mimeType, err := provider.GetDocument(ctx, identifier)

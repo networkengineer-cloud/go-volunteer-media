@@ -3,7 +3,9 @@ package storage
 import (
 	"context"
 	"fmt"
+	"path"
 
+	"github.com/google/uuid"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -19,24 +21,53 @@ func NewPostgresProvider(db *gorm.DB) *PostgresProvider {
 	return &PostgresProvider{db: db}
 }
 
-// UploadImage stores image data in the database and returns a URL
-func (p *PostgresProvider) UploadImage(ctx context.Context, data []byte, mimeType string, metadata map[string]string) (url, identifier string, err error) {
-	// For Postgres provider, we don't actually store the data here
-	// The caller will create the AnimalImage record with the data
-	// We just generate and return a URL based on a UUID
-	// The identifier is the UUID extracted from the URL
-	
-	// Note: This is a transitional implementation
-	// The actual database insertion happens in the handler
-	// This provider is mainly for serving existing files
-	
-	return "", "", fmt.Errorf("postgres provider UploadImage should not be called directly; use legacy upload flow")
+// Name returns the name of this storage provider
+func (p *PostgresProvider) Name() string {
+	return "postgres"
 }
 
-// UploadDocument stores document data in the database and returns a URL
-func (p *PostgresProvider) UploadDocument(ctx context.Context, data []byte, mimeType, filename string) (url, identifier string, err error) {
-	// Similar to UploadImage, this is a transitional implementation
-	return "", "", fmt.Errorf("postgres provider UploadDocument should not be called directly; use legacy upload flow")
+// UploadImage generates a UUID and URL for image storage
+// For Postgres, the actual database insertion is handled by the caller
+func (p *PostgresProvider) UploadImage(ctx context.Context, data []byte, mimeType string, metadata map[string]string) (url, identifier, extension string, err error) {
+	// Generate UUID for the image
+	imageUUID := uuid.New().String()
+	imageURL := fmt.Sprintf("/api/images/%s", imageUUID)
+	
+	// Determine extension from MIME type
+	ext := ".jpg"
+	switch mimeType {
+	case "image/png":
+		ext = ".png"
+	case "image/gif":
+		ext = ".gif"
+	case "image/webp":
+		ext = ".webp"
+	}
+	
+	return imageURL, imageUUID, ext, nil
+}
+
+// UploadDocument generates a UUID and URL for document storage
+// For Postgres, the actual database insertion is handled by the caller
+func (p *PostgresProvider) UploadDocument(ctx context.Context, data []byte, mimeType, filename string) (url, identifier, extension string, err error) {
+	// Generate UUID for the document
+	documentUUID := uuid.New().String()
+	documentURL := fmt.Sprintf("/api/documents/%s", documentUUID)
+	
+	// Get extension from filename or MIME type
+	ext := path.Ext(filename)
+	if ext == "" {
+		switch mimeType {
+		case "application/pdf":
+			ext = ".pdf"
+		case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+			ext = ".docx"
+		default:
+			ext = ".bin"
+		}
+	}
+	
+	return documentURL, documentUUID, ext, nil
 }
 
 // GetImage retrieves image data from the database

@@ -18,25 +18,28 @@ var (
 // Provider defines the interface for storage operations
 // This abstraction allows switching between different storage backends (Postgres, Azure, S3, etc.)
 type Provider interface {
-	// UploadImage uploads an image and returns its URL and blob identifier
+	// Name returns the name of the storage provider (e.g., "postgres", "azure", "s3")
+	Name() string
+
+	// UploadImage uploads an image and returns its URL, identifier, and file extension
 	// data: image binary data (already processed/resized)
 	// mimeType: MIME type of the image (e.g., "image/jpeg")
 	// metadata: additional metadata (width, height, caption, etc.)
-	// Returns: public URL and internal identifier (used for retrieval)
-	UploadImage(ctx context.Context, data []byte, mimeType string, metadata map[string]string) (url, identifier string, err error)
+	// Returns: public URL, internal identifier, and file extension (e.g., ".jpg")
+	UploadImage(ctx context.Context, data []byte, mimeType string, metadata map[string]string) (url, identifier, extension string, err error)
 
-	// UploadDocument uploads a document and returns its URL and blob identifier
+	// UploadDocument uploads a document and returns its URL, identifier, and file extension
 	// data: document binary data
 	// mimeType: MIME type of the document (e.g., "application/pdf")
 	// filename: original filename for proper Content-Disposition header
-	// Returns: public URL and internal identifier (used for retrieval)
-	UploadDocument(ctx context.Context, data []byte, mimeType, filename string) (url, identifier string, err error)
+	// Returns: public URL, internal identifier, and file extension (e.g., ".pdf")
+	UploadDocument(ctx context.Context, data []byte, mimeType, filename string) (url, identifier, extension string, err error)
 
-	// GetImage retrieves an image by its identifier
+	// GetImage retrieves an image by its identifier (including extension if needed)
 	// Returns: binary data and MIME type
 	GetImage(ctx context.Context, identifier string) (data []byte, mimeType string, err error)
 
-	// GetDocument retrieves a document by its identifier
+	// GetDocument retrieves a document by its identifier (including extension if needed)
 	// Returns: binary data and MIME type
 	GetDocument(ctx context.Context, identifier string) (data []byte, mimeType string, err error)
 

@@ -79,6 +79,7 @@ type Animal struct {
 	ProtocolDocumentUserID       *uint               `json:"protocol_document_user_id"`                                       // User who uploaded the protocol document
 	ProtocolDocumentProvider     string              `gorm:"default:'postgres'" json:"-"`                                     // Storage backend: "postgres" or "azure"
 	ProtocolDocumentBlobIdentifier string            `json:"-"`                                                               // Azure blob identifier (UUID without extension)
+	ProtocolDocumentBlobExtension string             `json:"-"`                                                               // File extension (e.g., ".pdf", ".docx") for blob storage
 	Tags                   []AnimalTag         `gorm:"many2many:animal_animal_tags;" json:"tags,omitempty"`             // Tags associated with this animal
 	NameHistory            []AnimalNameHistory `gorm:"foreignKey:AnimalID" json:"name_history,omitempty"`               // History of name changes for this animal
 	Images                 []AnimalImage       `gorm:"foreignKey:AnimalID" json:"images,omitempty"`                     // Images uploaded for this animal
@@ -258,6 +259,7 @@ type AnimalImage struct {
 	FileSize         int            `json:"file_size"`                        // in bytes
 	StorageProvider  string         `gorm:"default:'postgres'" json:"-"`      // Storage backend: "postgres" or "azure"
 	BlobIdentifier   string         `json:"-"`                                // Azure blob identifier (UUID without extension)
+	BlobExtension    string         `json:"-"`                                // File extension (e.g., ".jpg", ".png") for blob storage
 	User             User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Animal           Animal         `gorm:"foreignKey:AnimalID" json:"animal,omitempty"`
 }

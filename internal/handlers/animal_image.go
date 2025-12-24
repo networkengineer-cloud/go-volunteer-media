@@ -173,10 +173,11 @@ func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) g
 			"caption": caption,
 		}
 
-		storageURL, blobIdentifier, err := storageProvider.UploadImage(ctx, imageData, "image/jpeg", metadata)
+		storageURL, blobUUID, blobExt, err := storageProvider.UploadImage(ctx, imageData, "image/jpeg", metadata)
 		var imageURL string
 		var imageDataForDB []byte
 		var storageProviderName string
+		var blobIdentifier string
 
 		if err != nil {
 			// If storage provider upload fails, fall back to PostgreSQL
@@ -192,7 +193,9 @@ func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) g
 			// Successfully uploaded to storage provider
 			imageURL = storageURL
 			imageDataForDB = nil // Don't store in DB when using external storage
-			storageProviderName = "azure"
+			storageProviderName = storageProvider.Name()
+			// Combine UUID and extension for identifier
+			blobIdentifier = blobUUID + blobExt
 		}
 
 		// Create database record
@@ -212,6 +215,7 @@ func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) g
 			FileSize:        len(imageData),
 			StorageProvider: storageProviderName,
 			BlobIdentifier:  blobIdentifier,
+			BlobExtension:   blobExt,
 			CreatedAt:       time.Now(),
 			UpdatedAt:       time.Now(),
 		}

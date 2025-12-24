@@ -297,13 +297,14 @@ func UploadAnimalImageSimple(db *gorm.DB, storageProvider storage.Provider) gin.
 			"height": strconv.Itoa(finalBounds.Dy()),
 		}
 
-		storageURL, blobIdentifier, err := storageProvider.UploadImage(ctx, imageData, "image/jpeg", metadata)
+		storageURL, blobUUID, blobExt, err := storageProvider.UploadImage(ctx, imageData, "image/jpeg", metadata)
 		var imageURL string
 		var imageDataForDB []byte
 		var storageProviderName string
+		var blobIdentifier string
 
 		if err != nil {
-			// If Azure upload fails, fall back to PostgreSQL
+			// If storage provider upload fails, fall back to PostgreSQL
 			logger.WithFields(map[string]interface{}{
 				"error": err.Error(),
 			}).Warn("Failed to upload to storage provider, falling back to PostgreSQL")
@@ -316,7 +317,9 @@ func UploadAnimalImageSimple(db *gorm.DB, storageProvider storage.Provider) gin.
 			// Successfully uploaded to storage provider
 			imageURL = storageURL
 			imageDataForDB = nil // Don't store in DB when using external storage
-			storageProviderName = "azure"
+			storageProviderName = storageProvider.Name()
+			// Combine UUID and extension for identifier
+			blobIdentifier = blobUUID + blobExt
 		}
 
 		// Create image record in database with AnimalID = nil (will be linked later)
@@ -331,6 +334,7 @@ func UploadAnimalImageSimple(db *gorm.DB, storageProvider storage.Provider) gin.
 			FileSize:        len(imageData),
 			StorageProvider: storageProviderName,
 			BlobIdentifier:  blobIdentifier,
+			BlobExtension:   blobExt,
 			CreatedAt:       time.Now(),
 			UpdatedAt:       time.Now(),
 		}
