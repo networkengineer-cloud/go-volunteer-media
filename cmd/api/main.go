@@ -195,7 +195,7 @@ func main() {
 		admin.Use(middleware.AdminRequired())
 		{
 			admin.GET("/users", handlers.GetAllUsers(db))
-			admin.POST("/users", handlers.AdminCreateUser(db))
+			admin.POST("/users", handlers.AdminCreateUser(db, emailService))
 			admin.DELETE("/users/:userId", handlers.AdminDeleteUser(db))
 			admin.GET("/users/deleted", handlers.GetDeletedUsers(db))
 			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))

@@ -402,7 +402,14 @@ const UsersPage: React.FC = () => {
 
   // Admin user creation form state
   const [showCreate, setShowCreate] = React.useState(false);
-  const [createData, setCreateData] = React.useState({ username: '', email: '', password: '', is_admin: false, groupIds: [] as number[] });
+  const [createData, setCreateData] = React.useState({ 
+    username: '', 
+    email: '', 
+    password: '', 
+    is_admin: false, 
+    groupIds: [] as number[],
+    send_setup_email: true  // Default to sending setup email
+  });
   const [createLoading, setCreateLoading] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = React.useState<string | null>(null);
@@ -423,7 +430,14 @@ const UsersPage: React.FC = () => {
   // Reset form when closing
   React.useEffect(() => {
     if (!showCreate) {
-      setCreateData({ username: '', email: '', password: '', is_admin: false, groupIds: [] });
+      setCreateData({ 
+        username: '', 
+        email: '', 
+        password: '', 
+        is_admin: false, 
+        groupIds: [],
+        send_setup_email: true 
+      });
       setFieldErrors({});
       setTouchedFields(new Set());
       setCreateError(null);
@@ -447,9 +461,11 @@ const UsersPage: React.FC = () => {
     return '';
   };
 
-  const validatePassword = (value: string): string => {
-    if (!value) return 'Password is required';
-    if (value.length < 8) return 'Password must be at least 8 characters';
+  const validatePassword = (value: string, sendSetupEmail: boolean): string => {
+    // Password is optional if sending setup email
+    if (sendSetupEmail && !value) return '';
+    if (!sendSetupEmail && !value) return 'Password is required when not sending setup email';
+    if (value.length > 0 && value.length < 8) return 'Password must be at least 8 characters';
     if (value.length > 72) return 'Password must be less than 72 characters';
     return '';
   };
@@ -477,7 +493,7 @@ const UsersPage: React.FC = () => {
       let error = '';
       if (name === 'username') error = validateUsername(value);
       else if (name === 'email') error = validateEmail(value);
-      else if (name === 'password') error = validatePassword(value);
+      else if (name === 'password') error = validatePassword(value, createData.send_setup_email);
       
       setFieldErrors(prev => ({ ...prev, [name]: error }));
     }
@@ -489,7 +505,7 @@ const UsersPage: React.FC = () => {
     let error = '';
     if (field === 'username') error = validateUsername(createData.username);
     else if (field === 'email') error = validateEmail(createData.email);
-    else if (field === 'password') error = validatePassword(createData.password);
+    else if (field === 'password') error = validatePassword(createData.password, createData.send_setup_email);
     
     setFieldErrors(prev => ({ ...prev, [field]: error }));
   };
@@ -531,7 +547,7 @@ const UsersPage: React.FC = () => {
     const errors: Record<string, string> = {
       username: validateUsername(createData.username),
       email: validateEmail(createData.email),
-      password: validatePassword(createData.password),
+      password: validatePassword(createData.password, createData.send_setup_email),
     };
     
     // Mark all fields as touched
@@ -549,18 +565,23 @@ const UsersPage: React.FC = () => {
     setCreateError(null);
     setCreateSuccess(null);
     try {
-      await usersApi.create({
+      const response = await usersApi.create({
         username: createData.username,
         email: createData.email,
-        password: createData.password,
+        password: createData.password || undefined, // Don't send empty password
         is_admin: createData.is_admin,
         group_ids: createData.groupIds,
+        send_setup_email: createData.send_setup_email,
       });
-      setCreateSuccess('User created successfully! Redirecting...');
+      
+      // Check if response includes a message (from setup email flow)
+      const message = response.data?.message || 'User created successfully!';
+      setCreateSuccess(message);
+      
       setTimeout(() => {
         setShowCreate(false);
         fetchUsers();
-      }, 1500);
+      }, 2500); // Longer timeout to show the message
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
       setCreateError(error.response?.data?.error || 'Failed to create user');
@@ -754,70 +775,94 @@ const UsersPage: React.FC = () => {
               )}
             </div>
 
-            {/* Password Field */}
-            <div className="form-field">
-              <label htmlFor="create-password" className="form-label">
-                Password <span className="required">*</span>
-              </label>
-              <div className="password-input-wrapper">
+            {/* Send Setup Email Toggle */}
+            <div className="form-field checkbox-field" style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'var(--surface, #f8fafc)', borderRadius: '0.5rem', border: '1px solid var(--border, #e5e7eb)' }}>
+              <label className="checkbox-label">
                 <input
-                  id="create-password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={createData.password}
+                  name="send_setup_email"
+                  type="checkbox"
+                  checked={createData.send_setup_email}
                   onChange={handleCreateChange}
-                  onBlur={() => handleBlur('password')}
-                  className={`form-input ${fieldErrors.password && touchedFields.has('password') ? 'input-error' : ''}`}
-                  placeholder="Minimum 8 characters"
-                  autoComplete="new-password"
-                  aria-invalid={!!fieldErrors.password && touchedFields.has('password')}
-                  aria-describedby={fieldErrors.password && touchedFields.has('password') ? 'password-error' : 'password-hint'}
+                  className="checkbox-input"
                 />
-                <button
-                  type="button"
-                  className="password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"/>
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                      <circle cx="12" cy="12" r="3"/>
-                    </svg>
-                  )}
-                </button>
-              </div>
-              {!fieldErrors.password && createData.password && (
-                <div className="password-strength">
-                  <div className="strength-bar">
-                    <div
-                      className={`strength-fill strength-${getPasswordStrength(createData.password).strength}`}
-                      style={{ width: getPasswordStrength(createData.password).strength === 'weak' ? '33%' : getPasswordStrength(createData.password).strength === 'medium' ? '66%' : '100%' }}
-                    />
-                  </div>
-                  <span className="strength-label" style={{ color: getPasswordStrength(createData.password).color }}>
-                    {getPasswordStrength(createData.password).label}
-                  </span>
-                </div>
-              )}
-              {!fieldErrors.password && !createData.password && (
-                <span id="password-hint" className="field-hint">
-                  At least 8 characters. Use a mix of letters, numbers, and symbols for better security.
-                </span>
-              )}
-              {fieldErrors.password && touchedFields.has('password') && (
-                <span id="password-error" className="field-error" role="alert">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM7 4h2v5H7V4zm0 6h2v2H7v-2z" fill="currentColor"/>
+                <span className="checkbox-box">
+                  <svg className="checkbox-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 3L4.5 8.5L2 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                  {fieldErrors.password}
                 </span>
-              )}
+                <span className="checkbox-text">
+                  <strong>Send password setup email</strong>
+                  <span className="checkbox-description">User will receive an email to set their own password (recommended)</span>
+                </span>
+              </label>
             </div>
+
+            {/* Password Field - Only show if not sending setup email */}
+            {!createData.send_setup_email && (
+              <div className="form-field">
+                <label htmlFor="create-password" className="form-label">
+                  Password <span className="required">*</span>
+                </label>
+                <div className="password-input-wrapper">
+                  <input
+                    id="create-password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={createData.password}
+                    onChange={handleCreateChange}
+                    onBlur={() => handleBlur('password')}
+                    className={`form-input ${fieldErrors.password && touchedFields.has('password') ? 'input-error' : ''}`}
+                    placeholder="Minimum 8 characters"
+                    autoComplete="new-password"
+                    aria-invalid={!!fieldErrors.password && touchedFields.has('password')}
+                    aria-describedby={fieldErrors.password && touchedFields.has('password') ? 'password-error' : 'password-hint'}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"/>
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                {!fieldErrors.password && createData.password && (
+                  <div className="password-strength">
+                    <div className="strength-bar">
+                      <div
+                        className={`strength-fill strength-${getPasswordStrength(createData.password).strength}`}
+                        style={{ width: getPasswordStrength(createData.password).strength === 'weak' ? '33%' : getPasswordStrength(createData.password).strength === 'medium' ? '66%' : '100%' }}
+                      />
+                    </div>
+                    <span className="strength-label" style={{ color: getPasswordStrength(createData.password).color }}>
+                      {getPasswordStrength(createData.password).label}
+                    </span>
+                  </div>
+                )}
+                {!fieldErrors.password && !createData.password && (
+                  <span id="password-hint" className="field-hint">
+                    At least 8 characters. Use a mix of letters, numbers, and symbols for better security.
+                  </span>
+                )}
+                {fieldErrors.password && touchedFields.has('password') && (
+                  <span id="password-error" className="field-error" role="alert">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM7 4h2v5H7V4zm0 6h2v2H7v-2z" fill="currentColor"/>
+                    </svg>
+                    {fieldErrors.password}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Admin Checkbox */}
