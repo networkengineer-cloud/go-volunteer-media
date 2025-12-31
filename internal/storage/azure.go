@@ -139,8 +139,9 @@ func (a *AzureBlobProvider) UploadImage(ctx context.Context, data []byte, mimeTy
 		return "", "", "", fmt.Errorf("failed to upload image to Azure: %w", err)
 	}
 	
-	// Generate URL
-	url = fmt.Sprintf("%s/%s", a.baseURL, blobPath)
+	// Generate API-proxied URL (not direct blob URL)
+	// This avoids 409 errors when public access is disabled on the storage account
+	url = fmt.Sprintf("/api/images/%s", imageUUID)
 	
 	return url, imageUUID, ext, nil
 }
@@ -190,8 +191,9 @@ func (a *AzureBlobProvider) UploadDocument(ctx context.Context, data []byte, mim
 		return "", "", "", fmt.Errorf("failed to upload document to Azure: %w", err)
 	}
 	
-	// Generate URL
-	url = fmt.Sprintf("%s/%s", a.baseURL, blobPath)
+	// Generate API-proxied URL (not direct blob URL)
+	// This avoids 409 errors when public access is disabled on the storage account
+	url = fmt.Sprintf("/api/documents/%s", docUUID)
 	
 	return url, docUUID, ext, nil
 }
@@ -286,16 +288,29 @@ func (a *AzureBlobProvider) DeleteDocument(ctx context.Context, identifier strin
 	return nil
 }
 
-// GetImageURL returns the Azure Blob Storage URL for an image
-// The identifier should include the file extension (e.g., "uuid.jpg")
+// GetImageURL returns the API URL for an image (proxied through the backend).
+// We proxy all images through /api/images/:uuid to avoid 409 errors from Azure
+// when public access is disabled on the storage account (which is the secure default).
+// The identifier is the UUID (without extension) used to look up the image in the database.
 func (a *AzureBlobProvider) GetImageURL(identifier string) string {
-	blobPath := path.Join("images", "animals", identifier)
-	return fmt.Sprintf("%s/%s", a.baseURL, blobPath)
+	// Extract just the UUID portion (strip any extension) for the API URL
+	// The database lookup uses the /api/images/{uuid} URL format
+	uuidOnly := identifier
+	if ext := path.Ext(identifier); ext != "" {
+		uuidOnly = identifier[:len(identifier)-len(ext)]
+	}
+	return fmt.Sprintf("/api/images/%s", uuidOnly)
 }
 
-// GetDocumentURL returns the Azure Blob Storage URL for a document
-// The identifier should include the file extension (e.g., "uuid.pdf")
+// GetDocumentURL returns the API URL for a document (proxied through the backend).
+// We proxy all documents through /api/documents/:uuid to avoid 409 errors from Azure
+// when public access is disabled on the storage account (which is the secure default).
+// The identifier is the UUID (without extension) used to look up the document in the database.
 func (a *AzureBlobProvider) GetDocumentURL(identifier string) string {
-	blobPath := path.Join("documents", "protocols", identifier)
-	return fmt.Sprintf("%s/%s", a.baseURL, blobPath)
+	// Extract just the UUID portion (strip any extension) for the API URL
+	uuidOnly := identifier
+	if ext := path.Ext(identifier); ext != "" {
+		uuidOnly = identifier[:len(identifier)-len(ext)]
+	}
+	return fmt.Sprintf("/api/documents/%s", uuidOnly)
 }
