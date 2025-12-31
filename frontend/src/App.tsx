@@ -20,6 +20,7 @@ import AdminAnimalTagsPage from './pages/AdminAnimalTagsPage';
 import GroupsPage from './pages/GroupsPage';
 import BulkEditAnimalsPage from './pages/BulkEditAnimalsPage';
 import ResetPassword from './pages/ResetPassword';
+import SetupPassword from './pages/SetupPassword';
 import Settings from './pages/Settings';
 import UserProfilePage from './pages/UserProfilePage';
 import AdminDashboard from './pages/AdminDashboard';
@@ -128,6 +129,14 @@ function App() {
             element={
               <PublicRoute>
                 <ResetPassword />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/setup-password"
+            element={
+              <PublicRoute>
+                <SetupPassword />
               </PublicRoute>
             }
           />

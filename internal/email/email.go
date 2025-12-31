@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -109,6 +110,61 @@ func (s *Service) SendPasswordResetEmail(to, username, resetToken string) error 
 </body>
 </html>
 `, username, resetLink, resetLink)
+
+	return s.SendEmail(to, subject, body)
+}
+
+// SendPasswordSetupEmail sends a password setup email for new user invitations
+func (s *Service) SendPasswordSetupEmail(to, username, setupToken string) error {
+	baseURL := os.Getenv("FRONTEND_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:5173"
+	}
+
+	// URL-encode the token for safe transmission
+	encodedToken := url.QueryEscape(setupToken)
+	setupLink := fmt.Sprintf("%s/setup-password?token=%s", baseURL, encodedToken)
+
+	subject := "Welcome to Haws Volunteers - Set Your Password"
+	body := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #0e6c55; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f8fafc; }
+        .button { display: inline-block; padding: 12px 24px; background-color: #0e6c55; color: white; text-decoration: none; border-radius: 4px; margin: 20px 0; }
+        .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+        .welcome { font-size: 18px; font-weight: bold; color: #0e6c55; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Welcome to Haws Volunteers!</h1>
+        </div>
+        <div class="content">
+            <p class="welcome">Hello %s,</p>
+            <p>Your account has been created for Haws Volunteers. We're excited to have you join our team!</p>
+            <p>To get started, please click the button below to set your password:</p>
+            <p style="text-align: center;">
+                <a href="%s" class="button">Set Your Password</a>
+            </p>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; color: #0e6c55;">%s</p>
+            <p><strong>This link will expire in 24 hours.</strong></p>
+            <p>Once you've set your password, you'll be able to sign in and start contributing to our mission of helping animals in need.</p>
+            <p>If you have any questions or didn't expect this invitation, please contact your administrator.</p>
+        </div>
+        <div class="footer">
+            <p>© Haws Volunteers - This is an automated message, please do not reply.</p>
+        </div>
+    </div>
+</body>
+</html>
+`, username, setupLink, setupLink)
 
 	return s.SendEmail(to, subject, body)
 }

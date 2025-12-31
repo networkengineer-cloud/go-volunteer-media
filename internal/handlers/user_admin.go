@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -108,11 +110,12 @@ func AdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 // (removed duplicate import block)
 
 type AdminCreateUserRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=50,usernamechars"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8,max=72"`
-	IsAdmin  bool   `json:"is_admin"`
-	GroupIDs []uint `json:"group_ids"`
+	Username        string `json:"username" binding:"required,min=3,max=50,usernamechars"`
+	Email           string `json:"email" binding:"required,email"`
+	Password        string `json:"password" binding:"omitempty,min=8,max=72"` // Optional - if empty, send setup email
+	SendSetupEmail  bool   `json:"send_setup_email"`                          // If true and no password, send setup email
+	IsAdmin         bool   `json:"is_admin"`
+	GroupIDs        []uint `json:"group_ids"`
 }
 
 type AdminResetPasswordRequest struct {
@@ -120,12 +123,19 @@ type AdminResetPasswordRequest struct {
 }
 
 // AdminCreateUser allows an admin to create a new user
-func AdminCreateUser(db *gorm.DB) gin.HandlerFunc {
+// If no password is provided and SendSetupEmail is true, sends a password setup email
+func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		var req AdminCreateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Validate that either password is provided OR email setup is requested
+		if req.Password == "" && !req.SendSetupEmail {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Either password must be provided or send_setup_email must be true"})
 			return
 		}
 
@@ -136,12 +146,112 @@ func AdminCreateUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		hashedPassword, err := auth.HashPassword(req.Password)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		var hashedPassword string
+		var setupToken string
+		var setupTokenExpiry *time.Time
+
+		if req.Password != "" {
+			// Password provided - hash it
+			var err error
+			hashedPassword, err = auth.HashPassword(req.Password)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+				return
+			}
+		} else if req.SendSetupEmail {
+			// No password - generate setup token for email
+			if !emailService.IsConfigured() {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Email service is not configured. Please provide a password instead."})
+				return
+			}
+
+			// Generate a temporary password that cannot be used for login
+			// (user must set their own password via email)
+			tempPassword, err := generateSecureToken()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate setup token"})
+				return
+			}
+			hashedPassword, err = auth.HashPassword(tempPassword)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process setup"})
+				return
+			}
+
+			// Generate setup token
+			setupToken, err = generateSecureToken()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate setup token"})
+				return
+			}
+
+			// Hash the setup token before storing
+			hashedSetupToken, err := auth.HashPassword(setupToken)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process setup token"})
+				return
+			}
+
+			// Setup token expires in 24 hours (longer than password reset)
+			expiry := time.Now().Add(24 * time.Hour)
+			setupTokenExpiry = &expiry
+
+			// Store hashed token in dedicated setup_token field (separate from reset tokens)
+			user := models.User{
+				Username:              req.Username,
+				Email:                 req.Email,
+				Password:              hashedPassword,
+				IsAdmin:               req.IsAdmin,
+				SetupToken:            hashedSetupToken,
+				SetupTokenExpiry:      setupTokenExpiry,
+				RequiresPasswordSetup: true, // Block login until password is set
+			}
+
+			// If group IDs are provided, fetch and associate groups
+			if len(req.GroupIDs) > 0 {
+				var groups []models.Group
+				if err := db.WithContext(ctx).Where("id IN ?", req.GroupIDs).Find(&groups).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch groups"})
+					return
+				}
+				user.Groups = groups
+			}
+
+			if err := db.WithContext(ctx).Create(&user).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+				return
+			}
+
+			// Preload groups for response
+			if err := db.WithContext(ctx).Preload("Groups").First(&user, user.ID).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user groups"})
+				return
+			}
+
+			// Send setup email (use unhashed token)
+			if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
+				// Log error but don't fail the request - user is created
+				logger := middleware.GetLogger(c)
+				logger.Error("Failed to send password setup email", err)
+				
+				// Provide actionable error message - admin can resend invitation
+				c.JSON(http.StatusCreated, gin.H{
+					"user": user,
+					"warning": "User created successfully, but the setup email could not be sent. " +
+						"You can use the 'Reset Password' button on the user's profile to send a new setup email, " +
+						"or manually provide them with a temporary password.",
+				})
+				return
+			}
+
+			c.JSON(http.StatusCreated, gin.H{
+				"user":    user,
+				"message": "User created successfully. Password setup email sent to " + user.Email,
+			})
 			return
 		}
 
+		// Regular user creation with password
 		user := models.User{
 			Username: req.Username,
 			Email:    req.Email,

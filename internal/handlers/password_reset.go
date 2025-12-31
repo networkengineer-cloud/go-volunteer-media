@@ -171,6 +171,74 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// SetupPassword allows a new user to set their password using a setup token (invite flow)
+// This is separate from ResetPassword to prevent token confusion and add proper validation
+func SetupPassword(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		var req ResetPasswordRequest // Reuse same request structure
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Find all users with a setup token (we'll check which one matches)
+		var users []models.User
+		if err := db.WithContext(ctx).Where("setup_token IS NOT NULL AND setup_token != ''").Find(&users).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired setup token"})
+			return
+		}
+
+		// Find the user whose hashed setup token matches
+		var targetUser *models.User
+		for i := range users {
+			if err := auth.CheckPassword(users[i].SetupToken, req.Token); err == nil {
+				targetUser = &users[i]
+				break
+			}
+		}
+
+		if targetUser == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired setup token. Please contact your administrator for a new invitation."})
+			return
+		}
+
+		// Check if token has expired (24-hour expiry for setup)
+		if targetUser.SetupTokenExpiry == nil || targetUser.SetupTokenExpiry.Before(time.Now()) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Setup token has expired. Please contact your administrator for a new invitation."})
+			return
+		}
+
+		// Verify this is actually a new account requiring setup
+		if !targetUser.RequiresPasswordSetup {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "This account has already been set up. Please use the password reset flow instead."})
+			return
+		}
+
+		// Hash new password
+		hashedPassword, err := auth.HashPassword(req.NewPassword)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+			return
+		}
+
+		// Update password, clear setup token, and mark account as fully set up
+		if err := db.WithContext(ctx).Model(targetUser).Updates(map[string]interface{}{
+			"password":                  hashedPassword,
+			"setup_token":               "",
+			"setup_token_expiry":        nil,
+			"requires_password_setup":   false, // Allow login now
+			"failed_login_attempts":     0,
+			"locked_until":              nil,
+		}).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set up password"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Password has been set successfully! You can now log in."})
+	}
+}
+
 // UpdateEmailPreferences updates the user's email notification preferences
 func UpdateEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {

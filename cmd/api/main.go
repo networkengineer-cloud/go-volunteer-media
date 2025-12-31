@@ -146,6 +146,7 @@ func main() {
 	// api.POST("/register", authLimiter, handlers.Register(db))
 	api.POST("/request-password-reset", authLimiter, handlers.RequestPasswordReset(db, emailService))
 	api.POST("/reset-password", authLimiter, handlers.ResetPassword(db))
+	api.POST("/setup-password", authLimiter, handlers.SetupPassword(db)) // New user password setup (invite flow)
 
 	// Site settings (public read)
 	api.GET("/settings", handlers.GetSiteSettings(db))
@@ -195,7 +196,7 @@ func main() {
 		admin.Use(middleware.AdminRequired())
 		{
 			admin.GET("/users", handlers.GetAllUsers(db))
-			admin.POST("/users", handlers.AdminCreateUser(db))
+			admin.POST("/users", handlers.AdminCreateUser(db, emailService))
 			admin.DELETE("/users/:userId", handlers.AdminDeleteUser(db))
 			admin.GET("/users/deleted", handlers.GetDeletedUsers(db))
 			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))
