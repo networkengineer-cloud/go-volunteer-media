@@ -114,6 +114,15 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Check if account requires password setup (new invite-only user)
+		if user.RequiresPasswordSetup {
+			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "password_setup_required")
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "Your account requires password setup. Please check your email for the setup link, or contact an administrator for a new invitation.",
+			})
+			return
+		}
+
 		// If lock period has expired, reset failed attempts
 		if user.LockedUntil != nil && user.LockedUntil.Before(time.Now()) {
 			user.FailedLoginAttempts = 0

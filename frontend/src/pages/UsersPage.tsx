@@ -451,7 +451,7 @@ const UsersPage: React.FC = () => {
     if (!value) return 'Username is required';
     if (value.length < 3) return 'Username must be at least 3 characters';
     if (value.length > 50) return 'Username must be less than 50 characters';
-    if (!/^[a-zA-Z0-9_-]+$/.test(value)) return 'Username can only contain letters, numbers, hyphens, and underscores';
+    if (!/^[a-zA-Z0-9_.-]+$/.test(value)) return 'Username can only contain letters, numbers, dots, hyphens, and underscores';
     return '';
   };
 
@@ -574,14 +574,21 @@ const UsersPage: React.FC = () => {
         send_setup_email: createData.send_setup_email,
       });
       
-      // Check if response includes a message (from setup email flow)
+      // Check if response includes a message or warning (from setup email flow)
       const message = response.data?.message || 'User created successfully!';
-      setCreateSuccess(message);
+      const warning = response.data?.warning;
+      
+      if (warning) {
+        // Show warning if email failed to send
+        setCreateError(warning);
+      } else {
+        setCreateSuccess(message);
+      }
       
       setTimeout(() => {
         setShowCreate(false);
         fetchUsers();
-      }, 2500); // Longer timeout to show the message
+      }, 3500); // Longer timeout for warning messages
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
       setCreateError(error.response?.data?.error || 'Failed to create user');
@@ -729,7 +736,7 @@ const UsersPage: React.FC = () => {
               />
               {!fieldErrors.username && (
                 <span id="username-hint" className="field-hint">
-                  3-50 characters, letters, numbers, hyphens, and underscores only
+                  3-50 characters, letters, numbers, dots, hyphens, and underscores only
                 </span>
               )}
               {fieldErrors.username && touchedFields.has('username') && (

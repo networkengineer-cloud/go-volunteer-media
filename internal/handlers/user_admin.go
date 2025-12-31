@@ -196,14 +196,15 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			expiry := time.Now().Add(24 * time.Hour)
 			setupTokenExpiry = &expiry
 
-			// Store hashed token in reset_token field (reuse existing field)
+			// Store hashed token in dedicated setup_token field (separate from reset tokens)
 			user := models.User{
-				Username:         req.Username,
-				Email:            req.Email,
-				Password:         hashedPassword,
-				IsAdmin:          req.IsAdmin,
-				ResetToken:       hashedSetupToken,
-				ResetTokenExpiry: setupTokenExpiry,
+				Username:              req.Username,
+				Email:                 req.Email,
+				Password:              hashedPassword,
+				IsAdmin:               req.IsAdmin,
+				SetupToken:            hashedSetupToken,
+				SetupTokenExpiry:      setupTokenExpiry,
+				RequiresPasswordSetup: true, // Block login until password is set
 			}
 
 			// If group IDs are provided, fetch and associate groups
@@ -232,9 +233,13 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// Log error but don't fail the request - user is created
 				logger := middleware.GetLogger(c)
 				logger.Error("Failed to send password setup email", err)
+				
+				// Provide actionable error message - admin can resend invitation
 				c.JSON(http.StatusCreated, gin.H{
-					"user":    user,
-					"message": "User created but failed to send setup email. Please use password reset.",
+					"user": user,
+					"warning": "User created successfully, but the setup email could not be sent. " +
+						"You can use the 'Reset Password' button on the user's profile to send a new setup email, " +
+						"or manually provide them with a temporary password.",
 				})
 				return
 			}

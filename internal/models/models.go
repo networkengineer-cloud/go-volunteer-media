@@ -27,6 +27,9 @@ type User struct {
 	LockedUntil               *time.Time     `json:"-"`
 	ResetToken                string         `json:"-"`
 	ResetTokenExpiry          *time.Time     `json:"-"`
+	SetupToken                string         `json:"-"` // Separate field for initial password setup (invite flow)
+	SetupTokenExpiry          *time.Time     `json:"-"`
+	RequiresPasswordSetup     bool           `gorm:"default:false" json:"-"` // Flag to prevent login before password setup
 	EmailNotificationsEnabled bool           `gorm:"default:false" json:"email_notifications_enabled"`
 	ShowLengthOfStay          bool           `gorm:"default:false" json:"show_length_of_stay"`
 }

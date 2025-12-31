@@ -146,6 +146,7 @@ func main() {
 	// api.POST("/register", authLimiter, handlers.Register(db))
 	api.POST("/request-password-reset", authLimiter, handlers.RequestPasswordReset(db, emailService))
 	api.POST("/reset-password", authLimiter, handlers.ResetPassword(db))
+	api.POST("/setup-password", authLimiter, handlers.SetupPassword(db)) // New user password setup (invite flow)
 
 	// Site settings (public read)
 	api.GET("/settings", handlers.GetSiteSettings(db))

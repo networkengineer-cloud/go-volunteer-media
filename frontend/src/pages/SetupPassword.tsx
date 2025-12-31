@@ -57,7 +57,7 @@ const SetupPassword: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const response = await axios.post('/api/reset-password', {
+      const response = await axios.post('/api/setup-password', {
         token,
         new_password: newPassword,
       });

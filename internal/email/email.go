@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -120,7 +121,9 @@ func (s *Service) SendPasswordSetupEmail(to, username, setupToken string) error 
 		baseURL = "http://localhost:5173"
 	}
 
-	setupLink := fmt.Sprintf("%s/setup-password?token=%s", baseURL, setupToken)
+	// URL-encode the token for safe transmission
+	encodedToken := url.QueryEscape(setupToken)
+	setupLink := fmt.Sprintf("%s/setup-password?token=%s", baseURL, encodedToken)
 
 	subject := "Welcome to Haws Volunteers - Set Your Password"
 	body := fmt.Sprintf(`
