@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 	"github.com/nfnt/resize"
 	"gorm.io/gorm"
@@ -61,9 +62,10 @@ func GetAnimalImages(db *gorm.DB) gin.HandlerFunc {
 
 // UploadAnimalImageToGallery handles image uploads to animal gallery (authenticated users)
 // POST /api/groups/:id/animals/:animalId/images
-// Images are stored in the database for persistence
-func UploadAnimalImageToGallery(db *gorm.DB) gin.HandlerFunc {
+// Images are stored using the configured storage provider
+func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -160,10 +162,41 @@ func UploadAnimalImageToGallery(db *gorm.DB) gin.HandlerFunc {
 
 		// Generate unique image identifier
 		imageUUID := uuid.New().String()
-		imageURL := fmt.Sprintf("/api/images/%s", imageUUID)
 
 		// Get caption from form (optional)
 		caption := c.PostForm("caption")
+
+		// Upload to storage provider
+		metadata := map[string]string{
+			"width":   strconv.Itoa(finalBounds.Dx()),
+			"height":  strconv.Itoa(finalBounds.Dy()),
+			"caption": caption,
+		}
+
+		storageURL, blobUUID, blobExt, err := storageProvider.UploadImage(ctx, imageData, "image/jpeg", metadata)
+		var imageURL string
+		var imageDataForDB []byte
+		var storageProviderName string
+		var blobIdentifier string
+
+		if err != nil {
+			// If storage provider upload fails, fall back to PostgreSQL
+			logger.WithFields(map[string]interface{}{
+				"error": err.Error(),
+			}).Warn("Failed to upload to storage provider, falling back to PostgreSQL")
+
+			imageURL = fmt.Sprintf("/api/images/%s", imageUUID)
+			imageDataForDB = imageData
+			storageProviderName = "postgres"
+			blobIdentifier = ""
+		} else {
+			// Successfully uploaded to storage provider
+			imageURL = storageURL
+			imageDataForDB = nil // Don't store in DB when using external storage
+			storageProviderName = storageProvider.Name()
+			// Combine UUID and extension for identifier
+			blobIdentifier = blobUUID + blobExt
+		}
 
 		// Create database record
 		animalIDUint, _ := strconv.ParseUint(animalID, 10, 32)
@@ -171,17 +204,20 @@ func UploadAnimalImageToGallery(db *gorm.DB) gin.HandlerFunc {
 		animalIDVal := uint(animalIDUint)
 
 		animalImage := models.AnimalImage{
-			AnimalID:  &animalIDVal,
-			UserID:    userIDUint,
-			ImageURL:  imageURL,
-			ImageData: imageData,
-			MimeType:  "image/jpeg",
-			Caption:   caption,
-			Width:     finalBounds.Dx(),
-			Height:    finalBounds.Dy(),
-			FileSize:  len(imageData),
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			AnimalID:        &animalIDVal,
+			UserID:          userIDUint,
+			ImageURL:        imageURL,
+			ImageData:       imageDataForDB,
+			MimeType:        "image/jpeg",
+			Caption:         caption,
+			Width:           finalBounds.Dx(),
+			Height:          finalBounds.Dy(),
+			FileSize:        len(imageData),
+			StorageProvider: storageProviderName,
+			BlobIdentifier:  blobIdentifier,
+			BlobExtension:   blobExt,
+			CreatedAt:       time.Now(),
+			UpdatedAt:       time.Now(),
 		}
 
 		if err := db.Create(&animalImage).Error; err != nil {
@@ -194,11 +230,12 @@ func UploadAnimalImageToGallery(db *gorm.DB) gin.HandlerFunc {
 		db.Preload("User").First(&animalImage, animalImage.ID)
 
 		logger.WithFields(map[string]interface{}{
-			"image_id":  animalImage.ID,
-			"animal_id": animalID,
-			"url":       imageURL,
-			"size":      len(imageData),
-		}).Info("Image uploaded and stored in database")
+			"image_id":         animalImage.ID,
+			"animal_id":        animalID,
+			"url":              imageURL,
+			"size":             len(imageData),
+			"storage_provider": storageProviderName,
+		}).Info("Image uploaded and stored")
 
 		c.JSON(http.StatusOK, animalImage)
 	}
@@ -206,8 +243,9 @@ func UploadAnimalImageToGallery(db *gorm.DB) gin.HandlerFunc {
 
 // DeleteAnimalImage deletes an image (admin or owner only)
 // DELETE /api/groups/:id/animals/:animalId/images/:imageId
-func DeleteAnimalImage(db *gorm.DB) gin.HandlerFunc {
+func DeleteAnimalImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -242,6 +280,16 @@ func DeleteAnimalImage(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Delete from storage provider if using Azure
+		if animalImage.StorageProvider == "azure" && animalImage.BlobIdentifier != "" {
+			if err := storageProvider.DeleteImage(ctx, animalImage.BlobIdentifier); err != nil {
+				logger.WithFields(map[string]interface{}{
+					"error":           err.Error(),
+					"blob_identifier": animalImage.BlobIdentifier,
+				}).Warn("Failed to delete image from storage provider, continuing with database deletion")
+			}
+		}
+
 		// Delete from database (soft delete)
 		if err := db.Delete(&animalImage).Error; err != nil {
 			logger.Error("Failed to delete image record", err)
@@ -250,9 +298,10 @@ func DeleteAnimalImage(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		logger.WithFields(map[string]interface{}{
-			"image_id":  imageID,
-			"animal_id": animalID,
-			"user_id":   userIDUint,
+			"image_id":         imageID,
+			"animal_id":        animalID,
+			"user_id":          userIDUint,
+			"storage_provider": animalImage.StorageProvider,
 		}).Info("Image deleted successfully")
 
 		c.JSON(http.StatusOK, gin.H{"message": "Image deleted successfully"})

@@ -23,6 +23,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/handlers"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 )
 
 func main() {
@@ -67,6 +68,16 @@ func main() {
 	if err := database.RunMigrations(db); err != nil {
 		logger.Fatal("Failed to run migrations", err)
 	}
+
+	// Initialize storage provider
+	storageConfig := storage.LoadConfig()
+	storageProvider, err := storage.NewProvider(storageConfig, db)
+	if err != nil {
+		logger.Fatal("Failed to initialize storage provider", err)
+	}
+	logger.WithFields(map[string]interface{}{
+		"provider": storageConfig.Provider,
+	}).Info("Storage provider initialized")
 
 	// Initialize email service
 	emailService := email.NewService()
@@ -120,7 +131,7 @@ func main() {
 	api := router.Group("/api")
 
 	// Serve images from database (public endpoint, no auth required)
-	api.GET("/images/:uuid", handlers.ServeImage(db))
+	api.GET("/images/:uuid", handlers.ServeImage(db, storageProvider))
 
 	// Public routes (with rate limiting for auth endpoints)
 	authRateLimit := 5
@@ -162,10 +173,10 @@ func main() {
 		protected.GET("/groups", handlers.GetGroups(db))
 
 		// Image upload (authenticated users only) - stores in database
-		protected.POST("/animals/upload-image", handlers.UploadAnimalImageSimple(db))
+		protected.POST("/animals/upload-image", handlers.UploadAnimalImageSimple(db, storageProvider))
 
 		// Document serving route (PROTECTED): requires authentication and group membership
-		protected.GET("/documents/:uuid", handlers.ServeAnimalProtocolDocument(db))
+		protected.GET("/documents/:uuid", handlers.ServeAnimalProtocolDocument(db, storageProvider))
 
 		// Statistics routes (accessible by authenticated users, filtered by permissions)
 		protected.GET("/statistics/comment-tags", handlers.GetCommentTagStatistics(db))
@@ -246,8 +257,8 @@ func main() {
 
 			// Animal images - all group members can view and upload
 			group.GET("/animals/:animalId/images", handlers.GetAnimalImages(db))
-			group.POST("/animals/:animalId/images", handlers.UploadAnimalImageToGallery(db))
-			group.DELETE("/animals/:animalId/images/:imageId", handlers.DeleteAnimalImage(db))
+			group.POST("/animals/:animalId/images", handlers.UploadAnimalImageToGallery(db, storageProvider))
+			group.DELETE("/animals/:animalId/images/:imageId", handlers.DeleteAnimalImage(db, storageProvider))
 			group.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePictureGroupScoped(db))
 
 			// Animal comments - all group members can view, add, and edit own comments
@@ -309,8 +320,8 @@ func main() {
 			// Tag assignment for animals
 			groupAdminAnimals.POST("/:animalId/tags", handlers.AssignTagsToAnimal(db))
 			// Protocol document management
-			groupAdminAnimals.POST("/:animalId/protocol-document", handlers.UploadAnimalProtocolDocument(db))
-			groupAdminAnimals.DELETE("/:animalId/protocol-document", handlers.DeleteAnimalProtocolDocument(db))
+			groupAdminAnimals.POST("/:animalId/protocol-document", handlers.UploadAnimalProtocolDocument(db, storageProvider))
+			groupAdminAnimals.DELETE("/:animalId/protocol-document", handlers.DeleteAnimalProtocolDocument(db, storageProvider))
 		}
 
 		// Group admin or site admin protocol management routes
