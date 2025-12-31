@@ -5,6 +5,7 @@ import './UsersPage.css';
 import type { User, Group, UserStatistics, GroupMember } from '../api/client';
 import { usersApi, groupsApi, statisticsApi, groupAdminApi } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
+import { getPasswordStrength } from '../utils/passwordStrength';
 
 // Create API instance for authenticated requests
 const api = axios.create({
@@ -470,20 +471,6 @@ const UsersPage: React.FC = () => {
     return '';
   };
 
-  const getPasswordStrength = (password: string): { strength: 'weak' | 'medium' | 'strong'; label: string; color: string } => {
-    if (password.length < 8) return { strength: 'weak', label: 'Too short', color: '#ef4444' };
-    
-    let score = 0;
-    if (password.length >= 12) score++;
-    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
-    if (/[0-9]/.test(password)) score++;
-    if (/[^a-zA-Z0-9]/.test(password)) score++;
-    
-    if (score <= 1) return { strength: 'weak', label: 'Weak', color: '#ef4444' };
-    if (score <= 2) return { strength: 'medium', label: 'Medium', color: '#f59e0b' };
-    return { strength: 'strong', label: 'Strong', color: '#10b981' };
-  };
-
   const handleCreateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
     setCreateData(d => ({ ...d, [name]: type === 'checkbox' ? checked : value }));
@@ -769,7 +756,9 @@ const UsersPage: React.FC = () => {
               />
               {!fieldErrors.email && (
                 <span id="email-hint" className="field-hint">
-                  User will receive login credentials at this email
+                  {createData.send_setup_email 
+                    ? 'User will receive a password setup email at this address'
+                    : 'User will receive login credentials at this email'}
                 </span>
               )}
               {fieldErrors.email && touchedFields.has('email') && (

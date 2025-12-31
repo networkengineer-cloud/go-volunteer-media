@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
+import { getPasswordStrength } from '../utils/passwordStrength';
 import './Login.css';
 
 const REDIRECT_TIMEOUT = 2000; // milliseconds
@@ -24,20 +25,6 @@ const SetupPassword: React.FC = () => {
       setToken(tokenParam);
     }
   }, [searchParams]);
-
-  const getPasswordStrength = (password: string): { strength: 'weak' | 'medium' | 'strong'; label: string; color: string } => {
-    if (password.length < 8) return { strength: 'weak', label: 'Too short', color: '#ef4444' };
-    
-    let score = 0;
-    if (password.length >= 12) score++;
-    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
-    if (/[0-9]/.test(password)) score++;
-    if (/[^a-zA-Z0-9]/.test(password)) score++;
-    
-    if (score <= 1) return { strength: 'weak', label: 'Weak', color: '#ef4444' };
-    if (score <= 2) return { strength: 'medium', label: 'Medium', color: '#f59e0b' };
-    return { strength: 'strong', label: 'Strong', color: '#10b981' };
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
