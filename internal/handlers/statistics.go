@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"gorm.io/gorm"
 )
 
@@ -33,10 +36,35 @@ type CommentTagStatistics struct {
 	MostTaggedAnimalName *string    `json:"most_tagged_animal_name"`
 }
 
+// parseTimestamp attempts to parse a timestamp string using multiple common formats
+// Returns nil if the string is empty or cannot be parsed
+func parseTimestamp(s string) *time.Time {
+	if s == "" {
+		return nil
+	}
+
+	formats := []string{
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05.999999999Z",
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, s); err == nil {
+			return &t
+		}
+	}
+
+	return nil
+}
+
 // GetGroupStatistics returns statistics for all groups (admin only)
 func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		// Add explicit timeout for query execution
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
 
 		// Use a single aggregated query to fetch all group statistics at once
 		// This eliminates the N+1 query problem by using subqueries
@@ -49,6 +77,7 @@ func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var rawStats []GroupStatsRaw
+		start := time.Now()
 		err := db.WithContext(ctx).Raw(`
 			SELECT 
 				g.id as group_id,
@@ -67,6 +96,11 @@ func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 			ORDER BY g.id
 		`).Scan(&rawStats).Error
 
+		duration := time.Since(start)
+		if duration > 1*time.Second {
+			logging.WithField("duration_ms", duration.Milliseconds()).Warn("Slow GetGroupStatistics query")
+		}
+
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch group statistics"})
 			return
@@ -81,22 +115,8 @@ func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 				AnimalCount: raw.AnimalCount,
 			}
 
-			// Parse timestamp if present
-			if raw.LastActivity != "" {
-				// Try parsing different timestamp formats (SQLite and PostgreSQL)
-				formats := []string{
-					time.RFC3339,
-					"2006-01-02 15:04:05.999999999 -07:00",
-					"2006-01-02 15:04:05",
-					"2006-01-02T15:04:05.999999999Z",
-				}
-				for _, format := range formats {
-					if t, err := time.Parse(format, raw.LastActivity); err == nil {
-						statistics[i].LastActivity = &t
-						break
-					}
-				}
-			}
+			// Parse timestamp if present using helper function
+			statistics[i].LastActivity = parseTimestamp(raw.LastActivity)
 		}
 
 		c.JSON(http.StatusOK, statistics)
@@ -106,7 +126,9 @@ func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 // GetUserStatistics returns statistics for all users (admin only)
 func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		// Add explicit timeout for query execution
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
 
 		// Use a single aggregated query to fetch all user statistics at once
 		// This eliminates the N+1 query problem by using subqueries
@@ -119,6 +141,7 @@ func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var rawStats []UserStatsRaw
+		start := time.Now()
 		err := db.WithContext(ctx).Raw(`
 			SELECT 
 				u.id as user_id,
@@ -136,6 +159,11 @@ func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 			ORDER BY u.id
 		`).Scan(&rawStats).Error
 
+		duration := time.Since(start)
+		if duration > 1*time.Second {
+			logging.WithField("duration_ms", duration.Milliseconds()).Warn("Slow GetUserStatistics query")
+		}
+
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user statistics"})
 			return
@@ -150,22 +178,8 @@ func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 				AnimalsInteractedWith: raw.AnimalsInteractedWith,
 			}
 
-			// Parse timestamp if present
-			if raw.LastActive != "" {
-				// Try parsing different timestamp formats (SQLite and PostgreSQL)
-				formats := []string{
-					time.RFC3339,
-					"2006-01-02 15:04:05.999999999 -07:00",
-					"2006-01-02 15:04:05",
-					"2006-01-02T15:04:05.999999999Z",
-				}
-				for _, format := range formats {
-					if t, err := time.Parse(format, raw.LastActive); err == nil {
-						statistics[i].LastActive = &t
-						break
-					}
-				}
-			}
+			// Parse timestamp if present using helper function
+			statistics[i].LastActive = parseTimestamp(raw.LastActive)
 		}
 
 		c.JSON(http.StatusOK, statistics)
@@ -176,10 +190,20 @@ func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 // Accepts optional group_id query parameter to filter by group
 func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		// Add explicit timeout for query execution
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
 
 		// Get optional group_id filter
 		groupIDStr := c.Query("group_id")
+
+		// Validate group_id parameter if provided
+		if groupIDStr != "" {
+			if _, err := strconv.ParseUint(groupIDStr, 10, 32); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group_id parameter"})
+				return
+			}
+		}
 
 		// Use a single aggregated query with window functions to get all tag statistics
 		// This eliminates N+1 queries by computing all stats in a single query
@@ -229,10 +253,16 @@ func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 
 		var rawStats []TagStatsRaw
 		var err error
+		start := time.Now()
 		if groupIDStr != "" {
 			err = db.WithContext(ctx).Raw(query, groupIDStr).Scan(&rawStats).Error
 		} else {
 			err = db.WithContext(ctx).Raw(query).Scan(&rawStats).Error
+		}
+
+		duration := time.Since(start)
+		if duration > 1*time.Second {
+			logging.WithField("duration_ms", duration.Milliseconds()).Warn("Slow GetCommentTagStatistics query")
 		}
 
 		if err != nil {
@@ -254,22 +284,8 @@ func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 				statistics[i].MostTaggedAnimalName = &raw.MostTaggedAnimalName
 			}
 
-			// Parse timestamp if present
-			if raw.LastUsed != "" {
-				// Try parsing different timestamp formats (SQLite and PostgreSQL)
-				formats := []string{
-					time.RFC3339,
-					"2006-01-02 15:04:05.999999999 -07:00",
-					"2006-01-02 15:04:05",
-					"2006-01-02T15:04:05.999999999Z",
-				}
-				for _, format := range formats {
-					if t, err := time.Parse(format, raw.LastUsed); err == nil {
-						statistics[i].LastUsed = &t
-						break
-					}
-				}
-			}
+			// Parse timestamp if present using helper function
+			statistics[i].LastUsed = parseTimestamp(raw.LastUsed)
 		}
 
 		c.JSON(http.StatusOK, statistics)

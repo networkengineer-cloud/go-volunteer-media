@@ -340,6 +340,19 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created functional index idx_animals_name_lower")
 	}
 
+	// Partial index for profile pictures
+	// This optimizes queries looking for profile pictures by only indexing rows where is_profile_picture = true
+	partialIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animal_images_profile_partial 
+		ON animal_images(animal_id, is_profile_picture) 
+		WHERE is_profile_picture = true
+	`
+	if err := db.Exec(partialIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create partial index on animal_images")
+	} else {
+		logging.Info("Created partial index idx_animal_images_profile_partial")
+	}
+
 	logging.Info("Custom indexes creation completed")
 	return nil
 }
