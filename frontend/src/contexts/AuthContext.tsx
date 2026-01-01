@@ -67,11 +67,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (username: string, password: string) => {
     const response = await authApi.login(username, password);
     setToken(response.data.token);
-    setUser(response.data.user);
     try {
       localStorage.setItem('token', response.data.token);
     } catch {
       // ignore storage errors
+    }
+    
+    // Fetch the full user data after login to ensure groups are populated
+    try {
+      const userResponse = await authApi.getCurrentUser();
+      setUser(userResponse.data);
+    } catch {
+      // Fallback to the login response user if getCurrentUser fails
+      setUser(response.data.user);
     }
   };
 

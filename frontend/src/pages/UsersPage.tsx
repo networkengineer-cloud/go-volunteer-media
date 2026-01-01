@@ -312,7 +312,20 @@ const UsersPage: React.FC = () => {
     setGroupModalError(null);
     try {
       const res = await groupsApi.getAll();
-      setAllGroups(res.data);
+      let groupsToShow = res.data;
+      
+      // If current user is a GroupAdmin (but not site admin), only show groups they admin
+      if (isGroupAdmin && !isAdmin && currentUser?.groups) {
+        groupsToShow = groupsToShow.filter(group => {
+          // Check if current user is a group admin of this group
+          const membership = groupMembers.get(group.id);
+          if (!membership) return false;
+          const currentUserMembership = membership.find(m => m.user_id === currentUser.id);
+          return currentUserMembership?.is_group_admin === true;
+        });
+      }
+      
+      setAllGroups(groupsToShow);
     } catch (err: unknown) {
       setGroupModalError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to fetch groups');
     } finally {
@@ -325,26 +338,47 @@ const UsersPage: React.FC = () => {
     const modSquadGroup = allGroups.find(g => g.name.toLowerCase() === 'modsquad');
     
     try {
+      // Use appropriate API based on user role
+      // Site admins use admin endpoints, GroupAdmins use group admin endpoints
+      const useAdminEndpoint = isAdmin;
+      const useGroupAdminEndpoint = !isAdmin && isGroupAdmin;
+      
       if (assigned) {
         // Removing a group
-        await usersApi.removeGroup(user.id, group.id);
+        if (useAdminEndpoint) {
+          await usersApi.removeGroup(user.id, group.id);
+        } else if (useGroupAdminEndpoint) {
+          await groupAdminApi.removeMemberFromGroup(group.id, user.id);
+        }
         
         // If removing Dogs, also remove ModSquad (since ModSquad is a sub-group of Dogs)
         if (dogsGroup && modSquadGroup && group.id === dogsGroup.id) {
           const hasModSquad = user.groups?.some(g => g.id === modSquadGroup.id);
           if (hasModSquad) {
-            await usersApi.removeGroup(user.id, modSquadGroup.id);
+            if (useAdminEndpoint) {
+              await usersApi.removeGroup(user.id, modSquadGroup.id);
+            } else if (useGroupAdminEndpoint) {
+              await groupAdminApi.removeMemberFromGroup(modSquadGroup.id, user.id);
+            }
           }
         }
       } else {
         // Adding a group
-        await usersApi.assignGroup(user.id, group.id);
+        if (useAdminEndpoint) {
+          await usersApi.assignGroup(user.id, group.id);
+        } else if (useGroupAdminEndpoint) {
+          await groupAdminApi.addMemberToGroup(group.id, user.id);
+        }
         
         // If adding ModSquad, also add Dogs (since ModSquad is a sub-group of Dogs)
         if (modSquadGroup && dogsGroup && group.id === modSquadGroup.id) {
           const hasDogs = user.groups?.some(g => g.id === dogsGroup.id);
           if (!hasDogs) {
-            await usersApi.assignGroup(user.id, dogsGroup.id);
+            if (useAdminEndpoint) {
+              await usersApi.assignGroup(user.id, dogsGroup.id);
+            } else if (useGroupAdminEndpoint) {
+              await groupAdminApi.addMemberToGroup(dogsGroup.id, user.id);
+            }
           }
         }
       }
@@ -537,6 +571,11 @@ const UsersPage: React.FC = () => {
       password: validatePassword(createData.password, createData.send_setup_email),
     };
     
+    // GroupAdmins must select at least one group
+    if (!isAdmin && createData.groupIds.length === 0) {
+      errors.groups = 'You must assign the user to at least one of your groups';
+    }
+    
     // Mark all fields as touched
     setTouchedFields(new Set(['username', 'email', 'password']));
     setFieldErrors(errors);
@@ -552,14 +591,28 @@ const UsersPage: React.FC = () => {
     setCreateError(null);
     setCreateSuccess(null);
     try {
-      const response = await usersApi.create({
-        username: createData.username,
-        email: createData.email,
-        password: createData.password || undefined, // Don't send empty password
-        is_admin: createData.is_admin,
-        group_ids: createData.groupIds,
-        send_setup_email: createData.send_setup_email,
-      });
+      let response;
+      
+      if (isAdmin) {
+        // Site admins use the admin endpoint with full permissions
+        response = await usersApi.create({
+          username: createData.username,
+          email: createData.email,
+          password: createData.password || undefined,
+          is_admin: createData.is_admin,
+          group_ids: createData.groupIds,
+          send_setup_email: createData.send_setup_email,
+        });
+      } else {
+        // GroupAdmins use the group admin endpoint (cannot set is_admin, must provide groups)
+        response = await groupAdminApi.createUser({
+          username: createData.username,
+          email: createData.email,
+          password: createData.password || undefined,
+          send_setup_email: createData.send_setup_email,
+          group_ids: createData.groupIds, // Required for group admins
+        });
+      }
       
       // Check if response includes a message or warning (from setup email flow)
       const message = response.data?.message || 'User created successfully!';
@@ -861,33 +914,39 @@ const UsersPage: React.FC = () => {
             )}
           </div>
 
-          {/* Admin Checkbox */}
-          <div className="form-field checkbox-field">
-            <label className="checkbox-label">
-              <input
-                name="is_admin"
-                type="checkbox"
-                checked={createData.is_admin}
-                onChange={handleCreateChange}
-                className="checkbox-input"
-              />
-              <span className="checkbox-box">
-                <svg className="checkbox-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 3L4.5 8.5L2 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </span>
-              <span className="checkbox-text">
-                <strong>Grant admin privileges</strong>
-                <span className="checkbox-description">Admins can manage users, groups, and all animals</span>
-              </span>
-            </label>
-          </div>
+          {/* Admin Checkbox - Only visible to site admins */}
+          {isAdmin && (
+            <div className="form-field checkbox-field">
+              <label className="checkbox-label">
+                <input
+                  name="is_admin"
+                  type="checkbox"
+                  checked={createData.is_admin}
+                  onChange={handleCreateChange}
+                  className="checkbox-input"
+                />
+                <span className="checkbox-box">
+                  <svg className="checkbox-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 3L4.5 8.5L2 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </span>
+                <span className="checkbox-text">
+                  <strong>Grant admin privileges</strong>
+                  <span className="checkbox-description">Admins can manage users, groups, and all animals</span>
+                </span>
+              </label>
+            </div>
+          )}
 
           {/* Group Assignment */}
           <div className="form-field">
-            <label className="form-label">Assign to Groups</label>
+            <label className="form-label">
+              Assign to Groups {!isAdmin && <span className="required">*</span>}
+            </label>
             <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.75rem' }}>
-              Select which groups this user can access. Leave unselected for no group access.
+              {isAdmin 
+                ? "Select which groups this user can access. Leave unselected for no group access."
+                : "Select which of your groups this user can access. You must select at least one group."}
             </p>
             <div className="group-checkboxes">
               {allGroups.length === 0 ? (
