@@ -23,8 +23,23 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	Token string                 `json:"token"`
-	User  map[string]interface{} `json:"user"`
+	Token string           `json:"token"`
+	User  AuthUserResponse `json:"user"`
+}
+
+type AuthUserResponse struct {
+	ID                         uint       `json:"id"`
+	Username                   string     `json:"username"`
+	Email                      string     `json:"email"`
+	PhoneNumber                string     `json:"phone_number"`
+	HideEmail                  bool       `json:"hide_email"`
+	HidePhoneNumber            bool       `json:"hide_phone_number"`
+	IsAdmin                    bool       `json:"is_admin"`
+	DefaultGroupID             *uint      `json:"default_group_id"`
+	EmailNotificationsEnabled  bool       `json:"email_notifications_enabled"`
+	IsGroupAdmin               bool       `json:"is_group_admin"`
+	CreatedAt                  time.Time  `json:"created_at"`
+	UpdatedAt                  time.Time  `json:"updated_at"`
 }
 
 // Register creates a new user account
@@ -67,8 +82,8 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 		// Audit log: user registration
 		logging.LogRegistration(ctx, user.ID, user.Username, user.Email, c.ClientIP())
 
-		// Check if user is a group admin for any group
-		isGroupAdmin := IsGroupAdminForAnyGroup(db, user.ID)
+		// New users cannot be group admins (they haven't been added to any groups yet)
+		isGroupAdmin := false
 
 		// Generate token
 		token, err := auth.GenerateToken(user.ID, user.IsAdmin, isGroupAdmin)
@@ -79,19 +94,19 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusCreated, AuthResponse{
 			Token: token,
-			User: map[string]interface{}{
-				"id":                          user.ID,
-				"username":                    user.Username,
-				"email":                       user.Email,
-				"phone_number":                user.PhoneNumber,
-				"hide_email":                  user.HideEmail,
-				"hide_phone_number":           user.HidePhoneNumber,
-				"is_admin":                    user.IsAdmin,
-				"default_group_id":            user.DefaultGroupID,
-				"email_notifications_enabled": user.EmailNotificationsEnabled,
-				"is_group_admin":              isGroupAdmin,
-				"created_at":                  user.CreatedAt,
-				"updated_at":                  user.UpdatedAt,
+			User: AuthUserResponse{
+				ID:                        user.ID,
+				Username:                  user.Username,
+				Email:                     user.Email,
+				PhoneNumber:               user.PhoneNumber,
+				HideEmail:                 user.HideEmail,
+				HidePhoneNumber:           user.HidePhoneNumber,
+				IsAdmin:                   user.IsAdmin,
+				DefaultGroupID:            user.DefaultGroupID,
+				EmailNotificationsEnabled: user.EmailNotificationsEnabled,
+				IsGroupAdmin:              isGroupAdmin,
+				CreatedAt:                 user.CreatedAt,
+				UpdatedAt:                 user.UpdatedAt,
 			},
 		})
 	}
@@ -213,7 +228,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		logging.LogAuthSuccess(ctx, user.ID, user.Username, c.ClientIP())
 
 		// Check if user is a group admin for any group
-		isGroupAdmin := IsGroupAdminForAnyGroup(db, user.ID)
+		isGroupAdmin := IsGroupAdminForAnyGroup(ctx, db, user.ID)
 
 		// Generate token
 		token, err := auth.GenerateToken(user.ID, user.IsAdmin, isGroupAdmin)
@@ -224,19 +239,19 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, AuthResponse{
 			Token: token,
-			User: map[string]interface{}{
-				"id":                          user.ID,
-				"username":                    user.Username,
-				"email":                       user.Email,
-				"phone_number":                user.PhoneNumber,
-				"hide_email":                  user.HideEmail,
-				"hide_phone_number":           user.HidePhoneNumber,
-				"is_admin":                    user.IsAdmin,
-				"default_group_id":            user.DefaultGroupID,
-				"email_notifications_enabled": user.EmailNotificationsEnabled,
-				"is_group_admin":              isGroupAdmin,
-				"created_at":                  user.CreatedAt,
-				"updated_at":                  user.UpdatedAt,
+			User: AuthUserResponse{
+				ID:                        user.ID,
+				Username:                  user.Username,
+				Email:                     user.Email,
+				PhoneNumber:               user.PhoneNumber,
+				HideEmail:                 user.HideEmail,
+				HidePhoneNumber:           user.HidePhoneNumber,
+				IsAdmin:                   user.IsAdmin,
+				DefaultGroupID:            user.DefaultGroupID,
+				EmailNotificationsEnabled: user.EmailNotificationsEnabled,
+				IsGroupAdmin:              isGroupAdmin,
+				CreatedAt:                 user.CreatedAt,
+				UpdatedAt:                 user.UpdatedAt,
 			},
 		})
 	}

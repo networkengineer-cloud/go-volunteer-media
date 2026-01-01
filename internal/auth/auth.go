@@ -83,6 +83,9 @@ func getJWTSecret() ([]byte, error) {
 }
 
 // Claims represents JWT claims
+// Note: Claims are cached in the JWT for 24 hours. Changes to user permissions
+// (is_admin, is_group_admin) will not take effect until the user logs in again
+// or their token expires.
 type Claims struct {
 	UserID       uint `json:"user_id"`
 	IsAdmin      bool `json:"is_admin"`
@@ -102,6 +105,8 @@ func CheckPassword(hashedPassword, password string) error {
 }
 
 // GenerateToken generates a JWT token for a user
+// Note: JWT tokens expire after 24 hours. If a user's is_group_admin status changes,
+// they will need to log in again for the new status to be reflected in their token.
 func GenerateToken(userID uint, isAdmin bool, isGroupAdmin bool) (string, error) {
 	secret, err := getJWTSecret()
 	if err != nil {

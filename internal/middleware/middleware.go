@@ -117,7 +117,22 @@ func AdminRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		isAdmin, exists := c.Get("is_admin")
-		if !exists || !isAdmin.(bool) {
+		if !exists {
+			logger := GetLogger(c)
+			logger.WithFields(map[string]interface{}{
+				"ip":       c.ClientIP(),
+				"endpoint": c.Request.URL.Path,
+				"method":   c.Request.Method,
+			}).Warn("Admin access denied - is_admin not found in context")
+			logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "insufficient_privileges")
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			c.Abort()
+			return
+		}
+
+		// Safe type assertion with check
+		adminBool, ok := isAdmin.(bool)
+		if !ok || !adminBool {
 			// Log unauthorized admin access attempt
 			logger := GetLogger(c)
 			userID, _ := c.Get("user_id")
@@ -139,62 +154,6 @@ func AdminRequired() gin.HandlerFunc {
 	}
 }
 
-// AdminOrGroupAdminRequired middleware to restrict access to admin or group admin users
-// This allows site admins and group admins to access certain management endpoints
-func AdminOrGroupAdminRequired() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-
-		// Check if site admin
-		isAdmin, exists := c.Get("is_admin")
-		if exists && isAdmin.(bool) {
-			c.Next()
-			return
-		}
-
-		// Check if group admin by looking for is_group_admin flag from GetCurrentUser
-		// For now, we'll check if user is group admin by verifying they have group memberships with admin role
-		// This will be validated by the handler itself when needed
-		userID, exists := c.Get("user_id")
-		if !exists {
-			logger := GetLogger(c)
-			logger.WithFields(map[string]interface{}{
-				"ip":       c.ClientIP(),
-				"endpoint": c.Request.URL.Path,
-				"method":   c.Request.Method,
-			}).Warn("User ID not found in context")
-			logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "invalid_context")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin or group admin access required"})
-			c.Abort()
-			return
-		}
-
-		// Check if user has is_group_admin flag set (from JWT or session)
-		// The frontend should set this in the JWT or we verify it per-request
-		// For now, we allow the request through and let handlers validate group membership
-		// This is acceptable because handlers will verify the user is actually a group admin
-		// for the specific group being managed
-		isGroupAdmin, exists := c.Get("is_group_admin")
-		if exists && isGroupAdmin.(bool) {
-			c.Next()
-			return
-		}
-
-		// Neither site admin nor group admin
-		logger := GetLogger(c)
-		logger.WithFields(map[string]interface{}{
-			"ip":       c.ClientIP(),
-			"endpoint": c.Request.URL.Path,
-			"method":   c.Request.Method,
-			"user_id":  userID,
-		}).Warn("Admin or group admin access denied - insufficient privileges")
-
-		logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "insufficient_privileges")
-
-		c.JSON(http.StatusForbidden, gin.H{"error": "Admin or group admin access required"})
-		c.Abort()
-	}
-}
 
 // IsSiteAdmin checks if the current user is a site-wide admin
 func IsSiteAdmin(c *gin.Context) bool {
