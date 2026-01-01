@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
 
@@ -39,48 +38,65 @@ func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 
-		var groups []models.Group
-		if err := db.WithContext(ctx).Find(&groups).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch groups"})
+		// Use a single aggregated query to fetch all group statistics at once
+		// This eliminates the N+1 query problem by using subqueries
+		// Note: We use string for last_activity to handle different databases (SQLite vs PostgreSQL)
+		type GroupStatsRaw struct {
+			GroupID      uint   `json:"group_id"`
+			UserCount    int64  `json:"user_count"`
+			AnimalCount  int64  `json:"animal_count"`
+			LastActivity string `json:"last_activity"` // String to handle both SQLite and PostgreSQL
+		}
+
+		var rawStats []GroupStatsRaw
+		err := db.WithContext(ctx).Raw(`
+			SELECT 
+				g.id as group_id,
+				COALESCE((SELECT COUNT(DISTINCT ug.user_id) 
+					FROM user_groups ug 
+					WHERE ug.group_id = g.id), 0) as user_count,
+				COALESCE((SELECT COUNT(*) 
+					FROM animals a 
+					WHERE a.group_id = g.id AND a.deleted_at IS NULL), 0) as animal_count,
+				(SELECT MAX(ac.created_at) 
+					FROM animal_comments ac 
+					JOIN animals a ON a.id = ac.animal_id 
+					WHERE a.group_id = g.id AND ac.deleted_at IS NULL) as last_activity
+			FROM groups g
+			WHERE g.deleted_at IS NULL
+			ORDER BY g.id
+		`).Scan(&rawStats).Error
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch group statistics"})
 			return
 		}
 
-		statistics := make([]GroupStatistics, len(groups))
-		for i, group := range groups {
-			stats := GroupStatistics{
-				GroupID: group.ID,
+		// Convert raw stats to final format with proper time parsing
+		statistics := make([]GroupStatistics, len(rawStats))
+		for i, raw := range rawStats {
+			statistics[i] = GroupStatistics{
+				GroupID:     raw.GroupID,
+				UserCount:   raw.UserCount,
+				AnimalCount: raw.AnimalCount,
 			}
 
-			// Count users in group
-			var userCount int64
-			db.WithContext(ctx).Model(&models.User{}).
-				Joins("JOIN user_groups ON user_groups.user_id = users.id").
-				Where("user_groups.group_id = ?", group.ID).
-				Count(&userCount)
-			stats.UserCount = userCount
-
-			// Count animals in group
-			var animalCount int64
-			db.WithContext(ctx).Model(&models.Animal{}).
-				Where("group_id = ?", group.ID).
-				Count(&animalCount)
-			stats.AnimalCount = animalCount
-
-			// Get last activity (most recent comment or announcement in this group)
-			var lastCommentTime *time.Time
-			var comment models.AnimalComment
-			err := db.WithContext(ctx).
-				Joins("JOIN animals ON animals.id = animal_comments.animal_id").
-				Where("animals.group_id = ?", group.ID).
-				Order("animal_comments.created_at DESC").
-				First(&comment).Error
-
-			if err == nil {
-				lastCommentTime = &comment.CreatedAt
+			// Parse timestamp if present
+			if raw.LastActivity != "" {
+				// Try parsing different timestamp formats (SQLite and PostgreSQL)
+				formats := []string{
+					time.RFC3339,
+					"2006-01-02 15:04:05.999999999 -07:00",
+					"2006-01-02 15:04:05",
+					"2006-01-02T15:04:05.999999999Z",
+				}
+				for _, format := range formats {
+					if t, err := time.Parse(format, raw.LastActivity); err == nil {
+						statistics[i].LastActivity = &t
+						break
+					}
+				}
 			}
-
-			stats.LastActivity = lastCommentTime
-			statistics[i] = stats
 		}
 
 		c.JSON(http.StatusOK, statistics)
@@ -92,45 +108,64 @@ func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 
-		var users []models.User
-		if err := db.WithContext(ctx).Find(&users).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
+		// Use a single aggregated query to fetch all user statistics at once
+		// This eliminates the N+1 query problem by using subqueries
+		// Note: We use string for last_active to handle different databases (SQLite vs PostgreSQL)
+		type UserStatsRaw struct {
+			UserID                uint   `json:"user_id"`
+			CommentCount          int64  `json:"comment_count"`
+			LastActive            string `json:"last_active"` // String to handle both SQLite and PostgreSQL
+			AnimalsInteractedWith int64  `json:"animals_interacted_with"`
+		}
+
+		var rawStats []UserStatsRaw
+		err := db.WithContext(ctx).Raw(`
+			SELECT 
+				u.id as user_id,
+				COALESCE((SELECT COUNT(*) 
+					FROM animal_comments ac 
+					WHERE ac.user_id = u.id AND ac.deleted_at IS NULL), 0) as comment_count,
+				(SELECT MAX(ac.created_at) 
+					FROM animal_comments ac 
+					WHERE ac.user_id = u.id AND ac.deleted_at IS NULL) as last_active,
+				COALESCE((SELECT COUNT(DISTINCT ac.animal_id) 
+					FROM animal_comments ac 
+					WHERE ac.user_id = u.id AND ac.deleted_at IS NULL), 0) as animals_interacted_with
+			FROM users u
+			WHERE u.deleted_at IS NULL
+			ORDER BY u.id
+		`).Scan(&rawStats).Error
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user statistics"})
 			return
 		}
 
-		statistics := make([]UserStatistics, len(users))
-		for i, user := range users {
-			stats := UserStatistics{
-				UserID: user.ID,
+		// Convert raw stats to final format with proper time parsing
+		statistics := make([]UserStatistics, len(rawStats))
+		for i, raw := range rawStats {
+			statistics[i] = UserStatistics{
+				UserID:                raw.UserID,
+				CommentCount:          raw.CommentCount,
+				AnimalsInteractedWith: raw.AnimalsInteractedWith,
 			}
 
-			// Count comments by user
-			var commentCount int64
-			db.WithContext(ctx).Model(&models.AnimalComment{}).
-				Where("user_id = ?", user.ID).
-				Count(&commentCount)
-			stats.CommentCount = commentCount
-
-			// Get last activity (most recent comment)
-			var lastComment models.AnimalComment
-			err := db.WithContext(ctx).
-				Where("user_id = ?", user.ID).
-				Order("created_at DESC").
-				First(&lastComment).Error
-
-			if err == nil {
-				stats.LastActive = &lastComment.CreatedAt
+			// Parse timestamp if present
+			if raw.LastActive != "" {
+				// Try parsing different timestamp formats (SQLite and PostgreSQL)
+				formats := []string{
+					time.RFC3339,
+					"2006-01-02 15:04:05.999999999 -07:00",
+					"2006-01-02 15:04:05",
+					"2006-01-02T15:04:05.999999999Z",
+				}
+				for _, format := range formats {
+					if t, err := time.Parse(format, raw.LastActive); err == nil {
+						statistics[i].LastActive = &t
+						break
+					}
+				}
 			}
-
-			// Count distinct animals the user has commented on
-			var animalCount int64
-			db.WithContext(ctx).Model(&models.AnimalComment{}).
-				Where("user_id = ?", user.ID).
-				Distinct("animal_id").
-				Count(&animalCount)
-			stats.AnimalsInteractedWith = animalCount
-
-			statistics[i] = stats
 		}
 
 		c.JSON(http.StatusOK, statistics)
@@ -146,90 +181,95 @@ func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 		// Get optional group_id filter
 		groupIDStr := c.Query("group_id")
 
-		// Build query for tags
-		tagsQuery := db.WithContext(ctx)
-		if groupIDStr != "" {
-			tagsQuery = tagsQuery.Where("group_id = ?", groupIDStr)
+		// Use a single aggregated query with window functions to get all tag statistics
+		// This eliminates N+1 queries by computing all stats in a single query
+		// Note: We use string for last_used to handle different databases (SQLite vs PostgreSQL)
+		type TagStatsRaw struct {
+			TagID                uint   `json:"tag_id"`
+			UsageCount           int64  `json:"usage_count"`
+			LastUsed             string `json:"last_used"` // String to handle both SQLite and PostgreSQL
+			MostTaggedAnimalID   *uint  `json:"most_tagged_animal_id"`
+			MostTaggedAnimalName string `json:"most_tagged_animal_name"`
 		}
 
-		var tags []models.CommentTag
-		if err := tagsQuery.Find(&tags).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tags"})
+		query := `
+			WITH tag_usage AS (
+				SELECT 
+					ct.id as tag_id,
+					COUNT(act.animal_comment_id) as usage_count,
+					MAX(ac.created_at) as last_used,
+					a.id as animal_id,
+					a.name as animal_name,
+					ROW_NUMBER() OVER (PARTITION BY ct.id ORDER BY COUNT(act.animal_comment_id) DESC) as rn
+				FROM comment_tags ct
+				LEFT JOIN animal_comment_tags act ON act.comment_tag_id = ct.id
+				LEFT JOIN animal_comments ac ON ac.id = act.animal_comment_id AND ac.deleted_at IS NULL
+				LEFT JOIN animals a ON a.id = ac.animal_id AND a.deleted_at IS NULL
+				WHERE ct.deleted_at IS NULL
+		`
+
+		// Add group filter if specified
+		if groupIDStr != "" {
+			query += " AND (a.group_id = ? OR a.group_id IS NULL)"
+		}
+
+		query += `
+				GROUP BY ct.id, a.id, a.name
+			)
+			SELECT 
+				tag_id,
+				SUM(usage_count) as usage_count,
+				MAX(last_used) as last_used,
+				MAX(CASE WHEN rn = 1 THEN animal_id END) as most_tagged_animal_id,
+				MAX(CASE WHEN rn = 1 THEN animal_name END) as most_tagged_animal_name
+			FROM tag_usage
+			GROUP BY tag_id
+			ORDER BY tag_id
+		`
+
+		var rawStats []TagStatsRaw
+		var err error
+		if groupIDStr != "" {
+			err = db.WithContext(ctx).Raw(query, groupIDStr).Scan(&rawStats).Error
+		} else {
+			err = db.WithContext(ctx).Raw(query).Scan(&rawStats).Error
+		}
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tag statistics"})
 			return
 		}
 
-		statistics := make([]CommentTagStatistics, len(tags))
-		for i, tag := range tags {
-			stats := CommentTagStatistics{
-				TagID: tag.ID,
+		// Convert raw stats to final format with proper time parsing
+		statistics := make([]CommentTagStatistics, len(rawStats))
+		for i, raw := range rawStats {
+			statistics[i] = CommentTagStatistics{
+				TagID:              raw.TagID,
+				UsageCount:         raw.UsageCount,
+				MostTaggedAnimalID: raw.MostTaggedAnimalID,
 			}
 
-			// Build base query for statistics (filter by group if specified)
-			statsBaseQuery := db.WithContext(ctx).Table("animal_comment_tags").
-				Joins("JOIN animal_comments ON animal_comments.id = animal_comment_tags.animal_comment_id").
-				Joins("JOIN animals ON animals.id = animal_comments.animal_id")
-
-			if groupIDStr != "" {
-				statsBaseQuery = statsBaseQuery.Where("animals.group_id = ?", groupIDStr)
+			// Set most tagged animal name if present
+			if raw.MostTaggedAnimalName != "" {
+				statistics[i].MostTaggedAnimalName = &raw.MostTaggedAnimalName
 			}
 
-			// Count usage of this tag
-			var usageCount int64
-			statsBaseQuery.
-				Where("animal_comment_tags.comment_tag_id = ?", tag.ID).
-				Count(&usageCount)
-			stats.UsageCount = usageCount
-
-			// Get last time this tag was used
-			var lastUsedComment struct {
-				CreatedAt time.Time
+			// Parse timestamp if present
+			if raw.LastUsed != "" {
+				// Try parsing different timestamp formats (SQLite and PostgreSQL)
+				formats := []string{
+					time.RFC3339,
+					"2006-01-02 15:04:05.999999999 -07:00",
+					"2006-01-02 15:04:05",
+					"2006-01-02T15:04:05.999999999Z",
+				}
+				for _, format := range formats {
+					if t, err := time.Parse(format, raw.LastUsed); err == nil {
+						statistics[i].LastUsed = &t
+						break
+					}
+				}
 			}
-			lastUsedQuery := db.WithContext(ctx).Table("animal_comments").
-				Select("animal_comments.created_at").
-				Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
-				Joins("JOIN animals ON animals.id = animal_comments.animal_id").
-				Where("animal_comment_tags.comment_tag_id = ?", tag.ID)
-
-			if groupIDStr != "" {
-				lastUsedQuery = lastUsedQuery.Where("animals.group_id = ?", groupIDStr)
-			}
-
-			err := lastUsedQuery.
-				Order("animal_comments.created_at DESC").
-				First(&lastUsedComment).Error
-
-			if err == nil {
-				stats.LastUsed = &lastUsedComment.CreatedAt
-			}
-
-			// Get most tagged animal for this tag
-			var mostTaggedAnimals []struct {
-				AnimalID   uint
-				AnimalName string
-				Count      int64
-			}
-			mostTaggedQuery := db.WithContext(ctx).Table("animal_comment_tags").
-				Select("animals.id as animal_id, animals.name as animal_name, COUNT(*) as count").
-				Joins("JOIN animal_comments ON animal_comments.id = animal_comment_tags.animal_comment_id").
-				Joins("JOIN animals ON animals.id = animal_comments.animal_id").
-				Where("animal_comment_tags.comment_tag_id = ?", tag.ID)
-
-			if groupIDStr != "" {
-				mostTaggedQuery = mostTaggedQuery.Where("animals.group_id = ?", groupIDStr)
-			}
-
-			err = mostTaggedQuery.
-				Group("animals.id, animals.name").
-				Order("count DESC").
-				Limit(1).
-				Find(&mostTaggedAnimals).Error
-
-			if err == nil && len(mostTaggedAnimals) > 0 && mostTaggedAnimals[0].Count > 0 {
-				stats.MostTaggedAnimalID = &mostTaggedAnimals[0].AnimalID
-				stats.MostTaggedAnimalName = &mostTaggedAnimals[0].AnimalName
-			}
-
-			statistics[i] = stats
 		}
 
 		c.JSON(http.StatusOK, statistics)

@@ -224,11 +224,11 @@ type Protocol struct {
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
-	GroupID    uint           `gorm:"not null;index" json:"group_id"`
+	GroupID    uint           `gorm:"not null;index:idx_protocols_group_order" json:"group_id"`
 	Title      string         `gorm:"not null" json:"title"`
 	Content    string         `gorm:"type:text;not null" json:"content"`
 	ImageURL   string         `json:"image_url"`
-	OrderIndex int            `gorm:"default:0" json:"order_index"` // For custom ordering
+	OrderIndex int            `gorm:"default:0;index:idx_protocols_group_order" json:"order_index"` // For custom ordering
 }
 
 // AnimalTag represents a tag that can be applied to animals
@@ -250,13 +250,13 @@ type AnimalImage struct {
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`
 	DeletedAt        gorm.DeletedAt `gorm:"index" json:"-"`
-	AnimalID         *uint          `gorm:"index:idx_animal_image_animal" json:"animal_id"` // Nullable for unlinked images
+	AnimalID         *uint          `gorm:"index:idx_animal_image_animal;index:idx_animal_images_profile" json:"animal_id"` // Nullable for unlinked images
 	UserID           uint           `gorm:"not null;index" json:"user_id"`
 	ImageURL         string         `gorm:"not null" json:"image_url"`
 	ImageData        []byte         `gorm:"type:bytea" json:"-"`              // Binary image data stored in DB (null when using Azure)
 	MimeType         string         `gorm:"default:'image/jpeg'" json:"-"`    // MIME type of the image
 	Caption          string         `json:"caption"`
-	IsProfilePicture bool           `gorm:"default:false" json:"is_profile_picture"`
+	IsProfilePicture bool           `gorm:"default:false;index:idx_animal_images_profile" json:"is_profile_picture"`
 	Width            int            `json:"width"`
 	Height           int            `json:"height"`
 	FileSize         int            `json:"file_size"`                        // in bytes
@@ -280,10 +280,10 @@ type AnimalNameHistory struct {
 // UserGroup represents the many-to-many relationship between users and groups
 // with additional fields for group-level permissions
 type UserGroup struct {
-	UserID       uint      `gorm:"primaryKey" json:"user_id"`
-	GroupID      uint      `gorm:"primaryKey" json:"group_id"`
+	UserID       uint      `gorm:"primaryKey;index:idx_user_groups_user_admin" json:"user_id"`
+	GroupID      uint      `gorm:"primaryKey;index:idx_user_groups_group_id" json:"group_id"`
 	CreatedAt    time.Time `json:"created_at"`
-	IsGroupAdmin bool      `gorm:"default:false" json:"is_group_admin"` // User has admin privileges for this specific group
+	IsGroupAdmin bool      `gorm:"default:false;index:idx_user_groups_user_admin" json:"is_group_admin"` // User has admin privileges for this specific group
 	User         User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Group        Group     `gorm:"foreignKey:GroupID" json:"group,omitempty"`
 }
