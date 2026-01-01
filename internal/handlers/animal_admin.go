@@ -123,6 +123,7 @@ type BulkUpdateAnimalsRequest struct {
 // BulkUpdateAnimals updates multiple animals at once (admin or group admin)
 func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 
 		// Check if user is site admin or group admin
@@ -136,7 +137,7 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 		isSiteAdmin := isAdmin.(bool)
 
 		// Check if user is a group admin for any group
-		isGroupAdmin := IsGroupAdminForAnyGroup(db, userID.(uint))
+		isGroupAdmin := IsGroupAdminForAnyGroup(ctx, db, userID.(uint))
 
 		// Only site admins and group admins can access this endpoint
 		if !isSiteAdmin && !isGroupAdmin {
@@ -215,6 +216,7 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 // GetAllAnimals returns all animals (admin or group admin, for bulk edit page)
 func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		// Check if user is site admin or group admin
 		userID, exists := c.Get("user_id")
 		if !exists {
@@ -226,7 +228,7 @@ func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 		isSiteAdmin := isAdmin.(bool)
 
 		// Check if user is a group admin for any group
-		isGroupAdmin := IsGroupAdminForAnyGroup(db, userID.(uint))
+		isGroupAdmin := IsGroupAdminForAnyGroup(ctx, db, userID.(uint))
 
 		// Only site admins and group admins can access this endpoint
 		if !isSiteAdmin && !isGroupAdmin {
@@ -235,7 +237,7 @@ func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Build query with filters
-		query := db.Model(&models.Animal{})
+		query := db.WithContext(ctx).Model(&models.Animal{})
 
 		// If user is not a site admin, only show animals from groups they admin
 		if !isSiteAdmin && isGroupAdmin {

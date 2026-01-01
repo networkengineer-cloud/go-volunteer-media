@@ -45,6 +45,21 @@
   color: var(--text-primary-dark, #f9fafb);
 }
 
+:root[data-theme='dark'] .form-field__input,
+:root[data-theme='dark'] .form-field__textarea {
+  background: #0f172a !important;
+  border-color: #374151 !important;
+  color: #f9fafb !important;
+}
+
+/* Override browser autofill to keep dark backgrounds visible */
+[data-theme='dark'] .form-field__input:-webkit-autofill,
+[data-theme='dark'] .form-field__textarea:-webkit-autofill {
+  box-shadow: 0 0 0 1000px #0f172a inset;
+  -webkit-text-fill-color: #f9fafb;
+  caret-color: #f9fafb;
+}
+
 .form-field__input:focus,
 .form-field__textarea:focus {
   outline: none;

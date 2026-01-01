@@ -187,34 +187,45 @@ func TestGenerateToken(t *testing.T) {
 	resetJWTSecret()
 
 	tests := []struct {
-		name    string
-		userID  uint
-		isAdmin bool
-		wantErr bool
+		name         string
+		userID       uint
+		isAdmin      bool
+		isGroupAdmin bool
+		wantErr      bool
 	}{
 		{
-			name:    "generate token for regular user",
-			userID:  1,
-			isAdmin: false,
-			wantErr: false,
+			name:         "generate token for regular user",
+			userID:       1,
+			isAdmin:      false,
+			isGroupAdmin: false,
+			wantErr:      false,
 		},
 		{
-			name:    "generate token for admin user",
-			userID:  2,
-			isAdmin: true,
-			wantErr: false,
+			name:         "generate token for admin user",
+			userID:       2,
+			isAdmin:      true,
+			isGroupAdmin: false,
+			wantErr:      false,
 		},
 		{
-			name:    "generate token for user ID 0",
-			userID:  0,
-			isAdmin: false,
-			wantErr: false,
+			name:         "generate token for group admin user",
+			userID:       3,
+			isAdmin:      false,
+			isGroupAdmin: true,
+			wantErr:      false,
+		},
+		{
+			name:         "generate token for user ID 0",
+			userID:       0,
+			isAdmin:      false,
+			isGroupAdmin: false,
+			wantErr:      false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			token, err := GenerateToken(tt.userID, tt.isAdmin)
+			token, err := GenerateToken(tt.userID, tt.isAdmin, tt.isGroupAdmin)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateToken() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -242,13 +253,14 @@ func TestValidateToken(t *testing.T) {
 	resetJWTSecret()
 
 	// Generate a valid token
-	validToken, _ := GenerateToken(1, false)
-	adminToken, _ := GenerateToken(2, true)
+	validToken, _ := GenerateToken(1, false, false)
+	adminToken, _ := GenerateToken(2, true, false)
 
 	// Generate an expired token
 	claims := Claims{
-		UserID:  3,
-		IsAdmin: false,
+		UserID:       3,
+		IsAdmin:      false,
+		IsGroupAdmin: false,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
@@ -418,18 +430,19 @@ func TestTokenGenerateAndValidateRoundTrip(t *testing.T) {
 	resetJWTSecret()
 
 	testCases := []struct {
-		userID  uint
-		isAdmin bool
+		userID       uint
+		isAdmin      bool
+		isGroupAdmin bool
 	}{
-		{userID: 1, isAdmin: false},
-		{userID: 100, isAdmin: true},
-		{userID: 999, isAdmin: false},
+		{userID: 1, isAdmin: false, isGroupAdmin: false},
+		{userID: 100, isAdmin: true, isGroupAdmin: false},
+		{userID: 999, isAdmin: false, isGroupAdmin: true},
 	}
 
 	for _, tc := range testCases {
 		t.Run("roundtrip", func(t *testing.T) {
 			// Generate token
-			token, err := GenerateToken(tc.userID, tc.isAdmin)
+			token, err := GenerateToken(tc.userID, tc.isAdmin, tc.isGroupAdmin)
 			if err != nil {
 				t.Fatalf("GenerateToken() failed: %v", err)
 			}
@@ -446,6 +459,9 @@ func TestTokenGenerateAndValidateRoundTrip(t *testing.T) {
 			}
 			if claims.IsAdmin != tc.isAdmin {
 				t.Errorf("IsAdmin = %v, want %v", claims.IsAdmin, tc.isAdmin)
+			}
+			if claims.IsGroupAdmin != tc.isGroupAdmin {
+				t.Errorf("IsGroupAdmin = %v, want %v", claims.IsGroupAdmin, tc.isGroupAdmin)
 			}
 
 			// Verify token expiration is in the future

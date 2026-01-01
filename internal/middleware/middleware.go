@@ -107,6 +107,7 @@ func AuthRequired() gin.HandlerFunc {
 		// Store user info in context
 		c.Set("user_id", claims.UserID)
 		c.Set("is_admin", claims.IsAdmin)
+		c.Set("is_group_admin", claims.IsGroupAdmin)
 		c.Next()
 	}
 }
@@ -116,7 +117,22 @@ func AdminRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		isAdmin, exists := c.Get("is_admin")
-		if !exists || !isAdmin.(bool) {
+		if !exists {
+			logger := GetLogger(c)
+			logger.WithFields(map[string]interface{}{
+				"ip":       c.ClientIP(),
+				"endpoint": c.Request.URL.Path,
+				"method":   c.Request.Method,
+			}).Warn("Admin access denied - is_admin not found in context")
+			logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "insufficient_privileges")
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			c.Abort()
+			return
+		}
+
+		// Safe type assertion with check
+		adminBool, ok := isAdmin.(bool)
+		if !ok || !adminBool {
 			// Log unauthorized admin access attempt
 			logger := GetLogger(c)
 			userID, _ := c.Get("user_id")
@@ -137,6 +153,7 @@ func AdminRequired() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
 
 // IsSiteAdmin checks if the current user is a site-wide admin
 func IsSiteAdmin(c *gin.Context) bool {
