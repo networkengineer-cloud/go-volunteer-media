@@ -12,7 +12,7 @@ owner_email  = "terence.wallace@gmail.com"
 container_image = "ghcr.io/networkengineer-cloud/go-volunteer-media:develop"
 container_cpu   = 0.25  # Smaller for dev
 container_memory = "0.5Gi"
-min_replicas    = 0     # Scale to zero when not in use
+min_replicas    = 1
 max_replicas    = 2
 
 # Database Configuration
@@ -30,7 +30,7 @@ resend_from_email = "dev@volunteermedia.app"
 jwt_secret = "generate-with-openssl-rand-base64-32"  # Separate from prod!
 
 # Monitoring
-log_retention_days     = 7
+log_retention_days     = 30
 monthly_budget_amount  = 20
 budget_alert_emails    = ["terence.wallace@gmail.com"]
 

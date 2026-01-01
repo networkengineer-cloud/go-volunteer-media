@@ -40,10 +40,10 @@ locals {
     "172.64.0.0/13",
     "131.0.72.0/22"
   ]
-  
+
   # DNS TXT record name for Azure custom domain verification
   custom_domain_txt_record_name = var.custom_domain != "" ? "asuid.${var.custom_domain}" : ""
-  
+
   # Note: For production, implement one of these solutions:
   # 1. Add header validation middleware in Go API
   # 2. Use Azure Front Door + Private Link (additional cost ~$35/month)
@@ -59,13 +59,13 @@ output "cloudflare_setup_instructions" {
     step_3 = "Enable 'Proxied' (orange cloud) in Cloudflare DNS"
     step_4 = "In Container App, add custom domain"
     step_5 = "Implement header validation in Go API middleware"
-    
+
     cloudflare_headers_to_validate = [
       "CF-Connecting-IP",
       "CF-Ray",
       "CF-Visitor"
     ]
-    
+
     security_note = "For enterprise-grade protection, consider Azure Front Door with Private Link endpoint"
   })
 }
@@ -92,8 +92,8 @@ resource "cloudflare_dns_record" "domain" {
   type    = "CNAME"
   content = azurerm_container_app.main.latest_revision_fqdn
   ttl     = 1
-  proxied = false
+  proxied = true
 
   comment = "CNAME record for Azure Container App custom domain"
-  
+
 }
