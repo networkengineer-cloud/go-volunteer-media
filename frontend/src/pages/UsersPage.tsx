@@ -312,7 +312,20 @@ const UsersPage: React.FC = () => {
     setGroupModalError(null);
     try {
       const res = await groupsApi.getAll();
-      setAllGroups(res.data);
+      let groupsToShow = res.data;
+      
+      // If current user is a GroupAdmin (but not site admin), only show groups they admin
+      if (isGroupAdmin && !isAdmin && currentUser?.groups) {
+        groupsToShow = groupsToShow.filter(group => {
+          // Check if current user is a group admin of this group
+          const membership = groupMembers.get(group.id);
+          if (!membership) return false;
+          const currentUserMembership = membership.find(m => m.user_id === currentUser.id);
+          return currentUserMembership?.is_group_admin === true;
+        });
+      }
+      
+      setAllGroups(groupsToShow);
     } catch (err: unknown) {
       setGroupModalError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to fetch groups');
     } finally {
@@ -325,26 +338,47 @@ const UsersPage: React.FC = () => {
     const modSquadGroup = allGroups.find(g => g.name.toLowerCase() === 'modsquad');
     
     try {
+      // Use appropriate API based on user role
+      // Site admins use admin endpoints, GroupAdmins use group admin endpoints
+      const useAdminEndpoint = isAdmin;
+      const useGroupAdminEndpoint = !isAdmin && isGroupAdmin;
+      
       if (assigned) {
         // Removing a group
-        await usersApi.removeGroup(user.id, group.id);
+        if (useAdminEndpoint) {
+          await usersApi.removeGroup(user.id, group.id);
+        } else if (useGroupAdminEndpoint) {
+          await groupAdminApi.removeMemberFromGroup(group.id, user.id);
+        }
         
         // If removing Dogs, also remove ModSquad (since ModSquad is a sub-group of Dogs)
         if (dogsGroup && modSquadGroup && group.id === dogsGroup.id) {
           const hasModSquad = user.groups?.some(g => g.id === modSquadGroup.id);
           if (hasModSquad) {
-            await usersApi.removeGroup(user.id, modSquadGroup.id);
+            if (useAdminEndpoint) {
+              await usersApi.removeGroup(user.id, modSquadGroup.id);
+            } else if (useGroupAdminEndpoint) {
+              await groupAdminApi.removeMemberFromGroup(modSquadGroup.id, user.id);
+            }
           }
         }
       } else {
         // Adding a group
-        await usersApi.assignGroup(user.id, group.id);
+        if (useAdminEndpoint) {
+          await usersApi.assignGroup(user.id, group.id);
+        } else if (useGroupAdminEndpoint) {
+          await groupAdminApi.addMemberToGroup(group.id, user.id);
+        }
         
         // If adding ModSquad, also add Dogs (since ModSquad is a sub-group of Dogs)
         if (modSquadGroup && dogsGroup && group.id === modSquadGroup.id) {
           const hasDogs = user.groups?.some(g => g.id === dogsGroup.id);
           if (!hasDogs) {
-            await usersApi.assignGroup(user.id, dogsGroup.id);
+            if (useAdminEndpoint) {
+              await usersApi.assignGroup(user.id, dogsGroup.id);
+            } else if (useGroupAdminEndpoint) {
+              await groupAdminApi.addMemberToGroup(dogsGroup.id, user.id);
+            }
           }
         }
       }

@@ -21,6 +21,10 @@ export const groupAdminApi = {
   promoteToGroupAdmin: (groupId: number, userId: number) => api.post(`/groups/${groupId}/admins/${userId}`),
   // Demote a user from group admin (site admins and group admins can do this for their groups)
   demoteFromGroupAdmin: (groupId: number, userId: number) => api.delete(`/groups/${groupId}/admins/${userId}`),
+  // Add a user to a group (site admins and group admins can do this for their groups)
+  addMemberToGroup: (groupId: number, userId: number) => api.post(`/groups/${groupId}/members/${userId}`),
+  // Remove a user from a group (site admins and group admins can do this for their groups)
+  removeMemberFromGroup: (groupId: number, userId: number) => api.delete(`/groups/${groupId}/members/${userId}`),
 };
 import axios from 'axios';
 
