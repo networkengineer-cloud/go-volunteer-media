@@ -5,7 +5,7 @@ variable "project_name" {
   type        = string
   description = "Project name used in resource naming"
   default     = "volunteer-media"
-  
+
   validation {
     condition     = can(regex("^[a-z0-9-]+$", var.project_name))
     error_message = "Project name must contain only lowercase letters, numbers, and hyphens."
@@ -16,7 +16,7 @@ variable "environment" {
   type        = string
   description = "Environment name (dev, staging, prod)"
   default     = "dev"
-  
+
   validation {
     condition     = contains(["dev", "staging", "prod"], var.environment)
     error_message = "Environment must be dev, staging, or prod."
@@ -62,8 +62,8 @@ variable "container_registry_url" {
 variable "container_cpu" {
   type        = number
   description = "CPU cores for container (0.25, 0.5, 0.75, 1.0)"
-  default     = 0.25  # Smaller for dev
-  
+  default     = 0.25 # Smaller for dev
+
   validation {
     condition     = contains([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0], var.container_cpu)
     error_message = "CPU must be one of: 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0"
@@ -73,8 +73,8 @@ variable "container_cpu" {
 variable "container_memory" {
   type        = string
   description = "Memory for container (0.5Gi, 1Gi, 1.5Gi, 2Gi)"
-  default     = "0.5Gi"  # Smaller for dev
-  
+  default     = "0.5Gi" # Smaller for dev
+
   validation {
     condition     = contains(["0.5Gi", "1Gi", "1.5Gi", "2Gi", "3Gi", "4Gi"], var.container_memory)
     error_message = "Memory must be one of: 0.5Gi, 1Gi, 1.5Gi, 2Gi, 3Gi, 4Gi"
@@ -84,8 +84,8 @@ variable "container_memory" {
 variable "min_replicas" {
   type        = number
   description = "Minimum number of container replicas"
-  default     = 1  # Keep at least 1 replica running
-  
+  default     = 1 # Keep at least 1 replica running
+
   validation {
     condition     = var.min_replicas >= 1 && var.min_replicas <= 30
     error_message = "Min replicas must be between 1 and 30."
@@ -95,8 +95,8 @@ variable "min_replicas" {
 variable "max_replicas" {
   type        = number
   description = "Maximum number of container replicas"
-  default     = 2  # Lower max for dev
-  
+  default     = 2 # Lower max for dev
+
   validation {
     condition     = var.max_replicas >= 1 && var.max_replicas <= 30
     error_message = "Max replicas must be between 1 and 30."
@@ -108,7 +108,7 @@ variable "db_admin_username" {
   type        = string
   description = "PostgreSQL admin username"
   default     = "pgadmin"
-  
+
   validation {
     condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_]{2,62}$", var.db_admin_username))
     error_message = "Username must start with a letter and be 3-63 characters."
@@ -124,8 +124,8 @@ variable "db_sku_name" {
 variable "db_storage_mb" {
   type        = number
   description = "PostgreSQL storage in MB"
-  default     = 32768  # 32 GB minimum
-  
+  default     = 32768 # 32 GB minimum
+
   validation {
     condition     = var.db_storage_mb >= 32768 && var.db_storage_mb <= 16777216
     error_message = "Storage must be between 32 GB and 16 TB."
@@ -135,8 +135,8 @@ variable "db_storage_mb" {
 variable "db_backup_retention_days" {
   type        = number
   description = "Number of days to retain backups"
-  default     = 7  # Minimum for dev
-  
+  default     = 7 # Minimum for dev
+
   validation {
     condition     = var.db_backup_retention_days >= 7 && var.db_backup_retention_days <= 35
     error_message = "Backup retention must be between 7 and 35 days."
@@ -146,7 +146,7 @@ variable "db_backup_retention_days" {
 variable "db_high_availability_enabled" {
   type        = bool
   description = "Enable high availability for PostgreSQL"
-  default     = false  # Disabled for dev cost savings
+  default     = false # Disabled for dev cost savings
 }
 
 variable "db_auto_grow_enabled" {
@@ -160,7 +160,7 @@ variable "storage_account_tier" {
   type        = string
   description = "Storage account tier (Standard or Premium)"
   default     = "Standard"
-  
+
   validation {
     condition     = contains(["Standard", "Premium"], var.storage_account_tier)
     error_message = "Storage tier must be Standard or Premium."
@@ -170,14 +170,18 @@ variable "storage_account_tier" {
 variable "storage_replication_type" {
   type        = string
   description = "Storage replication type (LRS, GRS, RAGRS, ZRS)"
-  default     = "LRS"  # Locally redundant for cost savings
-  
+  default     = "LRS" # Locally redundant for cost savings
+
   validation {
     condition     = contains(["LRS", "GRS", "RAGRS", "ZRS", "GZRS", "RAGZRS"], var.storage_replication_type)
     error_message = "Invalid replication type."
   }
 }
-
+variable "storage_use_managed_identity" {
+  type        = bool
+  description = "Use Azure Managed Identity for storage authentication (recommended for production)"
+  default     = false # Currently requires manual setup; account key is default
+}
 # Email Configuration (Resend SMTP)
 variable "resend_api_key" {
   type        = string
@@ -189,7 +193,7 @@ variable "resend_from_email" {
   type        = string
   description = "Default 'from' email address for Resend"
   default     = "dev@volunteermedia.app"
-  
+
   validation {
     condition     = can(regex("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$", var.resend_from_email))
     error_message = "Must be a valid email address."
@@ -200,8 +204,8 @@ variable "resend_from_email" {
 variable "log_retention_days" {
   type        = number
   description = "Number of days to retain logs"
-  default     = 30  # Minimum for Azure Log Analytics free tier
-  
+  default     = 30 # Minimum for Azure Log Analytics free tier
+
   validation {
     condition     = var.log_retention_days >= 30 && var.log_retention_days <= 730
     error_message = "Log retention must be between 30 and 730 days (Azure requirement)."
@@ -212,7 +216,7 @@ variable "monthly_budget_amount" {
   type        = number
   description = "Monthly budget alert threshold in USD"
   default     = 20
-  
+
   validation {
     condition     = var.monthly_budget_amount > 0
     error_message = "Budget amount must be positive."
@@ -235,7 +239,7 @@ variable "jwt_secret" {
 variable "allowed_origins" {
   type        = list(string)
   description = "Allowed CORS origins"
-  default     = ["*"]  # More permissive for dev
+  default     = ["*"] # More permissive for dev
 }
 
 variable "custom_domain" {
@@ -254,7 +258,7 @@ variable "cloudflare_zone_id" {
   type        = string
   description = "Cloudflare Zone ID for the domain (e.g., myhaws.org)."
   default     = ""
-  
+
   validation {
     condition     = var.custom_domain == "" || var.cloudflare_zone_id != ""
     error_message = "cloudflare_zone_id must be set when custom_domain is provided."
@@ -266,7 +270,7 @@ variable "cloudflare_zone_id" {
 #   description = "Cloudflare API token with DNS edit permissions for the zone."
 #   sensitive   = true
 #   default     = ""
-  
+
 #   validation {
 #     condition     = var.custom_domain == "" || var.cloudflare_api_token != ""
 #     error_message = "cloudflare_api_token must be set when custom_domain is provided."
@@ -278,7 +282,7 @@ variable "frontend_url" {
   type        = string
   description = "Frontend URL for password reset links and CORS. Must be accessible by end users receiving emails. Used in password reset email links and API CORS configuration."
   default     = "https://dev.myhaws.org"
-  
+
   validation {
     condition     = can(regex("^https?://", var.frontend_url))
     error_message = "Frontend URL must start with http:// or https://"

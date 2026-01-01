@@ -171,6 +171,12 @@ variable "storage_replication_type" {
   }
 }
 
+variable "storage_use_managed_identity" {
+  type        = bool
+  description = "Use Azure Managed Identity for storage authentication (recommended for production)"
+  default     = false  # Currently requires manual setup; account key is default
+}
+
 # SendGrid Configuration
 variable "sendgrid_api_key" {
   type        = string
