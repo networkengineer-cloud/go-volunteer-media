@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -347,9 +348,9 @@ func IsGroupAdminOrSiteAdmin(c *gin.Context, db *gorm.DB, groupID uint) bool {
 }
 
 // IsGroupAdminForAnyGroup checks if a user is a group admin for any group
-func IsGroupAdminForAnyGroup(db *gorm.DB, userID uint) bool {
+func IsGroupAdminForAnyGroup(ctx context.Context, db *gorm.DB, userID uint) bool {
 	var count int64
-	db.Model(&models.UserGroup{}).
+	db.WithContext(ctx).Model(&models.UserGroup{}).
 		Where("user_id = ? AND is_group_admin = ?", userID, true).
 		Count(&count)
 	return count > 0

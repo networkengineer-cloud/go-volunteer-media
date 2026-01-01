@@ -191,9 +191,9 @@ func main() {
 		// Authorization is checked within the handlers
 		protected.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
 
-		// Admin or Group Admin routes (for user management)
+		// Admin only routes (user management requires site admin privileges)
 		adminUsers := protected.Group("/admin/users")
-		adminUsers.Use(middleware.AdminOrGroupAdminRequired())
+		adminUsers.Use(middleware.AdminRequired())
 		{
 			adminUsers.GET("", handlers.GetAllUsers(db))
 			adminUsers.POST("", handlers.AdminCreateUser(db, emailService))
