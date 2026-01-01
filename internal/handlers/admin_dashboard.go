@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -88,14 +89,18 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 			stats.TotalGroups = counts.TotalGroups
 			stats.TotalAnimals = counts.TotalAnimals
 			stats.TotalComments = counts.TotalComments
+		} else {
+			logging.WithField("error", err.Error()).Warn("Failed to fetch total counts")
 		}
 
 		// Get recent users (last 5)
 		var recentUsers []models.User
-		db.WithContext(ctx).
+		if err := db.WithContext(ctx).
 			Order("created_at DESC").
 			Limit(5).
-			Find(&recentUsers)
+			Find(&recentUsers).Error; err != nil {
+			logging.WithField("error", err.Error()).Warn("Failed to fetch recent users")
+		}
 
 		stats.RecentUsers = make([]RecentUser, len(recentUsers))
 		for i, user := range recentUsers {
@@ -156,6 +161,8 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 					LastActivity: ga.LastActivity,
 				}
 			}
+		} else {
+			logging.WithField("error", err.Error()).Warn("Failed to fetch most active groups")
 		}
 
 		// Get animals needing attention (with system tags like "Needs Attention", "Medical", "Behavior")
@@ -170,7 +177,7 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animalAlerts []AnimalAlertQuery
-		db.WithContext(ctx).
+		if err := db.WithContext(ctx).
 			Model(&models.AnimalComment{}).
 			Select(`
 				DISTINCT animals.id as animal_id,
@@ -189,7 +196,9 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 			Group("animals.id, animals.name, groups.id, groups.name, animals.image_url").
 			Order("last_comment DESC").
 			Limit(10).
-			Scan(&animalAlerts)
+			Scan(&animalAlerts).Error; err != nil {
+			logging.WithField("error", err.Error()).Warn("Failed to fetch animals needing attention")
+		}
 
 		stats.AnimalsNeedingAttention = make([]AnimalAlert, len(animalAlerts))
 		for i, alert := range animalAlerts {
@@ -241,6 +250,8 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 			health.CommentsLast24h = healthQuery.CommentsLast24h
 			health.NewUsersLast7Days = healthQuery.NewUsersLast7Days
 			health.AverageCommentsPerDay = healthQuery.AverageCommentsPerDay
+		} else {
+			logging.WithField("error", err.Error()).Warn("Failed to fetch system health indicators")
 		}
 
 		stats.SystemHealth = health

@@ -15,7 +15,7 @@ func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
 		ctx := c.Request.Context()
 
 		// Get pagination parameters
-		limit := 50 // Default limit for users
+		limit := 20 // Default limit for users (consistent with statistics endpoints)
 		if limitParam := c.Query("limit"); limitParam != "" {
 			if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
 				limit = parsedLimit

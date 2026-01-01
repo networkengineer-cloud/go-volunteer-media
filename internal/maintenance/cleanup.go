@@ -1,11 +1,27 @@
 package maintenance
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"gorm.io/gorm"
 )
+
+// validTables is a whitelist of tables that can be cleaned up
+var validTables = map[string]bool{
+	"animal_comments":     true,
+	"animal_images":       true,
+	"animal_tags":         true,
+	"animals":             true,
+	"announcements":       true,
+	"comment_tags":        true,
+	"groups":              true,
+	"protocols":           true,
+	"updates":             true,
+	"users":               true,
+	"animal_name_history": true,
+}
 
 // CleanupOrphanedImages deletes orphaned animal images that are older than the specified number of days
 // Orphaned images are those with animal_id IS NULL (uploaded but never linked to an animal)
@@ -66,6 +82,11 @@ func CleanupOrphanedImages(db *gorm.DB, olderThanDays int) (int64, error) {
 // CleanupOldSoftDeletedRecords permanently deletes soft-deleted records older than the specified number of days
 // This helps reduce database size by removing old soft-deleted records that are no longer needed
 func CleanupOldSoftDeletedRecords(db *gorm.DB, tableName string, olderThanDays int) (int64, error) {
+	// Validate table name against whitelist to prevent SQL injection
+	if !validTables[tableName] {
+		return 0, fmt.Errorf("invalid table name: %s (not in whitelist)", tableName)
+	}
+
 	if olderThanDays < 30 {
 		olderThanDays = 30 // Default to 30 days minimum to avoid accidental data loss
 	}

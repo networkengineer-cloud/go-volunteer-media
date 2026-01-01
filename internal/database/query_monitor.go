@@ -47,29 +47,59 @@ func (p *QueryPerformancePlugin) Initialize(db *gorm.DB) error {
 		return nil
 	}
 
-	// Register callback for after query execution
-	err := db.Callback().Query().After("gorm:query").Register("query_performance:after_query", p.afterQuery)
+	// Register "before" callbacks to capture start time for each operation type
+	err := db.Callback().Query().Before("gorm:query").Register("query_performance:before_query", p.beforeQuery)
 	if err != nil {
-		return fmt.Errorf("failed to register query callback: %w", err)
+		return fmt.Errorf("failed to register before query callback: %w", err)
+	}
+
+	err = db.Callback().Create().Before("gorm:create").Register("query_performance:before_create", p.beforeQuery)
+	if err != nil {
+		return fmt.Errorf("failed to register before create callback: %w", err)
+	}
+
+	err = db.Callback().Update().Before("gorm:update").Register("query_performance:before_update", p.beforeQuery)
+	if err != nil {
+		return fmt.Errorf("failed to register before update callback: %w", err)
+	}
+
+	err = db.Callback().Delete().Before("gorm:delete").Register("query_performance:before_delete", p.beforeQuery)
+	if err != nil {
+		return fmt.Errorf("failed to register before delete callback: %w", err)
+	}
+
+	// Register "after" callbacks to measure duration and log slow queries
+	err = db.Callback().Query().After("gorm:query").Register("query_performance:after_query", p.afterQuery)
+	if err != nil {
+		return fmt.Errorf("failed to register after query callback: %w", err)
 	}
 
 	err = db.Callback().Create().After("gorm:create").Register("query_performance:after_create", p.afterQuery)
 	if err != nil {
-		return fmt.Errorf("failed to register create callback: %w", err)
+		return fmt.Errorf("failed to register after create callback: %w", err)
 	}
 
 	err = db.Callback().Update().After("gorm:update").Register("query_performance:after_update", p.afterQuery)
 	if err != nil {
-		return fmt.Errorf("failed to register update callback: %w", err)
+		return fmt.Errorf("failed to register after update callback: %w", err)
 	}
 
 	err = db.Callback().Delete().After("gorm:delete").Register("query_performance:after_delete", p.afterQuery)
 	if err != nil {
-		return fmt.Errorf("failed to register delete callback: %w", err)
+		return fmt.Errorf("failed to register after delete callback: %w", err)
 	}
 
 	logging.WithField("threshold_ms", p.SlowQueryThresholdMs).Info("Query performance monitoring enabled")
 	return nil
+}
+
+// beforeQuery is called before each query execution to capture start time
+func (p *QueryPerformancePlugin) beforeQuery(db *gorm.DB) {
+	if !p.Enabled {
+		return
+	}
+	// Store start time in the statement context
+	db.InstanceSet("query_start_time", time.Now())
 }
 
 // afterQuery is called after each query execution
@@ -79,7 +109,18 @@ func (p *QueryPerformancePlugin) afterQuery(db *gorm.DB) {
 	}
 
 	// Get query execution duration
-	elapsed := time.Since(db.Statement.Context.Value("query_start_time").(time.Time))
+	startTime, exists := db.InstanceGet("query_start_time")
+	if !exists {
+		// If start time wasn't set, skip logging (shouldn't happen with proper before callback)
+		return
+	}
+
+	start, ok := startTime.(time.Time)
+	if !ok {
+		return
+	}
+
+	elapsed := time.Since(start)
 	elapsedMs := elapsed.Milliseconds()
 
 	// Log slow queries
