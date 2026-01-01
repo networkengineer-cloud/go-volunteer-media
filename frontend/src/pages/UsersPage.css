@@ -325,6 +325,21 @@
   box-shadow: 0 0 0 3px rgba(0, 163, 173, 0.1);
 }
 
+[data-theme='dark'] .users-create-form input[type="text"],
+[data-theme='dark'] .users-create-form input[type="email"],
+[data-theme='dark'] .users-create-form input[type="password"] {
+  background: var(--dark-surface);
+  border-color: var(--neutral-700);
+  color: var(--dark-text-primary);
+}
+
+[data-theme='dark'] .users-create-form input[type="text"]:focus,
+[data-theme='dark'] .users-create-form input[type="email"]:focus,
+[data-theme='dark'] .users-create-form input[type="password"]:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+}
+
 .group-list {
   list-style: none;
   padding: 0;
