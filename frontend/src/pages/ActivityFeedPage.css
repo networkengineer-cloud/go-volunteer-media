@@ -183,9 +183,9 @@
 
 [data-theme="dark"] .filter-select,
 [data-theme="dark"] .filter-input {
-  background: var(--input-bg-dark, #1f2937);
-  border-color: var(--input-border-dark, #374151);
-  color: var(--text-primary-dark, #f9fafb);
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
 }
 
 .filter-select:focus,
