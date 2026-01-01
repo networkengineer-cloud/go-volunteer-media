@@ -55,7 +55,8 @@ func Initialize() (*gorm.DB, error) {
 		return nil, fmt.Errorf("invalid SSL mode: %s (must be one of: disable, require, verify-ca, verify-full)", dbSSLMode)
 	}
 
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+	// Add connection timeout to prevent hanging if database is unreachable
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s connect_timeout=10",
 		dbHost, dbPort, dbUser, dbPassword, dbName, dbSSLMode)
 
 	// Configure GORM logger level via env var to control verbosity
@@ -147,6 +148,11 @@ func RunMigrations(db *gorm.DB) error {
 	// AutoMigrate allows NULL values, so we fix them here, then add the constraint
 	if err := fixAndEnforceGroupIDConstraints(db); err != nil {
 		logging.WithField("error", err.Error()).Warn("Failed to fix group_id constraints (may be first run)")
+	}
+
+	// Create custom indexes that GORM doesn't support via tags
+	if err := createCustomIndexes(db); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create custom indexes (may already exist)")
 	}
 
 	// Create default groups if they don't exist
@@ -317,6 +323,38 @@ func quoteIdentifier(name string) string {
 	// PostgreSQL identifiers are quoted by doubling internal quotes and wrapping in quotes
 	// Since our index names are hardcoded and don't contain quotes, this is straightforward
 	return `"` + name + `"`
+}
+
+// createCustomIndexes creates custom indexes that GORM doesn't support via struct tags
+// This includes functional indexes and partial indexes for performance optimization
+func createCustomIndexes(db *gorm.DB) error {
+	// Functional index for case-insensitive animal name searches
+	// This enables efficient LOWER(name) queries without table scans
+	functionalIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animals_name_lower 
+		ON animals(LOWER(name))
+	`
+	if err := db.Exec(functionalIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create functional index on animals.name")
+	} else {
+		logging.Info("Created functional index idx_animals_name_lower")
+	}
+
+	// Partial index for profile pictures
+	// This optimizes queries looking for profile pictures by only indexing rows where is_profile_picture = true
+	partialIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animal_images_profile_partial 
+		ON animal_images(animal_id, is_profile_picture) 
+		WHERE is_profile_picture = true
+	`
+	if err := db.Exec(partialIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create partial index on animal_images")
+	} else {
+		logging.Info("Created partial index idx_animal_images_profile_partial")
+	}
+
+	logging.Info("Custom indexes creation completed")
+	return nil
 }
 
 // createDefaultGroups creates the default groups if they don't exist
