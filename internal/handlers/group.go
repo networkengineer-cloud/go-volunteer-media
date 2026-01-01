@@ -252,8 +252,26 @@ func DeleteGroup(db *gorm.DB) gin.HandlerFunc {
 }
 
 // AddUserToGroup adds a user to a group (admin only)
+// AddUserToGroup adds a user to a group (admin or group admin)
+// Site admins can add users to any group
+// Group admins can only add users to groups they administer
 func AddUserToGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
+
+		// Get current user
+		currentUserID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		// Check if site admin
+		isAdmin, _ := c.Get("is_admin")
+		isSiteAdmin := isAdmin.(bool)
+
+		// Parse parameters
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -265,18 +283,33 @@ func AddUserToGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// If not site admin, verify user is group admin for this specific group
+		if !isSiteAdmin {
+			if !IsGroupAdmin(db, currentUserID.(uint), uint(groupID)) {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_group_id": groupID,
+				}).Warn("Unauthorized attempt to add user to group")
+				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin for this group to add users"})
+				return
+			}
+		}
+
+		// Verify user exists
 		var user models.User
-		if err := db.First(&user, uint(userID)).Error; err != nil {
+		if err := db.WithContext(ctx).First(&user, uint(userID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
+		// Verify group exists
 		var group models.Group
-		if err := db.First(&group, uint(groupID)).Error; err != nil {
+		if err := db.WithContext(ctx).First(&group, uint(groupID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
+		// Add user to group
 		if err := db.Model(&user).Association("Groups").Append(&group); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add user to group"})
 			return
@@ -286,9 +319,26 @@ func AddUserToGroup(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// RemoveUserFromGroup removes a user from a group (admin only)
+// RemoveUserFromGroup removes a user from a group (admin or group admin)
+// Site admins can remove users from any group
+// Group admins can only remove users from groups they administer
 func RemoveUserFromGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
+
+		// Get current user
+		currentUserID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		// Check if site admin
+		isAdmin, _ := c.Get("is_admin")
+		isSiteAdmin := isAdmin.(bool)
+
+		// Parse parameters
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -300,18 +350,33 @@ func RemoveUserFromGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// If not site admin, verify user is group admin for this specific group
+		if !isSiteAdmin {
+			if !IsGroupAdmin(db, currentUserID.(uint), uint(groupID)) {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_group_id": groupID,
+				}).Warn("Unauthorized attempt to remove user from group")
+				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin for this group to remove users"})
+				return
+			}
+		}
+
+		// Verify user exists
 		var user models.User
-		if err := db.First(&user, uint(userID)).Error; err != nil {
+		if err := db.WithContext(ctx).First(&user, uint(userID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
+		// Verify group exists
 		var group models.Group
-		if err := db.First(&group, uint(groupID)).Error; err != nil {
+		if err := db.WithContext(ctx).First(&group, uint(groupID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
+		// Remove user from group
 		if err := db.Model(&user).Association("Groups").Delete(&group); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove user from group"})
 			return

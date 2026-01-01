@@ -171,8 +171,8 @@ func TestCORS(t *testing.T) {
 
 func TestAuthRequired(t *testing.T) {
 	// Generate a valid token for testing
-	validToken, _ := auth.GenerateToken(1, false)
-	adminToken, _ := auth.GenerateToken(2, true)
+	validToken, _ := auth.GenerateToken(1, false, false)
+	adminToken, _ := auth.GenerateToken(2, true, false)
 	expiredToken := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJpc19hZG1pbiI6ZmFsc2UsImV4cCI6MTYwMDAwMDAwMH0.invalid"
 
 	tests := []struct {
@@ -360,8 +360,8 @@ func TestAdminRequired(t *testing.T) {
 
 func TestAuthRequiredAndAdminRequiredChained(t *testing.T) {
 	// Generate tokens
-	regularToken, _ := auth.GenerateToken(1, false)
-	adminToken, _ := auth.GenerateToken(2, true)
+	regularToken, _ := auth.GenerateToken(1, false, false)
+	adminToken, _ := auth.GenerateToken(2, true, false)
 
 	tests := []struct {
 		name       string

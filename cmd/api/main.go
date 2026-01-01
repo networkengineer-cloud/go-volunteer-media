@@ -187,6 +187,12 @@ func main() {
 		protected.POST("/groups/:id/admins/:userId", handlers.PromoteGroupAdmin(db))
 		protected.DELETE("/groups/:id/admins/:userId", handlers.DemoteGroupAdmin(db))
 
+		// User-to-group management (accessible by site admins and group admins)
+		// Group admins can only manage users in groups they administer
+		// Authorization is checked within the handlers
+		protected.POST("/users/:userId/groups/:groupId", handlers.AddUserToGroup(db))
+		protected.DELETE("/users/:userId/groups/:groupId", handlers.RemoveUserFromGroup(db))
+
 		// User management (accessible by site admins and group admins for users in their groups)
 		// Authorization is checked within the handlers
 		protected.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
@@ -213,8 +219,6 @@ func main() {
 			admin.PUT("/groups/:id", handlers.UpdateGroup(db))
 			admin.DELETE("/groups/:id", handlers.DeleteGroup(db))
 			admin.POST("/groups/upload-image", handlers.UploadGroupImage())
-			admin.POST("/users/:userId/groups/:groupId", handlers.AddUserToGroup(db))
-			admin.DELETE("/users/:userId/groups/:groupId", handlers.RemoveUserFromGroup(db))
 
 			// Announcement routes (admin only)
 			admin.POST("/announcements", handlers.CreateAnnouncement(db, emailService, groupMeService))
