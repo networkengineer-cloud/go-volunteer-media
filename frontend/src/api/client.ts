@@ -25,6 +25,9 @@ export const groupAdminApi = {
   addMemberToGroup: (groupId: number, userId: number) => api.post(`/groups/${groupId}/members/${userId}`),
   // Remove a user from a group (site admins and group admins can do this for their groups)
   removeMemberFromGroup: (groupId: number, userId: number) => api.delete(`/groups/${groupId}/members/${userId}`),
+  // Create a new user (group admins can create users and assign them to groups they admin)
+  createUser: (data: { username: string; email: string; password?: string; send_setup_email?: boolean; group_ids: number[] }) =>
+    api.post<User>('/users', data),
 };
 import axios from 'axios';
 
