@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -66,18 +67,40 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 
 		var stats AdminDashboardStats
 
-		// Get total counts
-		db.WithContext(ctx).Model(&models.User{}).Count(&stats.TotalUsers)
-		db.WithContext(ctx).Model(&models.Group{}).Count(&stats.TotalGroups)
-		db.WithContext(ctx).Model(&models.Animal{}).Count(&stats.TotalAnimals)
-		db.WithContext(ctx).Model(&models.AnimalComment{}).Count(&stats.TotalComments)
+		// Use a single CTE-based query to get all counts efficiently
+		type CountsResult struct {
+			TotalUsers    int64
+			TotalGroups   int64
+			TotalAnimals  int64
+			TotalComments int64
+		}
+		var counts CountsResult
+
+		err := db.WithContext(ctx).Raw(`
+			SELECT 
+				(SELECT COUNT(*) FROM users WHERE deleted_at IS NULL) as total_users,
+				(SELECT COUNT(*) FROM groups WHERE deleted_at IS NULL) as total_groups,
+				(SELECT COUNT(*) FROM animals WHERE deleted_at IS NULL) as total_animals,
+				(SELECT COUNT(*) FROM animal_comments WHERE deleted_at IS NULL) as total_comments
+		`).Scan(&counts).Error
+
+		if err == nil {
+			stats.TotalUsers = counts.TotalUsers
+			stats.TotalGroups = counts.TotalGroups
+			stats.TotalAnimals = counts.TotalAnimals
+			stats.TotalComments = counts.TotalComments
+		} else {
+			logging.WithField("error", err.Error()).Warn("Failed to fetch total counts")
+		}
 
 		// Get recent users (last 5)
 		var recentUsers []models.User
-		db.WithContext(ctx).
+		if err := db.WithContext(ctx).
 			Order("created_at DESC").
 			Limit(5).
-			Find(&recentUsers)
+			Find(&recentUsers).Error; err != nil {
+			logging.WithField("error", err.Error()).Warn("Failed to fetch recent users")
+		}
 
 		stats.RecentUsers = make([]RecentUser, len(recentUsers))
 		for i, user := range recentUsers {
@@ -91,6 +114,7 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Get most active groups (top 5 by comment count in last 30 days)
+		// Use optimized CTE to avoid correlated subqueries
 		type GroupActivityQuery struct {
 			GroupID      uint
 			GroupName    string
@@ -103,35 +127,42 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 		thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
 		var groupActivities []GroupActivityQuery
 
-		db.WithContext(ctx).
-			Model(&models.Group{}).
-			Select(`
-				groups.id as group_id,
-				groups.name as group_name,
-				(SELECT COUNT(DISTINCT user_groups.user_id) FROM user_groups WHERE user_groups.group_id = groups.id) as user_count,
-				(SELECT COUNT(*) FROM animals WHERE animals.group_id = groups.id) as animal_count,
-				(SELECT COUNT(*) FROM animal_comments 
-					JOIN animals ON animals.id = animal_comments.animal_id 
-					WHERE animals.group_id = groups.id AND animal_comments.created_at > ?) as comment_count,
-				(SELECT MAX(animal_comments.created_at) FROM animal_comments 
-					JOIN animals ON animals.id = animal_comments.animal_id 
-					WHERE animals.group_id = groups.id) as last_activity
-			`, thirtyDaysAgo).
-			Having("comment_count > 0").
-			Order("comment_count DESC").
-			Limit(5).
-			Scan(&groupActivities)
+		err = db.WithContext(ctx).Raw(`
+			WITH group_stats AS (
+				SELECT 
+					g.id as group_id,
+					g.name as group_name,
+					COUNT(DISTINCT ug.user_id) as user_count,
+					COUNT(DISTINCT a.id) as animal_count,
+					COUNT(DISTINCT CASE WHEN ac.created_at > ? THEN ac.id END) as comment_count,
+					MAX(ac.created_at) as last_activity
+				FROM groups g
+				LEFT JOIN user_groups ug ON ug.group_id = g.id
+				LEFT JOIN animals a ON a.group_id = g.id AND a.deleted_at IS NULL
+				LEFT JOIN animal_comments ac ON ac.animal_id = a.id AND ac.deleted_at IS NULL
+				WHERE g.deleted_at IS NULL
+				GROUP BY g.id, g.name
+				HAVING COUNT(DISTINCT CASE WHEN ac.created_at > ? THEN ac.id END) > 0
+			)
+			SELECT * FROM group_stats
+			ORDER BY comment_count DESC
+			LIMIT 5
+		`, thirtyDaysAgo, thirtyDaysAgo).Scan(&groupActivities).Error
 
-		stats.MostActiveGroups = make([]ActiveGroupInfo, len(groupActivities))
-		for i, ga := range groupActivities {
-			stats.MostActiveGroups[i] = ActiveGroupInfo{
-				GroupID:      ga.GroupID,
-				GroupName:    ga.GroupName,
-				UserCount:    ga.UserCount,
-				AnimalCount:  ga.AnimalCount,
-				CommentCount: ga.CommentCount,
-				LastActivity: ga.LastActivity,
+		if err == nil {
+			stats.MostActiveGroups = make([]ActiveGroupInfo, len(groupActivities))
+			for i, ga := range groupActivities {
+				stats.MostActiveGroups[i] = ActiveGroupInfo{
+					GroupID:      ga.GroupID,
+					GroupName:    ga.GroupName,
+					UserCount:    ga.UserCount,
+					AnimalCount:  ga.AnimalCount,
+					CommentCount: ga.CommentCount,
+					LastActivity: ga.LastActivity,
+				}
 			}
+		} else {
+			logging.WithField("error", err.Error()).Warn("Failed to fetch most active groups")
 		}
 
 		// Get animals needing attention (with system tags like "Needs Attention", "Medical", "Behavior")
@@ -146,7 +177,7 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animalAlerts []AnimalAlertQuery
-		db.WithContext(ctx).
+		if err := db.WithContext(ctx).
 			Model(&models.AnimalComment{}).
 			Select(`
 				DISTINCT animals.id as animal_id,
@@ -165,7 +196,9 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 			Group("animals.id, animals.name, groups.id, groups.name, animals.image_url").
 			Order("last_comment DESC").
 			Limit(10).
-			Scan(&animalAlerts)
+			Scan(&animalAlerts).Error; err != nil {
+			logging.WithField("error", err.Error()).Warn("Failed to fetch animals needing attention")
+		}
 
 		stats.AnimalsNeedingAttention = make([]AnimalAlert, len(animalAlerts))
 		for i, alert := range animalAlerts {
@@ -186,39 +219,39 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		// Get system health indicators
+		// Get system health indicators using a single optimized query
 		var health SystemHealthInfo
 
-		// Active users in last 24 hours (users who commented)
 		last24h := time.Now().AddDate(0, 0, -1)
-		db.WithContext(ctx).
-			Model(&models.AnimalComment{}).
-			Select("COUNT(DISTINCT user_id)").
-			Where("created_at > ?", last24h).
-			Scan(&health.ActiveUsersLast24h)
-
-		// Comments in last 24 hours
-		db.WithContext(ctx).
-			Model(&models.AnimalComment{}).
-			Where("created_at > ?", last24h).
-			Count(&health.CommentsLast24h)
-
-		// New users in last 7 days
 		last7days := time.Now().AddDate(0, 0, -7)
-		db.WithContext(ctx).
-			Model(&models.User{}).
-			Where("created_at > ?", last7days).
-			Count(&health.NewUsersLast7Days)
 
-		// Average comments per day (last 30 days)
-		if stats.TotalComments > 0 {
-			var avgComments float64
-			db.WithContext(ctx).
-				Model(&models.AnimalComment{}).
-				Select("COUNT(*)::float / 30").
-				Where("created_at > ?", thirtyDaysAgo).
-				Scan(&avgComments)
-			health.AverageCommentsPerDay = avgComments
+		type HealthQuery struct {
+			ActiveUsersLast24h    int64
+			CommentsLast24h       int64
+			NewUsersLast7Days     int64
+			AverageCommentsPerDay float64
+		}
+		var healthQuery HealthQuery
+
+		err = db.WithContext(ctx).Raw(`
+			SELECT 
+				(SELECT COUNT(DISTINCT user_id) FROM animal_comments 
+				 WHERE deleted_at IS NULL AND created_at > ?) as active_users_last_24h,
+				(SELECT COUNT(*) FROM animal_comments 
+				 WHERE deleted_at IS NULL AND created_at > ?) as comments_last_24h,
+				(SELECT COUNT(*) FROM users 
+				 WHERE deleted_at IS NULL AND created_at > ?) as new_users_last_7_days,
+				(SELECT COALESCE(COUNT(*)::float / 30, 0) FROM animal_comments 
+				 WHERE deleted_at IS NULL AND created_at > ?) as average_comments_per_day
+		`, last24h, last24h, last7days, thirtyDaysAgo).Scan(&healthQuery).Error
+
+		if err == nil {
+			health.ActiveUsersLast24h = healthQuery.ActiveUsersLast24h
+			health.CommentsLast24h = healthQuery.CommentsLast24h
+			health.NewUsersLast7Days = healthQuery.NewUsersLast7Days
+			health.AverageCommentsPerDay = healthQuery.AverageCommentsPerDay
+		} else {
+			logging.WithField("error", err.Error()).Warn("Failed to fetch system health indicators")
 		}
 
 		stats.SystemHealth = health
