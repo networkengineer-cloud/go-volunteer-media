@@ -2,7 +2,8 @@
 
 **Review Date:** December 31, 2025  
 **Reviewer:** Database Expert Agent  
-**Version:** 1.0
+**Version:** 1.1  
+**Last Updated:** December 31, 2025 (Corrected index findings)
 
 ---
 
@@ -113,45 +114,50 @@ query := fmt.Sprintf(`
 
 ### 3.1 Critical Missing Indexes
 
-| Table | Column(s) | Query Pattern | Priority |
-|-------|-----------|---------------|----------|
-| `animal_comments` | `user_id` | Counting user comments in statistics | High |
-| `animal_comments` | `animal_id, created_at` | Fetching comments with ordering | High |
-| `animal_images` | `animal_id, is_profile_picture` | Finding profile pictures | Medium |
-| `animal_images` | `user_id` | Finding user's images | Medium |
-| `user_groups` | `user_id, is_group_admin` | Checking group admin status | High |
-| `user_groups` | `group_id` | Fetching group members | Medium |
-| `updates` | `group_id, created_at` | Fetching updates with ordering | Medium |
-| `protocols` | `group_id, order_index` | Fetching ordered protocols | Low |
+**Note:** The following assessment is based on GORM model tag definitions. Use `SELECT * FROM pg_indexes WHERE tablename = 'table_name';` to verify actual index creation in PostgreSQL.
 
-### 3.2 Existing Indexes (✅ Good)
+| Table | Column(s) | Query Pattern | Priority | Notes |
+|-------|-----------|---------------|----------|-------|
+| `user_groups` | `user_id, is_group_admin` | Checking group admin status | **Critical** | Only has composite PK (user_id, group_id), no additional indexes |
+| `user_groups` | `group_id` | Fetching group members via JOIN | **Critical** | Required for efficient `JOIN user_groups ON user_groups.group_id = groups.id` |
+| `protocols` | `group_id, order_index` | Fetching ordered protocols | Low | OrderIndex used for ordering but only group_id is indexed |
 
-The following indexes are already defined:
+### 3.2 Existing Indexes (✅ Verified in Models)
+
+The following indexes are **defined in GORM tags** and should be created by AutoMigrate:
 
 - `users`: `username` (unique), `email` (unique), `deleted_at`, `default_group_id`
 - `animals`: `group_id, status` (composite), `deleted_at`
-- `animal_comments`: `animal_id, created_at` (composite)
+- `animal_comments`: `user_id` (index), `animal_id, created_at` (composite), `deleted_at`
+- `animal_images`: `animal_id`, `user_id` (index), `deleted_at`
 - `announcements`: `created_at`
 - `updates`: `group_id, created_at` (composite)
 - `animal_tags`: `group_id, name` (composite unique)
 - `comment_tags`: `group_id, name` (composite unique)
 - `animal_name_history`: `animal_id, created_at` (composite)
-- `animal_images`: `animal_id`
 
-### 3.3 Recommended Index Additions
+### 3.3 Indexes to Add
 
 ```sql
--- High Priority
-CREATE INDEX idx_animal_comments_user_id ON animal_comments(user_id);
-CREATE INDEX idx_user_groups_user_id_admin ON user_groups(user_id, is_group_admin);
+-- Critical Priority (user_groups has no indexes beyond PK)
+CREATE INDEX idx_user_groups_user_admin ON user_groups(user_id, is_group_admin);
 CREATE INDEX idx_user_groups_group_id ON user_groups(group_id);
 
 -- Medium Priority
-CREATE INDEX idx_animal_images_user_id ON animal_images(user_id);
 CREATE INDEX idx_animal_images_profile ON animal_images(animal_id, is_profile_picture) WHERE is_profile_picture = true;
 
 -- Low Priority
 CREATE INDEX idx_protocols_group_order ON protocols(group_id, order_index);
+```
+
+### 3.4 Index Verification Command
+
+To confirm GORM actually created indexes, run:
+```sql
+SELECT indexname, indexdef 
+FROM pg_indexes 
+WHERE tablename IN ('animal_comments', 'animal_images', 'user_groups', 'protocols')
+ORDER BY tablename, indexname;
 ```
 
 ---
@@ -276,10 +282,22 @@ db.WithContext(ctx).
 | Model | Issue | Recommendation |
 |-------|-------|----------------|
 | `Animal` | Binary protocol document data stored in DB | Use external storage (Azure Blob) consistently |
-| `AnimalImage` | Large binary data with nullable `AnimalID` | Consider separate table for orphaned images |
-| `UserGroup` | No `created_at` timestamp index | Add index for auditing queries |
+| `AnimalImage` | Nullable `AnimalID` allows orphaned images | Add scheduled cleanup job for old unlinked images (e.g., images with `animal_id IS NULL AND created_at < NOW() - INTERVAL '7 days'`) |
+| `UserGroup` | **No indexes beyond composite PK** | Critical: Add indexes on `(user_id, is_group_admin)` and `group_id` for JOIN queries |
 
-### 6.2 Soft Delete Considerations
+### 6.2 Orphaned Image Cleanup Concern
+
+**Issue:** `AnimalImage.AnimalID` is nullable by design to allow image uploads before animal creation. However, this can lead to unbounded growth of orphaned images.
+
+**Recommendation:** Add a scheduled cleanup job:
+```sql
+-- Delete orphaned images older than 7 days
+DELETE FROM animal_images 
+WHERE animal_id IS NULL 
+  AND created_at < NOW() - INTERVAL '7 days';
+```
+
+### 6.3 Soft Delete Considerations
 
 **Concern:** All major tables use soft deletes (`DeletedAt gorm.DeletedAt`), which:
 - Increases table size over time
@@ -291,7 +309,18 @@ db.WithContext(ctx).
 2. Consider periodic archival of old soft-deleted records
 3. Use partial indexes where appropriate: `WHERE deleted_at IS NULL`
 
-### 6.3 Data Integrity Gaps
+### 6.4 Missing created_at Indexes for Ordering
+
+Several tables use `ORDER BY created_at DESC` but lack dedicated indexes:
+
+| Table | Has created_at Index | Notes |
+|-------|---------------------|-------|
+| `protocols` | ❌ No | `created_at` may be used in admin views |
+| `user_groups` | ❌ No | Useful for auditing when users joined groups |
+
+**Note:** Tables with composite indexes including `created_at` (like `animal_comments`, `updates`) already have optimized ordering.
+
+### 6.5 Data Integrity Gaps
 
 | Issue | Tables Affected | Recommendation |
 |-------|-----------------|----------------|
@@ -354,27 +383,34 @@ db.Exec("SET statement_timeout = '30s'")
 
 ## 9. Recommendations Summary
 
-### 9.1 High Priority (Fix Soon)
+### 9.1 Critical Priority (Fix Immediately)
 
-1. **Add missing indexes** on `animal_comments.user_id` and `user_groups` columns
-2. **Refactor N+1 queries** in `statistics.go` to use aggregated queries
-3. **Add connection timeout** to database DSN
-4. **Add pagination** to `GetAllUsers` and statistics endpoints
+1. **Add missing indexes on `user_groups`** - This table has NO indexes beyond the composite primary key, causing slow JOINs:
+   - `CREATE INDEX idx_user_groups_user_admin ON user_groups(user_id, is_group_admin);`
+   - `CREATE INDEX idx_user_groups_group_id ON user_groups(group_id);`
 
-### 9.2 Medium Priority (Plan for Next Sprint)
+### 9.2 High Priority (Fix Soon)
+
+1. **Refactor N+1 queries** in `statistics.go` to use aggregated queries
+2. **Add connection timeout** to database DSN
+3. **Add pagination** to `GetAllUsers` and statistics endpoints
+4. **Implement orphaned image cleanup** job for `animal_images` where `animal_id IS NULL`
+
+### 9.3 Medium Priority (Plan for Next Sprint)
 
 1. **Add functional index** for case-insensitive name searches
-2. **Optimize admin dashboard** with CTEs or caching
-3. **Make connection pool settings configurable**
-4. **Add query monitoring/logging** for slow queries in production
-5. **Review and optimize activity feed** memory usage
+2. **Add composite index** on `protocols(group_id, order_index)`
+3. **Optimize admin dashboard** with CTEs or caching
+4. **Make connection pool settings configurable**
+5. **Add query monitoring/logging** for slow queries in production
 
-### 9.3 Low Priority (Technical Debt)
+### 9.4 Low Priority (Technical Debt)
 
 1. Consider dedicated migration tool
 2. Archive old soft-deleted records
 3. Add partial indexes for common query patterns
 4. Document expected query performance baselines
+5. Verify GORM actually created declared indexes using `pg_indexes`
 
 ---
 
@@ -405,27 +441,42 @@ ORDER BY seq_tup_read DESC;
 
 ```sql
 -- Run these in a transaction during maintenance window
-BEGIN;
+-- Note: CREATE INDEX CONCURRENTLY cannot run inside a transaction block
+-- Run each statement separately for production
 
--- High priority indexes
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_animal_comments_user_id 
-    ON animal_comments(user_id);
-
+-- Critical priority (user_groups has NO indexes beyond PK)
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_groups_user_admin 
     ON user_groups(user_id, is_group_admin);
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_groups_group_id 
     ON user_groups(group_id);
 
--- Medium priority indexes
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_animal_images_user_id 
-    ON animal_images(user_id);
+-- Medium priority
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_animal_images_profile 
+    ON animal_images(animal_id, is_profile_picture) 
+    WHERE is_profile_picture = true;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_protocols_group_order 
+    ON protocols(group_id, order_index);
 
 -- Functional index for case-insensitive search
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_animals_name_lower 
     ON animals(LOWER(name));
+```
 
-COMMIT;
+## Appendix C: Orphaned Image Cleanup Query
+
+```sql
+-- Find orphaned images (for review before deletion)
+SELECT id, image_url, user_id, created_at 
+FROM animal_images 
+WHERE animal_id IS NULL 
+  AND created_at < NOW() - INTERVAL '7 days';
+
+-- Delete orphaned images older than 7 days
+DELETE FROM animal_images 
+WHERE animal_id IS NULL 
+  AND created_at < NOW() - INTERVAL '7 days';
 ```
 
 ---
