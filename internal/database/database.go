@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -90,26 +91,50 @@ func Initialize() (*gorm.DB, error) {
 	}
 
 	// Configure connection pool for security and performance
+	// Settings can be overridden via environment variables for production tuning
+
 	// SetMaxIdleConns sets the maximum number of connections in the idle connection pool
-	sqlDB.SetMaxIdleConns(10)
+	maxIdleConns := getEnvAsInt("DB_MAX_IDLE_CONNS", 10)
+	sqlDB.SetMaxIdleConns(maxIdleConns)
 
 	// SetMaxOpenConns sets the maximum number of open connections to the database
 	// This prevents resource exhaustion attacks
-	sqlDB.SetMaxOpenConns(100)
+	maxOpenConns := getEnvAsInt("DB_MAX_OPEN_CONNS", 100)
+	sqlDB.SetMaxOpenConns(maxOpenConns)
 
 	// SetConnMaxLifetime sets the maximum amount of time a connection may be reused
 	// This helps with database connection rotation and security
-	sqlDB.SetConnMaxLifetime(1 * time.Hour)
+	connMaxLifetimeMinutes := getEnvAsInt("DB_CONN_MAX_LIFETIME_MINUTES", 60)
+	sqlDB.SetConnMaxLifetime(time.Duration(connMaxLifetimeMinutes) * time.Minute)
 
 	// SetConnMaxIdleTime sets the maximum amount of time a connection may be idle
-	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
+	connMaxIdleTimeMinutes := getEnvAsInt("DB_CONN_MAX_IDLE_TIME_MINUTES", 10)
+	sqlDB.SetConnMaxIdleTime(time.Duration(connMaxIdleTimeMinutes) * time.Minute)
 
 	// Add statement timeout for query security (prevent long-running queries)
 	// This is a PostgreSQL-specific setting that prevents queries from running indefinitely
-	db.Exec("SET statement_timeout = '30s'")
+	statementTimeoutSeconds := getEnvAsInt("DB_STATEMENT_TIMEOUT_SECONDS", 30)
+	db.Exec(fmt.Sprintf("SET statement_timeout = '%ds'", statementTimeoutSeconds))
 
-	logging.Info("Database connection established")
+	logging.WithFields(map[string]interface{}{
+		"max_idle_conns":           maxIdleConns,
+		"max_open_conns":           maxOpenConns,
+		"conn_max_lifetime_min":    connMaxLifetimeMinutes,
+		"conn_max_idle_time_min":   connMaxIdleTimeMinutes,
+		"statement_timeout_seconds": statementTimeoutSeconds,
+	}).Info("Database connection established with pool configuration")
+
 	return db, nil
+}
+
+// getEnvAsInt retrieves an environment variable as an integer with a default value
+func getEnvAsInt(key string, defaultValue int) int {
+	if valueStr := os.Getenv(key); valueStr != "" {
+		if value, err := strconv.Atoi(valueStr); err == nil && value > 0 {
+			return value
+		}
+	}
+	return defaultValue
 }
 
 // RunMigrations runs all database migrations

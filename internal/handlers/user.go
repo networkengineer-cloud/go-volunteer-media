@@ -2,23 +2,62 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
 
-// GetAllUsers returns all users (admin only)
-// GetAllUsers returns all non-deleted users (admin only)
+// GetAllUsers returns all users with pagination support (admin only)
 func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+
+		// Get pagination parameters
+		limit := 50 // Default limit for users
+		if limitParam := c.Query("limit"); limitParam != "" {
+			if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+				if limit > 100 {
+					limit = 100 // Max 100 per page
+				}
+			}
+		}
+
+		offset := 0
+		if offsetParam := c.Query("offset"); offsetParam != "" {
+			if parsedOffset, err := strconv.Atoi(offsetParam); err == nil && parsedOffset >= 0 {
+				offset = parsedOffset
+			}
+		}
+
+		// Get total count
+		var total int64
+		if err := db.WithContext(ctx).Model(&models.User{}).Count(&total).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count users"})
+			return
+		}
+
+		// Get users with pagination
 		var users []models.User
-		if err := db.WithContext(ctx).Preload("Groups").Find(&users).Error; err != nil {
+		if err := db.WithContext(ctx).
+			Preload("Groups").
+			Limit(limit).
+			Offset(offset).
+			Order("created_at DESC").
+			Find(&users).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
 			return
 		}
-		c.JSON(http.StatusOK, users)
+
+		c.JSON(http.StatusOK, gin.H{
+			"data":    users,
+			"total":   total,
+			"limit":   limit,
+			"offset":  offset,
+			"hasMore": offset+len(users) < int(total),
+		})
 	}
 }
 

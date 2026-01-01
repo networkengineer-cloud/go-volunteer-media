@@ -59,12 +59,39 @@ func parseTimestamp(s string) *time.Time {
 	return nil
 }
 
-// GetGroupStatistics returns statistics for all groups (admin only)
+// GetGroupStatistics returns statistics for all groups with pagination support (admin only)
 func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Add explicit timeout for query execution
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
+
+		// Get pagination parameters
+		limit := 20 // Default limit
+		if limitParam := c.Query("limit"); limitParam != "" {
+			if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+				if limit > 100 {
+					limit = 100 // Max 100 per page
+				}
+			}
+		}
+
+		offset := 0
+		if offsetParam := c.Query("offset"); offsetParam != "" {
+			if parsedOffset, err := strconv.Atoi(offsetParam); err == nil && parsedOffset >= 0 {
+				offset = parsedOffset
+			}
+		}
+
+		// Get total count of groups
+		var total int64
+		if err := db.WithContext(ctx).Raw(`
+			SELECT COUNT(*) FROM groups WHERE deleted_at IS NULL
+		`).Scan(&total).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count groups"})
+			return
+		}
 
 		// Use a single aggregated query to fetch all group statistics at once
 		// This eliminates the N+1 query problem by using subqueries
@@ -94,7 +121,8 @@ func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 			FROM groups g
 			WHERE g.deleted_at IS NULL
 			ORDER BY g.id
-		`).Scan(&rawStats).Error
+			LIMIT ? OFFSET ?
+		`, limit, offset).Scan(&rawStats).Error
 
 		duration := time.Since(start)
 		if duration > 1*time.Second {
@@ -119,16 +147,49 @@ func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 			statistics[i].LastActivity = parseTimestamp(raw.LastActivity)
 		}
 
-		c.JSON(http.StatusOK, statistics)
+		c.JSON(http.StatusOK, gin.H{
+			"data":    statistics,
+			"total":   total,
+			"limit":   limit,
+			"offset":  offset,
+			"hasMore": offset+len(statistics) < int(total),
+		})
 	}
 }
 
-// GetUserStatistics returns statistics for all users (admin only)
+// GetUserStatistics returns statistics for all users with pagination support (admin only)
 func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Add explicit timeout for query execution
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
+
+		// Get pagination parameters
+		limit := 20 // Default limit
+		if limitParam := c.Query("limit"); limitParam != "" {
+			if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+				if limit > 100 {
+					limit = 100 // Max 100 per page
+				}
+			}
+		}
+
+		offset := 0
+		if offsetParam := c.Query("offset"); offsetParam != "" {
+			if parsedOffset, err := strconv.Atoi(offsetParam); err == nil && parsedOffset >= 0 {
+				offset = parsedOffset
+			}
+		}
+
+		// Get total count of users
+		var total int64
+		if err := db.WithContext(ctx).Raw(`
+			SELECT COUNT(*) FROM users WHERE deleted_at IS NULL
+		`).Scan(&total).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count users"})
+			return
+		}
 
 		// Use a single aggregated query to fetch all user statistics at once
 		// This eliminates the N+1 query problem by using subqueries
@@ -157,7 +218,8 @@ func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 			FROM users u
 			WHERE u.deleted_at IS NULL
 			ORDER BY u.id
-		`).Scan(&rawStats).Error
+			LIMIT ? OFFSET ?
+		`, limit, offset).Scan(&rawStats).Error
 
 		duration := time.Since(start)
 		if duration > 1*time.Second {
@@ -182,11 +244,17 @@ func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 			statistics[i].LastActive = parseTimestamp(raw.LastActive)
 		}
 
-		c.JSON(http.StatusOK, statistics)
+		c.JSON(http.StatusOK, gin.H{
+			"data":    statistics,
+			"total":   total,
+			"limit":   limit,
+			"offset":  offset,
+			"hasMore": offset+len(statistics) < int(total),
+		})
 	}
 }
 
-// GetCommentTagStatistics returns statistics for comment tags
+// GetCommentTagStatistics returns statistics for comment tags with pagination support
 // Accepts optional group_id query parameter to filter by group
 func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -201,6 +269,40 @@ func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 		if groupIDStr != "" {
 			if _, err := strconv.ParseUint(groupIDStr, 10, 32); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group_id parameter"})
+				return
+			}
+		}
+
+		// Get pagination parameters
+		limit := 20 // Default limit
+		if limitParam := c.Query("limit"); limitParam != "" {
+			if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+				if limit > 100 {
+					limit = 100 // Max 100 per page
+				}
+			}
+		}
+
+		offset := 0
+		if offsetParam := c.Query("offset"); offsetParam != "" {
+			if parsedOffset, err := strconv.Atoi(offsetParam); err == nil && parsedOffset >= 0 {
+				offset = parsedOffset
+			}
+		}
+
+		// Get total count of tags
+		var total int64
+		countQuery := `SELECT COUNT(*) FROM comment_tags WHERE deleted_at IS NULL`
+		if groupIDStr != "" {
+			countQuery += ` AND group_id = ?`
+			if err := db.WithContext(ctx).Raw(countQuery, groupIDStr).Scan(&total).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count tags"})
+				return
+			}
+		} else {
+			if err := db.WithContext(ctx).Raw(countQuery).Scan(&total).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count tags"})
 				return
 			}
 		}
@@ -249,15 +351,16 @@ func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 			FROM tag_usage
 			GROUP BY tag_id
 			ORDER BY tag_id
+			LIMIT ? OFFSET ?
 		`
 
 		var rawStats []TagStatsRaw
 		var err error
 		start := time.Now()
 		if groupIDStr != "" {
-			err = db.WithContext(ctx).Raw(query, groupIDStr).Scan(&rawStats).Error
+			err = db.WithContext(ctx).Raw(query, groupIDStr, limit, offset).Scan(&rawStats).Error
 		} else {
-			err = db.WithContext(ctx).Raw(query).Scan(&rawStats).Error
+			err = db.WithContext(ctx).Raw(query, limit, offset).Scan(&rawStats).Error
 		}
 
 		duration := time.Since(start)
@@ -288,6 +391,12 @@ func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 			statistics[i].LastUsed = parseTimestamp(raw.LastUsed)
 		}
 
-		c.JSON(http.StatusOK, statistics)
+		c.JSON(http.StatusOK, gin.H{
+			"data":    statistics,
+			"total":   total,
+			"limit":   limit,
+			"offset":  offset,
+			"hasMore": offset+len(statistics) < int(total),
+		})
 	}
 }

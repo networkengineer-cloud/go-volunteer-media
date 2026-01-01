@@ -403,8 +403,20 @@ db.Exec("SET statement_timeout = '30s'")
    - ✅ Added `connect_timeout=10` to DSN connection string
    - **Implementation:** Modified `internal/database/database.go` line 59
 
-3. **TODO** - **Add pagination** to `GetAllUsers` and statistics endpoints
-4. **TODO** - **Implement orphaned image cleanup** job for `animal_images` where `animal_id IS NULL`
+3. ✅ **COMPLETED** - **Add pagination** to `GetAllUsers` and statistics endpoints
+   - ✅ Added pagination support to `GetAllUsers` in `internal/handlers/user.go`
+   - ✅ Added pagination support to `GetGroupStatistics` in `internal/handlers/statistics.go`
+   - ✅ Added pagination support to `GetUserStatistics` in `internal/handlers/statistics.go`
+   - ✅ Added pagination support to `GetCommentTagStatistics` in `internal/handlers/statistics.go`
+   - **Implementation:** All endpoints now support `limit` (default 20, max 100) and `offset` query parameters
+   - **Response format:** Includes `data`, `total`, `limit`, `offset`, and `hasMore` fields
+
+4. ✅ **COMPLETED** - **Implement orphaned image cleanup** job for `animal_images` where `animal_id IS NULL`
+   - ✅ Created `internal/maintenance/cleanup.go` with `CleanupOrphanedImages` function
+   - ✅ Added `internal/handlers/maintenance.go` with admin endpoint to trigger cleanup
+   - ✅ Also implemented `CleanupOldSoftDeletedRecords` for archiving old soft-deleted data
+   - **Implementation:** Cleanup functions accept `olderThanDays` parameter (default 7 days for orphaned images)
+   - **Usage:** Admin can trigger via API endpoint with configurable age threshold
 
 ### 9.3 Medium Priority (Plan for Next Sprint)
 
@@ -416,9 +428,31 @@ db.Exec("SET statement_timeout = '30s'")
    - ✅ Added `index:idx_protocols_group_order` to `GroupID` and `OrderIndex` fields in Protocol model
    - **Implementation:** Modified `internal/models/models.go`
 
-3. **TODO** - **Optimize admin dashboard** with CTEs or caching
-4. **TODO** - **Make connection pool settings configurable**
-5. **TODO** - **Add query monitoring/logging** for slow queries in production
+3. ✅ **COMPLETED** - **Optimize admin dashboard** with CTEs or caching
+   - ✅ Refactored `GetAdminDashboardStats` to use CTEs and optimized queries
+   - ✅ Replaced correlated subqueries with JOINs and aggregations
+   - ✅ Combined multiple health indicator queries into a single optimized query
+   - **Impact:** Reduced number of queries from 10+ to 4 optimized queries
+   - **Implementation:** Modified `internal/handlers/admin_dashboard.go`
+
+4. ✅ **COMPLETED** - **Make connection pool settings configurable**
+   - ✅ Added environment variables for all connection pool settings:
+     - `DB_MAX_IDLE_CONNS` (default: 10)
+     - `DB_MAX_OPEN_CONNS` (default: 100)
+     - `DB_CONN_MAX_LIFETIME_MINUTES` (default: 60)
+     - `DB_CONN_MAX_IDLE_TIME_MINUTES` (default: 10)
+     - `DB_STATEMENT_TIMEOUT_SECONDS` (default: 30)
+   - **Implementation:** Added `getEnvAsInt` helper function in `internal/database/database.go`
+   - **Usage:** Settings logged at startup for visibility
+
+5. ✅ **COMPLETED** - **Add query monitoring/logging** for slow queries in production
+   - ✅ Created `QueryPerformancePlugin` GORM plugin in `internal/database/query_monitor.go`
+   - ✅ Monitors query execution time and logs slow queries above threshold
+   - ✅ Configurable via environment variables:
+     - `DB_SLOW_QUERY_THRESHOLD_MS` (default: 1000ms)
+     - `DB_QUERY_MONITORING_ENABLED` (default: true)
+   - **Implementation:** Registers callbacks for query, create, update, and delete operations
+   - **Usage:** Automatically logs slow queries with SQL, duration, rows affected, and table name
 
 ### 9.4 Low Priority (Technical Debt)
 
