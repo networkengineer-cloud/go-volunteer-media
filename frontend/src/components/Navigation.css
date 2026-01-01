@@ -94,6 +94,9 @@
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   transition: all 0.2s ease;
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 0.875rem;
 }
 
 .nav-right a:hover {

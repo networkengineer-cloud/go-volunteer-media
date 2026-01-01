@@ -191,18 +191,23 @@ func main() {
 		// Authorization is checked within the handlers
 		protected.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
 
+		// Admin or Group Admin routes (for user management)
+		adminUsers := protected.Group("/admin/users")
+		adminUsers.Use(middleware.AdminOrGroupAdminRequired())
+		{
+			adminUsers.GET("", handlers.GetAllUsers(db))
+			adminUsers.POST("", handlers.AdminCreateUser(db, emailService))
+			adminUsers.DELETE("/:userId", handlers.AdminDeleteUser(db))
+			adminUsers.GET("/deleted", handlers.GetDeletedUsers(db))
+			adminUsers.POST("/:userId/restore", handlers.RestoreUser(db))
+			adminUsers.POST("/:userId/promote", handlers.PromoteUser(db))
+			adminUsers.POST("/:userId/demote", handlers.DemoteUser(db))
+		}
+
 		// Admin only routes
 		admin := protected.Group("/admin")
 		admin.Use(middleware.AdminRequired())
 		{
-			admin.GET("/users", handlers.GetAllUsers(db))
-			admin.POST("/users", handlers.AdminCreateUser(db, emailService))
-			admin.DELETE("/users/:userId", handlers.AdminDeleteUser(db))
-			admin.GET("/users/deleted", handlers.GetDeletedUsers(db))
-			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))
-			admin.POST("/users/:userId/promote", handlers.PromoteUser(db))
-			admin.POST("/users/:userId/demote", handlers.DemoteUser(db))
-
 			// Group management (admin only)
 			admin.POST("/groups", handlers.CreateGroup(db))
 			admin.PUT("/groups/:id", handlers.UpdateGroup(db))

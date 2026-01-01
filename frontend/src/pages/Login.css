@@ -76,10 +76,67 @@
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+[data-theme='dark'] .form-group input {
+  background: var(--neutral-800);
+  border-color: var(--neutral-600);
+  color: var(--text-primary);
+}
+
+/* Force dark inputs when the FormField component is used on the login card */
+[data-theme='dark'] .login-card .form-field__input,
+[data-theme='dark'] .login-card .form-field__textarea {
+  background: var(--neutral-800);
+  border-color: var(--neutral-600);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .login-card input,
+[data-theme='dark'] .login-card textarea {
+  background: #0f172a;
+  border-color: #374151;
+  color: #f9fafb;
+}
+
+:root[data-theme='dark'] .login-card input,
+:root[data-theme='dark'] .login-card textarea {
+  background: #0f172a !important;
+  border-color: #374151 !important;
+  color: #f9fafb !important;
+}
+
+[data-theme='dark'] .login-card input:-webkit-autofill,
+[data-theme='dark'] .login-card textarea:-webkit-autofill {
+  box-shadow: 0 0 0 1000px #0f172a inset;
+  -webkit-text-fill-color: #f9fafb;
+  caret-color: #f9fafb;
+}
+
+[data-theme='dark'] .login-card input::placeholder,
+[data-theme='dark'] .login-card textarea::placeholder {
+  color: #9ca3af;
+}
+
 .form-group input:focus {
   outline: none;
   border-color: var(--brand);
   box-shadow: 0 0 0 3px rgba(0, 163, 173, 0.1);
+}
+
+[data-theme='dark'] .form-group input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0, 168, 126, 0.2);
+}
+
+[data-theme='dark'] .login-card .form-field__input:focus,
+[data-theme='dark'] .login-card .form-field__textarea:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0, 168, 126, 0.2);
+}
+
+[data-theme='dark'] .login-card input:focus,
+[data-theme='dark'] .login-card textarea:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0, 168, 126, 0.2);
 }
 
 .error {

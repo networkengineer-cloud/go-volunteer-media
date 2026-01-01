@@ -84,8 +84,9 @@ func getJWTSecret() ([]byte, error) {
 
 // Claims represents JWT claims
 type Claims struct {
-	UserID  uint `json:"user_id"`
-	IsAdmin bool `json:"is_admin"`
+	UserID       uint `json:"user_id"`
+	IsAdmin      bool `json:"is_admin"`
+	IsGroupAdmin bool `json:"is_group_admin"`
 	jwt.RegisteredClaims
 }
 
@@ -101,15 +102,16 @@ func CheckPassword(hashedPassword, password string) error {
 }
 
 // GenerateToken generates a JWT token for a user
-func GenerateToken(userID uint, isAdmin bool) (string, error) {
+func GenerateToken(userID uint, isAdmin bool, isGroupAdmin bool) (string, error) {
 	secret, err := getJWTSecret()
 	if err != nil {
 		return "", err
 	}
 
 	claims := Claims{
-		UserID:  userID,
-		IsAdmin: isAdmin,
+		UserID:       userID,
+		IsAdmin:      isAdmin,
+		IsGroupAdmin: isGroupAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

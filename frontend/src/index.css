@@ -114,6 +114,8 @@
   --bg-primary: var(--surface);
   --bg-secondary: var(--neutral-50);
   --border: var(--neutral-200);
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
 }
 
 [data-theme='dark'] {
@@ -175,6 +177,10 @@
   --bg-primary: var(--surface);
   --bg-secondary: var(--neutral-50);
   --border: var(--neutral-200);
+  --input-bg: #111827;
+  --input-border: #374151;
+  --input-bg-dark: #111827;
+  --input-border-dark: #374151;
 }
 
 * {

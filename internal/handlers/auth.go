@@ -23,8 +23,8 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	Token string      `json:"token"`
-	User  models.User `json:"user"`
+	Token string                 `json:"token"`
+	User  map[string]interface{} `json:"user"`
 }
 
 // Register creates a new user account
@@ -67,8 +67,11 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 		// Audit log: user registration
 		logging.LogRegistration(ctx, user.ID, user.Username, user.Email, c.ClientIP())
 
+		// Check if user is a group admin for any group
+		isGroupAdmin := IsGroupAdminForAnyGroup(db, user.ID)
+
 		// Generate token
-		token, err := auth.GenerateToken(user.ID, user.IsAdmin)
+		token, err := auth.GenerateToken(user.ID, user.IsAdmin, isGroupAdmin)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 			return
@@ -76,7 +79,20 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusCreated, AuthResponse{
 			Token: token,
-			User:  user,
+			User: map[string]interface{}{
+				"id":                          user.ID,
+				"username":                    user.Username,
+				"email":                       user.Email,
+				"phone_number":                user.PhoneNumber,
+				"hide_email":                  user.HideEmail,
+				"hide_phone_number":           user.HidePhoneNumber,
+				"is_admin":                    user.IsAdmin,
+				"default_group_id":            user.DefaultGroupID,
+				"email_notifications_enabled": user.EmailNotificationsEnabled,
+				"is_group_admin":              isGroupAdmin,
+				"created_at":                  user.CreatedAt,
+				"updated_at":                  user.UpdatedAt,
+			},
 		})
 	}
 }
@@ -196,8 +212,11 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		// Audit log: successful login
 		logging.LogAuthSuccess(ctx, user.ID, user.Username, c.ClientIP())
 
+		// Check if user is a group admin for any group
+		isGroupAdmin := IsGroupAdminForAnyGroup(db, user.ID)
+
 		// Generate token
-		token, err := auth.GenerateToken(user.ID, user.IsAdmin)
+		token, err := auth.GenerateToken(user.ID, user.IsAdmin, isGroupAdmin)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 			return
@@ -205,7 +224,20 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, AuthResponse{
 			Token: token,
-			User:  user,
+			User: map[string]interface{}{
+				"id":                          user.ID,
+				"username":                    user.Username,
+				"email":                       user.Email,
+				"phone_number":                user.PhoneNumber,
+				"hide_email":                  user.HideEmail,
+				"hide_phone_number":           user.HidePhoneNumber,
+				"is_admin":                    user.IsAdmin,
+				"default_group_id":            user.DefaultGroupID,
+				"email_notifications_enabled": user.EmailNotificationsEnabled,
+				"is_group_admin":              isGroupAdmin,
+				"created_at":                  user.CreatedAt,
+				"updated_at":                  user.UpdatedAt,
+			},
 		})
 	}
 }

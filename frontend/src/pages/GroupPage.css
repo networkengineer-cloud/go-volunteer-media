@@ -753,8 +753,13 @@
 }
 
 [data-theme='dark'] .activity-filter-bar {
-  background: var(--neutral-800);
-  border-color: var(--neutral-700);
+  background: #0f172a;
+  border-color: #374151;
+}
+
+:root[data-theme='dark'] .activity-filter-bar {
+  background: #0f172a !important;
+  border-color: #374151 !important;
 }
 
 .activity-filter-bar .filter-row {
@@ -808,10 +813,18 @@
 [data-theme='dark'] .activity-filter-bar .filter-select,
 [data-theme='dark'] .activity-filter-bar .filter-input,
 [data-theme='dark'] .activity-filter-bar input[type="date"] {
-  background: var(--neutral-900);
-  border-color: var(--neutral-700);
-  color: var(--text-primary);
+  background: #111827;
+  border-color: #374151;
+  color: #f9fafb;
   color-scheme: dark; /* Ensures date picker uses dark theme */
+}
+
+:root[data-theme='dark'] .activity-filter-bar .filter-select,
+:root[data-theme='dark'] .activity-filter-bar .filter-input,
+:root[data-theme='dark'] .activity-filter-bar input[type="date"] {
+  background: #111827 !important;
+  border-color: #374151 !important;
+  color: #f9fafb !important;
 }
 
 .activity-filter-bar .filter-select:focus,
@@ -943,6 +956,54 @@
   gap: 0.75rem;
   align-items: center;
   flex-wrap: wrap;
+  padding: 1rem;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--neutral-200);
+  margin-top: 1rem;
+}
+
+[data-theme='dark'] .quick-filters {
+  background: #0f172a;
+  border-color: #374151;
+}
+
+:root[data-theme='dark'] .quick-filters {
+  background: #0f172a !important;
+  border-color: #374151 !important;
+}
+
+/* Match quick-filter controls to dark surface inside the activity filter bar */
+[data-theme='dark'] .activity-filter-bar .quick-filters {
+  background: #0f172a;
+  border-color: #374151;
+}
+
+:root[data-theme='dark'] .activity-filter-bar .quick-filters {
+  background: #0f172a !important;
+  border-color: #374151 !important;
+}
+
+.quick-filter-btn {
+  padding: 0.625rem 1rem;
+  background: var(--surface);
+  border: 2px solid var(--neutral-300);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .quick-filter-btn {
+  background: #0f172a;
+  border-color: #374151;
+  color: #f9fafb;
+}
+
+:root[data-theme='dark'] .quick-filter-btn {
+  background: #0f172a !important;
+  border-color: #374151 !important;
+  color: #f9fafb !important;
 }
 
 .quick-filters-label {
@@ -964,8 +1025,8 @@
 }
 
 [data-theme='dark'] .quick-filter-btn {
-  background: var(--neutral-800);
-  border-color: var(--neutral-600);
+  background: #111827;
+  border-color: #374151;
 }
 
 .quick-filter-btn:hover {
