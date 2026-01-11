@@ -107,7 +107,7 @@ func SeedData(db *gorm.DB, force bool) error {
 		return fmt.Errorf("failed to seed updates: %w", err)
 	}
 
-	// Seed announcements
+	// Seed announcements (email disabled by default; opt-in)
 	if err := seedAnnouncements(db, users); err != nil {
 		return fmt.Errorf("failed to seed announcements: %w", err)
 	}
@@ -140,7 +140,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			Email:                     "admin@demo.local",
 			Password:                  string(hashedPassword),
 			IsAdmin:                   true,
-			EmailNotificationsEnabled: true,
+			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0001",
 			HideEmail:                 false,
 			HidePhoneNumber:           false,
@@ -150,7 +150,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			Email:                     "merry@demo.local",
 			Password:                  string(hashedPassword),
 			IsAdmin:                   false,
-			EmailNotificationsEnabled: true,
+			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0002",
 			HideEmail:                 false,
 			HidePhoneNumber:           true, // Merry has hidden phone number
@@ -160,7 +160,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			Email:                     "sophia@demo.local",
 			Password:                  string(hashedPassword),
 			IsAdmin:                   false,
-			EmailNotificationsEnabled: true,
+			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0003",
 			HideEmail:                 true, // Sophia has hidden email
 			HidePhoneNumber:           false,
@@ -170,8 +170,48 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			Email:                     "terry@demo.local",
 			Password:                  string(hashedPassword),
 			IsAdmin:                   false,
-			EmailNotificationsEnabled: true,
+			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0004",
+			HideEmail:                 false,
+			HidePhoneNumber:           false,
+		},
+		{
+			Username:                  "alex",
+			Email:                     "alex@demo.local",
+			Password:                  string(hashedPassword),
+			IsAdmin:                   false,
+			EmailNotificationsEnabled: false,
+			PhoneNumber:               "(555) 100-0005",
+			HideEmail:                 false,
+			HidePhoneNumber:           false,
+		},
+		{
+			Username:                  "jordan",
+			Email:                     "jordan@demo.local",
+			Password:                  string(hashedPassword),
+			IsAdmin:                   false,
+			EmailNotificationsEnabled: false,
+			PhoneNumber:               "(555) 100-0006",
+			HideEmail:                 false,
+			HidePhoneNumber:           false,
+		},
+		{
+			Username:                  "casey",
+			Email:                     "casey@demo.local",
+			Password:                  string(hashedPassword),
+			IsAdmin:                   false,
+			EmailNotificationsEnabled: false,
+			PhoneNumber:               "(555) 100-0007",
+			HideEmail:                 false,
+			HidePhoneNumber:           false,
+		},
+		{
+			Username:                  "taylor",
+			Email:                     "taylor@demo.local",
+			Password:                  string(hashedPassword),
+			IsAdmin:                   false,
+			EmailNotificationsEnabled: false,
+			PhoneNumber:               "(555) 100-0008",
 			HideEmail:                 false,
 			HidePhoneNumber:           false,
 		},
@@ -272,7 +312,7 @@ func ensureSandboxMembership(db *gorm.DB) error {
 		return err
 	}
 
-	usernames := []string{"admin", "merry", "sophia", "terry"}
+	usernames := []string{"admin", "merry", "sophia", "terry", "alex", "jordan", "casey", "taylor"}
 	for _, username := range usernames {
 		var user models.User
 		if err := db.Where("username = ?", username).First(&user).Error; err != nil {
@@ -574,13 +614,6 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 			UserID:    users[1].ID,   // merry
 			Content:   "Luna is doing fantastic in her foster home! She's settling in beautifully and learning quickly.",
 			CreatedAt: yesterday,
-			Metadata: &models.SessionMetadata{
-				SessionGoal:    "Loose leash walking in the neighborhood",
-				SessionOutcome: "Maintained slack leash for 80% of the 20-minute walk",
-				BehaviorNotes:  "Mild reactivity to bikes; recovered with treat scatter",
-				SessionRating:  4,
-				OtherNotes:     "Try front-clip harness for next walk",
-			},
 		},
 		{
 			AnimalID:  animals[2].ID, // Charlie
@@ -600,12 +633,6 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 			Content:   "Daisy learned three new tricks today - she's incredibly smart! Would excel at agility.",
 			Tags:      []models.CommentTag{behaviorTag},
 			CreatedAt: yesterday,
-			Metadata: &models.SessionMetadata{
-				SessionGoal:    "Shaping focus during agility warmup",
-				SessionOutcome: "Held focus through three obstacle reps",
-				BehaviorNotes:  "High engagement; brief sniffing when new dogs entered",
-				SessionRating:  5,
-			},
 		},
 		{
 			AnimalID:  animals[6].ID, // Cooper
@@ -619,12 +646,6 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 			Content:   "Bella had a vet checkup today - everything looks great! She has lots of energy.",
 			Tags:      []models.CommentTag{medicalTag},
 			CreatedAt: twoDaysAgo,
-			Metadata: &models.SessionMetadata{
-				SessionGoal:    "Post-vet decompression walk",
-				SessionOutcome: "Settled after 10 minutes; loose body language",
-				MedicalNotes:   "Vet cleared for light exercise only",
-				SessionRating:  3,
-			},
 		},
 		{
 			AnimalID:  animals[8].ID, // Zeus
@@ -750,14 +771,14 @@ func seedAnnouncements(db *gorm.DB, users []models.User) error {
 			UserID:    users[0].ID, // admin
 			Title:     "Important: Vet Appointment Reminders",
 			Content:   "Reminder to all foster volunteers: Please ensure your foster dogs make it to their scheduled vet appointments. We'll send you email reminders 24 hours before each appointment. If you need to reschedule, please contact us at least 48 hours in advance. Thank you for your dedication to our pups' health!",
-			SendEmail: true,
+			SendEmail: false,
 			CreatedAt: twoDaysAgo,
 		},
 		{
 			UserID:    users[0].ID, // admin
 			Title:     "Photo Day - Help Needed!",
 			Content:   "We're planning a professional photo day for all our available dogs next month! High-quality photos significantly increase adoption rates. We need volunteers to help with dog prep, handling during photo sessions, and treats/rewards. If you have photography skills or just want to help, please sign up! Let's help our dogs put their best paw forward. 📸",
-			SendEmail: true,
+			SendEmail: false,
 			CreatedAt: now,
 		},
 	}

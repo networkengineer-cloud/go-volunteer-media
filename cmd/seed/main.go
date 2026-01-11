@@ -65,8 +65,13 @@ func main() {
 	fmt.Println("  Group Admin (ModSquad):  merry")
 	fmt.Println("  Group Admin (ModSquad):  sophia")
 	fmt.Println("  Volunteer (ModSquad):    terry")
+	fmt.Println("  Volunteer (ModSquad):    alex")
+	fmt.Println("  Volunteer (ModSquad):    jordan")
+	fmt.Println("  Volunteer (ModSquad):    casey")
+	fmt.Println("  Volunteer (ModSquad):    taylor")
 	fmt.Println("\nAll users have access to the ModSquad group.")
 	fmt.Println("merry and sophia are group admins for ModSquad.")
 	fmt.Println("ModSquad has 10 dogs with Unsplash images!")
+	fmt.Println("Email notifications are disabled by default (opt-in).")
 	fmt.Println("=================================")
 }
