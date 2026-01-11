@@ -753,8 +753,8 @@
 }
 
 [data-theme='dark'] .activity-filter-bar {
-  background: var(--neutral-800);
-  border-color: var(--neutral-700);
+  background: #1f2937;
+  border-color: #374151;
 }
 
 .activity-filter-bar .filter-row {
@@ -808,8 +808,8 @@
 [data-theme='dark'] .activity-filter-bar .filter-select,
 [data-theme='dark'] .activity-filter-bar .filter-input,
 [data-theme='dark'] .activity-filter-bar input[type="date"] {
-  background: var(--neutral-900);
-  border-color: var(--neutral-700);
+  background: #111827;
+  border-color: #374151;
   color: var(--text-primary);
   color-scheme: dark; /* Ensures date picker uses dark theme */
 }
@@ -881,8 +881,8 @@
 }
 
 [data-theme='dark'] .animal-dropdown {
-  background: var(--neutral-800);
-  border-color: var(--neutral-700);
+  background: #1f2937;
+  border-color: #374151;
 }
 
 .animal-dropdown-item {
@@ -903,7 +903,7 @@
 }
 
 [data-theme='dark'] .animal-dropdown-item:hover {
-  background: var(--neutral-700);
+  background: #374151;
 }
 
 .animal-dropdown-more {
@@ -916,7 +916,7 @@
 }
 
 [data-theme='dark'] .animal-dropdown-more {
-  border-color: var(--neutral-700);
+  border-color: #374151;
 }
 
 .btn-clear-filters {
@@ -964,8 +964,8 @@
 }
 
 [data-theme='dark'] .quick-filter-btn {
-  background: var(--neutral-800);
-  border-color: var(--neutral-600);
+  background: #1f2937;
+  border-color: #4b5563;
 }
 
 .quick-filter-btn:hover {
@@ -975,7 +975,7 @@
 }
 
 [data-theme='dark'] .quick-filter-btn:hover {
-  background: var(--neutral-700);
+  background: #374151;
   border-color: var(--brand);
 }
 
@@ -1007,8 +1007,8 @@
 }
 
 [data-theme='dark'] .activity-card {
-  background: var(--neutral-800);
-  border-color: var(--neutral-700);
+  background: #1f2937;
+  border-color: #374151;
 }
 
 .activity-card:hover {
