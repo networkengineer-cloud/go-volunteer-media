@@ -182,10 +182,7 @@
   
   /* Input Field Variables for Dark Mode */
   --input-bg: #1f2937;
-  --input-bg-dark: #1f2937;
   --input-border: #4b5563;
-  --input-border-dark: #374151;
-  --text-primary-dark: #f9fafb;
 }
 
 * {
