@@ -617,7 +617,7 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 	comments := []models.AnimalComment{
 		{
 			AnimalID:  animals[1].ID, // Luna
-			UserID:    users[1].ID,   // merry
+			UserID:    users[4].ID,   // alex
 			Content:   "Luna is doing fantastic in her foster home! She's settling in beautifully and learning quickly.",
 			CreatedAt: yesterday,
 			Metadata: &models.SessionMetadata{
@@ -630,7 +630,7 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 		},
 		{
 			AnimalID:  animals[2].ID, // Charlie
-			UserID:    users[2].ID,   // sophia
+			UserID:    users[5].ID,   // jordan
 			Content:   "Charlie is such a sweetheart! He's been getting along great with the other dogs during playtime.",
 			CreatedAt: twoDaysAgo,
 			Metadata: &models.SessionMetadata{
@@ -656,7 +656,7 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 		},
 		{
 			AnimalID:  animals[5].ID, // Daisy
-			UserID:    users[1].ID,   // merry
+			UserID:    users[6].ID,   // casey
 			Content:   "Daisy learned three new tricks today - she's incredibly smart! Would excel at agility.",
 			Tags:      []models.CommentTag{behaviorTag},
 			CreatedAt: yesterday,
@@ -669,13 +669,13 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 		},
 		{
 			AnimalID:  animals[6].ID, // Cooper
-			UserID:    users[2].ID,   // sophia
+			UserID:    users[7].ID,   // taylor
 			Content:   "Cooper went to his foster home today! The family has a large yard and herding breed experience.",
 			CreatedAt: now,
 		},
 		{
 			AnimalID:  animals[7].ID, // Bella
-			UserID:    users[3].ID,   // terry
+			UserID:    users[4].ID,   // alex
 			Content:   "Bella had a vet checkup today - everything looks great! She has lots of energy.",
 			Tags:      []models.CommentTag{medicalTag},
 			CreatedAt: twoDaysAgo,
@@ -688,9 +688,15 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 		},
 		{
 			AnimalID:  animals[8].ID, // Zeus
-			UserID:    users[1].ID,   // merry
+			UserID:    users[5].ID,   // jordan
 			Content:   "Zeus is the gentlest giant! Despite his size, he's so careful and just wants to cuddle.",
 			CreatedAt: yesterday,
+		},
+		{
+			AnimalID:  animals[8].ID, // Zeus (additional comment)
+			UserID:    users[1].ID,   // merry
+			Content:   "Had another great session with Zeus today! He's making excellent progress with his manners.",
+			CreatedAt: twoDaysAgo,
 			Metadata: &models.SessionMetadata{
 				SessionGoal:    "Manners with visitors and calm settling",
 				SessionOutcome: "Settled on mat within 3 minutes; remained for 10",
@@ -700,9 +706,15 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 		},
 		{
 			AnimalID:  animals[9].ID, // Rosie
-			UserID:    users[2].ID,   // sophia
+			UserID:    users[6].ID,   // casey
 			Content:   "Rosie is an absolute star! Her short legs and big personality have won everyone's hearts.",
 			CreatedAt: fourDaysAgo,
+		},
+		{
+			AnimalID:  animals[9].ID, // Rosie (additional comment)
+			UserID:    users[7].ID,   // taylor
+			Content:   "Took Rosie for a walk around the shelter grounds today. She's doing great with her leash manners!",
+			CreatedAt: threeDaysAgo,
 			Metadata: &models.SessionMetadata{
 				SessionGoal:    "Loose-leash walking around shelter",
 				SessionOutcome: "Minimal pulling; checked-in frequently",
