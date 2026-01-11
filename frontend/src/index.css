@@ -114,6 +114,7 @@
   --bg-primary: var(--surface);
   --bg-secondary: var(--neutral-50);
   --border: var(--neutral-200);
+  --card-bg: #ffffff;
   
   /* Input Field Variables */
   --input-bg: #ffffff;
@@ -179,6 +180,7 @@
   --bg-primary: var(--surface);
   --bg-secondary: var(--neutral-50);
   --border: var(--neutral-200);
+  --card-bg: #1f2937;
   
   /* Input Field Variables for Dark Mode */
   --input-bg: #1f2937;
