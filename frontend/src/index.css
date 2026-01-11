@@ -114,6 +114,10 @@
   --bg-primary: var(--surface);
   --bg-secondary: var(--neutral-50);
   --border: var(--neutral-200);
+  
+  /* Input Field Variables */
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
 }
 
 [data-theme='dark'] {
@@ -175,6 +179,10 @@
   --bg-primary: var(--surface);
   --bg-secondary: var(--neutral-50);
   --border: var(--neutral-200);
+  
+  /* Input Field Variables for Dark Mode */
+  --input-bg: #1f2937;
+  --input-border: #4b5563;
 }
 
 * {

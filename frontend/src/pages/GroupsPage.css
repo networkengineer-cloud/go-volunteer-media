@@ -74,9 +74,9 @@
 }
 
 [data-theme='dark'] .search-input {
-  background: var(--dark-surface-alt, #111827);
-  border-color: var(--dark-border, #374151);
-  color: var(--dark-text-primary, #f9fafb);
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
 }
 
 [data-theme='dark'] .search-input:focus {
@@ -126,9 +126,9 @@
 }
 
 [data-theme='dark'] .filter-select {
-  background: var(--dark-surface-alt, #111827);
-  border-color: var(--dark-border, #374151);
-  color: var(--dark-text-primary, #f9fafb);
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
 }
 
 [data-theme='dark'] .filter-select:focus {
@@ -561,9 +561,9 @@
 
 [data-theme="dark"] .form-group input,
 [data-theme="dark"] .form-group textarea {
-  background: var(--neutral-800, #111827);
-  border-color: var(--neutral-700, #374151);
-  color: var(--text-primary, #f9fafb);
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
 }
 
 [data-theme="dark"] .groups-error {

@@ -38,11 +38,16 @@
   transition-property: border-color, box-shadow, background-color;
 }
 
-[data-theme='dark'] .form-field__input,
+[data-theme='dark'] .form-field__input {
+  background: var(--input-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--text-primary) !important;
+}
+
 [data-theme='dark'] .form-field__textarea {
-  background: var(--input-bg-dark, #1f2937);
-  border-color: var(--input-border-dark, #374151);
-  color: var(--text-primary-dark, #f9fafb);
+  background: var(--input-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--text-primary) !important;
 }
 
 .form-field__input:focus,
