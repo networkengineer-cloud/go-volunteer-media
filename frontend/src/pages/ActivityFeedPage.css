@@ -224,6 +224,10 @@
   color: var(--text-color, #374151);
 }
 
+[data-theme="dark"] .quick-filters-label {
+  color: #f3f4f6;
+}
+
 .quick-filter-btn {
   padding: 0.5rem 1rem;
   background: var(--input-bg, #f9fafb);
@@ -237,10 +241,16 @@
 [data-theme="dark"] .quick-filter-btn {
   background: rgba(255, 255, 255, 0.03);
   border-color: #374151;
+  color: #e5e7eb;
 }
 
 .quick-filter-btn:hover {
   background: var(--input-bg-hover, #f3f4f6);
+  border-color: var(--primary-color, #0e6c55);
+}
+
+[data-theme="dark"] .quick-filter-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
   border-color: var(--primary-color, #0e6c55);
 }
 
