@@ -128,8 +128,14 @@ func SeedData(db *gorm.DB, force bool) error {
 
 // seedUsers creates demo users focused on ModSquad volunteers
 func seedUsers(db *gorm.DB) ([]models.User, error) {
-	// Hash password (minimum 8 characters for frontend validation)
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("volunteer2026!"), bcrypt.DefaultCost)
+	// Hash passwords (minimum 8 characters for frontend validation)
+	// Admin/Group Admins keep demo1234 password
+	adminPassword, err := bcrypt.GenerateFromPassword([]byte("demo1234"), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+	// Volunteers use volunteer2026! password
+	volunteerPassword, err := bcrypt.GenerateFromPassword([]byte("volunteer2026!"), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +144,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		{
 			Username:                  "admin",
 			Email:                     "admin@demo.local",
-			Password:                  string(hashedPassword),
+			Password:                  string(adminPassword),
 			IsAdmin:                   true,
 			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0001",
@@ -148,7 +154,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		{
 			Username:                  "merry",
 			Email:                     "merry@demo.local",
-			Password:                  string(hashedPassword),
+			Password:                  string(adminPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0002",
@@ -158,7 +164,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		{
 			Username:                  "sophia",
 			Email:                     "sophia@demo.local",
-			Password:                  string(hashedPassword),
+			Password:                  string(adminPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0003",
@@ -168,7 +174,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		{
 			Username:                  "terry",
 			Email:                     "terry@demo.local",
-			Password:                  string(hashedPassword),
+			Password:                  string(volunteerPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0004",
@@ -178,7 +184,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		{
 			Username:                  "alex",
 			Email:                     "alex@demo.local",
-			Password:                  string(hashedPassword),
+			Password:                  string(volunteerPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0005",
@@ -188,7 +194,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		{
 			Username:                  "jordan",
 			Email:                     "jordan@demo.local",
-			Password:                  string(hashedPassword),
+			Password:                  string(volunteerPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0006",
@@ -198,7 +204,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		{
 			Username:                  "casey",
 			Email:                     "casey@demo.local",
-			Password:                  string(hashedPassword),
+			Password:                  string(volunteerPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0007",
@@ -208,7 +214,7 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		{
 			Username:                  "taylor",
 			Email:                     "taylor@demo.local",
-			Password:                  string(hashedPassword),
+			Password:                  string(volunteerPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: false,
 			PhoneNumber:               "(555) 100-0008",
