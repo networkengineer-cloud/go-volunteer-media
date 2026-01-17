@@ -386,7 +386,8 @@ func TestAdminCreateUser(t *testing.T) {
 			c.Request = httptest.NewRequest("POST", "/api/v1/admin/users", bytes.NewBuffer(jsonBytes))
 			c.Request.Header.Set("Content-Type", "application/json")
 
-			handler := AdminCreateUser(db)
+			// Create a nil email service for test (email functionality will be skipped)
+			handler := AdminCreateUser(db, nil)
 			handler(c)
 
 			if w.Code != tt.expectedStatus {

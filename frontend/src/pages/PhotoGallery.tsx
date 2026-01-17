@@ -27,6 +27,7 @@ const PhotoGallery: React.FC = () => {
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string>('');
   const [previewWidth, setPreviewWidth] = useState<number | null>(null);
   const [previewHeight, setPreviewHeight] = useState<number | null>(null);
+  const [settingProfile, setSettingProfile] = useState<number | null>(null);
 
   const loadData = useCallback(async (gId: number, animalId: number) => {
     try {
@@ -138,15 +139,39 @@ const PhotoGallery: React.FC = () => {
   };
 
   const handleSetProfilePicture = async (imageId: number) => {
-    if (!id || !groupId) return;
+    // Prevent concurrent calls - all checks must pass atomically
+    if (!id || !groupId || settingProfile !== null) return;
+    
+    // Store original state for rollback
+    const originalImages = [...images];
+    const originalSelectedPhoto = selectedPhoto;
+
+    setSettingProfile(imageId);
+    
+    // Optimistic update - immediately update UI
+    setImages(prev => prev.map(img => ({
+      ...img,
+      is_profile_picture: img.id === imageId
+    })));
+    
+    if (selectedPhoto) {
+      setSelectedPhoto(prev => prev ? { ...prev, is_profile_picture: prev.id === imageId } : null);
+    }
 
     try {
       await animalsApi.setProfilePicture(Number(groupId), Number(id), imageId);
-      showToast('Profile picture updated', 'success');
-      loadData(Number(groupId), Number(id)); // Reload to show new profile badge
+      showToast('✅ Profile picture updated!', 'success');
+      
+      // Reload to sync with server
+      loadData(Number(groupId), Number(id));
     } catch (error) {
       console.error('Set profile picture failed:', error);
+      // Rollback optimistic update on error
+      setImages(originalImages);
+      setSelectedPhoto(originalSelectedPhoto);
       showToast('Failed to set profile picture', 'error');
+    } finally {
+      setSettingProfile(null);
     }
   };
 
@@ -184,6 +209,15 @@ const PhotoGallery: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightboxIndex, images]);
+
+  // Cleanup upload preview URL on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (uploadPreviewUrl) {
+        URL.revokeObjectURL(uploadPreviewUrl);
+      }
+    };
+  }, [uploadPreviewUrl]);
 
   if (loading) {
     return <div className="loading">Loading photos...</div>;
@@ -318,13 +352,24 @@ const PhotoGallery: React.FC = () => {
                     </span>
                   </div>
                   <div className="lightbox-actions">
-                    {isAdmin && !selectedPhoto.is_profile_picture && (
-                      <button
-                        className="btn-primary"
-                        onClick={() => handleSetProfilePicture(selectedPhoto.id)}
-                      >
-                        Set as Profile Picture
-                      </button>
+                    {!selectedPhoto.is_profile_picture && (
+                      <div className="profile-picture-action">
+                        <button
+                          className="btn-primary"
+                          onClick={() => handleSetProfilePicture(selectedPhoto.id)}
+                          disabled={settingProfile !== null}
+                          aria-label="Set this image as the animal's main profile picture"
+                        >
+                          {settingProfile === selectedPhoto.id ? (
+                            <>⏳ Setting...</>
+                          ) : (
+                            <>⭐ Set as Profile Picture</>
+                          )}
+                        </button>
+                        <p className="action-help-text">
+                          This will become the main photo shown on {animal.name}'s card
+                        </p>
+                      </div>
                     )}
                     {(isAdmin || selectedPhoto.user?.id === user?.id) && (
                       <button

@@ -309,6 +309,7 @@ func DeleteAnimalImage(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 }
 
 // SetAnimalProfilePicture sets an image as the animal's profile picture (admin only)
+// Admin-only endpoint (legacy, kept for admin workflows that manage animals across groups)
 // PUT /api/admin/animals/:animalId/images/:imageId/set-profile
 func SetAnimalProfilePicture(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -381,7 +382,8 @@ func SetAnimalProfilePicture(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// SetAnimalProfilePictureGroupScoped sets an image as the animal's profile picture (group admin access)
+// SetAnimalProfilePictureGroupScoped sets an image as the animal's profile picture (group member access)
+// Group member endpoint - any member can set profile pictures for animals in their groups (recommended for group workflows)
 // PUT /api/groups/:groupId/animals/:animalId/images/:imageId/set-profile
 func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -394,9 +396,9 @@ func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
-		// Check if user is group admin
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required for this group"})
+		// Check if user is a member of this group
+		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
 
@@ -407,7 +409,7 @@ func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get the image
+		// Get the image and verify it belongs to this animal (enforced by WHERE clause)
 		var animalImage models.AnimalImage
 		if err := db.Where("id = ? AND animal_id = ?", imageID, animalID).First(&animalImage).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Image not found"})
@@ -416,9 +418,15 @@ func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 
 		// Start transaction
 		tx := db.Begin()
+		if err := tx.Error; err != nil {
+			logger.Error("Failed to start transaction", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start transaction"})
+			return
+		}
 		defer func() {
 			if r := recover(); r != nil {
 				tx.Rollback()
+				logger.WithField("panic", r).Warn("Panic recovered during profile picture update")
 			}
 		}()
 
@@ -461,7 +469,8 @@ func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 			"image_id":  imageID,
 			"animal_id": animalID,
 			"group_id":  groupID,
-		}).Info("Profile picture updated successfully by group admin")
+			"user_id":   userID,
+		}).Info("Profile picture updated successfully")
 
 		// Reload with user data
 		db.Preload("User").First(&animalImage, animalImage.ID)

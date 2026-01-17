@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 )
 
 // TestServeAnimalProtocolDocument_Security tests security aspects of document serving
@@ -151,8 +152,9 @@ func TestServeAnimalProtocolDocument_Security(t *testing.T) {
 			// Setup authentication
 			tt.setupAuth(c)
 
-			// Call handler
-			handler := ServeAnimalProtocolDocument(db)
+			// Call handler with mock storage provider
+			storageProvider := storage.NewPostgresProvider(db)
+			handler := ServeAnimalProtocolDocument(db, storageProvider)
 			handler(c)
 
 			// Assert status code
@@ -242,7 +244,8 @@ func TestServeAnimalProtocolDocument_UUIDEnumeration(t *testing.T) {
 		c.Set("user_id", unauthorizedUser.ID)
 		c.Set("is_admin", false)
 
-		handler := ServeAnimalProtocolDocument(db)
+		storageProvider := storage.NewPostgresProvider(db)
+		handler := ServeAnimalProtocolDocument(db, storageProvider)
 		handler(c)
 
 		// All requests should be forbidden (403), not 404
@@ -324,7 +327,8 @@ func TestServeAnimalProtocolDocument_GroupMembershipValidation(t *testing.T) {
 			c.Set("user_id", multiGroupUser.ID)
 			c.Set("is_admin", false)
 
-			handler := ServeAnimalProtocolDocument(db)
+			storageProvider := storage.NewPostgresProvider(db)
+			handler := ServeAnimalProtocolDocument(db, storageProvider)
 			handler(c)
 
 			assert.Equal(t, http.StatusOK, w.Code,
@@ -377,7 +381,8 @@ func TestServeAnimalProtocolDocument_EmptyDocumentData(t *testing.T) {
 	c.Set("user_id", user.ID)
 	c.Set("is_admin", false)
 
-	handler := ServeAnimalProtocolDocument(db)
+	storageProvider := storage.NewPostgresProvider(db)
+	handler := ServeAnimalProtocolDocument(db, storageProvider)
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
