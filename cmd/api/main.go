@@ -257,10 +257,11 @@ func main() {
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
 			group.GET("/animals/check-duplicates", handlers.CheckDuplicateNames(db))
 
-			// Animal images - all group members can view and upload
+			// Animal images - all group members can view, upload, and set profile pictures
 			group.GET("/animals/:animalId/images", handlers.GetAnimalImages(db))
 			group.POST("/animals/:animalId/images", handlers.UploadAnimalImageToGallery(db, storageProvider))
 			group.DELETE("/animals/:animalId/images/:imageId", handlers.DeleteAnimalImage(db, storageProvider))
+			// Profile picture selection - available to all group members to help curate animal photos
 			group.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePictureGroupScoped(db))
 
 			// Animal comments - all group members can view, add, and edit own comments

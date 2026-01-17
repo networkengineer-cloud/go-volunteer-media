@@ -394,9 +394,9 @@ func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
-		// Check if user is group admin
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required for this group"})
+		// Check if user is a member of this group
+		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
 
@@ -461,7 +461,8 @@ func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 			"image_id":  imageID,
 			"animal_id": animalID,
 			"group_id":  groupID,
-		}).Info("Profile picture updated successfully by group admin")
+			"user_id":   userID,
+		}).Info("Profile picture updated successfully")
 
 		// Reload with user data
 		db.Preload("User").First(&animalImage, animalImage.ID)
