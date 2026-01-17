@@ -23,7 +23,7 @@ test.describe('Animal Filtering and Search Feature', () => {
   });
 
   test.describe('Backend API Tests (require backend)', () => {
-    test('GetAnimals should support status filtering', async ({ page }) => {
+    test('GetAnimals should support status filtering', async ({ page: _page }) => {
       // This test would verify:
       // 1. Default query returns available and bite_quarantine animals
       // 2. status=all returns all animals
@@ -41,7 +41,7 @@ test.describe('Animal Filtering and Search Feature', () => {
       console.log('- GET /groups/:id/animals?status=bite_quarantine -> bite quarantine animals only');
     });
 
-    test('GetAnimals should support name search', async ({ page }) => {
+    test('GetAnimals should support name search', async ({ page: _page }) => {
       // This test would verify:
       // 1. name parameter filters animals by name (case-insensitive)
       // 2. partial matches work (LIKE query)
@@ -54,7 +54,7 @@ test.describe('Animal Filtering and Search Feature', () => {
       console.log('- Partial matches supported (LIKE with %)');
     });
 
-    test('GetAnimals should support combined filters', async ({ page }) => {
+    test('GetAnimals should support combined filters', async ({ page: _page }) => {
       // This test would verify:
       // 1. status and name filters work together
       // 2. Multiple filters are ANDed together
@@ -66,7 +66,7 @@ test.describe('Animal Filtering and Search Feature', () => {
   });
 
   test.describe('Integration Tests (require backend and data)', () => {
-    test('should display animals with filtering UI', async ({ page }) => {
+    test('should display animals with filtering UI', async ({ page: _page }) => {
       // This would require:
       // 1. Backend running with database
       // 2. Test user with group access
@@ -100,7 +100,7 @@ test.describe('Animal Filtering and Search Feature', () => {
       console.log('Integration test for animal filtering - requires full setup');
     });
 
-    test('should show archived status in animal form', async ({ page }) => {
+    test('should show archived status in animal form', async ({ page: _page }) => {
       // This would require:
       // 1. Backend running
       // 2. Admin user credentials
@@ -122,7 +122,7 @@ test.describe('Animal Filtering and Search Feature', () => {
       console.log('Integration test for archived status in form - requires full setup');
     });
 
-    test('should update animals list when filters change', async ({ page }) => {
+    test('should update animals list when filters change', async ({ page: _page }) => {
       // This would test the reactive behavior:
       // 1. Initial load shows available and bite_quarantine animals
       // 2. Changing status filter reloads animals
@@ -134,7 +134,7 @@ test.describe('Animal Filtering and Search Feature', () => {
   });
 
   test.describe('UI/UX Tests', () => {
-    test('should have proper styling for archived status badge', async ({ page }) => {
+    test('should have proper styling for archived status badge', async ({ page: _page }) => {
       // Verify archived status badge has:
       // - Gray background (#e2e8f0)
       // - Dark gray text (#4a5568)
@@ -146,7 +146,7 @@ test.describe('Animal Filtering and Search Feature', () => {
       console.log('- Consistent with other status badges');
     });
 
-    test('should have accessible filter controls', async ({ page }) => {
+    test('should have accessible filter controls', async ({ page: _page }) => {
       // Verify:
       // - Labels are associated with inputs (htmlFor)
       // - Inputs have proper IDs

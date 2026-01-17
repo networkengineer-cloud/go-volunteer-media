@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import axios from 'axios';
 import { groupsApi, animalsApi, authApi } from '../api/client';
-import type { Group, Animal, GroupMembership, ActivityItem } from '../api/client';
+import type { Group, Animal, GroupMembership, ActivityItem, AnimalComment } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
@@ -38,7 +39,6 @@ const GroupPage: React.FC = () => {
   const [nameSearch, setNameSearch] = useState<string>('');
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showProtocolForm, setShowProtocolForm] = useState(false);
-  const [activityFeedKey, setActivityFeedKey] = useState(0);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
   
   // Activity Feed state (integrated from ActivityFeedPage)
@@ -183,9 +183,12 @@ const GroupPage: React.FC = () => {
       setActivityTotal(response.data.total);
       setActivityHasMore(response.data.hasMore);
       setActivityError('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load activity feed:', err);
-      const errorMessage = err.response?.data?.error || 'Failed to load activity feed. Please try again.';
+      let errorMessage = 'Failed to load activity feed. Please try again.';
+      if (axios.isAxiosError(err)) {
+        errorMessage = err.response?.data?.error || errorMessage;
+      }
       setActivityError(errorMessage);
       toast.showError(errorMessage);
     } finally {
@@ -644,7 +647,17 @@ const GroupPage: React.FC = () => {
                     )}
 
                     {activity.type === 'comment' ? (
-                      <SessionCommentDisplay comment={activity as any} />
+                      <SessionCommentDisplay comment={{
+                        id: activity.id,
+                        animal_id: activity.animal_id || 0,
+                        user_id: activity.user_id,
+                        content: activity.content,
+                        image_url: activity.image_url || '',
+                        created_at: activity.created_at,
+                        metadata: activity.metadata,
+                        tags: activity.tags,
+                        user: activity.user,
+                      } satisfies AnimalComment} />
                     ) : (
                       <p className="activity-text">{activity.content}</p>
                     )}

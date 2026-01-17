@@ -55,8 +55,12 @@ const SetupPassword: React.FC = () => {
       setTimeout(() => {
         navigate('/login');
       }, REDIRECT_TIMEOUT);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to set password. Please try again or contact your administrator.');
+    } catch (err: unknown) {
+      let errorMessage = 'Failed to set password. Please try again or contact your administrator.';
+      if (axios.isAxiosError(err)) {
+        errorMessage = err.response?.data?.error || errorMessage;
+      }
+      setError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
