@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Volunteer Profile Picture Selection', () => {
-  // Test user credentials
+  // Test user credentials from seed data (SEED_DATA.md)
+  // ggignore:start - These are demo credentials for automated tests, not production secrets
   const volunteerUser = {
     username: 'terry',
     password: 'volunteer2026!',
@@ -11,6 +12,7 @@ test.describe('Volunteer Profile Picture Selection', () => {
     username: 'admin',
     password: 'demo1234',
   };
+  // ggignore:end
 
   test.beforeEach(async ({ page }) => {
     // Start from the login page

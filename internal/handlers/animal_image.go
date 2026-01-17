@@ -416,6 +416,11 @@ func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 
 		// Start transaction
 		tx := db.Begin()
+		if err := tx.Error; err != nil {
+			logger.Error("Failed to start transaction", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start transaction"})
+			return
+		}
 		defer func() {
 			if r := recover(); r != nil {
 				tx.Rollback()

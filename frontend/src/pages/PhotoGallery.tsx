@@ -139,8 +139,7 @@ const PhotoGallery: React.FC = () => {
   };
 
   const handleSetProfilePicture = async (imageId: number) => {
-    if (!id || !groupId) return;
-
+		if (!id || !groupId || settingProfile !== null) return; // Prevent concurrent calls
     // Store original state for rollback
     const originalImages = [...images];
     const originalSelectedPhoto = selectedPhoto;
@@ -208,6 +207,15 @@ const PhotoGallery: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightboxIndex, images]);
+
+  // Cleanup upload preview URL on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (uploadPreviewUrl) {
+        URL.revokeObjectURL(uploadPreviewUrl);
+      }
+    };
+  }, [uploadPreviewUrl]);
 
   if (loading) {
     return <div className="loading">Loading photos...</div>;
