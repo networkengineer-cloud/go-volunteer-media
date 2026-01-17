@@ -139,10 +139,8 @@ const PhotoGallery: React.FC = () => {
   };
 
   const handleSetProfilePicture = async (imageId: number) => {
-		if (!id || !groupId) return;
-    
-    // Prevent concurrent calls - check before setting
-    if (settingProfile !== null) return;
+    // Prevent concurrent calls - all checks must pass atomically
+    if (!id || !groupId || settingProfile !== null) return;
     
     // Store original state for rollback
     const originalImages = [...images];
@@ -359,7 +357,7 @@ const PhotoGallery: React.FC = () => {
                         <button
                           className="btn-primary"
                           onClick={() => handleSetProfilePicture(selectedPhoto.id)}
-                          disabled={settingProfile === selectedPhoto.id}
+                          disabled={settingProfile !== null}
                           aria-label="Set this image as the animal's main profile picture"
                         >
                           {settingProfile === selectedPhoto.id ? (
