@@ -139,7 +139,11 @@ const PhotoGallery: React.FC = () => {
   };
 
   const handleSetProfilePicture = async (imageId: number) => {
-		if (!id || !groupId || settingProfile !== null) return; // Prevent concurrent calls
+		if (!id || !groupId) return;
+    
+    // Prevent concurrent calls - check before setting
+    if (settingProfile !== null) return;
+    
     // Store original state for rollback
     const originalImages = [...images];
     const originalSelectedPhoto = selectedPhoto;
