@@ -141,25 +141,33 @@ const PhotoGallery: React.FC = () => {
   const handleSetProfilePicture = async (imageId: number) => {
     if (!id || !groupId) return;
 
+    // Store original state for rollback
+    const originalImages = [...images];
+    const originalSelectedPhoto = selectedPhoto;
+
     setSettingProfile(imageId);
+    
+    // Optimistic update - immediately update UI
+    setImages(prev => prev.map(img => ({
+      ...img,
+      is_profile_picture: img.id === imageId
+    })));
+    
+    if (selectedPhoto) {
+      setSelectedPhoto(prev => prev ? { ...prev, is_profile_picture: prev.id === imageId } : null);
+    }
+
     try {
       await animalsApi.setProfilePicture(Number(groupId), Number(id), imageId);
       showToast('✅ Profile picture updated!', 'success');
-      
-      // Optimistic update - immediately update UI
-      setImages(prev => prev.map(img => ({
-        ...img,
-        is_profile_picture: img.id === imageId
-      })));
-      
-      if (selectedPhoto) {
-        setSelectedPhoto(prev => prev ? { ...prev, is_profile_picture: prev.id === imageId } : null);
-      }
       
       // Reload to sync with server
       loadData(Number(groupId), Number(id));
     } catch (error) {
       console.error('Set profile picture failed:', error);
+      // Rollback optimistic update on error
+      setImages(originalImages);
+      setSelectedPhoto(originalSelectedPhoto);
       showToast('Failed to set profile picture', 'error');
     } finally {
       setSettingProfile(null);
