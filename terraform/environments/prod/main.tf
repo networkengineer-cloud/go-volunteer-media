@@ -160,7 +160,14 @@ resource "azurerm_postgresql_flexible_server_database" "main" {
   collation = "en_US.utf8"
 }
 
-# Storage Account for image uploads
+# Storage Account for images and protocol documents
+# Supports storing animal images, user-uploaded photos, and animal protocol documents
+# Configuration:
+# - STORAGE_PROVIDER=azure enables Azure Blob Storage backend (default: postgres for backward compatibility)
+# - Images and documents are stored with UUIDs as identifiers and served via signed URLs
+# - Container has private access; only authenticated requests can retrieve documents
+# - Blob versioning enabled for data protection and accidental deletion recovery
+# - Delete retention policies preserve deleted blobs for 7 days for recovery
 resource "azurerm_storage_account" "main" {
   name                = "st${replace(var.project_name, "-", "")}${var.environment}"
   location            = azurerm_resource_group.main.location
@@ -321,19 +328,25 @@ resource "azurerm_container_app" "main" {
         value = var.sendgrid_from_email
       }
       
+      # Storage Provider Configuration
+      env {
+        name  = "STORAGE_PROVIDER"
+        value = "azure"
+      }
+      
       # Azure Storage Configuration
       env {
-        name  = "AZURE_STORAGE_ACCOUNT"
+        name  = "AZURE_STORAGE_ACCOUNT_NAME"
         value = azurerm_storage_account.main.name
       }
       
       env {
-        name        = "AZURE_STORAGE_KEY"
+        name        = "AZURE_STORAGE_ACCOUNT_KEY"
         secret_name = "storage-account-key"
       }
       
       env {
-        name  = "AZURE_STORAGE_CONTAINER"
+        name  = "AZURE_STORAGE_CONTAINER_NAME"
         value = azurerm_storage_container.uploads.name
       }
       
