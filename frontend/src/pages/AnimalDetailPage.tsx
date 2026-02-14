@@ -48,6 +48,7 @@ const AnimalDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showCommentForm, setShowCommentForm] = useState(true);
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [error, setError] = useState<string>('');
   
   // Pagination state
@@ -223,6 +224,54 @@ const AnimalDetailPage: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleEditComment = (commentId: number) => {
+    setEditingCommentId(commentId);
+    setShowCommentForm(false); // Hide the new comment form when editing
+  };
+
+  const handleUpdateComment = async (content: string, imageUrl: string, tagIds: number[], metadata?: SessionMetadata) => {
+    if (!editingCommentId) return;
+    
+    if (!content.trim() && !imageUrl) {
+      toast.showWarning('Please write a comment');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const updatedComment = await animalCommentsApi.update(
+        Number(groupId),
+        Number(id),
+        editingCommentId,
+        content,
+        imageUrl,
+        tagIds.length > 0 ? tagIds : undefined,
+        metadata
+      );
+      
+      // Update the comment in the local state
+      setComments(comments.map(c => c.id === editingCommentId ? updatedComment.data : c));
+      
+      // Exit edit mode
+      setEditingCommentId(null);
+      setShowCommentForm(true);
+      
+      toast.showSuccess('Comment updated successfully!');
+    } catch (error: unknown) {
+      console.error('Failed to update comment:', error);
+      const errorMsg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to update comment. Please try again.';
+      toast.showError(errorMsg);
+      throw error;
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    setShowCommentForm(true);
   };
 
   const handleEdit = () => {
@@ -722,52 +771,89 @@ const AnimalDetailPage: React.FC = () => {
               />
             ) : (
               <>
-                {comments.map((comment) => (
-                  <div key={comment.id} className="comment-card">
-                    <div className="comment-header">
-                      {comment.user?.id ? (
-                        <Link to={`/users/${comment.user.id}/profile`} className="comment-author comment-author--link">
-                          {comment.user.username}
-                        </Link>
+                {comments.map((comment) => {
+                  const isEditing = editingCommentId === comment.id;
+                  const isCommentOwner = comment.user?.id === user?.id;
+                  
+                  return (
+                    <div key={comment.id} className={`comment-card ${isEditing ? 'editing' : ''}`}>
+                      {isEditing ? (
+                        // Inline editing form
+                        <SessionReportForm
+                          animalId={Number(id)}
+                          availableTags={availableTags}
+                          onSubmit={handleUpdateComment}
+                          submitting={submitting}
+                          editingComment={comment}
+                          onCancelEdit={handleCancelEdit}
+                        />
                       ) : (
-                        <span className="comment-author">{comment.user?.username}</span>
-                      )}
-                      <span className="comment-date">
-                        {new Date(comment.created_at).toLocaleDateString()} at{' '}
-                        {new Date(comment.created_at).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                      {(isAdmin || comment.user?.id === user?.id) && (
-                        <button
-                          className="btn-delete-comment"
-                          onClick={() => handleDeleteComment(comment.id)}
-                          title="Delete comment"
-                        >
-                          🗑️
-                        </button>
+                        <>
+                          <div className="comment-header">
+                            {comment.user?.id ? (
+                              <Link to={`/users/${comment.user.id}/profile`} className="comment-author comment-author--link">
+                                {comment.user.username}
+                              </Link>
+                            ) : (
+                              <span className="comment-author">{comment.user?.username}</span>
+                            )}
+                            <span className="comment-date">
+                              {new Date(comment.created_at).toLocaleDateString()} at{' '}
+                              {new Date(comment.created_at).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                              {comment.created_at !== comment.updated_at && (
+                                <span className="edited-badge" title={`Last edited: ${new Date(comment.updated_at).toLocaleString()}`}>
+                                  (edited)
+                                </span>
+                              )}
+                            </span>
+                            <div className="comment-actions">
+                              {isCommentOwner && (
+                                <button
+                                  className="btn-edit-comment"
+                                  onClick={() => handleEditComment(comment.id)}
+                                  title="Edit comment"
+                                  aria-label="Edit comment"
+                                >
+                                  ✏️
+                                </button>
+                              )}
+                              {(isAdmin || isCommentOwner) && (
+                                <button
+                                  className="btn-delete-comment"
+                                  onClick={() => handleDeleteComment(comment.id)}
+                                  title="Delete comment"
+                                  aria-label="Delete comment"
+                                >
+                                  🗑️
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {comment.tags && comment.tags.length > 0 && (
+                            <div className="comment-tags">
+                              {comment.tags.map((tag) => (
+                                <span key={tag.id} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                                  {tag.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <SessionCommentDisplay comment={comment} />
+                          {comment.image_url && (
+                            <img
+                              src={comment.image_url}
+                              alt="Comment"
+                              className="comment-image"
+                            />
+                          )}
+                        </>
                       )}
                     </div>
-                    {comment.tags && comment.tags.length > 0 && (
-                      <div className="comment-tags">
-                        {comment.tags.map((tag) => (
-                          <span key={tag.id} className="tag-badge" style={{ backgroundColor: tag.color }}>
-                            {tag.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <SessionCommentDisplay comment={comment} />
-                    {comment.image_url && (
-                      <img
-                        src={comment.image_url}
-                        alt="Comment"
-                        className="comment-image"
-                      />
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
 
                 {hasMore && (
                   <div className="load-more-container">

@@ -450,6 +450,7 @@ details[open] .tags-toggle::before {
   margin-top: 1rem;
   display: flex;
   justify-content: flex-end;
+  gap: 0.75rem;
 }
 
 .btn-submit {
@@ -483,6 +484,49 @@ details[open] .tags-toggle::before {
 .btn-submit:focus {
   outline: 2px solid var(--primary-color, #0e6c55);
   outline-offset: 2px;
+}
+
+.btn-cancel {
+  padding: 0.75rem 2rem;
+  background: var(--neutral-200, #e5e7eb);
+  color: var(--text-primary, #1f2937);
+  border: 1px solid var(--neutral-300, #d1d5db);
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 120px;
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: var(--neutral-300, #d1d5db);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-cancel:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-cancel:focus {
+  outline: 2px solid var(--primary-color, #0e6c55);
+  outline-offset: 2px;
+}
+
+[data-theme="dark"] .btn-cancel {
+  background: var(--neutral-700, #374151);
+  color: var(--text-primary, #f3f4f6);
+  border-color: var(--neutral-600, #4b5563);
+}
+
+[data-theme="dark"] .btn-cancel:hover:not(:disabled) {
+  background: var(--neutral-600, #4b5563);
 }
 
 /* Mobile Optimizations */

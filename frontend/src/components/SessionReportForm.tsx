@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { CommentTag, SessionMetadata } from '../api/client';
+import type { AnimalComment, CommentTag, SessionMetadata } from '../api/client';
 import './SessionReportForm.css';
 
 interface SessionReportFormProps {
@@ -7,6 +7,8 @@ interface SessionReportFormProps {
   availableTags: CommentTag[];
   onSubmit: (content: string, imageUrl: string, tagIds: number[], metadata?: SessionMetadata) => Promise<void>;
   submitting: boolean;
+  editingComment?: AnimalComment | null;
+  onCancelEdit?: () => void;
 }
 
 type FormMode = 'quick' | 'structured';
@@ -24,7 +26,10 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   availableTags,
   onSubmit,
   submitting,
+  editingComment,
+  onCancelEdit,
 }) => {
+  const isEditMode = !!editingComment;
   const [mode, setMode] = useState<FormMode>('quick');
   const [commentText, setCommentText] = useState('');
   const [commentImage, setCommentImage] = useState('');
@@ -112,24 +117,60 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     localStorage.removeItem(getDraftKey());
   };
 
-  // On mount, check for existing draft
+  // On mount, check for existing draft (but skip in edit mode)
   useEffect(() => {
+    if (isEditMode) return; // Don't restore drafts when editing
+    
     const draft = restoreDraft();
     if (draft) {
       setShowRestoreDraft(true);
     }
-  }, []);
+  }, [isEditMode]);
 
-  // Auto-save draft every 30 seconds - using callback to access current state
+  // Pre-fill form when editingComment changes
   useEffect(() => {
-    if (mode !== 'structured') return;
+    if (!editingComment) return;
+    
+    // Pre-fill tags
+    setSelectedTags(editingComment.tags?.map(t => t.id) || []);
+    
+    // Pre-fill image
+    setCommentImage(editingComment.image_url || '');
+    
+    // Check if this is a structured session report or a quick comment
+    if (editingComment.metadata) {
+      // Structured session report
+      setMode('structured');
+      setSessionGoal(editingComment.metadata.session_goal || '');
+      setSessionOutcome(editingComment.metadata.session_outcome || '');
+      setBehaviorNotes(editingComment.metadata.behavior_notes || '');
+      setMedicalNotes(editingComment.metadata.medical_notes || '');
+      setSessionRating(editingComment.metadata.session_rating || 0);
+      setOtherNotes(editingComment.metadata.other_notes || '');
+      setCommentText('');
+    } else {
+      // Quick comment
+      setMode('quick');
+      setCommentText(editingComment.content || '');
+      setSessionGoal('');
+      setSessionOutcome('');
+      setBehaviorNotes('');
+      setMedicalNotes('');
+      setSessionRating(0);
+      setOtherNotes('');
+    }
+  }, [editingComment]);
+
+  // Auto-save draft every 30 seconds - using callback to access current state (skip in edit mode)
+  useEffect(() => {
+    if (mode !== 'structured' || isEditMode) return;
     
     const interval = setInterval(() => {
       saveDraft();
     }, 30000); // 30 seconds
     
     return () => clearInterval(interval);
-  }, [mode]); // Only depend on mode, saveDraft uses ref for current values
+  }, [mode, isEditMode]); // Only depend on mode and isEditMode, saveDraft uses ref for current values
 
   const handleRestoreDraft = () => {
     const draft = restoreDraft();
@@ -268,19 +309,23 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     
     await onSubmit(content, commentImage, selectedTags, metadata);
     
-    // Clear draft on successful submission
-    clearDraft();
+    // Clear draft on successful submission (but only if not editing)
+    if (!isEditMode) {
+      clearDraft();
+    }
     
-    // Reset form
-    setCommentText('');
-    setCommentImage('');
-    setSelectedTags([]);
-    setSessionGoal('');
-    setSessionOutcome('');
-    setBehaviorNotes('');
-    setMedicalNotes('');
-    setSessionRating(0);
-    setOtherNotes('');
+    // Reset form (but only if not editing - parent will handle state cleanup)
+    if (!isEditMode) {
+      setCommentText('');
+      setCommentImage('');
+      setSelectedTags([]);
+      setSessionGoal('');
+      setSessionOutcome('');
+      setBehaviorNotes('');
+      setMedicalNotes('');
+      setSessionRating(0);
+      setOtherNotes('');
+    }
   };
 
   const getRatingEmoji = (rating: number): string => {
@@ -799,10 +844,20 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
           type="submit"
           className="btn-submit"
           disabled={submitting || !isFormValid()}
-          title={!isFormValid() ? 'Add some content first' : mode === 'quick' ? 'Post comment' : 'Post session report'}
+          title={!isFormValid() ? 'Add some content first' : isEditMode ? 'Save changes' : mode === 'quick' ? 'Post comment' : 'Post session report'}
         >
-          {submitting ? 'Posting...' : mode === 'quick' ? 'Post Comment' : 'Post Session Report'}
+          {submitting ? (isEditMode ? 'Saving...' : 'Posting...') : isEditMode ? 'Save Changes' : mode === 'quick' ? 'Post Comment' : 'Post Session Report'}
         </button>
+        {isEditMode && onCancelEdit && (
+          <button
+            type="button"
+            className="btn-cancel"
+            onClick={onCancelEdit}
+            disabled={submitting}
+          >
+            Cancel
+          </button>
+        )}
       </div>
     </form>
   );
