@@ -622,8 +622,8 @@ const UsersPage: React.FC = () => {
         // Site admins use the admin endpoint with full permissions
         response = await usersApi.create({
           username: createData.username,
-          first_name: createData.first_name || undefined,
-          last_name: createData.last_name || undefined,
+          first_name: createData.first_name.trim() || undefined,
+          last_name: createData.last_name.trim() || undefined,
           email: createData.email,
           password: createData.password || undefined,
           is_admin: createData.is_admin,
@@ -634,8 +634,8 @@ const UsersPage: React.FC = () => {
         // GroupAdmins use the group admin endpoint (cannot set is_admin, must provide groups)
         response = await groupAdminApi.createUser({
           username: createData.username,
-          first_name: createData.first_name || undefined,
-          last_name: createData.last_name || undefined,
+          first_name: createData.first_name.trim() || undefined,
+          last_name: createData.last_name.trim() || undefined,
           email: createData.email,
           password: createData.password || undefined,
           send_setup_email: createData.send_setup_email,
@@ -844,6 +844,7 @@ const UsersPage: React.FC = () => {
                 className="form-input"
                 placeholder="e.g. Jane"
                 autoComplete="off"
+                maxLength={100}
               />
             </div>
 
@@ -861,6 +862,7 @@ const UsersPage: React.FC = () => {
                 className="form-input"
                 placeholder="e.g. Doe"
                 autoComplete="off"
+                maxLength={100}
               />
             </div>
 
@@ -1150,7 +1152,7 @@ const UsersPage: React.FC = () => {
                     </div>
                     <div className="user-info">
                       <div className="user-name-row">
-                        <Link 
+                        <Link
                           to={`/users/${user.id}/profile`}
                           className="user-name-link"
                         >
@@ -1159,6 +1161,11 @@ const UsersPage: React.FC = () => {
                         {user.is_admin && <span className="badge badge-admin">Admin</span>}
                         {user.deleted_at && <span className="badge badge-deleted">Deleted</span>}
                       </div>
+                      {(user.first_name || user.last_name) && (
+                        <div className="user-fullname">
+                          {[user.first_name, user.last_name].filter(Boolean).join(' ')}
+                        </div>
+                      )}
                       <div className="user-email">{user.email}</div>
                     </div>
                   </div>

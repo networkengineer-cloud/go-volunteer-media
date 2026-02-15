@@ -111,8 +111,8 @@ func AdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 
 type AdminCreateUserRequest struct {
 	Username       string `json:"username" binding:"required,min=3,max=50,usernamechars"`
-	FirstName      string `json:"first_name" binding:"omitempty,max=100"`
-	LastName       string `json:"last_name" binding:"omitempty,max=100"`
+	FirstName      string `json:"first_name" binding:"omitempty,min=1,max=100"`
+	LastName       string `json:"last_name" binding:"omitempty,min=1,max=100"`
 	Email          string `json:"email" binding:"required,email"`
 	Password       string `json:"password" binding:"omitempty,min=8,max=72"` // Optional - if empty, send setup email
 	SendSetupEmail bool   `json:"send_setup_email"`                          // If true and no password, send setup email
@@ -293,8 +293,8 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 // GroupAdminCreateUserRequest is the request body for group admins creating users
 type GroupAdminCreateUserRequest struct {
 	Username       string `json:"username" binding:"required,min=3,max=50,usernamechars"`
-	FirstName      string `json:"first_name" binding:"omitempty,max=100"`
-	LastName       string `json:"last_name" binding:"omitempty,max=100"`
+	FirstName      string `json:"first_name" binding:"omitempty,min=1,max=100"`
+	LastName       string `json:"last_name" binding:"omitempty,min=1,max=100"`
 	Email          string `json:"email" binding:"required,email"`
 	Password       string `json:"password" binding:"omitempty,min=8,max=72"` // Optional - if empty, send setup email
 	SendSetupEmail bool   `json:"send_setup_email"`                          // If true and no password, send setup email

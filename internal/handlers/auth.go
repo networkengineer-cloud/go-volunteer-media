@@ -13,8 +13,8 @@ import (
 
 type RegisterRequest struct {
 	Username  string `json:"username" binding:"required,min=3,max=50,alphanum"`
-	FirstName string `json:"first_name" binding:"omitempty,max=100"`
-	LastName  string `json:"last_name" binding:"omitempty,max=100"`
+	FirstName string `json:"first_name" binding:"omitempty,min=1,max=100"`
+	LastName  string `json:"last_name" binding:"omitempty,min=1,max=100"`
 	Email     string `json:"email" binding:"required,email"`
 	Password  string `json:"password" binding:"required,min=8,max=72"` // bcrypt limit is 72
 }

@@ -48,9 +48,9 @@ const mockGroups = [
 ];
 
 const mockUsers = [
-  { id: 1, username: 'admin_user', email: 'admin@example.com', is_admin: true, groups: [] },
-  { id: 2, username: 'john_doe', email: 'john@example.com', is_admin: false, groups: [mockGroups[0]] },
-  { id: 3, username: 'jane_smith', email: 'jane@example.com', is_admin: false, groups: [mockGroups[1]] },
+  { id: 1, username: 'admin_user', email: 'admin@example.com', is_admin: true, groups: [], first_name: 'Admin', last_name: 'User' },
+  { id: 2, username: 'john_doe', email: 'john@example.com', is_admin: false, groups: [mockGroups[0]], first_name: 'John', last_name: 'Doe' },
+  { id: 3, username: 'jane_smith', email: 'jane@example.com', is_admin: false, groups: [mockGroups[1]], first_name: '', last_name: '' },
 ];
 
 const mockAdminAuth = {
@@ -158,6 +158,13 @@ describe('UsersPage', () => {
       expect(screen.getByText('admin_user')).toBeInTheDocument();
       expect(screen.getByText('john_doe')).toBeInTheDocument();
       expect(screen.getByText('jane_smith')).toBeInTheDocument();
+    });
+
+    it('displays full name on user cards when first and last name are set', async () => {
+      renderUsersPage();
+      await waitForLoad();
+      expect(screen.getByText('Admin User')).toBeInTheDocument();
+      expect(screen.getByText('John Doe')).toBeInTheDocument();
     });
   });
 
@@ -280,6 +287,20 @@ describe('UsersPage', () => {
       });
     });
 
+    it('enforces maxLength={100} on first name and last name inputs', async () => {
+      const user = userEvent.setup();
+      renderUsersPage();
+      await waitForLoad();
+
+      await user.click(screen.getByRole('button', { name: /add user/i }));
+
+      const firstNameInput = screen.getByLabelText(/first name/i) as HTMLInputElement;
+      const lastNameInput = screen.getByLabelText(/last name/i) as HTMLInputElement;
+
+      expect(firstNameInput).toHaveAttribute('maxLength', '100');
+      expect(lastNameInput).toHaveAttribute('maxLength', '100');
+    });
+
     it('closes the form when Cancel is clicked', async () => {
       const user = userEvent.setup();
       renderUsersPage();
@@ -362,7 +383,7 @@ describe('UsersPage', () => {
   // Create User form — successful submission
   // ---------------------------------------------------------------------------
   describe('Create User form — submission', () => {
-    it('sends first_name and last_name to the API', async () => {
+    it('sends trimmed first_name and last_name to the API', async () => {
       const user = userEvent.setup();
       vi.mocked(usersApi.create).mockResolvedValue({
         data: {
@@ -376,8 +397,8 @@ describe('UsersPage', () => {
 
       await user.click(screen.getByRole('button', { name: /add user/i }));
       await user.type(screen.getByLabelText(/username/i), 'newuser');
-      await user.type(screen.getByLabelText(/first name/i), 'Jane');
-      await user.type(screen.getByLabelText(/last name/i), 'Doe');
+      await user.type(screen.getByLabelText(/first name/i), '  Jane  ');
+      await user.type(screen.getByLabelText(/last name/i), '  Doe  ');
       await user.type(screen.getByLabelText(/email address/i), 'new@example.com');
 
       await user.click(screen.getByRole('button', { name: /create user/i }));
@@ -390,6 +411,35 @@ describe('UsersPage', () => {
             last_name: 'Doe',
             email: 'new@example.com',
             send_setup_email: true,
+          })
+        );
+      });
+    });
+
+    it('omits first_name and last_name from the API call when left blank', async () => {
+      const user = userEvent.setup();
+      vi.mocked(usersApi.create).mockResolvedValue({
+        data: {
+          user: { id: 4, username: 'newuser', email: 'new@example.com', is_admin: false },
+          message: 'User created successfully.',
+        },
+      } as AxiosResponse);
+
+      renderUsersPage();
+      await waitForLoad();
+
+      await user.click(screen.getByRole('button', { name: /add user/i }));
+      await user.type(screen.getByLabelText(/username/i), 'newuser');
+      // Leave first/last name blank
+      await user.type(screen.getByLabelText(/email address/i), 'new@example.com');
+
+      await user.click(screen.getByRole('button', { name: /create user/i }));
+
+      await waitFor(() => {
+        expect(usersApi.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            first_name: undefined,
+            last_name: undefined,
           })
         );
       });
