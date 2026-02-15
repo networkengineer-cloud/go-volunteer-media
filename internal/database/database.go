@@ -1,7 +1,6 @@
 package database
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -387,30 +386,22 @@ func createCustomIndexes(db *gorm.DB) error {
 func createDefaultGroups(db *gorm.DB) error {
 	defaultGroups := []models.Group{
 		{Name: "modsquad", Description: "Behavior modification volunteers group", HasProtocols: true},
-		{Name: "activity-sandbox", Description: "Empty group reserved for automated tests", HasProtocols: false},
 	}
 
 	for _, group := range defaultGroups {
-		var existing models.Group
-		result := db.Where("name = ?", group.Name).First(&existing)
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			if err := db.Create(&group).Error; err != nil {
-				return fmt.Errorf("failed to create default group %s: %w", group.Name, err)
-			}
-			logging.WithField("group_name", group.Name).Info("Created default group")
-		} else if result.Error == nil {
-			// Update existing modsquad group to enable protocols
-			if group.Name == "modsquad" && !existing.HasProtocols {
-				existing.HasProtocols = true
-				if err := db.Save(&existing).Error; err != nil {
-					logging.WithField("group_name", group.Name).Error("Failed to enable protocols for existing group", err)
-				} else {
-					logging.WithField("group_name", group.Name).Info("Enabled protocols for existing group")
-				}
-			}
-		} else {
-			return fmt.Errorf("failed to check for existing group %s: %w", group.Name, result.Error)
+		// Use upsert to avoid duplicate-key errors under concurrent migrations
+		// OnConflict will update description and has_protocols if group exists
+		if err := db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "name"}},
+			DoUpdates: clause.AssignmentColumns([]string{"description", "has_protocols"}),
+		}).Create(&group).Error; err != nil {
+			return fmt.Errorf("failed to ensure default group %s: %w", group.Name, err)
 		}
+
+		logging.WithFields(map[string]interface{}{
+			"group_name":    group.Name,
+			"has_protocols": group.HasProtocols,
+		}).Debug("Ensured default group exists")
 	}
 
 	return nil
