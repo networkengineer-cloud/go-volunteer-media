@@ -75,6 +75,11 @@ func SeedData(db *gorm.DB, force bool) error {
 		return fmt.Errorf("failed to seed users: %w", err)
 	}
 
+	// Ensure activity-sandbox group exists for testing
+	if err := ensureSandboxGroup(db); err != nil {
+		return fmt.Errorf("failed to ensure sandbox group: %w", err)
+	}
+
 	// Get groups and update with images
 	var groups []models.Group
 	if err := db.Find(&groups).Error; err != nil {
@@ -307,9 +312,42 @@ func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group
 	return nil
 }
 
+// ensureSandboxGroup creates the activity-sandbox group if it doesn't exist
+// This group is used for automated testing and kept empty
+func ensureSandboxGroup(db *gorm.DB) error {
+	var sandboxGroup models.Group
+	err := db.Where("name = ?", "activity-sandbox").First(&sandboxGroup).Error
+	if err == nil {
+		// Group already exists
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		// Unexpected error
+		return err
+	}
+
+	// Create the sandbox group
+	sandboxGroup = models.Group{
+		Name:         "activity-sandbox",
+		Description:  "Empty group reserved for automated tests",
+		HasProtocols: false,
+	}
+	if err := db.Create(&sandboxGroup).Error; err != nil {
+		return fmt.Errorf("failed to create activity-sandbox group: %w", err)
+	}
+
+	logging.Info("Created activity-sandbox group for testing")
+	return nil
+}
+
 // ensureSandboxMembership backfills access to the empty activity-sandbox group for existing demo users
 // when the main seed routine is skipped due to pre-existing data.
 func ensureSandboxMembership(db *gorm.DB) error {
+	// First ensure the sandbox group exists
+	if err := ensureSandboxGroup(db); err != nil {
+		return err
+	}
+
 	var sandboxGroup models.Group
 	if err := db.Where("name = ?", "activity-sandbox").First(&sandboxGroup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
