@@ -81,17 +81,23 @@ const UsersPage: React.FC = () => {
     try {
       if (isAdmin) {
         // Site admins see all users with full statistics
-        const usersCall = showDeleted ? usersApi.getDeleted() : usersApi.getAll();
-        const [usersRes, statsRes, groupsRes] = await Promise.all([
-          usersCall,
+        // Note: getAll() returns PaginatedResponse<User>, getDeleted() returns User[]
+        const [statsRes, groupsRes] = await Promise.all([
           statisticsApi.getUserStatistics(),
           groupsApi.getAll()
         ]);
 
-        const usersList = showDeleted ? (usersRes.data as User[]) : (usersRes.data as { data: User[] }).data;
-        setUsers(usersList);
+        if (showDeleted) {
+          const deletedRes = await usersApi.getDeleted();
+          setUsers(deletedRes.data);
+        } else {
+          // TODO: Implement proper pagination; limit=100 is a temporary workaround
+          const activeRes = await usersApi.getAll();
+          setUsers(activeRes.data.data);
+        }
+
         setAllGroups(groupsRes.data);
-        
+
         // Create a map of user_id to statistics
         const statsMap: Record<number, UserStatistics> = {};
         statsRes.data.data.forEach(stat => {
@@ -382,13 +388,27 @@ const UsersPage: React.FC = () => {
           }
         }
       }
-      fetchUsers();
-      // Refresh modal user after all operations
-      const userRes = await usersApi.getAll();
-      const updatedUser = userRes.data.data.find((u: User) => u.id === user.id);
-      if (updatedUser) {
-        setGroupModalUser(updatedUser);
+      // Optimistically update the modal user's groups based on the toggle action
+      const currentGroups = user.groups || [];
+      let updatedGroups: Group[];
+      if (assigned) {
+        // Removed group (and possibly ModSquad if Dogs was removed)
+        const removedIds = new Set([group.id]);
+        if (dogsGroup && modSquadGroup && group.id === dogsGroup.id) {
+          removedIds.add(modSquadGroup.id);
+        }
+        updatedGroups = currentGroups.filter(g => !removedIds.has(g.id));
+      } else {
+        // Added group (and possibly Dogs if ModSquad was added)
+        updatedGroups = [...currentGroups, group];
+        if (modSquadGroup && dogsGroup && group.id === modSquadGroup.id && !currentGroups.some(g => g.id === dogsGroup.id)) {
+          updatedGroups.push(dogsGroup);
+        }
       }
+      setGroupModalUser({ ...user, groups: updatedGroups });
+
+      // Refresh the full user list in the background
+      fetchUsers();
     } catch (err: unknown) {
       setGroupModalError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to update group');
     }

@@ -1,4 +1,5 @@
 // Users API (admin)
+// TODO: Implement proper pagination in admin UI; limit=100 is a temporary workaround
 export const usersApi = {
   getAll: () => api.get<PaginatedResponse<User>>('/admin/users?limit=100'),
   create: (data: { username: string; email: string; password: string; is_admin?: boolean; group_ids?: number[] }) =>
@@ -659,6 +660,7 @@ export const settingsApi = {
 };
 
 // Statistics API
+// TODO: Implement proper pagination in admin UI; limit=100 is a temporary workaround
 export const statisticsApi = {
   getGroupStatistics: () => api.get<PaginatedResponse<GroupStatistics>>('/admin/statistics/groups?limit=100'),
   getUserStatistics: () => api.get<PaginatedResponse<UserStatistics>>('/admin/statistics/users?limit=100'),
