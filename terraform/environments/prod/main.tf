@@ -267,9 +267,11 @@ resource "azurerm_container_app" "main" {
       memory = var.container_memory
 
       # Environment variables
+
+      # Application
       env {
-        name  = "GIN_MODE"
-        value = "release"
+        name  = "ENV"
+        value = "production"
       }
 
       env {
@@ -277,12 +279,29 @@ resource "azurerm_container_app" "main" {
         value = "8080"
       }
 
-      # Environment identifier for logging and monitoring
+      # Logging
       env {
-        name  = "ENV"
-        value = "production"
+        name  = "LOG_LEVEL"
+        value = "INFO"
       }
 
+      env {
+        name  = "LOG_FORMAT"
+        value = "json"
+      }
+
+      # Authentication
+      env {
+        name        = "JWT_SECRET"
+        secret_name = "jwt-secret"
+      }
+
+      env {
+        name  = "ALLOWED_ORIGINS"
+        value = join(",", var.allowed_origins)
+      }
+
+      # Database
       env {
         name  = "DB_HOST"
         value = azurerm_postgresql_flexible_server.main.fqdn
@@ -313,16 +332,15 @@ resource "azurerm_container_app" "main" {
         value = "require"
       }
 
-      # Database Logging (reduce verbosity)
       env {
         name  = "DB_LOG_LEVEL"
         value = "warn"
       }
 
-      # Email Configuration (DISABLED until ready)
+      # Email (Resend)
       env {
         name  = "EMAIL_ENABLED"
-        value = "false"
+        value = "true"
       }
 
       env {
@@ -330,67 +348,48 @@ resource "azurerm_container_app" "main" {
         value = "resend"
       }
 
-      # Frontend URL (for password reset links when email is enabled)
+      env {
+        name        = "RESEND_API_KEY"
+        secret_name = "resend-api-key"
+      }
+
+      env {
+        name  = "RESEND_FROM_EMAIL"
+        value = var.resend_from_email
+      }
+
+      env {
+        name  = "RESEND_FROM_NAME"
+        value = var.resend_from_name
+      }
+
       env {
         name  = "FRONTEND_URL"
         value = var.frontend_url
       }
 
-      # Resend SMTP Configuration (placeholder - email disabled)
+      # Storage (Azure Blob)
       env {
-        name  = "SMTP_HOST"
-        value = "smtp.resend.com"
+        name  = "STORAGE_PROVIDER"
+        value = "azure"
       }
 
       env {
-        name  = "SMTP_PORT"
-        value = "587"
-      }
-
-      env {
-        name  = "SMTP_USER"
-        value = "resend"
-      }
-
-      env {
-        name        = "SMTP_PASS"
-        secret_name = "resend-api-key"
-      }
-
-      env {
-        name  = "SMTP_FROM"
-        value = var.resend_from_email
-      }
-
-      # Azure Storage Configuration
-      env {
-        name  = "AZURE_STORAGE_ACCOUNT"
+        name  = "AZURE_STORAGE_ACCOUNT_NAME"
         value = azurerm_storage_account.main.name
       }
 
       env {
-        name        = "AZURE_STORAGE_KEY"
+        name        = "AZURE_STORAGE_ACCOUNT_KEY"
         secret_name = "storage-account-key"
       }
 
       env {
-        name  = "AZURE_STORAGE_CONTAINER"
+        name  = "AZURE_STORAGE_CONTAINER_NAME"
         value = azurerm_storage_container.uploads.name
       }
 
-      # JWT Secret
-      env {
-        name        = "JWT_SECRET"
-        secret_name = "jwt-secret"
-      }
-
-      # CORS Configuration
-      env {
-        name  = "ALLOWED_ORIGINS"
-        value = join(",", var.allowed_origins)
-      }
-
-      # Application Insights
+      # Monitoring
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.main.connection_string

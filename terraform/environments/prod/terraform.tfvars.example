@@ -42,10 +42,11 @@ db_high_availability_enabled = false             # Set true for production HA
 storage_account_tier     = "Standard"
 storage_replication_type = "LRS"  # LRS for low cost, GRS for geo-redundancy
 
-# SendGrid Configuration
-# Get your API key from: https://app.sendgrid.com/settings/api_keys
-sendgrid_api_key    = "SG.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-sendgrid_from_email = "noreply@yourdomain.com"  # Must be verified in SendGrid
+# Resend Configuration
+# Get your API key from: https://resend.com
+resend_api_key    = "re_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+resend_from_email = "noreply@notifications.yourdomain.com"  # Must use a verified domain in Resend
+resend_from_name  = "Haws Volunteers"                       # Display name for email sender
 
 # Application Configuration
 # Generate a strong JWT secret: openssl rand -base64 32
