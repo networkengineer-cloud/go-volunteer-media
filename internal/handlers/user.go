@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -8,6 +10,15 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
+
+// validateEmailUniqueness checks if an email is already in use by another user
+func validateEmailUniqueness(db *gorm.DB, ctx context.Context, email string, currentUserID interface{}) error {
+	var existingUser models.User
+	if err := db.WithContext(ctx).Where("email = ? AND id != ?", email, currentUserID).First(&existingUser).Error; err == nil {
+		return fmt.Errorf("Email address is already in use")
+	}
+	return nil
+}
 
 // GetAllUsers returns all users with pagination support (admin only)
 func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
@@ -187,10 +198,8 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if email is being changed to an already-taken email
 		if req.Email != user.Email {
-			var existingUser models.User
-			if err := db.WithContext(ctx).Where("email = ? AND id != ?", req.Email, userID).First(&existingUser).Error; err == nil {
-				// Email exists for another user
-				c.JSON(http.StatusConflict, gin.H{"error": "Email address is already in use"})
+			if err := validateEmailUniqueness(db, ctx, req.Email, userID); err != nil {
+				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 				return
 			}
 		}

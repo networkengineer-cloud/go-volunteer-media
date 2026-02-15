@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -582,11 +584,12 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+
 // UpdateUserRequest is the request body for updating user information
 type UpdateUserRequest struct {
 	FirstName   string `json:"first_name" binding:"omitempty,min=1,max=100"`
 	LastName    string `json:"last_name" binding:"omitempty,min=1,max=100"`
-	Email       string `json:"email" binding:"omitempty,email"`
+	Email       string `json:"email" binding:"required,email"`
 	PhoneNumber string `json:"phone_number" binding:"omitempty"`
 }
 
@@ -610,10 +613,9 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Check if email is being changed to an already-taken email
-		if req.Email != "" && req.Email != user.Email {
-			var existingUser models.User
-			if err := db.WithContext(ctx).Where("email = ? AND id != ?", req.Email, userId).First(&existingUser).Error; err == nil {
-				c.JSON(http.StatusConflict, gin.H{"error": "Email address is already in use"})
+		if req.Email != user.Email {
+			if err := validateEmailUniqueness(db, ctx, req.Email, userId); err != nil {
+				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 				return
 			}
 		}
@@ -623,18 +625,12 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		updates["first_name"] = req.FirstName
 		updates["last_name"] = req.LastName
 		updates["phone_number"] = req.PhoneNumber
-		
-		// Email is required and should always be updated if provided
-		if req.Email != "" {
-			updates["email"] = req.Email
-		}
+		updates["email"] = req.Email // Email is required by binding validation
 
 		// Update user
-		if len(updates) > 0 {
-			if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
-				return
-			}
+		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+			return
 		}
 
 		// Reload user to get updated data
@@ -706,10 +702,9 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Check if email is being changed to an already-taken email
-		if req.Email != "" && req.Email != user.Email {
-			var existingUser models.User
-			if err := db.WithContext(ctx).Where("email = ? AND id != ?", req.Email, userId).First(&existingUser).Error; err == nil {
-				c.JSON(http.StatusConflict, gin.H{"error": "Email address is already in use"})
+		if req.Email != user.Email {
+			if err := validateEmailUniqueness(db, ctx, req.Email, userId); err != nil {
+				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 				return
 			}
 		}
@@ -719,18 +714,12 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		updates["first_name"] = req.FirstName
 		updates["last_name"] = req.LastName
 		updates["phone_number"] = req.PhoneNumber
-		
-		// Email is required and should always be updated if provided
-		if req.Email != "" {
-			updates["email"] = req.Email
-		}
+		updates["email"] = req.Email // Email is required by binding validation
 
 		// Update user
-		if len(updates) > 0 {
-			if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
-				return
-			}
+		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+			return
 		}
 
 		// Reload user to get updated data
