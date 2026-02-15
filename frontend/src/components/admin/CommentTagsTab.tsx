@@ -19,7 +19,7 @@ const CommentTagsTab: React.FC<CommentTagsTabProps> = ({ groupId }) => {
     try {
       const [tagsRes, statsRes] = await Promise.all([
         commentTagsApi.getAll(groupId),
-        statisticsApi.getCommentTagStatistics()
+        statisticsApi.getCommentTagStatistics(groupId)
       ]);
       
       setTags(tagsRes.data);
@@ -179,7 +179,7 @@ const CommentTagsTab: React.FC<CommentTagsTabProps> = ({ groupId }) => {
                     </div>
                   )}
                   
-                  {!stats || stats.usage_count === 0 && (
+                  {(!stats || stats.usage_count === 0) && (
                     <div className="tag-stats">
                       <span className="no-usage">Not used yet</span>
                     </div>

@@ -81,14 +81,14 @@ const UsersPage: React.FC = () => {
     try {
       if (isAdmin) {
         // Site admins see all users with full statistics
-        const [activeUsersRes, deletedUsersRes, statsRes, groupsRes] = await Promise.all([
-          showDeleted ? null : usersApi.getAll(),
-          showDeleted ? usersApi.getDeleted() : null,
+        const usersCall = showDeleted ? usersApi.getDeleted() : usersApi.getAll();
+        const [usersRes, statsRes, groupsRes] = await Promise.all([
+          usersCall,
           statisticsApi.getUserStatistics(),
           groupsApi.getAll()
         ]);
 
-        const usersList = showDeleted ? deletedUsersRes!.data : activeUsersRes!.data.data;
+        const usersList = showDeleted ? (usersRes.data as User[]) : (usersRes.data as { data: User[] }).data;
         setUsers(usersList);
         setAllGroups(groupsRes.data);
         
