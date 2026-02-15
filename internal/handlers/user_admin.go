@@ -584,8 +584,8 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 
 // UpdateUserRequest is the request body for updating user information
 type UpdateUserRequest struct {
-	FirstName   string `json:"first_name" binding:"omitempty,max=100"`
-	LastName    string `json:"last_name" binding:"omitempty,max=100"`
+	FirstName   string `json:"first_name" binding:"omitempty,min=1,max=100"`
+	LastName    string `json:"last_name" binding:"omitempty,min=1,max=100"`
 	Email       string `json:"email" binding:"omitempty,email"`
 	PhoneNumber string `json:"phone_number" binding:"omitempty"`
 }
