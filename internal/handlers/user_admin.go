@@ -618,19 +618,15 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		// Build updates map (only update fields that are provided)
+		// Build updates map - always update these fields to allow clearing them
 		updates := make(map[string]interface{})
-		if req.FirstName != "" || c.Request.PostFormValue("first_name") == "" {
-			updates["first_name"] = req.FirstName
-		}
-		if req.LastName != "" || c.Request.PostFormValue("last_name") == "" {
-			updates["last_name"] = req.LastName
-		}
+		updates["first_name"] = req.FirstName
+		updates["last_name"] = req.LastName
+		updates["phone_number"] = req.PhoneNumber
+		
+		// Email is required and should always be updated if provided
 		if req.Email != "" {
 			updates["email"] = req.Email
-		}
-		if req.PhoneNumber != "" || c.Request.PostFormValue("phone_number") == "" {
-			updates["phone_number"] = req.PhoneNumber
 		}
 
 		// Update user
@@ -718,19 +714,15 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		// Build updates map (only update fields that are provided)
+		// Build updates map - always update these fields to allow clearing them
 		updates := make(map[string]interface{})
-		if req.FirstName != "" || c.Request.PostFormValue("first_name") == "" {
-			updates["first_name"] = req.FirstName
-		}
-		if req.LastName != "" || c.Request.PostFormValue("last_name") == "" {
-			updates["last_name"] = req.LastName
-		}
+		updates["first_name"] = req.FirstName
+		updates["last_name"] = req.LastName
+		updates["phone_number"] = req.PhoneNumber
+		
+		// Email is required and should always be updated if provided
 		if req.Email != "" {
 			updates["email"] = req.Email
-		}
-		if req.PhoneNumber != "" || c.Request.PostFormValue("phone_number") == "" {
-			updates["phone_number"] = req.PhoneNumber
 		}
 
 		// Update user
