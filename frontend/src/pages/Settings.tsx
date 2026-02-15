@@ -66,7 +66,7 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handleSaveEmail = async () => {
+  const handleSaveProfile = async () => {
     if (!email.trim()) {
       showToast('Email cannot be empty', 'error');
       return;
@@ -259,7 +259,7 @@ const Settings: React.FC = () => {
 
           <div className="settings-actions">
             <button
-              onClick={handleSaveEmail}
+              onClick={handleSaveProfile}
               className="btn-primary"
               disabled={savingProfile}
             >
@@ -323,7 +323,7 @@ const Settings: React.FC = () => {
 
           <div className="settings-actions">
             <button
-              onClick={handleSaveEmail}
+              onClick={handleSaveProfile}
               className="btn-primary"
               disabled={savingProfile}
             >

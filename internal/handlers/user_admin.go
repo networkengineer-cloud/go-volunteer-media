@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -592,6 +593,39 @@ type UpdateUserRequest struct {
 	PhoneNumber string `json:"phone_number" binding:"omitempty"`
 }
 
+// applyUserUpdate validates email uniqueness, applies updates, and reloads the user.
+func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *models.User, req UpdateUserRequest) {
+	if req.Email != user.Email {
+		if err := validateEmailUniqueness(ctx, db, req.Email, user.ID); err != nil {
+			if err.Error() == "email address is already in use" {
+				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate email"})
+			}
+			return
+		}
+	}
+
+	updates := map[string]interface{}{
+		"first_name":   req.FirstName,
+		"last_name":    req.LastName,
+		"phone_number": req.PhoneNumber,
+		"email":        req.Email,
+	}
+
+	if err := db.WithContext(ctx).Model(user).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		return
+	}
+
+	if err := db.WithContext(ctx).Preload("Groups").First(user, user.ID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
 // AdminUpdateUser allows an admin to update a user's information
 func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -611,41 +645,13 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Find the user
 		var user models.User
 		if err := db.WithContext(ctx).First(&user, userIdInt).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
-		// Check if email is being changed to an already-taken email
-		if req.Email != user.Email {
-			if err := validateEmailUniqueness(db, ctx, req.Email, userIdInt); err != nil {
-				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-				return
-			}
-		}
-
-		// Build updates map - always update these fields to allow clearing them
-		updates := make(map[string]interface{})
-		updates["first_name"] = req.FirstName
-		updates["last_name"] = req.LastName
-		updates["phone_number"] = req.PhoneNumber
-		updates["email"] = req.Email
-
-		// Update user
-		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
-			return
-		}
-
-		// Reload user to get updated data
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload user"})
-			return
-		}
-
-		c.JSON(http.StatusOK, user)
+		applyUserUpdate(ctx, db, c, &user, req)
 	}
 }
 
@@ -690,14 +696,9 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Site admins can update any user, including those with no groups
-		// Note: A group admin can update a user if they are a group admin of ANY group
-		// that the target user belongs to. This differs from user creation where the
-		// group admin must administer ALL groups being assigned. This allows group admins
-		// to update shared users without requiring admin rights to all their groups.
+		// A group admin can update a user if they are a group admin of ANY group
+		// the target user belongs to. Users without groups can only be managed by site admins.
 		if !currentUser.IsAdmin {
-			// For group admins: verify they have access to this user
-			// If user has no groups, group admins cannot update them (only site admins can)
 			if len(user.Groups) == 0 {
 				logger.WithFields(map[string]interface{}{
 					"current_user_id": currentUserID,
@@ -708,7 +709,6 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			hasAccess := false
-			// Check if current user is group admin of any group the target user belongs to
 			for _, targetGroup := range user.Groups {
 				var userGroup models.UserGroup
 				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
@@ -729,33 +729,6 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		// Check if email is being changed to an already-taken email
-		if req.Email != user.Email {
-			if err := validateEmailUniqueness(db, ctx, req.Email, userIdInt); err != nil {
-				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-				return
-			}
-		}
-
-		// Build updates map - always update these fields to allow clearing them
-		updates := make(map[string]interface{})
-		updates["first_name"] = req.FirstName
-		updates["last_name"] = req.LastName
-		updates["phone_number"] = req.PhoneNumber
-		updates["email"] = req.Email
-
-		// Update user
-		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
-			return
-		}
-
-		// Reload user to get updated data
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload user"})
-			return
-		}
-
-		c.JSON(http.StatusOK, user)
+		applyUserUpdate(ctx, db, c, &user, req)
 	}
 }

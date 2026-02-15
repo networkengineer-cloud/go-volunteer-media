@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -12,10 +13,14 @@ import (
 )
 
 // validateEmailUniqueness checks if an email is already in use by another user
-func validateEmailUniqueness(db *gorm.DB, ctx context.Context, email string, currentUserID interface{}) error {
+func validateEmailUniqueness(ctx context.Context, db *gorm.DB, email string, currentUserID uint) error {
 	var existingUser models.User
-	if err := db.WithContext(ctx).Where("email = ? AND id != ?", email, currentUserID).First(&existingUser).Error; err == nil {
+	err := db.WithContext(ctx).Where("email = ? AND id != ?", email, currentUserID).First(&existingUser).Error
+	if err == nil {
 		return fmt.Errorf("email address is already in use")
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("database error checking email uniqueness")
 	}
 	return nil
 }
@@ -198,8 +203,12 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if email is being changed to an already-taken email
 		if req.Email != user.Email {
-			if err := validateEmailUniqueness(db, ctx, req.Email, userID); err != nil {
-				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			if err := validateEmailUniqueness(ctx, db, req.Email, userID.(uint)); err != nil {
+				if err.Error() == "email address is already in use" {
+					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate email"})
+				}
 				return
 			}
 		}

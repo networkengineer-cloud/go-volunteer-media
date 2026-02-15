@@ -224,6 +224,13 @@ const UsersPage: React.FC = () => {
     return member?.is_group_admin || false;
   };
 
+  // Check if current user can edit a given user
+  const canEditUser = (user: User): boolean => {
+    if (isAdmin) return true;
+    if (!isGroupAdmin || !user.groups) return false;
+    return user.groups.some(g => isCurrentUserGroupAdminOf(g.id));
+  };
+
   // Filter and sort users
   React.useEffect(() => {
     let filtered = [...users];
@@ -1320,20 +1327,24 @@ const UsersPage: React.FC = () => {
                               Manage Groups
                             </button>
                           )}
-                          <button
-                            className="action-btn secondary"
-                            onClick={() => openEditModal(user)}
-                            disabled={user.deleted_at}
-                          >
-                            Edit User
-                          </button>
-                          <button
-                            className="action-btn secondary"
-                            onClick={() => openPasswordResetModal(user)}
-                            disabled={user.deleted_at}
-                          >
-                            Reset Password
-                          </button>
+                          {canEditUser(user) && (
+                            <button
+                              className="action-btn secondary"
+                              onClick={() => openEditModal(user)}
+                              disabled={user.deleted_at}
+                            >
+                              Edit User
+                            </button>
+                          )}
+                          {canEditUser(user) && (
+                            <button
+                              className="action-btn secondary"
+                              onClick={() => openPasswordResetModal(user)}
+                              disabled={user.deleted_at}
+                            >
+                              Reset Password
+                            </button>
+                          )}
                           {isAdmin && (
                             <>
                               <button
