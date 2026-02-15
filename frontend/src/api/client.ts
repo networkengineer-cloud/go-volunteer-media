@@ -90,18 +90,12 @@ export interface User {
 }
 
 // User creation response - backend returns different formats depending on setup email
-export interface CreateUserResponse {
-  user?: User;  // Present when send_setup_email is used
-  message?: string;  // Present on success with setup email
-  warning?: string;  // Present when email fails but user is created
-  // When send_setup_email is false, the response is just the User object directly
-  // so we extend User to handle both cases
-  id?: number;
-  username?: string;
-  email?: string;
-  is_admin?: boolean;
-  groups?: Group[];
-}
+// Using discriminated union for type safety:
+// - When send_setup_email=false: returns User directly
+// - When send_setup_email=true: returns wrapped response with optional message/warning
+export type CreateUserResponse = 
+  | User  // Direct user object when password provided
+  | { user: User; message?: string; warning?: string };  // Wrapped response with setup email
 
 // GroupMember represents a user's membership in a group with admin status
 export interface GroupMember {
