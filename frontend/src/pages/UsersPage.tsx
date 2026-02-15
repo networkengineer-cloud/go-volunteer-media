@@ -54,6 +54,18 @@ const UsersPage: React.FC = () => {
   const [resetPasswordError, setResetPasswordError] = React.useState<string | null>(null);
   const [resetPasswordSuccess, setResetPasswordSuccess] = React.useState<string | null>(null);
 
+  // Edit user modal state
+  const [editUser, setEditUser] = React.useState<User | null>(null);
+  const [editData, setEditData] = React.useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone_number: '',
+  });
+  const [editLoading, setEditLoading] = React.useState(false);
+  const [editError, setEditError] = React.useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = React.useState<string | null>(null);
+
   // Show details state - track which user cards have expanded details
   const [expandedDetails, setExpandedDetails] = React.useState<Set<number>>(new Set());
 
@@ -450,6 +462,59 @@ const UsersPage: React.FC = () => {
       setResetPasswordError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to reset password');
     } finally {
       setResetPasswordLoading(false);
+    }
+  };
+
+  // Edit user modal functions
+  const openEditModal = (user: User) => {
+    setEditUser(user);
+    setEditData({
+      first_name: user.first_name || '',
+      last_name: user.last_name || '',
+      email: user.email || '',
+      phone_number: user.phone_number || '',
+    });
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  const closeEditModal = () => {
+    setEditUser(null);
+    setEditData({
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone_number: '',
+    });
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editUser) return;
+    
+    setEditLoading(true);
+    setEditError(null);
+    setEditSuccess(null);
+    
+    try {
+      // Use appropriate API based on user role
+      if (isAdmin) {
+        await usersApi.update(editUser.id, editData);
+      } else if (isGroupAdmin) {
+        await groupAdminApi.updateUser(editUser.id, editData);
+      }
+      
+      setEditSuccess('User updated successfully');
+      setTimeout(() => {
+        closeEditModal();
+        fetchUsers();
+      }, 1500);
+    } catch (err: unknown) {
+      setEditError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to update user');
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -1257,6 +1322,13 @@ const UsersPage: React.FC = () => {
                           )}
                           <button
                             className="action-btn secondary"
+                            onClick={() => openEditModal(user)}
+                            disabled={user.deleted_at}
+                          >
+                            Edit User
+                          </button>
+                          <button
+                            className="action-btn secondary"
                             onClick={() => openPasswordResetModal(user)}
                             disabled={user.deleted_at}
                           >
@@ -1343,6 +1415,94 @@ const UsersPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Edit User Modal */}
+      {editUser && (
+        <div className="group-modal-backdrop" onClick={closeEditModal}>
+          <div className="group-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Edit User: {editUser.username}</h2>
+            
+            <form onSubmit={handleEditSubmit}>
+              {editError && <div className="users-error" style={{marginBottom: '1rem'}}>{editError}</div>}
+              {editSuccess && <div className="users-success" style={{marginBottom: '1rem'}}>{editSuccess}</div>}
+
+              <div style={{marginBottom: '1rem'}}>
+                <label>
+                  First Name
+                  <input
+                    type="text"
+                    value={editData.first_name}
+                    onChange={(e) => setEditData({ ...editData, first_name: e.target.value })}
+                    placeholder="First name"
+                    maxLength={100}
+                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
+                  />
+                </label>
+              </div>
+
+              <div style={{marginBottom: '1rem'}}>
+                <label>
+                  Last Name
+                  <input
+                    type="text"
+                    value={editData.last_name}
+                    onChange={(e) => setEditData({ ...editData, last_name: e.target.value })}
+                    placeholder="Last name"
+                    maxLength={100}
+                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
+                  />
+                </label>
+              </div>
+
+              <div style={{marginBottom: '1rem'}}>
+                <label>
+                  Email Address <span style={{color: 'red'}}>*</span>
+                  <input
+                    type="email"
+                    value={editData.email}
+                    onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                    placeholder="user@example.com"
+                    required
+                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
+                  />
+                </label>
+              </div>
+
+              <div style={{marginBottom: '1rem'}}>
+                <label>
+                  Phone Number
+                  <input
+                    type="tel"
+                    value={editData.phone_number}
+                    onChange={(e) => setEditData({ ...editData, phone_number: e.target.value })}
+                    placeholder="555-1234"
+                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
+                  />
+                </label>
+              </div>
+
+              <div style={{display: 'flex', gap: '0.5rem', marginTop: '1rem'}}>
+                <button
+                  type="submit"
+                  className="user-action-btn"
+                  disabled={editLoading}
+                >
+                  {editLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  className="user-action-btn"
+                  onClick={closeEditModal}
+                  disabled={editLoading}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      
       {/* Password reset modal */}
       {resetPasswordUser && (
         <div className="group-modal-backdrop" onClick={closePasswordResetModal}>
