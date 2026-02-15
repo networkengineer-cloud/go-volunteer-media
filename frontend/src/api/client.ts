@@ -2,7 +2,7 @@
 // TODO: Implement proper pagination in admin UI; limit=100 is a temporary workaround
 export const usersApi = {
   getAll: () => api.get<PaginatedResponse<User>>('/admin/users?limit=100'),
-  create: (data: { username: string; email: string; password?: string; is_admin?: boolean; group_ids?: number[]; send_setup_email?: boolean }) =>
+  create: (data: { username: string; first_name?: string; last_name?: string; email: string; password?: string; is_admin?: boolean; group_ids?: number[]; send_setup_email?: boolean }) =>
     api.post<CreateUserResponse>('/admin/users', data),
   promote: (userId: number) => api.post(`/admin/users/${userId}/promote`),
   demote: (userId: number) => api.post(`/admin/users/${userId}/demote`),
@@ -27,7 +27,7 @@ export const groupAdminApi = {
   // Remove a user from a group (site admins and group admins can do this for their groups)
   removeMemberFromGroup: (groupId: number, userId: number) => api.delete(`/groups/${groupId}/members/${userId}`),
   // Create a new user (group admins can create users and assign them to groups they admin)
-  createUser: (data: { username: string; email: string; password?: string; send_setup_email?: boolean; group_ids: number[] }) =>
+  createUser: (data: { username: string; first_name?: string; last_name?: string; email: string; password?: string; send_setup_email?: boolean; group_ids: number[] }) =>
     api.post<CreateUserResponse>('/users', data),
 };
 import axios from 'axios';
@@ -78,6 +78,8 @@ export interface PaginatedResponse<T> {
 export interface User {
   id: number;
   username: string;
+  first_name?: string;
+  last_name?: string;
   email: string;
   phone_number?: string;
   hide_email?: boolean;

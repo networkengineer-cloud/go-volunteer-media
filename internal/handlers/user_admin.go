@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -110,12 +111,14 @@ func AdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 // (removed duplicate import block)
 
 type AdminCreateUserRequest struct {
-	Username        string `json:"username" binding:"required,min=3,max=50,usernamechars"`
-	Email           string `json:"email" binding:"required,email"`
-	Password        string `json:"password" binding:"omitempty,min=8,max=72"` // Optional - if empty, send setup email
-	SendSetupEmail  bool   `json:"send_setup_email"`                          // If true and no password, send setup email
-	IsAdmin         bool   `json:"is_admin"`
-	GroupIDs        []uint `json:"group_ids"`
+	Username       string `json:"username" binding:"required,min=3,max=50,usernamechars"`
+	FirstName      string `json:"first_name" binding:"omitempty,min=1,max=100"`
+	LastName       string `json:"last_name" binding:"omitempty,min=1,max=100"`
+	Email          string `json:"email" binding:"required,email"`
+	Password       string `json:"password" binding:"omitempty,min=8,max=72"` // Optional - if empty, send setup email
+	SendSetupEmail bool   `json:"send_setup_email"`                          // If true and no password, send setup email
+	IsAdmin        bool   `json:"is_admin"`
+	GroupIDs       []uint `json:"group_ids"`
 }
 
 type AdminResetPasswordRequest struct {
@@ -199,6 +202,8 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			// Store hashed token in dedicated setup_token field (separate from reset tokens)
 			user := models.User{
 				Username:              req.Username,
+				FirstName:             strings.TrimSpace(req.FirstName),
+				LastName:              strings.TrimSpace(req.LastName),
 				Email:                 req.Email,
 				Password:              hashedPassword,
 				IsAdmin:               req.IsAdmin,
@@ -253,10 +258,12 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 
 		// Regular user creation with password
 		user := models.User{
-			Username: req.Username,
-			Email:    req.Email,
-			Password: hashedPassword,
-			IsAdmin:  req.IsAdmin,
+			Username:  req.Username,
+			FirstName: strings.TrimSpace(req.FirstName),
+			LastName:  strings.TrimSpace(req.LastName),
+			Email:     req.Email,
+			Password:  hashedPassword,
+			IsAdmin:   req.IsAdmin,
 		}
 
 		// If group IDs are provided, fetch and associate groups
@@ -287,6 +294,8 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 // GroupAdminCreateUserRequest is the request body for group admins creating users
 type GroupAdminCreateUserRequest struct {
 	Username       string `json:"username" binding:"required,min=3,max=50,usernamechars"`
+	FirstName      string `json:"first_name" binding:"omitempty,min=1,max=100"`
+	LastName       string `json:"last_name" binding:"omitempty,min=1,max=100"`
 	Email          string `json:"email" binding:"required,email"`
 	Password       string `json:"password" binding:"omitempty,min=8,max=72"` // Optional - if empty, send setup email
 	SendSetupEmail bool   `json:"send_setup_email"`                          // If true and no password, send setup email
@@ -399,6 +408,8 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			// Create user with setup token
 			user := models.User{
 				Username:              req.Username,
+				FirstName:             strings.TrimSpace(req.FirstName),
+				LastName:              strings.TrimSpace(req.LastName),
 				Email:                 req.Email,
 				Password:              hashedPassword,
 				IsAdmin:               false, // Group admins cannot create site admins
@@ -453,10 +464,12 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 		// Regular user creation with password
 		user := models.User{
-			Username: req.Username,
-			Email:    req.Email,
-			Password: hashedPassword,
-			IsAdmin:  false, // Group admins cannot create site admins
+			Username:  req.Username,
+			FirstName: strings.TrimSpace(req.FirstName),
+			LastName:  strings.TrimSpace(req.LastName),
+			Email:     req.Email,
+			Password:  hashedPassword,
+			IsAdmin:   false, // Group admins cannot create site admins
 		}
 
 		// Fetch and associate groups

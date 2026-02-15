@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,9 +13,11 @@ import (
 )
 
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=50,alphanum"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8,max=72"` // bcrypt limit is 72
+	Username  string `json:"username" binding:"required,min=3,max=50,alphanum"`
+	FirstName string `json:"first_name" binding:"omitempty,min=1,max=100"`
+	LastName  string `json:"last_name" binding:"omitempty,min=1,max=100"`
+	Email     string `json:"email" binding:"required,email"`
+	Password  string `json:"password" binding:"required,min=8,max=72"` // bcrypt limit is 72
 }
 
 type LoginRequest struct {
@@ -53,10 +56,12 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 
 		// Create user
 		user := models.User{
-			Username: req.Username,
-			Email:    req.Email,
-			Password: hashedPassword,
-			IsAdmin:  false,
+			Username:  req.Username,
+			FirstName: strings.TrimSpace(req.FirstName),
+			LastName:  strings.TrimSpace(req.LastName),
+			Email:     req.Email,
+			Password:  hashedPassword,
+			IsAdmin:   false,
 		}
 
 		if err := db.WithContext(ctx).Create(&user).Error; err != nil {
@@ -234,6 +239,8 @@ func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 		response := map[string]interface{}{
 			"id":                          user.ID,
 			"username":                    user.Username,
+			"first_name":                  user.FirstName,
+			"last_name":                   user.LastName,
 			"email":                       user.Email,
 			"phone_number":                user.PhoneNumber,
 			"hide_email":                  user.HideEmail,

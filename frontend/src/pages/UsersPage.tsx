@@ -455,11 +455,13 @@ const UsersPage: React.FC = () => {
 
   // Admin user creation form state
   const [showCreate, setShowCreate] = React.useState(false);
-  const [createData, setCreateData] = React.useState({ 
-    username: '', 
-    email: '', 
-    password: '', 
-    is_admin: false, 
+  const [createData, setCreateData] = React.useState({
+    username: '',
+    first_name: '',
+    last_name: '',
+    email: '',
+    password: '',
+    is_admin: false,
     groupIds: [] as number[],
     send_setup_email: true  // Default to sending setup email
   });
@@ -484,13 +486,15 @@ const UsersPage: React.FC = () => {
   // Reset form when closing
   React.useEffect(() => {
     if (!showCreate) {
-      setCreateData({ 
-        username: '', 
-        email: '', 
-        password: '', 
-        is_admin: false, 
+      setCreateData({
+        username: '',
+        first_name: '',
+        last_name: '',
+        email: '',
+        password: '',
+        is_admin: false,
         groupIds: [],
-        send_setup_email: true 
+        send_setup_email: true
       });
       setFieldErrors({});
       setTouchedFields(new Set());
@@ -618,6 +622,8 @@ const UsersPage: React.FC = () => {
         // Site admins use the admin endpoint with full permissions
         response = await usersApi.create({
           username: createData.username,
+          first_name: createData.first_name.trim() || undefined,
+          last_name: createData.last_name.trim() || undefined,
           email: createData.email,
           password: createData.password || undefined,
           is_admin: createData.is_admin,
@@ -628,6 +634,8 @@ const UsersPage: React.FC = () => {
         // GroupAdmins use the group admin endpoint (cannot set is_admin, must provide groups)
         response = await groupAdminApi.createUser({
           username: createData.username,
+          first_name: createData.first_name.trim() || undefined,
+          last_name: createData.last_name.trim() || undefined,
           email: createData.email,
           password: createData.password || undefined,
           send_setup_email: createData.send_setup_email,
@@ -820,6 +828,42 @@ const UsersPage: React.FC = () => {
                   {fieldErrors.username}
                 </span>
               )}
+            </div>
+
+            {/* First Name Field */}
+            <div className="form-field">
+              <label htmlFor="create-first-name" className="form-label">
+                First Name
+              </label>
+              <input
+                id="create-first-name"
+                name="first_name"
+                type="text"
+                value={createData.first_name}
+                onChange={handleCreateChange}
+                className="form-input"
+                placeholder="e.g. Jane"
+                autoComplete="off"
+                maxLength={100}
+              />
+            </div>
+
+            {/* Last Name Field */}
+            <div className="form-field">
+              <label htmlFor="create-last-name" className="form-label">
+                Last Name
+              </label>
+              <input
+                id="create-last-name"
+                name="last_name"
+                type="text"
+                value={createData.last_name}
+                onChange={handleCreateChange}
+                className="form-input"
+                placeholder="e.g. Doe"
+                autoComplete="off"
+                maxLength={100}
+              />
             </div>
 
             {/* Email Field */}
@@ -1108,7 +1152,7 @@ const UsersPage: React.FC = () => {
                     </div>
                     <div className="user-info">
                       <div className="user-name-row">
-                        <Link 
+                        <Link
                           to={`/users/${user.id}/profile`}
                           className="user-name-link"
                         >
@@ -1117,6 +1161,11 @@ const UsersPage: React.FC = () => {
                         {user.is_admin && <span className="badge badge-admin">Admin</span>}
                         {user.deleted_at && <span className="badge badge-deleted">Deleted</span>}
                       </div>
+                      {(user.first_name || user.last_name) && (
+                        <div className="user-fullname">
+                          {[user.first_name, user.last_name].filter(Boolean).join(' ')}
+                        </div>
+                      )}
                       <div className="user-email">{user.email}</div>
                     </div>
                   </div>
