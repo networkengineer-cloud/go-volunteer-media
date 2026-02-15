@@ -692,7 +692,6 @@ export const statisticsApi = {
 };
 
 // User Profile API
-// User Profile API
 export const userProfileApi = {
   getProfile: (userId: number) => api.get<UserProfile>(`/users/${userId}/profile`),
   updateOwnProfile: (data: { first_name?: string; last_name?: string; email: string; phone_number?: string; hide_email?: boolean; hide_phone_number?: boolean }) =>
