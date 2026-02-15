@@ -289,7 +289,9 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		sanitizeSessionMetadata(req.Metadata)
 
 		// Save current version to history before updating
-		// EditedBy should be the author of the version being archived (the original author)
+		// EditedBy records who authored this version (which is now being replaced)
+		// On first edit: comment.UserID (original author)
+		// On subsequent edits: comment.UserID (previous editor who is now in history)
 		history := models.CommentHistory{
 			CommentID: comment.ID,
 			Content:   comment.Content,
@@ -337,31 +339,21 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 func GetCommentHistory(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupID := c.Param("id")
+		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
 		// Check for group admin or site admin access
-		var hasAccess bool
-		isAdminBool, _ := isAdmin.(bool)
-		if isAdminBool {
-			hasAccess = true
-		} else {
-			// Check if user is a group admin
-			var userGroup models.UserGroup
-			err := db.Where("user_id = ? AND group_id = ? AND is_group_admin = ?", userID, groupID, true).First(&userGroup).Error
-			hasAccess = err == nil
-		}
-
-		if !hasAccess {
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
 
-		// Verify comment belongs to group via animal
+		// Verify comment belongs to the specified animal and group
 		var comment models.AnimalComment
 		err := db.Joins("JOIN animals ON animals.id = animal_comments.animal_id").
-			Where("animal_comments.id = ? AND animals.group_id = ?", commentID, groupID).
+			Where("animal_comments.id = ? AND animal_comments.animal_id = ? AND animals.group_id = ?", commentID, animalID, groupID).
 			First(&comment).Error
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})

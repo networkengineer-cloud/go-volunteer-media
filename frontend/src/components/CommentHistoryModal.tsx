@@ -81,7 +81,7 @@ const CommentHistoryModal: React.FC<CommentHistoryModalProps> = ({ history, onCl
                     <div className="history-meta">
                       <span className="version-badge">Version {history.length - index}</span>
                       <span className="editor-info">
-                        Edited by <strong>{entry.user?.username || 'Unknown'}</strong>
+                        Written by <strong>{entry.user?.username || 'Unknown'}</strong>
                       </span>
                       <span className="edit-time">{formatDate(entry.created_at)}</span>
                     </div>

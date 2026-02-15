@@ -167,6 +167,7 @@ type AnimalComment struct {
 }
 
 // CommentHistory stores the history of comment edits
+// Each entry is a snapshot of a previous version of the comment
 type CommentHistory struct {
 	ID        uint             `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time        `gorm:"index:idx_comment_history_comment" json:"created_at"`
@@ -174,7 +175,7 @@ type CommentHistory struct {
 	Content   string           `gorm:"not null" json:"content"`
 	ImageURL  string           `json:"image_url"`
 	Metadata  *SessionMetadata `gorm:"type:jsonb" json:"metadata,omitempty"`
-	EditedBy  uint             `gorm:"not null" json:"edited_by"`
+	EditedBy  uint             `gorm:"not null" json:"edited_by"` // User who authored this historical version
 	User      User             `gorm:"foreignKey:EditedBy" json:"user,omitempty"`
 }
 
