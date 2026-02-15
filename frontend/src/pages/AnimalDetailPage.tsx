@@ -818,14 +818,14 @@ const AnimalDetailPage: React.FC = () => {
                                 hour: '2-digit',
                                 minute: '2-digit',
                               })}
-                              {comment.created_at !== comment.updated_at && (
+                              {new Date(comment.created_at).getTime() !== new Date(comment.updated_at).getTime() && (
                                 <span className="edited-badge" title={`Last edited: ${new Date(comment.updated_at).toLocaleString()}`}>
                                   (edited)
                                 </span>
                               )}
                             </span>
                             <div className="comment-actions">
-                              {(isAdmin || membership?.is_group_admin) && comment.created_at !== comment.updated_at && (
+                              {(isAdmin || membership?.is_group_admin) && new Date(comment.created_at).getTime() !== new Date(comment.updated_at).getTime() && (
                                 <button
                                   className="btn-view-history"
                                   onClick={() => handleViewHistory(comment.id)}

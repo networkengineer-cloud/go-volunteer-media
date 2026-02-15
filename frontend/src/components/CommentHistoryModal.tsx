@@ -7,6 +7,8 @@ interface CommentHistoryModalProps {
   onClose: () => void;
 }
 
+const ratingLabels = ['', 'Poor', 'Fair', 'Okay', 'Good', 'Great'];
+
 const CommentHistoryModal: React.FC<CommentHistoryModalProps> = ({ history, onClose }) => {
   const [mounted, setMounted] = useState(false);
 
@@ -36,8 +38,6 @@ const CommentHistoryModal: React.FC<CommentHistoryModalProps> = ({ history, onCl
       { label: 'Other Notes', value: metadata.other_notes },
     ];
 
-    const ratingLabels = ['', 'Poor', 'Fair', 'Okay', 'Good', 'Great'];
-
     return (
       <div className="metadata-content">
         {fields.map(
@@ -62,8 +62,8 @@ const CommentHistoryModal: React.FC<CommentHistoryModalProps> = ({ history, onCl
   };
 
   return (
-    <div className={`modal-overlay ${mounted ? 'show' : ''}`} onClick={onClose}>
-      <div className={`modal-content ${mounted ? 'show' : ''}`} onClick={(e) => e.stopPropagation()}>
+    <div className={`comment-history-modal-overlay ${mounted ? 'show' : ''}`} onClick={onClose}>
+      <div className={`comment-history-modal-content ${mounted ? 'show' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Comment Edit History</h2>
           <button className="close-button" onClick={onClose} aria-label="Close">

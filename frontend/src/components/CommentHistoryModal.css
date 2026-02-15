@@ -1,4 +1,4 @@
-.modal-overlay {
+.comment-history-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -13,11 +13,11 @@
   transition: opacity 0.2s ease;
 }
 
-.modal-overlay.show {
+.comment-history-modal-overlay.show {
   opacity: 1;
 }
 
-.modal-content {
+.comment-history-modal-content {
   background: white;
   border-radius: 8px;
   max-width: 800px;
@@ -30,7 +30,7 @@
   transition: transform 0.2s ease;
 }
 
-.modal-content.show {
+.comment-history-modal-content.show {
   transform: scale(1);
 }
 
@@ -189,7 +189,7 @@
 
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
-  .modal-content {
+  .comment-history-modal-content {
     background: #1f2937;
   }
 
@@ -246,7 +246,7 @@
 
 /* Responsive design */
 @media (max-width: 768px) {
-  .modal-content {
+  .comment-history-modal-content {
     width: 95%;
     max-height: 90vh;
   }

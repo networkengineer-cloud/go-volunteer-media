@@ -289,12 +289,13 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		sanitizeSessionMetadata(req.Metadata)
 
 		// Save current version to history before updating
+		// EditedBy should be the author of the version being archived (the original author)
 		history := models.CommentHistory{
 			CommentID: comment.ID,
 			Content:   comment.Content,
 			ImageURL:  comment.ImageURL,
 			Metadata:  comment.Metadata,
-			EditedBy:  userID.(uint),
+			EditedBy:  comment.UserID,
 		}
 		if err := db.Create(&history).Error; err != nil {
 			// Log error but don't fail the update
@@ -342,7 +343,8 @@ func GetCommentHistory(db *gorm.DB) gin.HandlerFunc {
 
 		// Check for group admin or site admin access
 		var hasAccess bool
-		if isAdmin.(bool) {
+		isAdminBool, _ := isAdmin.(bool)
+		if isAdminBool {
 			hasAccess = true
 		} else {
 			// Check if user is a group admin
