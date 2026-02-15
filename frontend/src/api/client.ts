@@ -67,6 +67,14 @@ api.interceptors.response.use(
   }
 );
 
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export interface User {
   id: number;
   username: string;
@@ -313,14 +321,6 @@ export interface CommentTagStatistics {
   last_used?: string;
   most_tagged_animal_id?: number;
   most_tagged_animal_name?: string;
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  limit: number;
-  offset: number;
-  hasMore: boolean;
 }
 
 // User Profile interfaces

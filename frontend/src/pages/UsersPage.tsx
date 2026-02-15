@@ -81,21 +81,17 @@ const UsersPage: React.FC = () => {
     try {
       if (isAdmin) {
         // Site admins see all users with full statistics
-        // Note: getAll() returns PaginatedResponse<User>, getDeleted() returns User[]
-        const [statsRes, groupsRes] = await Promise.all([
+        // Normalize both endpoints to return User[] so they can run in parallel
+        const usersPromise = showDeleted
+          ? usersApi.getDeleted().then(res => res.data)
+          : usersApi.getAll().then(res => res.data.data);
+        const [usersList, statsRes, groupsRes] = await Promise.all([
+          usersPromise,
           statisticsApi.getUserStatistics(),
           groupsApi.getAll()
         ]);
 
-        if (showDeleted) {
-          const deletedRes = await usersApi.getDeleted();
-          setUsers(deletedRes.data);
-        } else {
-          // TODO: Implement proper pagination; limit=100 is a temporary workaround
-          const activeRes = await usersApi.getAll();
-          setUsers(activeRes.data.data);
-        }
-
+        setUsers(usersList);
         setAllGroups(groupsRes.data);
 
         // Create a map of user_id to statistics
@@ -388,7 +384,9 @@ const UsersPage: React.FC = () => {
           }
         }
       }
-      // Optimistically update the modal user's groups based on the toggle action
+      // Optimistically update the modal user's groups based on the toggle action.
+      // Note: ModSquad↔Dogs auto-linking mirrors backend logic in handleGroupToggle above;
+      // if backend group-linking rules change, this must be updated to match.
       const currentGroups = user.groups || [];
       let updatedGroups: Group[];
       if (assigned) {
