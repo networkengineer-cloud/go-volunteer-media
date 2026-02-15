@@ -217,6 +217,17 @@ export interface SessionMetadata {
   other_notes?: string;
 }
 
+export interface CommentHistory {
+  id: number;
+  created_at: string;
+  comment_id: number;
+  content: string;
+  image_url: string;
+  metadata?: SessionMetadata;
+  edited_by: number;
+  user?: User;
+}
+
 export interface PaginatedCommentsResponse {
   comments: AnimalComment[];
   total: number;
@@ -569,6 +580,8 @@ export const animalCommentsApi = {
     api.delete('/groups/' + groupId + '/animals/' + animalId + '/comments/' + commentId),
   getDeleted: (groupId: number) =>
     api.get<AnimalComment[]>('/admin/groups/' + groupId + '/deleted-comments'),
+  getHistory: (groupId: number, animalId: number, commentId: number) =>
+    api.get<CommentHistory[]>('/groups/' + groupId + '/animals/' + animalId + '/comments/' + commentId + '/history'),
 };
 
 // Comment Tags API - Group-specific tags

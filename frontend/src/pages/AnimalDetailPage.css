@@ -804,7 +804,8 @@
 }
 
 .btn-edit-comment,
-.btn-delete-comment {
+.btn-delete-comment,
+.btn-view-history {
   background: none;
   border: none;
   font-size: 1.2rem;
@@ -822,6 +823,16 @@
 }
 
 .btn-edit-comment:active {
+  transform: scale(0.95);
+}
+
+.btn-view-history:hover {
+  opacity: 1;
+  background: rgba(99, 102, 241, 0.1);
+  transform: scale(1.1);
+}
+
+.btn-view-history:active {
   transform: scale(0.95);
 }
 

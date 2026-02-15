@@ -166,6 +166,18 @@ type AnimalComment struct {
 	User      User             `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
+// CommentHistory stores the history of comment edits
+type CommentHistory struct {
+	ID        uint             `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time        `gorm:"index:idx_comment_history_comment" json:"created_at"`
+	CommentID uint             `gorm:"not null;index:idx_comment_history_comment" json:"comment_id"`
+	Content   string           `gorm:"not null" json:"content"`
+	ImageURL  string           `json:"image_url"`
+	Metadata  *SessionMetadata `gorm:"type:jsonb" json:"metadata,omitempty"`
+	EditedBy  uint             `gorm:"not null" json:"edited_by"`
+	User      User             `gorm:"foreignKey:EditedBy" json:"user,omitempty"`
+}
+
 // SessionMetadata stores structured session report data
 type SessionMetadata struct {
 	SessionGoal    string `json:"session_goal,omitempty"`
