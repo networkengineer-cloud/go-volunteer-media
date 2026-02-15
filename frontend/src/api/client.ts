@@ -1,6 +1,6 @@
 // Users API (admin)
 export const usersApi = {
-  getAll: () => api.get<User[]>('/admin/users'),
+  getAll: () => api.get<{ data: User[]; total: number; limit: number; offset: number; hasMore: boolean }>('/admin/users?limit=100'),
   create: (data: { username: string; email: string; password: string; is_admin?: boolean; group_ids?: number[] }) =>
     api.post<User>('/admin/users', data),
   promote: (userId: number) => api.post(`/admin/users/${userId}/promote`),
@@ -652,11 +652,11 @@ export const settingsApi = {
 
 // Statistics API
 export const statisticsApi = {
-  getGroupStatistics: () => api.get<GroupStatistics[]>('/admin/statistics/groups'),
-  getUserStatistics: () => api.get<UserStatistics[]>('/admin/statistics/users'),
+  getGroupStatistics: () => api.get<{ data: GroupStatistics[]; total: number; limit: number; offset: number; hasMore: boolean }>('/admin/statistics/groups?limit=100'),
+  getUserStatistics: () => api.get<{ data: UserStatistics[]; total: number; limit: number; offset: number; hasMore: boolean }>('/admin/statistics/users?limit=100'),
   getCommentTagStatistics: (groupId?: number) => {
-    const params = groupId ? `?group_id=${groupId}` : '';
-    return api.get<CommentTagStatistics[]>(`/statistics/comment-tags${params}`);
+    const params = groupId ? `?group_id=${groupId}&limit=100` : '?limit=100';
+    return api.get<{ data: CommentTagStatistics[]; total: number; limit: number; offset: number; hasMore: boolean }>(`/statistics/comment-tags${params}`);
   },
 };
 

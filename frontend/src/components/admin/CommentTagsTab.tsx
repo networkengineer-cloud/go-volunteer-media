@@ -26,7 +26,7 @@ const CommentTagsTab: React.FC<CommentTagsTabProps> = ({ groupId }) => {
       
       // Create a map of tag_id to statistics
       const statsMap: Record<number, CommentTagStatistics> = {};
-      statsRes.data.forEach(stat => {
+      statsRes.data.data.forEach(stat => {
         statsMap[stat.tag_id] = stat;
       });
       setStatistics(statsMap);

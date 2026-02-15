@@ -81,20 +81,20 @@ const UsersPage: React.FC = () => {
     try {
       if (isAdmin) {
         // Site admins see all users with full statistics
-        const apiCall = showDeleted ? usersApi.getDeleted() : usersApi.getAll();
-        
-        const [usersRes, statsRes, groupsRes] = await Promise.all([
-          apiCall,
+        const [activeUsersRes, deletedUsersRes, statsRes, groupsRes] = await Promise.all([
+          showDeleted ? null : usersApi.getAll(),
+          showDeleted ? usersApi.getDeleted() : null,
           statisticsApi.getUserStatistics(),
           groupsApi.getAll()
         ]);
-        
-        setUsers(usersRes.data);
+
+        const usersList = showDeleted ? deletedUsersRes!.data : activeUsersRes!.data.data;
+        setUsers(usersList);
         setAllGroups(groupsRes.data);
         
         // Create a map of user_id to statistics
         const statsMap: Record<number, UserStatistics> = {};
-        statsRes.data.forEach(stat => {
+        statsRes.data.data.forEach(stat => {
           statsMap[stat.user_id] = stat;
         });
         setStatistics(statsMap);
@@ -385,7 +385,7 @@ const UsersPage: React.FC = () => {
       fetchUsers();
       // Refresh modal user after all operations
       const userRes = await usersApi.getAll();
-      const updatedUser = userRes.data.find((u: User) => u.id === user.id);
+      const updatedUser = userRes.data.data.find((u: User) => u.id === user.id);
       if (updatedUser) {
         setGroupModalUser(updatedUser);
       }
