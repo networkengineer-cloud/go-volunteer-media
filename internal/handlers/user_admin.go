@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -201,8 +202,8 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			// Store hashed token in dedicated setup_token field (separate from reset tokens)
 			user := models.User{
 				Username:              req.Username,
-				FirstName:             req.FirstName,
-				LastName:              req.LastName,
+				FirstName:             strings.TrimSpace(req.FirstName),
+				LastName:              strings.TrimSpace(req.LastName),
 				Email:                 req.Email,
 				Password:              hashedPassword,
 				IsAdmin:               req.IsAdmin,
@@ -258,8 +259,8 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		// Regular user creation with password
 		user := models.User{
 			Username:  req.Username,
-			FirstName: req.FirstName,
-			LastName:  req.LastName,
+			FirstName: strings.TrimSpace(req.FirstName),
+			LastName:  strings.TrimSpace(req.LastName),
 			Email:     req.Email,
 			Password:  hashedPassword,
 			IsAdmin:   req.IsAdmin,
@@ -407,8 +408,8 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			// Create user with setup token
 			user := models.User{
 				Username:              req.Username,
-				FirstName:             req.FirstName,
-				LastName:              req.LastName,
+				FirstName:             strings.TrimSpace(req.FirstName),
+				LastName:              strings.TrimSpace(req.LastName),
 				Email:                 req.Email,
 				Password:              hashedPassword,
 				IsAdmin:               false, // Group admins cannot create site admins
@@ -464,8 +465,8 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 		// Regular user creation with password
 		user := models.User{
 			Username:  req.Username,
-			FirstName: req.FirstName,
-			LastName:  req.LastName,
+			FirstName: strings.TrimSpace(req.FirstName),
+			LastName:  strings.TrimSpace(req.LastName),
 			Email:     req.Email,
 			Password:  hashedPassword,
 			IsAdmin:   false, // Group admins cannot create site admins

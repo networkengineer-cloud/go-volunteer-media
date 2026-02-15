@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -56,8 +57,8 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 		// Create user
 		user := models.User{
 			Username:  req.Username,
-			FirstName: req.FirstName,
-			LastName:  req.LastName,
+			FirstName: strings.TrimSpace(req.FirstName),
+			LastName:  strings.TrimSpace(req.LastName),
 			Email:     req.Email,
 			Password:  hashedPassword,
 			IsAdmin:   false,
