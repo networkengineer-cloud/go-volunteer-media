@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -587,7 +588,7 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 type UpdateUserRequest struct {
 	FirstName   string `json:"first_name" binding:"omitempty,max=100"`
 	LastName    string `json:"last_name" binding:"omitempty,max=100"`
-	Email       string `json:"email" binding:"omitempty,email"`
+	Email       string `json:"email" binding:"required,email"`
 	PhoneNumber string `json:"phone_number" binding:"omitempty"`
 }
 
@@ -597,6 +598,13 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		userId := c.Param("userId")
 
+		// Parse and validate userId
+		userIdInt, err := strconv.ParseUint(userId, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
+
 		var req UpdateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -605,14 +613,14 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 
 		// Find the user
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+		if err := db.WithContext(ctx).First(&user, userIdInt).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		// Check if email is being changed to an already-taken email
 		if req.Email != user.Email {
-			if err := validateEmailUniqueness(db, ctx, req.Email, userId); err != nil {
+			if err := validateEmailUniqueness(db, ctx, req.Email, userIdInt); err != nil {
 				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 				return
 			}
@@ -623,7 +631,7 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		updates["first_name"] = req.FirstName
 		updates["last_name"] = req.LastName
 		updates["phone_number"] = req.PhoneNumber
-		updates["email"] = req.Email // Email is required by binding validation
+		updates["email"] = req.Email
 
 		// Update user
 		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
@@ -632,7 +640,7 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Reload user to get updated data
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userId).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload user"})
 			return
 		}
@@ -647,6 +655,13 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 		userId := c.Param("userId")
+
+		// Parse and validate userId
+		userIdInt, err := strconv.ParseUint(userId, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
 
 		// Get current user ID
 		currentUserID, exists := c.Get("user_id")
@@ -670,7 +685,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 
 		// Find the target user with their groups
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userId).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -716,7 +731,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if email is being changed to an already-taken email
 		if req.Email != user.Email {
-			if err := validateEmailUniqueness(db, ctx, req.Email, userId); err != nil {
+			if err := validateEmailUniqueness(db, ctx, req.Email, userIdInt); err != nil {
 				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 				return
 			}
@@ -727,7 +742,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		updates["first_name"] = req.FirstName
 		updates["last_name"] = req.LastName
 		updates["phone_number"] = req.PhoneNumber
-		updates["email"] = req.Email // Email is required by binding validation
+		updates["email"] = req.Email
 
 		// Update user
 		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
@@ -736,7 +751,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Reload user to get updated data
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userId).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload user"})
 			return
 		}

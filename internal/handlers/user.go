@@ -15,7 +15,7 @@ import (
 func validateEmailUniqueness(db *gorm.DB, ctx context.Context, email string, currentUserID interface{}) error {
 	var existingUser models.User
 	if err := db.WithContext(ctx).Where("email = ? AND id != ?", email, currentUserID).First(&existingUser).Error; err == nil {
-		return fmt.Errorf("Email address is already in use")
+		return fmt.Errorf("email address is already in use")
 	}
 	return nil
 }
