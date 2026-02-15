@@ -194,6 +194,12 @@ variable "resend_from_email" {
   }
 }
 
+variable "resend_from_name" {
+  type        = string
+  description = "Display name for the email sender"
+  default     = "Haws Volunteers"
+}
+
 # Monitoring Configuration
 variable "log_retention_days" {
   type        = number

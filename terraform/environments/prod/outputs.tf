@@ -162,12 +162,11 @@ output "database_connection_info" {
 
 # Resend configuration (for verification)
 output "resend_configuration" {
-  description = "Resend SMTP configuration"
+  description = "Resend email configuration"
   value = {
-    smtp_host  = "smtp.resend.com"
-    smtp_port  = 587
-    smtp_user  = "resend"
+    provider   = "resend"
     from_email = var.resend_from_email
+    from_name  = var.resend_from_name
   }
 }
 
