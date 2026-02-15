@@ -632,9 +632,12 @@ const UsersPage: React.FC = () => {
         });
       }
       
-      // Check if response includes a message or warning (from setup email flow)
-      const message = response.data?.message || 'User created successfully!';
-      const warning = response.data?.warning;
+      // Handle response format - backend returns either:
+      // 1. Just a User object (when password is provided)
+      // 2. { user: User, message?: string, warning?: string } (when send_setup_email is used)
+      const responseData = response.data;
+      const message = responseData.message || 'User created successfully!';
+      const warning = responseData.warning;
       
       if (warning) {
         // Show warning if email failed to send

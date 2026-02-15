@@ -2,8 +2,8 @@
 // TODO: Implement proper pagination in admin UI; limit=100 is a temporary workaround
 export const usersApi = {
   getAll: () => api.get<PaginatedResponse<User>>('/admin/users?limit=100'),
-  create: (data: { username: string; email: string; password: string; is_admin?: boolean; group_ids?: number[] }) =>
-    api.post<User>('/admin/users', data),
+  create: (data: { username: string; email: string; password?: string; is_admin?: boolean; group_ids?: number[]; send_setup_email?: boolean }) =>
+    api.post<CreateUserResponse>('/admin/users', data),
   promote: (userId: number) => api.post(`/admin/users/${userId}/promote`),
   demote: (userId: number) => api.post(`/admin/users/${userId}/demote`),
   delete: (userId: number) => api.delete(`/admin/users/${userId}`),
@@ -28,7 +28,7 @@ export const groupAdminApi = {
   removeMemberFromGroup: (groupId: number, userId: number) => api.delete(`/groups/${groupId}/members/${userId}`),
   // Create a new user (group admins can create users and assign them to groups they admin)
   createUser: (data: { username: string; email: string; password?: string; send_setup_email?: boolean; group_ids: number[] }) =>
-    api.post<User>('/users', data),
+    api.post<CreateUserResponse>('/users', data),
 };
 import axios from 'axios';
 
@@ -87,6 +87,20 @@ export interface User {
   default_group_id?: number;
   groups?: Group[];
   deleted_at?: string | null;
+}
+
+// User creation response - backend returns different formats depending on setup email
+export interface CreateUserResponse {
+  user?: User;  // Present when send_setup_email is used
+  message?: string;  // Present on success with setup email
+  warning?: string;  // Present when email fails but user is created
+  // When send_setup_email is false, the response is just the User object directly
+  // so we extend User to handle both cases
+  id?: number;
+  username?: string;
+  email?: string;
+  is_admin?: boolean;
+  groups?: Group[];
 }
 
 // GroupMember represents a user's membership in a group with admin status
