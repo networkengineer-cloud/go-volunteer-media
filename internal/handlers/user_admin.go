@@ -678,6 +678,10 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// If not site admin, verify group admin has access to this user
+		// Note: A group admin can update a user if they are a group admin of ANY group
+		// that the target user belongs to. This differs from user creation where the
+		// group admin must administer ALL groups being assigned. This allows group admins
+		// to update shared users without requiring admin rights to all their groups.
 		if !currentUser.IsAdmin {
 			hasAccess := false
 			// Check if current user is group admin of any group the target user belongs to
