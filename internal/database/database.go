@@ -391,6 +391,7 @@ func createDefaultGroups(db *gorm.DB) error {
 	for _, group := range defaultGroups {
 		// Use upsert to avoid duplicate-key errors under concurrent migrations
 		// OnConflict will update description and has_protocols if group exists
+		// This intentionally updates existing modsquad groups to enable protocols
 		if err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "name"}},
 			DoUpdates: clause.AssignmentColumns([]string{"description", "has_protocols"}),

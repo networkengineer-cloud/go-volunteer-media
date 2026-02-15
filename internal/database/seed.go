@@ -9,6 +9,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // SeedData populates the database with demo data for testing and demonstrations
@@ -314,46 +315,39 @@ func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group
 
 // ensureSandboxGroup creates the activity-sandbox group if it doesn't exist
 // This group is used for automated testing and kept empty
+// Uses upsert to avoid duplicate-key errors under concurrent seed runs
 func ensureSandboxGroup(db *gorm.DB) error {
-	var sandboxGroup models.Group
-	err := db.Where("name = ?", "activity-sandbox").First(&sandboxGroup).Error
-	if err == nil {
-		// Group already exists
-		return nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		// Unexpected error
-		return err
-	}
-
-	// Create the sandbox group
-	sandboxGroup = models.Group{
+	group := models.Group{
 		Name:         "activity-sandbox",
 		Description:  "Empty group reserved for automated tests",
 		HasProtocols: false,
 	}
-	if err := db.Create(&sandboxGroup).Error; err != nil {
-		return fmt.Errorf("failed to create activity-sandbox group: %w", err)
+
+	// Use upsert to avoid TOCTOU race condition
+	if err := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "name"}},
+		DoUpdates: clause.AssignmentColumns([]string{"description", "has_protocols"}),
+	}).Create(&group).Error; err != nil {
+		return fmt.Errorf("failed to ensure activity-sandbox group: %w", err)
 	}
 
-	logging.Info("Created activity-sandbox group for testing")
+	logging.WithField("group_name", group.Name).Debug("Ensured activity-sandbox group exists")
 	return nil
 }
 
 // ensureSandboxMembership backfills access to the empty activity-sandbox group for existing demo users
 // when the main seed routine is skipped due to pre-existing data.
 func ensureSandboxMembership(db *gorm.DB) error {
-	// First ensure the sandbox group exists
+	// First ensure the sandbox group exists (creates if missing via upsert)
 	if err := ensureSandboxGroup(db); err != nil {
 		return err
 	}
 
+	// Fetch the group (guaranteed to exist after ensureSandboxGroup)
 	var sandboxGroup models.Group
 	if err := db.Where("name = ?", "activity-sandbox").First(&sandboxGroup).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
+		// Should not happen after successful ensureSandboxGroup, but handle gracefully
+		return fmt.Errorf("failed to fetch activity-sandbox group after creation: %w", err)
 	}
 
 	usernames := []string{"admin", "merry", "sophia", "terry", "alex", "jordan", "casey", "taylor"}
