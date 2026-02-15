@@ -585,9 +585,9 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 
 // UpdateUserRequest is the request body for updating user information
 type UpdateUserRequest struct {
-	FirstName   string `json:"first_name" binding:"omitempty,min=1,max=100"`
-	LastName    string `json:"last_name" binding:"omitempty,min=1,max=100"`
-	Email       string `json:"email" binding:"required,email"`
+	FirstName   string `json:"first_name" binding:"omitempty,max=100"`
+	LastName    string `json:"last_name" binding:"omitempty,max=100"`
+	Email       string `json:"email" binding:"omitempty,email"`
 	PhoneNumber string `json:"phone_number" binding:"omitempty"`
 }
 
@@ -675,12 +675,23 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// If not site admin, verify group admin has access to this user
+		// Site admins can update any user, including those with no groups
 		// Note: A group admin can update a user if they are a group admin of ANY group
 		// that the target user belongs to. This differs from user creation where the
 		// group admin must administer ALL groups being assigned. This allows group admins
 		// to update shared users without requiring admin rights to all their groups.
 		if !currentUser.IsAdmin {
+			// For group admins: verify they have access to this user
+			// If user has no groups, group admins cannot update them (only site admins can)
+			if len(user.Groups) == 0 {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_user_id":  userId,
+				}).Warn("Group admin attempted to update user with no groups")
+				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot update users with no group assignments. Please contact a site administrator."})
+				return
+			}
+
 			hasAccess := false
 			// Check if current user is group admin of any group the target user belongs to
 			for _, targetGroup := range user.Groups {
