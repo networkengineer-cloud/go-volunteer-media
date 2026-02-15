@@ -409,6 +409,8 @@ export const authApi = {
   getCurrentUser: () => api.get<User>('/me'),
   
   updateCurrentUserProfile: (profile: {
+    first_name?: string;
+    last_name?: string;
     email: string;
     phone_number?: string;
     hide_email?: boolean;
@@ -417,6 +419,8 @@ export const authApi = {
     api.put<{
       message: string;
       id: number;
+      first_name?: string;
+      last_name?: string;
       email: string;
       phone_number?: string;
       hide_email?: boolean;

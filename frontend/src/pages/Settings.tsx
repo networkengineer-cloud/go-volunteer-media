@@ -5,6 +5,8 @@ import { useToast } from '../hooks/useToast';
 import './Settings.css';
 
 const Settings: React.FC = () => {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [hideEmail, setHideEmail] = useState(false);
@@ -47,6 +49,8 @@ const Settings: React.FC = () => {
         authApi.getCurrentUser(),
         authApi.getEmailPreferences(),
       ]);
+      setFirstName(userRes.data.first_name || '');
+      setLastName(userRes.data.last_name || '');
       setEmail(userRes.data.email);
       setPhoneNumber(userRes.data.phone_number || '');
       setHideEmail(userRes.data.hide_email || false);
@@ -78,6 +82,8 @@ const Settings: React.FC = () => {
 
     try {
       await authApi.updateCurrentUserProfile({
+        first_name: firstName,
+        last_name: lastName,
         email,
         phone_number: phoneNumber,
         hide_email: hideEmail,
@@ -151,8 +157,54 @@ const Settings: React.FC = () => {
         <div className="settings-section">
           <h2>Profile Information</h2>
           <p className="settings-description">
-            Manage your account email, phone number, and control who can see this information.
+            Manage your account information, email, phone number, and control who can see this information.
           </p>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="firstName">
+                <strong>First Name</strong>
+              </label>
+              <p className="setting-help">
+                Your first name as you'd like it to appear.
+              </p>
+            </div>
+            <div className="setting-input-wrapper">
+              <input
+                id="firstName"
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                disabled={savingEmail}
+                className="setting-input"
+                placeholder="First name"
+                maxLength={100}
+              />
+            </div>
+          </div>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="lastName">
+                <strong>Last Name</strong>
+              </label>
+              <p className="setting-help">
+                Your last name as you'd like it to appear.
+              </p>
+            </div>
+            <div className="setting-input-wrapper">
+              <input
+                id="lastName"
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                disabled={savingEmail}
+                className="setting-input"
+                placeholder="Last name"
+                maxLength={100}
+              />
+            </div>
+          </div>
 
           <div className="setting-item">
             <div className="setting-info">
