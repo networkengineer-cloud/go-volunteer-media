@@ -581,3 +581,172 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
 	}
 }
+
+// UpdateUserRequest is the request body for updating user information
+type UpdateUserRequest struct {
+	FirstName   string `json:"first_name" binding:"omitempty,max=100"`
+	LastName    string `json:"last_name" binding:"omitempty,max=100"`
+	Email       string `json:"email" binding:"omitempty,email"`
+	PhoneNumber string `json:"phone_number" binding:"omitempty"`
+}
+
+// AdminUpdateUser allows an admin to update a user's information
+func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		userId := c.Param("userId")
+
+		var req UpdateUserRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Find the user
+		var user models.User
+		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// Check if email is being changed to an already-taken email
+		if req.Email != "" && req.Email != user.Email {
+			var existingUser models.User
+			if err := db.WithContext(ctx).Where("email = ? AND id != ?", req.Email, userId).First(&existingUser).Error; err == nil {
+				c.JSON(http.StatusConflict, gin.H{"error": "Email address is already in use"})
+				return
+			}
+		}
+
+		// Build updates map (only update fields that are provided)
+		updates := make(map[string]interface{})
+		if req.FirstName != "" || c.Request.PostFormValue("first_name") == "" {
+			updates["first_name"] = req.FirstName
+		}
+		if req.LastName != "" || c.Request.PostFormValue("last_name") == "" {
+			updates["last_name"] = req.LastName
+		}
+		if req.Email != "" {
+			updates["email"] = req.Email
+		}
+		if req.PhoneNumber != "" || c.Request.PostFormValue("phone_number") == "" {
+			updates["phone_number"] = req.PhoneNumber
+		}
+
+		// Update user
+		if len(updates) > 0 {
+			if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+				return
+			}
+		}
+
+		// Reload user to get updated data
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userId).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload user"})
+			return
+		}
+
+		c.JSON(http.StatusOK, user)
+	}
+}
+
+// GroupAdminUpdateUser allows a group admin to update a user's information for users in their groups
+func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
+		userId := c.Param("userId")
+
+		// Get current user ID
+		currentUserID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		var req UpdateUserRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Get current user to check admin status
+		var currentUser models.User
+		if err := db.WithContext(ctx).First(&currentUser, currentUserID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch current user"})
+			return
+		}
+
+		// Find the target user with their groups
+		var user models.User
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userId).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// If not site admin, verify group admin has access to this user
+		if !currentUser.IsAdmin {
+			hasAccess := false
+			// Check if current user is group admin of any group the target user belongs to
+			for _, targetGroup := range user.Groups {
+				var userGroup models.UserGroup
+				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
+					currentUserID, targetGroup.ID, true).First(&userGroup).Error
+				if err == nil {
+					hasAccess = true
+					break
+				}
+			}
+
+			if !hasAccess {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_user_id":  userId,
+				}).Warn("Unauthorized attempt to update user")
+				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to update user information"})
+				return
+			}
+		}
+
+		// Check if email is being changed to an already-taken email
+		if req.Email != "" && req.Email != user.Email {
+			var existingUser models.User
+			if err := db.WithContext(ctx).Where("email = ? AND id != ?", req.Email, userId).First(&existingUser).Error; err == nil {
+				c.JSON(http.StatusConflict, gin.H{"error": "Email address is already in use"})
+				return
+			}
+		}
+
+		// Build updates map (only update fields that are provided)
+		updates := make(map[string]interface{})
+		if req.FirstName != "" || c.Request.PostFormValue("first_name") == "" {
+			updates["first_name"] = req.FirstName
+		}
+		if req.LastName != "" || c.Request.PostFormValue("last_name") == "" {
+			updates["last_name"] = req.LastName
+		}
+		if req.Email != "" {
+			updates["email"] = req.Email
+		}
+		if req.PhoneNumber != "" || c.Request.PostFormValue("phone_number") == "" {
+			updates["phone_number"] = req.PhoneNumber
+		}
+
+		// Update user
+		if len(updates) > 0 {
+			if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+				return
+			}
+		}
+
+		// Reload user to get updated data
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userId).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload user"})
+			return
+		}
+
+		c.JSON(http.StatusOK, user)
+	}
+}

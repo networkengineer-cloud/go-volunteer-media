@@ -190,6 +190,7 @@ func main() {
 		// User management (accessible by site admins and group admins for users in their groups)
 		// Authorization is checked within the handlers
 		protected.POST("/users", handlers.GroupAdminCreateUser(db, emailService))
+		protected.PUT("/users/:userId", handlers.GroupAdminUpdateUser(db))
 		protected.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
 
 		// Admin only routes
@@ -198,6 +199,7 @@ func main() {
 		{
 			admin.GET("/users", handlers.GetAllUsers(db))
 			admin.POST("/users", handlers.AdminCreateUser(db, emailService))
+			admin.PUT("/users/:userId", handlers.AdminUpdateUser(db))
 			admin.DELETE("/users/:userId", handlers.AdminDeleteUser(db))
 			admin.GET("/users/deleted", handlers.GetDeletedUsers(db))
 			admin.POST("/users/:userId/restore", handlers.RestoreUser(db))

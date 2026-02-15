@@ -154,6 +154,8 @@ func GetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 }
 
 type UpdateProfileRequest struct {
+	FirstName       string `json:"first_name" binding:"omitempty,max=100"`
+	LastName        string `json:"last_name" binding:"omitempty,max=100"`
 	Email           string `json:"email" binding:"required,email"`
 	PhoneNumber     string `json:"phone_number"`
 	HideEmail       bool   `json:"hide_email"`
@@ -193,8 +195,10 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		// Update user profile (email, phone, and privacy settings)
+		// Update user profile (first name, last name, email, phone, and privacy settings)
 		updates := map[string]interface{}{
+			"first_name":        req.FirstName,
+			"last_name":         req.LastName,
 			"email":             req.Email,
 			"phone_number":      req.PhoneNumber,
 			"hide_email":        req.HideEmail,
@@ -208,6 +212,8 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"message":           "Profile updated successfully",
 			"id":                user.ID,
+			"first_name":        req.FirstName,
+			"last_name":         req.LastName,
 			"email":             req.Email,
 			"phone_number":      req.PhoneNumber,
 			"hide_email":        req.HideEmail,

@@ -105,7 +105,14 @@ const UserProfilePage: React.FC = () => {
               </svg>
             </div>
             <div className="profile-details">
-              <h1>{profile.username}</h1>
+              <h1>
+                {profile.first_name || profile.last_name
+                  ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+                  : profile.username}
+              </h1>
+              {(profile.first_name || profile.last_name) && (
+                <p className="profile-username">@{profile.username}</p>
+              )}
               {profile.email && <p className="profile-email">{profile.email}</p>}
               {profile.phone_number && <p className="profile-phone">{profile.phone_number}</p>}
               {profile.is_admin && <span className="admin-badge">Admin</span>}
