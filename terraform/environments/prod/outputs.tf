@@ -24,22 +24,46 @@ output "container_app_url" {
 # Custom domain configuration guidance
 output "custom_domain_setup" {
   description = "Custom domain setup status and guidance"
+  sensitive   = true
   value = var.custom_domain != "" ? {
-    step_1_dns = "✅ CNAME and TXT records created in Cloudflare"
+    step_1_dns   = "✅ CNAME and TXT records created in Cloudflare"
     cname_record = "${var.custom_domain} -> ${azurerm_container_app.main.ingress[0].fqdn}"
-    txt_record = "asuid.${var.custom_domain} -> ${azurerm_container_app.main.custom_domain_verification_id}"
+    txt_record   = "asuid.${var.custom_domain} -> ${azurerm_container_app.main.custom_domain_verification_id}"
 
-    step_2_verify_dns = "Wait for DNS propagation: dig ${var.custom_domain}"
+    step_2_verify_dns = "Wait for DNS propagation: dig ${var.custom_domain} CNAME +short"
 
-    step_3_managed_cert = "⚠️ Azure Managed Certificate requires CLI (Terraform provider limitation):"
-    cli_command = "az containerapp hostname bind --hostname ${var.custom_domain} --resource-group ${azurerm_resource_group.main.name} --name ${azurerm_container_app.main.name} --environment ${azurerm_container_app_environment.main.name} --validation-method CNAME"
+    step_3_managed_cert = "⚠️ Run setup script to configure managed certificate:"
+    setup_script        = "bash scripts/setup-custom-domain.sh ${var.environment}"
 
-    step_4_refresh = "After CLI binding completes, run: terraform refresh"
-
-    note = "Alternative: Provide 'custom_domain_certificate_id' to bind an uploaded certificate via Terraform."
-  } : {
+    note = "Azure managed certificates not supported by Terraform provider. Setup script automates Azure CLI commands."
+    } : {
     message = "No custom domain configured. Set 'custom_domain' variable to enable."
   }
+}
+
+output "custom_domain_url" {
+  description = "Custom domain URL (if configured)"
+  value       = var.custom_domain != "" ? "https://${var.custom_domain}" : null
+}
+
+output "frontend_url" {
+  description = "Frontend URL for users"
+  value       = var.frontend_url
+}
+
+output "public_domain" {
+  description = "Public-facing domain name"
+  value       = var.public_domain
+}
+
+output "container_app_name" {
+  description = "Name of the Container App"
+  value       = azurerm_container_app.main.name
+}
+
+output "container_app_environment_name" {
+  description = "Name of the Container App Environment"
+  value       = azurerm_container_app_environment.main.name
 }
 
 output "container_app_id" {
@@ -92,6 +116,11 @@ output "key_vault_id" {
   value       = azurerm_key_vault.main.id
 }
 
+output "key_vault_name" {
+  description = "Name of the Key Vault (includes unique suffix)"
+  value       = azurerm_key_vault.main.name
+}
+
 output "key_vault_uri" {
   description = "URI of the Key Vault"
   value       = azurerm_key_vault.main.vault_uri
@@ -131,14 +160,14 @@ output "database_connection_info" {
   }
 }
 
-# SendGrid configuration (for verification)
-output "sendgrid_configuration" {
-  description = "SendGrid SMTP configuration"
+# Resend configuration (for verification)
+output "resend_configuration" {
+  description = "Resend SMTP configuration"
   value = {
-    smtp_host = "smtp.sendgrid.net"
-    smtp_port = 587
-    smtp_user = "apikey"
-    from_email = var.sendgrid_from_email
+    smtp_host  = "smtp.resend.com"
+    smtp_port  = 587
+    smtp_user  = "resend"
+    from_email = var.resend_from_email
   }
 }
 
@@ -146,4 +175,11 @@ output "sendgrid_configuration" {
 output "monthly_budget_amount" {
   description = "Monthly budget alert threshold"
   value       = var.monthly_budget_amount
+}
+
+# Database admin password (sensitive - only for admin scripts)
+output "postgresql_admin_password" {
+  description = "PostgreSQL admin password (stored in Key Vault)"
+  value       = random_password.db_password.result
+  sensitive   = true
 }

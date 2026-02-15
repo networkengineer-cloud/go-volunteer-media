@@ -77,17 +77,34 @@ Grant the service principal access to your subscription:
 # Get subscription ID
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-# Assign Contributor role (or use custom role for least privilege)
+# Assign Contributor role (for creating/managing resources)
 az role assignment create \
   --role "Contributor" \
   --assignee-object-id $SP_OBJECT_ID \
-  --scope "/subscriptions/$SUBSCRIPTION_ID"
+  --scope "/subscriptions/$SUBSCRIPTION_ID" \
+  --assignee-principal-type "ServicePrincipal"
 
-# Verify assignment
+# Assign User Access Administrator role (for creating role assignments)
+# This is required for RBAC-based Key Vault and other role assignments
+az role assignment create \
+  --role "User Access Administrator" \
+  --assignee-object-id $SP_OBJECT_ID \
+  --scope "/subscriptions/$SUBSCRIPTION_ID" \
+  --assignee-principal-type "ServicePrincipal"
+
+# Verify assignments
 az role assignment list \
   --assignee $APP_ID \
   --output table
 ```
+
+**Why Both Roles?**
+- **Contributor**: Creates/manages Azure resources (VMs, databases, etc.)
+- **User Access Administrator**: Assigns RBAC roles (Key Vault RBAC, Storage RBAC, etc.)
+
+**Security Note:** User Access Administrator is a privileged role. For production:
+- Scope it to specific resource groups instead of the entire subscription
+- Or use a custom role with only `Microsoft.Authorization/roleAssignments/write` permission
 
 ### 4. Configure Federated Credential for HCP Terraform
 
@@ -95,7 +112,7 @@ This tells Azure AD to trust HCP Terraform's identity tokens:
 
 ```bash
 # Get your HCP Terraform organization name
-HCP_ORG="volunteer-media"  # Replace with your org name
+HCP_ORG="Networkengineer"  # Replace with your org name
 
 # Create federated credential
 az ad app federated-credential create \
@@ -103,7 +120,7 @@ az ad app federated-credential create \
   --parameters '{
     "name": "hcp-terraform-oidc",
     "issuer": "https://app.terraform.io",
-    "subject": "organization:'$HCP_ORG':project:*:workspace:*:run_phase:*",
+    "subject": "organization:'$HCP_ORG':project:*:workspace:volunteer-app:run_phase:*",
     "description": "Federated credential for HCP Terraform",
     "audiences": ["api://AzureADTokenExchange"]
   }'

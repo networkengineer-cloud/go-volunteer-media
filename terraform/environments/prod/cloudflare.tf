@@ -40,10 +40,11 @@ locals {
     "172.64.0.0/13",
     "131.0.72.0/22"
   ]
-  
+
   # DNS TXT record name for Azure custom domain verification
-  custom_domain_txt_record_name = var.custom_domain != "" ? "asuid.${var.custom_domain}" : ""
-  
+  custom_domain_txt_record_name        = var.custom_domain != "" ? "asuid.${var.custom_domain}" : ""
+  public_domain_txt_record_name        = var.public_domain != "" ? "asuid.${var.public_domain}" : ""
+
   # Note: For production, implement one of these solutions:
   # 1. Add header validation middleware in Go API
   # 2. Use Azure Front Door + Private Link (additional cost ~$35/month)
@@ -59,18 +60,17 @@ output "cloudflare_setup_instructions" {
     step_3 = "Enable 'Proxied' (orange cloud) in Cloudflare DNS"
     step_4 = "In Container App, add custom domain"
     step_5 = "Implement header validation in Go API middleware"
-    
+
     cloudflare_headers_to_validate = [
       "CF-Connecting-IP",
       "CF-Ray",
       "CF-Visitor"
     ]
-    
-    security_note = "For enterprise-grade protection, consider Azure Front Door with Private Link endpoint"
   })
 }
 
-# TXT record for Azure Container Apps custom domain verification
+# TXT record for Azure Container Apps custom domain verification (infrastructure domain)
+# This validates ownership of the infrastructure domain (prd.myhaws.org)
 resource "cloudflare_dns_record" "custom_domain_verification" {
   count = var.custom_domain != "" && var.cloudflare_zone_id != "" ? 1 : 0
 
@@ -81,19 +81,67 @@ resource "cloudflare_dns_record" "custom_domain_verification" {
   ttl     = 300
   proxied = false
 
-  comment = "Azure Container Apps custom domain verification"
+  comment = "Azure Container Apps custom domain verification (infrastructure)"
 }
 
-# CNAME record for application hostname
-resource "cloudflare_dns_record" "domain" {
+# TXT record for Azure Container Apps public domain verification (www.myhaws.org)
+resource "cloudflare_dns_record" "public_domain_verification" {
+  count = var.public_domain != "" && var.custom_domain != "" && var.cloudflare_zone_id != "" ? 1 : 0
+
+  zone_id = var.cloudflare_zone_id
+  name    = local.public_domain_txt_record_name
+  type    = "TXT"
+  content = azurerm_container_app.main.custom_domain_verification_id
+  ttl     = 300
+  proxied = false
+
+  comment = "Azure Container Apps custom domain verification (public)"
+}
+
+# CNAME record for infrastructure domain
+# Points prd.myhaws.org -> Azure Container App FQDN
+# Proxied through Cloudflare for DDoS protection once certificate is provisioned
+resource "cloudflare_dns_record" "infrastructure_domain" {
   count = var.custom_domain != "" && var.cloudflare_zone_id != "" ? 1 : 0
 
   zone_id = var.cloudflare_zone_id
   name    = var.custom_domain
   type    = "CNAME"
-  content = azurerm_container_app.main.latest_revision_fqdn
+  content = azurerm_container_app.main.ingress[0].fqdn
   ttl     = 1
-  proxied = false
+  proxied = true
 
-  comment = "CNAME record for Azure Container App custom domain"
+  comment = "Infrastructure domain for Azure Container App"
+}
+
+# CNAME record for public-facing domain
+# Points www.myhaws.org -> prd.myhaws.org
+# This provides indirection: if infrastructure changes, only update the infrastructure CNAME
+resource "cloudflare_dns_record" "public_domain" {
+  count = var.public_domain != "" && var.custom_domain != "" && var.cloudflare_zone_id != "" ? 1 : 0
+
+  zone_id = var.cloudflare_zone_id
+  name    = var.public_domain
+  type    = "CNAME"
+  content = var.custom_domain
+  ttl     = 1 # Must be 1 (automatic) when proxied
+  proxied = true
+
+  comment = "Public-facing domain (Cloudflare proxied, handles TLS)"
+}
+
+# Apex domain (myhaws.org) - point directly to infrastructure domain
+# Cloudflare CNAME flattening converts this to A/AAAA records automatically
+# Proxied through Cloudflare for DDoS protection
+resource "cloudflare_dns_record" "apex_domain" {
+  count = var.custom_domain != "" && var.cloudflare_zone_id != "" ? 1 : 0
+
+  zone_id = var.cloudflare_zone_id
+  name    = "@" # @ represents the apex domain
+  type    = "CNAME"
+  content = var.custom_domain
+  ttl     = 1
+  proxied = true
+
+  comment = "Apex domain (flattened CNAME to infrastructure domain)"
 }

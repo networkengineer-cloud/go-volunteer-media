@@ -71,6 +71,11 @@ output "key_vault_id" {
   value       = azurerm_key_vault.main.id
 }
 
+output "key_vault_name" {
+  description = "Name of the Key Vault (includes unique suffix)"
+  value       = azurerm_key_vault.main.name
+}
+
 output "key_vault_uri" {
   description = "URI of the Key Vault"
   value       = azurerm_key_vault.main.vault_uri
@@ -140,6 +145,7 @@ output "database_auto_pause_config" {
 # Custom domain configuration
 output "custom_domain_setup" {
   description = "Custom domain setup status and guidance"
+  sensitive   = true
   value = var.custom_domain != "" ? {
     step_1_dns = "✅ CNAME and TXT records created in Cloudflare"
     cname_record = "${var.custom_domain} -> ${azurerm_container_app.main.ingress[0].fqdn}"

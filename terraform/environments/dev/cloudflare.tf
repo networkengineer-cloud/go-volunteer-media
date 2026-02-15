@@ -90,7 +90,7 @@ resource "cloudflare_dns_record" "domain" {
   zone_id = var.cloudflare_zone_id
   name    = var.custom_domain
   type    = "CNAME"
-  content = azurerm_container_app.main.latest_revision_fqdn
+  content = azurerm_container_app.main.ingress[0].fqdn
   ttl     = 1
   proxied = false
 

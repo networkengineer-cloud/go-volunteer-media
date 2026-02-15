@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dig:*)",
+      "Bash(curl:*)",
+      "Bash(nslookup:*)",
+      "Bash(bash /Users/wally/projects/go-volunteer-media/scripts/setup-custom-domain.sh prod)"
+    ]
+  }
+}
