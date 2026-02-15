@@ -50,7 +50,7 @@ const GroupsPage: React.FC = () => {
         
         // Create a map of group_id to statistics
         const statsMap: Record<number, GroupStatistics> = {};
-        statsRes.data.forEach(stat => {
+        statsRes.data.data.forEach(stat => {
           statsMap[stat.group_id] = stat;
         });
         setStatistics(statsMap);

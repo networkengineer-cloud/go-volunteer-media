@@ -1,6 +1,7 @@
 // Users API (admin)
+// TODO: Implement proper pagination in admin UI; limit=100 is a temporary workaround
 export const usersApi = {
-  getAll: () => api.get<User[]>('/admin/users'),
+  getAll: () => api.get<PaginatedResponse<User>>('/admin/users?limit=100'),
   create: (data: { username: string; email: string; password: string; is_admin?: boolean; group_ids?: number[] }) =>
     api.post<User>('/admin/users', data),
   promote: (userId: number) => api.post(`/admin/users/${userId}/promote`),
@@ -65,6 +66,14 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
 
 export interface User {
   id: number;
@@ -651,12 +660,13 @@ export const settingsApi = {
 };
 
 // Statistics API
+// TODO: Implement proper pagination in admin UI; limit=100 is a temporary workaround
 export const statisticsApi = {
-  getGroupStatistics: () => api.get<GroupStatistics[]>('/admin/statistics/groups'),
-  getUserStatistics: () => api.get<UserStatistics[]>('/admin/statistics/users'),
+  getGroupStatistics: () => api.get<PaginatedResponse<GroupStatistics>>('/admin/statistics/groups?limit=100'),
+  getUserStatistics: () => api.get<PaginatedResponse<UserStatistics>>('/admin/statistics/users?limit=100'),
   getCommentTagStatistics: (groupId?: number) => {
-    const params = groupId ? `?group_id=${groupId}` : '';
-    return api.get<CommentTagStatistics[]>(`/statistics/comment-tags${params}`);
+    const params = groupId ? `?group_id=${groupId}&limit=100` : '?limit=100';
+    return api.get<PaginatedResponse<CommentTagStatistics>>(`/statistics/comment-tags${params}`);
   },
 };
 
