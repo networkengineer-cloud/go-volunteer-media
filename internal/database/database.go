@@ -157,6 +157,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.Announcement{},
 		&models.CommentTag{},
 		&models.AnimalComment{},
+		&models.CommentHistory{},
 		&models.SiteSetting{},
 		&models.Protocol{},
 		&models.AnimalTag{},

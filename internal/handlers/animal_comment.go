@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"html"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -287,6 +288,22 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		// Sanitize metadata to prevent XSS
 		sanitizeSessionMetadata(req.Metadata)
 
+		// Save current version to history before updating
+		// EditedBy records who authored this version (which is now being replaced)
+		// On first edit: comment.UserID (original author)
+		// On subsequent edits: comment.UserID (previous editor who is now in history)
+		history := models.CommentHistory{
+			CommentID: comment.ID,
+			Content:   comment.Content,
+			ImageURL:  comment.ImageURL,
+			Metadata:  comment.Metadata,
+			EditedBy:  comment.UserID,
+		}
+		if err := db.Create(&history).Error; err != nil {
+			// Log error but don't fail the update
+			log.Printf("Failed to save comment history: %v", err)
+		}
+
 		// Update comment fields
 		comment.Content = req.Content
 		comment.ImageURL = req.ImageURL
@@ -315,6 +332,46 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, comment)
+	}
+}
+
+// GetCommentHistory returns the edit history for a comment (admin only)
+func GetCommentHistory(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		groupID := c.Param("id")
+		animalID := c.Param("animalId")
+		commentID := c.Param("commentId")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Check for group admin or site admin access
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		// Verify comment belongs to the specified animal and group
+		var comment models.AnimalComment
+		err := db.Joins("JOIN animals ON animals.id = animal_comments.animal_id").
+			Where("animal_comments.id = ? AND animal_comments.animal_id = ? AND animals.group_id = ?", commentID, animalID, groupID).
+			First(&comment).Error
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})
+			return
+		}
+
+		// Get history entries
+		var history []models.CommentHistory
+		err = db.Where("comment_id = ?", commentID).
+			Preload("User").
+			Order("created_at DESC").
+			Find(&history).Error
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch history"})
+			return
+		}
+
+		c.JSON(http.StatusOK, history)
 	}
 }
 

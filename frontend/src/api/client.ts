@@ -201,6 +201,7 @@ export interface AnimalComment {
   content: string;
   image_url: string;
   created_at: string;
+  updated_at: string;
   deleted_at?: string | null;
   metadata?: SessionMetadata;
   tags?: CommentTag[];
@@ -214,6 +215,17 @@ export interface SessionMetadata {
   medical_notes?: string;
   session_rating?: number; // 1-5 (Poor, Fair, Okay, Good, Great)
   other_notes?: string;
+}
+
+export interface CommentHistory {
+  id: number;
+  created_at: string;
+  comment_id: number;
+  content: string;
+  image_url: string;
+  metadata?: SessionMetadata;
+  edited_by: number;
+  user?: User;
 }
 
 export interface PaginatedCommentsResponse {
@@ -557,10 +569,19 @@ export const animalCommentsApi = {
       tag_ids,
       metadata,
     }),
+  update: (groupId: number, animalId: number, commentId: number, content: string, image_url?: string, tag_ids?: number[], metadata?: SessionMetadata) =>
+    api.put<AnimalComment>('/groups/' + groupId + '/animals/' + animalId + '/comments/' + commentId, {
+      content,
+      image_url,
+      tag_ids,
+      metadata,
+    }),
   delete: (groupId: number, animalId: number, commentId: number) =>
     api.delete('/groups/' + groupId + '/animals/' + animalId + '/comments/' + commentId),
   getDeleted: (groupId: number) =>
     api.get<AnimalComment[]>('/admin/groups/' + groupId + '/deleted-comments'),
+  getHistory: (groupId: number, animalId: number, commentId: number) =>
+    api.get<CommentHistory[]>('/groups/' + groupId + '/animals/' + animalId + '/comments/' + commentId + '/history'),
 };
 
 // Comment Tags API - Group-specific tags

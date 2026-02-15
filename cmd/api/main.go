@@ -269,6 +269,7 @@ func main() {
 			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
 			group.PUT("/animals/:animalId/comments/:commentId", handlers.UpdateAnimalComment(db))
 			group.DELETE("/animals/:animalId/comments/:commentId", handlers.DeleteAnimalComment(db))
+			group.GET("/animals/:animalId/comments/:commentId/history", handlers.GetCommentHistory(db))
 
 			// Latest comments across the group
 			group.GET("/latest-comments", handlers.GetGroupLatestComments(db))
