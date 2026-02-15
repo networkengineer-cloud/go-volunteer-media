@@ -1746,6 +1746,17 @@
   color: #fca5a5;
 }
 
+.alert-warning {
+  background: rgba(245, 158, 11, 0.1);
+  border: 2px solid #f59e0b;
+  color: #92400e;
+}
+
+[data-theme='dark'] .alert-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fcd34d;
+}
+
 .alert-success {
   background: rgba(16, 185, 129, 0.1);
   border: 2px solid var(--success);

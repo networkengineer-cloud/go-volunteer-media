@@ -2,8 +2,8 @@
 // TODO: Implement proper pagination in admin UI; limit=100 is a temporary workaround
 export const usersApi = {
   getAll: () => api.get<PaginatedResponse<User>>('/admin/users?limit=100'),
-  create: (data: { username: string; email: string; password: string; is_admin?: boolean; group_ids?: number[] }) =>
-    api.post<User>('/admin/users', data),
+  create: (data: { username: string; email: string; password?: string; is_admin?: boolean; group_ids?: number[]; send_setup_email?: boolean }) =>
+    api.post<CreateUserResponse>('/admin/users', data),
   promote: (userId: number) => api.post(`/admin/users/${userId}/promote`),
   demote: (userId: number) => api.post(`/admin/users/${userId}/demote`),
   delete: (userId: number) => api.delete(`/admin/users/${userId}`),
@@ -28,7 +28,7 @@ export const groupAdminApi = {
   removeMemberFromGroup: (groupId: number, userId: number) => api.delete(`/groups/${groupId}/members/${userId}`),
   // Create a new user (group admins can create users and assign them to groups they admin)
   createUser: (data: { username: string; email: string; password?: string; send_setup_email?: boolean; group_ids: number[] }) =>
-    api.post<User>('/users', data),
+    api.post<CreateUserResponse>('/users', data),
 };
 import axios from 'axios';
 
@@ -88,6 +88,14 @@ export interface User {
   groups?: Group[];
   deleted_at?: string | null;
 }
+
+// User creation response - backend returns different formats depending on setup email
+// Using discriminated union for type safety:
+// - When send_setup_email=false: returns User directly
+// - When send_setup_email=true: returns wrapped response with optional message/warning
+export type CreateUserResponse = 
+  | User  // Direct user object when password provided
+  | { user: User; message?: string; warning?: string };  // Wrapped response with setup email
 
 // GroupMember represents a user's membership in a group with admin status
 export interface GroupMember {

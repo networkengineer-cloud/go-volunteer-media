@@ -466,6 +466,7 @@ const UsersPage: React.FC = () => {
   const [createLoading, setCreateLoading] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = React.useState<string | null>(null);
+  const [createWarning, setCreateWarning] = React.useState<string | null>(null);
   
   // Form validation state
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
@@ -495,6 +496,7 @@ const UsersPage: React.FC = () => {
       setTouchedFields(new Set());
       setCreateError(null);
       setCreateSuccess(null);
+      setCreateWarning(null);
       setShowPassword(false);
     }
   }, [showCreate]);
@@ -608,6 +610,7 @@ const UsersPage: React.FC = () => {
     setCreateLoading(true);
     setCreateError(null);
     setCreateSuccess(null);
+    setCreateWarning(null);
     try {
       let response;
       
@@ -632,21 +635,33 @@ const UsersPage: React.FC = () => {
         });
       }
       
-      // Check if response includes a message or warning (from setup email flow)
-      const message = response.data?.message || 'User created successfully!';
-      const warning = response.data?.warning;
+      // Handle discriminated union response:
+      // - User object directly (when password provided)
+      // - { user: User, message?: string, warning?: string } (when setup email used)
+      const responseData = response.data;
       
-      if (warning) {
-        // Show warning if email failed to send
-        setCreateError(warning);
+      // Type guard: check if response has 'user' property (wrapped format)
+      if ('user' in responseData) {
+        // Wrapped format from setup email flow
+        const { warning, message } = responseData;
+        
+        if (warning) {
+          // User created but email failed - show as warning (not error)
+          setCreateWarning(warning);
+          setCreateSuccess('User created successfully.');
+        } else {
+          // Success with email sent
+          setCreateSuccess(message || 'User created successfully. Password setup email sent.');
+        }
       } else {
-        setCreateSuccess(message);
+        // Direct User object from password flow
+        setCreateSuccess('User created successfully!');
       }
       
       setTimeout(() => {
         setShowCreate(false);
         fetchUsers();
-      }, 3500); // Longer timeout for warning messages
+      }, 3500); // Longer timeout for messages to be read
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
       setCreateError(error.response?.data?.error || 'Failed to create user');
@@ -998,13 +1013,21 @@ const UsersPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Error and Success Messages */}
+          {/* Error, Warning, and Success Messages */}
           {createError && (
             <div className="form-alert alert-error" role="alert">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M10 0a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1 5h2v6H9V5zm0 8h2v2H9v-2z" fill="currentColor"/>
               </svg>
               <span>{createError}</span>
+            </div>
+          )}
+          {createWarning && (
+            <div className="form-alert alert-warning" role="alert">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 0a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1 5h2v6H9V5zm0 8h2v2H9v-2z" fill="currentColor"/>
+              </svg>
+              <span>{createWarning}</span>
             </div>
           )}
           {createSuccess && (
