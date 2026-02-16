@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Link } from 'react-router-dom';
 import './UsersPage.css';
 import type { User, Group, UserStatistics, GroupMember } from '../api/client';
-import { usersApi, groupsApi, statisticsApi, groupAdminApi } from '../api/client';
+import { usersApi, groupsApi, statisticsApi, groupAdminApi, authApi } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { getPasswordStrength } from '../utils/passwordStrength';
 
@@ -53,6 +53,23 @@ const UsersPage: React.FC = () => {
   const [resetPasswordLoading, setResetPasswordLoading] = React.useState(false);
   const [resetPasswordError, setResetPasswordError] = React.useState<string | null>(null);
   const [resetPasswordSuccess, setResetPasswordSuccess] = React.useState<string | null>(null);
+
+  // Edit user modal state
+  const [editUser, setEditUser] = React.useState<User | null>(null);
+  const [editData, setEditData] = React.useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone_number: '',
+  });
+  const [editLoading, setEditLoading] = React.useState(false);
+  const [editError, setEditError] = React.useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = React.useState<string | null>(null);
+
+  // Timeout refs to prevent race conditions when modals are closed early
+  const editTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const createTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Show details state - track which user cards have expanded details
   const [expandedDetails, setExpandedDetails] = React.useState<Set<number>>(new Set());
@@ -158,6 +175,15 @@ const UsersPage: React.FC = () => {
     fetchUsers();
   }, [fetchUsers]);
 
+  // Cleanup timeout refs on unmount to prevent state updates after unmount
+  React.useEffect(() => {
+    return () => {
+      if (editTimeoutRef.current) clearTimeout(editTimeoutRef.current);
+      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+      if (createTimeoutRef.current) clearTimeout(createTimeoutRef.current);
+    };
+  }, []);
+
   // Fetch group members when allGroups is populated (for admin group admin management)
   React.useEffect(() => {
     if (allGroups.length > 0 && (isAdmin || isGroupAdmin)) {
@@ -210,6 +236,21 @@ const UsersPage: React.FC = () => {
     if (!members) return false;
     const member = members.find(m => m.user_id === currentUser.id);
     return member?.is_group_admin || false;
+  };
+
+  // Check if target user holds any admin role (site admin or group admin)
+  const isUserAdmin = (user: User): boolean => {
+    return user.is_admin || !!user.is_group_admin;
+  };
+
+  // Check if current user can edit or reset password for a given user
+  const canEditUser = (user: User): boolean => {
+    if (isAdmin) return true;
+    if (currentUser && user.id === currentUser.id) return true;
+    if (!isGroupAdmin || !user.groups) return false;
+    // Group admins can only edit regular volunteers
+    if (isUserAdmin(user)) return false;
+    return user.groups.some(g => isCurrentUserGroupAdminOf(g.id));
   };
 
   // Filter and sort users
@@ -426,6 +467,10 @@ const UsersPage: React.FC = () => {
   };
 
   const closePasswordResetModal = () => {
+    if (resetTimeoutRef.current) {
+      clearTimeout(resetTimeoutRef.current);
+      resetTimeoutRef.current = null;
+    }
     setResetPasswordUser(null);
     setNewPassword('');
     setResetPasswordError(null);
@@ -443,13 +488,81 @@ const UsersPage: React.FC = () => {
     try {
       await usersApi.resetPassword(resetPasswordUser.id, newPassword);
       setResetPasswordSuccess('Password reset successfully');
-      setTimeout(() => {
+      resetTimeoutRef.current = setTimeout(() => {
         closePasswordResetModal();
       }, 1500);
     } catch (err: unknown) {
       setResetPasswordError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to reset password');
     } finally {
       setResetPasswordLoading(false);
+    }
+  };
+
+  // Edit user modal functions
+  const openEditModal = (user: User) => {
+    setEditUser(user);
+    setEditData({
+      first_name: user.first_name || '',
+      last_name: user.last_name || '',
+      email: user.email || '',
+      phone_number: user.phone_number || '',
+    });
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  const closeEditModal = () => {
+    if (editTimeoutRef.current) {
+      clearTimeout(editTimeoutRef.current);
+      editTimeoutRef.current = null;
+    }
+    setEditUser(null);
+    setEditData({
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone_number: '',
+    });
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editUser) return;
+    
+    setEditLoading(true);
+    setEditError(null);
+    setEditSuccess(null);
+    
+    try {
+      // Self-edit always uses /me endpoint regardless of admin/group-admin status.
+      // Note: This relies on client-side currentUser state. If bypassed or stale,
+      // the request would fall through to groupAdminApi and be rejected with 403.
+      if (currentUser && editUser.id === currentUser.id) {
+        await authApi.updateCurrentUserProfile({
+          ...editData,
+          hide_email: editUser.hide_email ?? false,
+          hide_phone_number: editUser.hide_phone_number ?? false,
+        });
+      } else if (isAdmin) {
+        await usersApi.update(editUser.id, editData);
+      } else if (isGroupAdmin) {
+        await groupAdminApi.updateUser(editUser.id, editData);
+      } else {
+        setEditError('You do not have permission to edit this user');
+        return;
+      }
+      
+      setEditSuccess('User updated successfully');
+      editTimeoutRef.current = setTimeout(() => {
+        closeEditModal();
+        fetchUsers();
+      }, 1500);
+    } catch (err: unknown) {
+      setEditError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to update user');
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -666,10 +779,11 @@ const UsersPage: React.FC = () => {
         setCreateSuccess('User created successfully!');
       }
       
-      setTimeout(() => {
+      // Longer timeout to allow user to read success/warning messages
+      createTimeoutRef.current = setTimeout(() => {
         setShowCreate(false);
         fetchUsers();
-      }, 3500); // Longer timeout for messages to be read
+      }, 3500);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
       setCreateError(error.response?.data?.error || 'Failed to create user');
@@ -1255,13 +1369,24 @@ const UsersPage: React.FC = () => {
                               Manage Groups
                             </button>
                           )}
-                          <button
-                            className="action-btn secondary"
-                            onClick={() => openPasswordResetModal(user)}
-                            disabled={user.deleted_at}
-                          >
-                            Reset Password
-                          </button>
+                          {canEditUser(user) && (
+                            <button
+                              className="action-btn secondary"
+                              onClick={() => openEditModal(user)}
+                              disabled={user.deleted_at}
+                            >
+                              Edit User
+                            </button>
+                          )}
+                          {canEditUser(user) && (
+                            <button
+                              className="action-btn secondary"
+                              onClick={() => openPasswordResetModal(user)}
+                              disabled={user.deleted_at}
+                            >
+                              Reset Password
+                            </button>
+                          )}
                           {isAdmin && (
                             <>
                               <button
@@ -1343,6 +1468,98 @@ const UsersPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Edit User Modal */}
+      {editUser && (
+        <div className="group-modal-backdrop" onClick={closeEditModal}>
+          <div className="group-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Edit User: {editUser.username}</h2>
+            
+            <form onSubmit={handleEditSubmit}>
+              {editError && <div className="users-error">{editError}</div>}
+              {editSuccess && <div className="users-success">{editSuccess}</div>}
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="edit-first-name">
+                  First Name
+                </label>
+                <input
+                  id="edit-first-name"
+                  type="text"
+                  className="form-input"
+                  value={editData.first_name}
+                  onChange={(e) => setEditData({ ...editData, first_name: e.target.value })}
+                  placeholder="First name"
+                  maxLength={100}
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="edit-last-name">
+                  Last Name
+                </label>
+                <input
+                  id="edit-last-name"
+                  type="text"
+                  className="form-input"
+                  value={editData.last_name}
+                  onChange={(e) => setEditData({ ...editData, last_name: e.target.value })}
+                  placeholder="Last name"
+                  maxLength={100}
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="edit-email">
+                  Email Address <span className="required">*</span>
+                </label>
+                <input
+                  id="edit-email"
+                  type="email"
+                  className="form-input"
+                  value={editData.email}
+                  onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                  placeholder="user@example.com"
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="edit-phone-number">
+                  Phone Number
+                </label>
+                <input
+                  id="edit-phone-number"
+                  type="tel"
+                  className="form-input"
+                  value={editData.phone_number}
+                  onChange={(e) => setEditData({ ...editData, phone_number: e.target.value })}
+                  placeholder="555-1234"
+                />
+              </div>
+
+              <div className="form-actions">
+                <button
+                  type="submit"
+                  className="user-action-btn"
+                  disabled={editLoading}
+                >
+                  {editLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  className="user-action-btn"
+                  onClick={closeEditModal}
+                  disabled={editLoading}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      
       {/* Password reset modal */}
       {resetPasswordUser && (
         <div className="group-modal-backdrop" onClick={closePasswordResetModal}>

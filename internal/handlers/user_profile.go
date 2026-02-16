@@ -13,6 +13,8 @@ import (
 type UserProfileResponse struct {
 	ID                    uint                       `json:"id"`
 	Username              string                     `json:"username"`
+	FirstName             string                     `json:"first_name"`
+	LastName              string                     `json:"last_name"`
 	Email                 string                     `json:"email"`
 	PhoneNumber           string                     `json:"phone_number"`
 	IsAdmin               bool                       `json:"is_admin"`
@@ -141,6 +143,8 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			type RegularUserProfileResponse struct {
 				ID          uint           `json:"id"`
 				Username    string         `json:"username"`
+				FirstName   string         `json:"first_name,omitempty"`
+				LastName    string         `json:"last_name,omitempty"`
 				Email       string         `json:"email,omitempty"`
 				PhoneNumber string         `json:"phone_number,omitempty"`
 				CreatedAt   string         `json:"created_at"`
@@ -149,6 +153,8 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			response := RegularUserProfileResponse{
 				ID:        user.ID,
 				Username:  user.Username,
+				FirstName: user.FirstName,
+				LastName:  user.LastName,
 				CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 				Groups:    user.Groups,
 			}
@@ -173,6 +179,8 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			type GroupAdminProfileResponse struct {
 				ID          uint           `json:"id"`
 				Username    string         `json:"username"`
+				FirstName   string         `json:"first_name"`
+				LastName    string         `json:"last_name"`
 				Email       string         `json:"email"`
 				PhoneNumber string         `json:"phone_number"`
 				CreatedAt   string         `json:"created_at"`
@@ -181,6 +189,8 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusOK, GroupAdminProfileResponse{
 				ID:          user.ID,
 				Username:    user.Username,
+				FirstName:   user.FirstName,
+				LastName:    user.LastName,
 				Email:       user.Email,
 				PhoneNumber: user.PhoneNumber,
 				CreatedAt:   user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
@@ -191,6 +201,8 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 		profile := UserProfileResponse{
 			ID:             user.ID,
 			Username:       user.Username,
+			FirstName:      user.FirstName,
+			LastName:       user.LastName,
 			Email:          user.Email,
 			PhoneNumber:    user.PhoneNumber,
 			IsAdmin:        user.IsAdmin,

@@ -5,6 +5,8 @@ import { useToast } from '../hooks/useToast';
 import './Settings.css';
 
 const Settings: React.FC = () => {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [hideEmail, setHideEmail] = useState(false);
@@ -12,7 +14,7 @@ const Settings: React.FC = () => {
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [savingDisplay, setSavingDisplay] = useState(false);
   const [error, setError] = useState('');
@@ -47,6 +49,8 @@ const Settings: React.FC = () => {
         authApi.getCurrentUser(),
         authApi.getEmailPreferences(),
       ]);
+      setFirstName(userRes.data.first_name || '');
+      setLastName(userRes.data.last_name || '');
       setEmail(userRes.data.email);
       setPhoneNumber(userRes.data.phone_number || '');
       setHideEmail(userRes.data.hide_email || false);
@@ -62,7 +66,7 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handleSaveEmail = async () => {
+  const handleSaveProfile = async () => {
     if (!email.trim()) {
       showToast('Email cannot be empty', 'error');
       return;
@@ -72,12 +76,14 @@ const Settings: React.FC = () => {
       return;
     }
 
-    setSavingEmail(true);
+    setSavingProfile(true);
     setError('');
     setSuccess('');
 
     try {
       await authApi.updateCurrentUserProfile({
+        first_name: firstName,
+        last_name: lastName,
         email,
         phone_number: phoneNumber,
         hide_email: hideEmail,
@@ -89,7 +95,7 @@ const Settings: React.FC = () => {
       const axiosError = err as { response?: { data?: { error?: string } } };
       showToast(axiosError.response?.data?.error || 'Failed to save profile', 'error');
     } finally {
-      setSavingEmail(false);
+      setSavingProfile(false);
     }
   };
 
@@ -151,8 +157,54 @@ const Settings: React.FC = () => {
         <div className="settings-section">
           <h2>Profile Information</h2>
           <p className="settings-description">
-            Manage your account email, phone number, and control who can see this information.
+            Manage your account information, email, phone number, and control who can see this information.
           </p>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="firstName">
+                <strong>First Name</strong>
+              </label>
+              <p className="setting-help">
+                Your first name as you'd like it to appear.
+              </p>
+            </div>
+            <div className="setting-input-wrapper">
+              <input
+                id="firstName"
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                disabled={savingProfile}
+                className="setting-input"
+                placeholder="First name"
+                maxLength={100}
+              />
+            </div>
+          </div>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="lastName">
+                <strong>Last Name</strong>
+              </label>
+              <p className="setting-help">
+                Your last name as you'd like it to appear.
+              </p>
+            </div>
+            <div className="setting-input-wrapper">
+              <input
+                id="lastName"
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                disabled={savingProfile}
+                className="setting-input"
+                placeholder="Last name"
+                maxLength={100}
+              />
+            </div>
+          </div>
 
           <div className="setting-item">
             <div className="setting-info">
@@ -169,7 +221,7 @@ const Settings: React.FC = () => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                disabled={savingEmail}
+                disabled={savingProfile}
                 className="setting-input"
                 placeholder="your.email@example.com"
               />
@@ -194,7 +246,7 @@ const Settings: React.FC = () => {
                   setPhoneNumber(e.target.value);
                   validatePhoneNumber(e.target.value);
                 }}
-                disabled={savingEmail}
+                disabled={savingProfile}
                 className="setting-input"
                 placeholder="(123) 456-7890"
               />
@@ -207,11 +259,11 @@ const Settings: React.FC = () => {
 
           <div className="settings-actions">
             <button
-              onClick={handleSaveEmail}
+              onClick={handleSaveProfile}
               className="btn-primary"
-              disabled={savingEmail}
+              disabled={savingProfile}
             >
-              {savingEmail ? 'Saving Profile...' : 'Save Profile'}
+              {savingProfile ? 'Saving Profile...' : 'Save Profile'}
             </button>
           </div>
         </div>
@@ -239,7 +291,7 @@ const Settings: React.FC = () => {
                   type="checkbox"
                   checked={hideEmail}
                   onChange={(e) => setHideEmail(e.target.checked)}
-                  disabled={savingEmail}
+                  disabled={savingProfile}
                 />
                 <span className="toggle-slider"></span>
               </label>
@@ -262,7 +314,7 @@ const Settings: React.FC = () => {
                   type="checkbox"
                   checked={hidePhoneNumber}
                   onChange={(e) => setHidePhoneNumber(e.target.checked)}
-                  disabled={savingEmail}
+                  disabled={savingProfile}
                 />
                 <span className="toggle-slider"></span>
               </label>
@@ -271,11 +323,11 @@ const Settings: React.FC = () => {
 
           <div className="settings-actions">
             <button
-              onClick={handleSaveEmail}
+              onClick={handleSaveProfile}
               className="btn-primary"
-              disabled={savingEmail}
+              disabled={savingProfile}
             >
-              {savingEmail ? 'Saving...' : 'Update Privacy Settings'}
+              {savingProfile ? 'Saving...' : 'Update Privacy Settings'}
             </button>
           </div>
         </div>

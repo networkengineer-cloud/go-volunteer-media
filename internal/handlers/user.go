@@ -1,13 +1,33 @@
 package handlers
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
+
+// ErrEmailInUse is returned when an email is already in use by another user.
+var ErrEmailInUse = errors.New("email address is already in use")
+
+// validateEmailUniqueness checks if an email is already in use by another user
+func validateEmailUniqueness(ctx context.Context, db *gorm.DB, email string, currentUserID uint) error {
+	var existingUser models.User
+	err := db.WithContext(ctx).Where("email = ? AND id != ?", email, currentUserID).First(&existingUser).Error
+	if err == nil {
+		return ErrEmailInUse
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("database error checking email uniqueness: %w", err)
+	}
+	return nil
+}
 
 // GetAllUsers returns all users with pagination support (admin only)
 func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
@@ -154,8 +174,10 @@ func GetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 }
 
 type UpdateProfileRequest struct {
+	FirstName       string `json:"first_name" binding:"omitempty,max=100"`
+	LastName        string `json:"last_name" binding:"omitempty,max=100"`
 	Email           string `json:"email" binding:"required,email"`
-	PhoneNumber     string `json:"phone_number"`
+	PhoneNumber     string `json:"phone_number" binding:"omitempty,max=20"`
 	HideEmail       bool   `json:"hide_email"`
 	HidePhoneNumber bool   `json:"hide_phone_number"`
 }
@@ -185,18 +207,22 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if email is being changed to an already-taken email
 		if req.Email != user.Email {
-			var existingUser models.User
-			if err := db.WithContext(ctx).Where("email = ? AND id != ?", req.Email, userID).First(&existingUser).Error; err == nil {
-				// Email exists for another user
-				c.JSON(http.StatusConflict, gin.H{"error": "Email address is already in use"})
+			if err := validateEmailUniqueness(ctx, db, req.Email, userID.(uint)); err != nil {
+				if errors.Is(err, ErrEmailInUse) {
+					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate email"})
+				}
 				return
 			}
 		}
 
-		// Update user profile (email, phone, and privacy settings)
+		// Update user profile (first name, last name, email, phone, and privacy settings)
 		updates := map[string]interface{}{
+			"first_name":        strings.TrimSpace(req.FirstName),
+			"last_name":         strings.TrimSpace(req.LastName),
 			"email":             req.Email,
-			"phone_number":      req.PhoneNumber,
+			"phone_number":      strings.TrimSpace(req.PhoneNumber),
 			"hide_email":        req.HideEmail,
 			"hide_phone_number": req.HidePhoneNumber,
 		}
@@ -205,13 +231,21 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Reload user from DB to return actual persisted values
+		if err := db.WithContext(ctx).First(&user, userID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload profile"})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"message":           "Profile updated successfully",
 			"id":                user.ID,
-			"email":             req.Email,
-			"phone_number":      req.PhoneNumber,
-			"hide_email":        req.HideEmail,
-			"hide_phone_number": req.HidePhoneNumber,
+			"first_name":        user.FirstName,
+			"last_name":         user.LastName,
+			"email":             user.Email,
+			"phone_number":      user.PhoneNumber,
+			"hide_email":        user.HideEmail,
+			"hide_phone_number": user.HidePhoneNumber,
 		})
 	}
 }

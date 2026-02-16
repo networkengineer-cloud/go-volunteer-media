@@ -4,6 +4,8 @@ export const usersApi = {
   getAll: () => api.get<PaginatedResponse<User>>('/admin/users?limit=100'),
   create: (data: { username: string; first_name?: string; last_name?: string; email: string; password?: string; is_admin?: boolean; group_ids?: number[]; send_setup_email?: boolean }) =>
     api.post<CreateUserResponse>('/admin/users', data),
+  update: (userId: number, data: { first_name?: string; last_name?: string; email: string; phone_number?: string }) =>
+    api.put<User>(`/admin/users/${userId}`, data),
   promote: (userId: number) => api.post(`/admin/users/${userId}/promote`),
   demote: (userId: number) => api.post(`/admin/users/${userId}/demote`),
   delete: (userId: number) => api.delete(`/admin/users/${userId}`),
@@ -29,6 +31,9 @@ export const groupAdminApi = {
   // Create a new user (group admins can create users and assign them to groups they admin)
   createUser: (data: { username: string; first_name?: string; last_name?: string; email: string; password?: string; send_setup_email?: boolean; group_ids: number[] }) =>
     api.post<CreateUserResponse>('/users', data),
+  // Update a user (group admins can update users in groups they admin)
+  updateUser: (userId: number, data: { first_name?: string; last_name?: string; email: string; phone_number?: string }) =>
+    api.put<User>(`/users/${userId}`, data),
 };
 import axios from 'axios';
 
@@ -378,6 +383,8 @@ export interface AnimalInteraction {
 export interface UserProfile {
   id: number;
   username: string;
+  first_name?: string;
+  last_name?: string;
   email?: string;  // Optional for limited profiles
   phone_number?: string;  // Optional for limited profiles
   is_admin?: boolean;  // Optional for limited/group admin profiles
@@ -402,6 +409,8 @@ export const authApi = {
   getCurrentUser: () => api.get<User>('/me'),
   
   updateCurrentUserProfile: (profile: {
+    first_name?: string;
+    last_name?: string;
     email: string;
     phone_number?: string;
     hide_email?: boolean;
@@ -410,6 +419,8 @@ export const authApi = {
     api.put<{
       message: string;
       id: number;
+      first_name?: string;
+      last_name?: string;
       email: string;
       phone_number?: string;
       hide_email?: boolean;
