@@ -23,9 +23,9 @@ vi.mock('../api/client', () => ({
   },
   groupsApi: {
     getAll: vi.fn(),
+    getMembers: vi.fn(),
   },
   groupAdminApi: {
-    getMembers: vi.fn(),
     createUser: vi.fn(),
     promoteToGroupAdmin: vi.fn(),
     demoteFromGroupAdmin: vi.fn(),
@@ -95,7 +95,7 @@ describe('UsersPage', () => {
       data: mockGroups,
     } as AxiosResponse);
 
-    vi.mocked(groupAdminApi.getMembers).mockResolvedValue({
+    vi.mocked(groupsApi.getMembers).mockResolvedValue({
       data: [],
     } as AxiosResponse);
   });
@@ -154,16 +154,14 @@ describe('UsersPage', () => {
 
     it('renders a card for each user after loading', async () => {
       renderUsersPage();
-      await waitForLoad();
-      expect(screen.getByText('admin_user')).toBeInTheDocument();
+      expect(await screen.findByText('admin_user')).toBeInTheDocument();
       expect(screen.getByText('john_doe')).toBeInTheDocument();
       expect(screen.getByText('jane_smith')).toBeInTheDocument();
     });
 
     it('displays full name on user cards when first and last name are set', async () => {
       renderUsersPage();
-      await waitForLoad();
-      expect(screen.getByText('Admin User')).toBeInTheDocument();
+      expect(await screen.findByText('Admin User')).toBeInTheDocument();
       expect(screen.getByText('John Doe')).toBeInTheDocument();
     });
   });
