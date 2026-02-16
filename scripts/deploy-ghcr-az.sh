@@ -3,26 +3,29 @@ set -euo pipefail
 
 # Usage: 
 #   ./scripts/deploy-ghcr-az.sh [options]
-#   ./scripts/deploy-ghcr-az.sh --rollback 20260117-abc1234
-#   ./scripts/deploy-ghcr-az.sh --list-revisions
+#   ./scripts/deploy-ghcr-az.sh --env prod
+#   ./scripts/deploy-ghcr-az.sh --env dev --rollback 20260117-abc1234
+#   ./scripts/deploy-ghcr-az.sh --env prod --list-revisions
 #   ./scripts/deploy-ghcr-az.sh --image-tag develop
 #
 # Options:
-#   --image-tag <tag>       Base image tag (default: develop)
+#   --env <environment>     Target environment: dev or prod (default: dev)
+#   --image-tag <tag>       Base image tag (default: develop for dev, latest for prod)
 #   --rollback <revision>   Deploy a specific revision (format: YYYYMMDD-gitsha)
 #   --list-revisions        List available revisions
 #   --skip-build            Skip building, deploy existing revision
 #
 # Environment Variables:
 #   REPO: ghcr.io/networkengineer-cloud/go-volunteer-media
-#   APP_NAME: ca-volunteer-media-dev
-#   RG: rg-volunteer-media-dev
+#   APP_NAME: Override app name (default: ca-volunteer-media-{env})
+#   RG: Override resource group (default: rg-volunteer-media-{env})
 
 # Defaults
-IMAGE_TAG="develop"
+ENVIRONMENT="dev"
+IMAGE_TAG=""
 REPO="${REPO:-ghcr.io/networkengineer-cloud/go-volunteer-media}"
-APP_NAME="${APP_NAME:-ca-volunteer-media-dev}"
-RG="${RG:-rg-volunteer-media-dev}"
+APP_NAME=""
+RG=""
 ROLLBACK_REVISION=""
 LIST_REVISIONS=false
 SKIP_BUILD=false
@@ -30,6 +33,14 @@ SKIP_BUILD=false
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
+    --env)
+      ENVIRONMENT="$2"
+      if [[ "${ENVIRONMENT}" != "dev" && "${ENVIRONMENT}" != "prod" ]]; then
+        echo "Error: --env must be 'dev' or 'prod'"
+        exit 1
+      fi
+      shift 2
+      ;;
     --image-tag)
       IMAGE_TAG="$2"
       shift 2
@@ -50,27 +61,55 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: ./scripts/deploy-ghcr-az.sh [options]"
       echo ""
       echo "Options:"
-      echo "  --image-tag <tag>       Base image tag (default: develop)"
+      echo "  --env <environment>     Target environment: dev or prod (default: dev)"
+      echo "  --image-tag <tag>       Base image tag (default: develop for dev, latest for prod)"
       echo "  --rollback <revision>   Deploy a specific revision (format: YYYYMMDD-gitsha)"
       echo "  --list-revisions        List available revisions"
       echo "  --skip-build            Skip building, deploy existing revision"
       echo "  -h, --help              Show this help message"
       echo ""
       echo "Examples:"
-      echo "  ./scripts/deploy-ghcr-az.sh --image-tag main"
-      echo "  ./scripts/deploy-ghcr-az.sh --rollback 20260117-abc1234"
-      echo "  ./scripts/deploy-ghcr-az.sh --list-revisions"
+      echo "  ./scripts/deploy-ghcr-az.sh --env prod"
+      echo "  ./scripts/deploy-ghcr-az.sh --env dev --image-tag main"
+      echo "  ./scripts/deploy-ghcr-az.sh --env prod --rollback 20260117-abc1234"
+      echo "  ./scripts/deploy-ghcr-az.sh --env prod --list-revisions"
       exit 0
       ;;
     *)
-      # Legacy support: first positional arg is image tag
-      if [[ -z "${IMAGE_TAG}" ]] || [[ "${IMAGE_TAG}" == "develop" ]]; then
-        IMAGE_TAG="$1"
-      fi
-      shift
+      echo "Error: Unknown option '$1'"
+      echo "Run './scripts/deploy-ghcr-az.sh --help' for usage information"
+      exit 1
       ;;
   esac
 done
+
+# Set environment-specific defaults
+if [[ -z "${APP_NAME}" ]]; then
+  APP_NAME="ca-volunteer-media-${ENVIRONMENT}"
+fi
+
+if [[ -z "${RG}" ]]; then
+  RG="rg-volunteer-media-${ENVIRONMENT}"
+fi
+
+if [[ -z "${IMAGE_TAG}" ]]; then
+  if [[ "${ENVIRONMENT}" == "prod" ]]; then
+    IMAGE_TAG="latest"
+  else
+    IMAGE_TAG="develop"
+  fi
+fi
+
+echo "=========================================="
+echo "Deployment Configuration"
+echo "=========================================="
+echo "Environment:    ${ENVIRONMENT}"
+echo "Image Tag:      ${IMAGE_TAG}"
+echo "App Name:       ${APP_NAME}"
+echo "Resource Group: ${RG}"
+echo "Repository:     ${REPO}"
+echo "=========================================="
+echo ""
 
 # Function to list available revisions
 list_revisions() {
@@ -107,10 +146,10 @@ if [[ -z "${ROLLBACK_REVISION}" ]]; then
   GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
   REVISION_TAG="${DATE}-${GIT_SHA}"
   
-  echo "Creating new revision: ${REVISION_TAG}"
+  echo "Creating new revision for ${ENVIRONMENT}: ${REVISION_TAG}"
 else
   REVISION_TAG="${ROLLBACK_REVISION}"
-  echo "Rolling back to revision: ${REVISION_TAG}"
+  echo "Rolling back ${ENVIRONMENT} to revision: ${REVISION_TAG}"
   SKIP_BUILD=true
 fi
 
@@ -145,7 +184,7 @@ else
 fi
 
 echo ""
-echo "Updating Azure Container App '${APP_NAME}' to use image ${FULL_IMAGE_TAG}..."
+echo "Updating Azure Container App '${APP_NAME}' (${ENVIRONMENT}) to use image ${FULL_IMAGE_TAG}..."
 
 # Generate Azure revision suffix (max 10 chars, alphanumeric and hyphens only)
 # Format: MMDD-gitsha (e.g., 0117-abc1234 = 12 chars, or 0117abc123 = 10 chars)
@@ -189,11 +228,12 @@ echo ""
 echo "=========================================="
 echo "Deployment finished successfully!"
 echo "=========================================="
-echo "Revision: ${REVISION_TAG}"
-echo "Image: ${FULL_IMAGE_TAG}"
+echo "Environment: ${ENVIRONMENT}"
+echo "Revision:    ${REVISION_TAG}"
+echo "Image:       ${FULL_IMAGE_TAG}"
 echo ""
 echo "To rollback to this revision later, run:"
-echo "  ./scripts/deploy-ghcr-az.sh --rollback ${REVISION_TAG}"
+echo "  ./scripts/deploy-ghcr-az.sh --env ${ENVIRONMENT} --rollback ${REVISION_TAG}"
 echo ""
 echo "To list all revisions:"
-echo "  ./scripts/deploy-ghcr-az.sh --list-revisions"
+echo "  ./scripts/deploy-ghcr-az.sh --env ${ENVIRONMENT} --list-revisions"
