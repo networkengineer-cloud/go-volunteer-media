@@ -234,21 +234,12 @@ const UsersPage: React.FC = () => {
     return user.is_admin || !!user.is_group_admin;
   };
 
-  // Check if current user can edit a given user
+  // Check if current user can edit or reset password for a given user
   const canEditUser = (user: User): boolean => {
     if (isAdmin) return true;
     if (currentUser && user.id === currentUser.id) return true;
     if (!isGroupAdmin || !user.groups) return false;
     // Group admins can only edit regular volunteers
-    if (isUserAdmin(user)) return false;
-    return user.groups.some(g => isCurrentUserGroupAdminOf(g.id));
-  };
-
-  // Check if current user can reset a given user's password
-  const canResetPassword = (user: User): boolean => {
-    if (isAdmin) return true;
-    if (currentUser && user.id === currentUser.id) return true;
-    if (!isGroupAdmin || !user.groups) return false;
     if (isUserAdmin(user)) return false;
     return user.groups.some(g => isCurrentUserGroupAdminOf(g.id));
   };
@@ -538,7 +529,11 @@ const UsersPage: React.FC = () => {
     try {
       // Self-edit always uses /me endpoint regardless of admin/group-admin status
       if (currentUser && editUser.id === currentUser.id) {
-        await authApi.updateCurrentUserProfile(editData);
+        await authApi.updateCurrentUserProfile({
+          ...editData,
+          hide_email: editUser.hide_email ?? false,
+          hide_phone_number: editUser.hide_phone_number ?? false,
+        });
       } else if (isAdmin) {
         await usersApi.update(editUser.id, editData);
       } else if (isGroupAdmin) {
@@ -1371,7 +1366,7 @@ const UsersPage: React.FC = () => {
                               Edit User
                             </button>
                           )}
-                          {canResetPassword(user) && (
+                          {canEditUser(user) && (
                             <button
                               className="action-btn secondary"
                               onClick={() => openPasswordResetModal(user)}
