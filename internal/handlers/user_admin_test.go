@@ -42,7 +42,7 @@ func setupUserAdminTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Run migrations
-	err = db.AutoMigrate(&models.User{}, &models.Group{})
+	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{})
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -675,6 +675,202 @@ func TestRestoreUser(t *testing.T) {
 				// Need to wait a bit for the database to commit
 				time.Sleep(10 * time.Millisecond)
 				tt.checkFunc(t, db, userID)
+			}
+		})
+	}
+}
+
+// assignUserToGroup assigns a user to a group, optionally as group admin
+func assignUserToGroup(t *testing.T, db *gorm.DB, userID, groupID uint, isGroupAdmin bool) {
+	t.Helper()
+	ug := &models.UserGroup{UserID: userID, GroupID: groupID, IsGroupAdmin: isGroupAdmin}
+	if err := db.Create(ug).Error; err != nil {
+		t.Fatalf("Failed to assign user to group: %v", err)
+	}
+}
+
+func TestAdminUpdateUser(t *testing.T) {
+	tests := []struct {
+		name           string
+		userId         string
+		body           UpdateUserRequest
+		expectedStatus int
+		checkFunc      func(*testing.T, *gorm.DB)
+	}{
+		{
+			name:   "successful update",
+			userId: "", // set in test
+			body: UpdateUserRequest{
+				FirstName: "Updated",
+				LastName:  "Name",
+				Email:     "updated@example.com",
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:   "invalid user ID",
+			userId: "abc",
+			body: UpdateUserRequest{
+				Email: "test@example.com",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:   "nonexistent user",
+			userId: "99999",
+			body: UpdateUserRequest{
+				Email: "test@example.com",
+			},
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			name:   "email conflict",
+			userId: "", // set in test
+			body: UpdateUserRequest{
+				Email: "existing@example.com",
+			},
+			expectedStatus: http.StatusConflict,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupUserAdminTestDB(t)
+			admin := createUserAdminTestUser(t, db, "admin", "admin@example.com", true)
+
+			userId := tt.userId
+			if tt.name == "successful update" {
+				target := createUserAdminTestUser(t, db, "target", "target@example.com", false)
+				userId = fmt.Sprintf("%d", target.ID)
+			}
+			if tt.name == "email conflict" {
+				createUserAdminTestUser(t, db, "existing", "existing@example.com", false)
+				target := createUserAdminTestUser(t, db, "target2", "target2@example.com", false)
+				userId = fmt.Sprintf("%d", target.ID)
+			}
+
+			body, _ := json.Marshal(tt.body)
+			c, w := setupUserAdminTestContext(admin.ID, true)
+			c.Request = httptest.NewRequest(http.MethodPut, "/api/admin/users/"+userId, bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Params = gin.Params{{Key: "userId", Value: userId}}
+
+			handler := AdminUpdateUser(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+
+			if tt.name == "successful update" {
+				var resp models.User
+				if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("Failed to parse response: %v", err)
+				}
+				if resp.FirstName != "Updated" || resp.LastName != "Name" {
+					t.Errorf("Expected name Updated Name, got %s %s", resp.FirstName, resp.LastName)
+				}
+			}
+		})
+	}
+}
+
+func TestGroupAdminUpdateUser(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupFunc      func(*testing.T, *gorm.DB) (adminID uint, targetUserID string)
+		body           UpdateUserRequest
+		expectedStatus int
+	}{
+		{
+			name: "group admin can update user in their group",
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, string) {
+				groupAdmin := createUserAdminTestUser(t, db, "gadmin", "gadmin@example.com", false)
+				target := createUserAdminTestUser(t, db, "target", "target@example.com", false)
+				group := createTestGroup(t, db, "TestGroup", "Test group")
+				assignUserToGroup(t, db, groupAdmin.ID, group.ID, true)
+				assignUserToGroup(t, db, target.ID, group.ID, false)
+				return groupAdmin.ID, fmt.Sprintf("%d", target.ID)
+			},
+			body:           UpdateUserRequest{FirstName: "New", LastName: "Name", Email: "target@example.com"},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "group admin rejected for user not in their group",
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, string) {
+				groupAdmin := createUserAdminTestUser(t, db, "gadmin", "gadmin@example.com", false)
+				target := createUserAdminTestUser(t, db, "target", "target@example.com", false)
+				group1 := createTestGroup(t, db, "Group1", "Group 1")
+				group2 := createTestGroup(t, db, "Group2", "Group 2")
+				assignUserToGroup(t, db, groupAdmin.ID, group1.ID, true)
+				assignUserToGroup(t, db, target.ID, group2.ID, false)
+				return groupAdmin.ID, fmt.Sprintf("%d", target.ID)
+			},
+			body:           UpdateUserRequest{Email: "target@example.com"},
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name: "group admin rejected for user with no groups",
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, string) {
+				groupAdmin := createUserAdminTestUser(t, db, "gadmin", "gadmin@example.com", false)
+				target := createUserAdminTestUser(t, db, "target", "target@example.com", false)
+				group := createTestGroup(t, db, "TestGroup", "Test group")
+				assignUserToGroup(t, db, groupAdmin.ID, group.ID, true)
+				return groupAdmin.ID, fmt.Sprintf("%d", target.ID)
+			},
+			body:           UpdateUserRequest{Email: "target@example.com"},
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name: "invalid user ID returns 400",
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, string) {
+				groupAdmin := createUserAdminTestUser(t, db, "gadmin", "gadmin@example.com", false)
+				return groupAdmin.ID, "abc"
+			},
+			body:           UpdateUserRequest{Email: "test@example.com"},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "nonexistent user returns 404",
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, string) {
+				groupAdmin := createUserAdminTestUser(t, db, "gadmin", "gadmin@example.com", false)
+				return groupAdmin.ID, "99999"
+			},
+			body:           UpdateUserRequest{Email: "test@example.com"},
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			name: "email conflict returns 409",
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, string) {
+				groupAdmin := createUserAdminTestUser(t, db, "gadmin", "gadmin@example.com", false)
+				createUserAdminTestUser(t, db, "other", "taken@example.com", false)
+				target := createUserAdminTestUser(t, db, "target", "target@example.com", false)
+				group := createTestGroup(t, db, "TestGroup", "Test group")
+				assignUserToGroup(t, db, groupAdmin.ID, group.ID, true)
+				assignUserToGroup(t, db, target.ID, group.ID, false)
+				return groupAdmin.ID, fmt.Sprintf("%d", target.ID)
+			},
+			body:           UpdateUserRequest{Email: "taken@example.com"},
+			expectedStatus: http.StatusConflict,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupUserAdminTestDB(t)
+			adminID, targetUserID := tt.setupFunc(t, db)
+
+			body, _ := json.Marshal(tt.body)
+			c, w := setupUserAdminTestContext(adminID, false)
+			c.Request = httptest.NewRequest(http.MethodPut, "/api/group-admin/users/"+targetUserID, bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Params = gin.Params{{Key: "userId", Value: targetUserID}}
+
+			handler := GroupAdminUpdateUser(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
 			}
 		})
 	}
