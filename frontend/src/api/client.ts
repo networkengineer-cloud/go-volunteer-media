@@ -18,8 +18,6 @@ export const usersApi = {
 
 // Group Admin API (accessible by site admins and group admins)
 export const groupAdminApi = {
-  // Get members of a group with their admin status
-  getMembers: (groupId: number) => api.get<GroupMember[]>(`/groups/${groupId}/members`),
   // Promote a user to group admin (site admins and group admins can do this for their groups)
   promoteToGroupAdmin: (groupId: number, userId: number) => api.post(`/groups/${groupId}/admins/${userId}`),
   // Demote a user from group admin (site admins and group admins can do this for their groups)
@@ -108,6 +106,8 @@ export type CreateUserResponse =
 export interface GroupMember {
   user_id: number;
   username: string;
+  first_name?: string;
+  last_name?: string;
   email: string;
   phone_number?: string;
   is_group_admin: boolean;
@@ -427,6 +427,11 @@ export const authApi = {
       hide_phone_number?: boolean;
     }>('/me/profile', profile),
   
+  // Shares the same endpoint as usersApi.resetPassword. When changing your own
+  // password, current_password is verified server-side; admin resets omit it.
+  changePassword: (userId: number, currentPassword: string, newPassword: string) =>
+    api.post(`/users/${userId}/reset-password`, { current_password: currentPassword, new_password: newPassword }),
+
   setDefaultGroup: (groupId: number) => api.put('/default-group', { group_id: groupId }),
   
   getDefaultGroup: () => api.get<Group>('/default-group'),
@@ -474,6 +479,8 @@ export const groupsApi = {
     api.post<Group>('/admin/groups', { name, description, image_url, hero_image_url, has_protocols, groupme_bot_id, groupme_enabled }),
   update: (id: number, name: string, description: string, image_url?: string, hero_image_url?: string, has_protocols?: boolean, groupme_bot_id?: string, groupme_enabled?: boolean) =>
     api.put<Group>('/admin/groups/' + id, { name, description, image_url, hero_image_url, has_protocols, groupme_bot_id, groupme_enabled }),
+  // Requires group membership (not admin). Server filters contact info based on privacy settings.
+  getMembers: (groupId: number) => api.get<GroupMember[]>(`/groups/${groupId}/members`),
   delete: (id: number) => api.delete('/admin/groups/' + id),
   uploadImage: (file: File) => {
     const formData = new FormData();

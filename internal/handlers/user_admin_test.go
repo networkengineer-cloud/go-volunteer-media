@@ -505,6 +505,130 @@ func TestAdminResetUserPassword(t *testing.T) {
 	}
 }
 
+// TestSelfServicePasswordChange tests the self-service password change flow
+func TestSelfServicePasswordChange(t *testing.T) {
+	t.Run("valid self-reset with correct current_password", func(t *testing.T) {
+		db := setupUserAdminTestDB(t)
+		user := createUserAdminTestUser(t, db, "selfuser", "self@test.com", false)
+
+		c, w := setupUserAdminTestContext(user.ID, false)
+		c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", user.ID)}}
+
+		payload := map[string]interface{}{
+			"current_password": "password123",
+			"new_password":     "newpassword456",
+		}
+		jsonBytes, _ := json.Marshal(payload)
+		c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/users/%d/reset-password", user.ID), bytes.NewBuffer(jsonBytes))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		handler := AdminResetUserPassword(db)
+		handler(c)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+		}
+
+		// Verify new password works
+		var updated models.User
+		db.First(&updated, user.ID)
+		if err := auth.CheckPassword(updated.Password, "newpassword456"); err != nil {
+			t.Error("New password should be valid after self-reset")
+		}
+	})
+
+	t.Run("self-reset rejected when current_password is wrong", func(t *testing.T) {
+		db := setupUserAdminTestDB(t)
+		user := createUserAdminTestUser(t, db, "selfuser", "self@test.com", false)
+
+		c, w := setupUserAdminTestContext(user.ID, false)
+		c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", user.ID)}}
+
+		payload := map[string]interface{}{
+			"current_password": "wrongpassword",
+			"new_password":     "newpassword456",
+		}
+		jsonBytes, _ := json.Marshal(payload)
+		c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/users/%d/reset-password", user.ID), bytes.NewBuffer(jsonBytes))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		handler := AdminResetUserPassword(db)
+		handler(c)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status %d, got %d. Body: %s", http.StatusUnauthorized, w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("self-reset rejected when current_password is missing", func(t *testing.T) {
+		db := setupUserAdminTestDB(t)
+		user := createUserAdminTestUser(t, db, "selfuser", "self@test.com", false)
+
+		c, w := setupUserAdminTestContext(user.ID, false)
+		c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", user.ID)}}
+
+		payload := map[string]interface{}{
+			"new_password": "newpassword456",
+		}
+		jsonBytes, _ := json.Marshal(payload)
+		c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/users/%d/reset-password", user.ID), bytes.NewBuffer(jsonBytes))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		handler := AdminResetUserPassword(db)
+		handler(c)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected status %d, got %d. Body: %s", http.StatusBadRequest, w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("regular user cannot reset another user's password", func(t *testing.T) {
+		db := setupUserAdminTestDB(t)
+		attacker := createUserAdminTestUser(t, db, "attacker", "attacker@test.com", false)
+		target := createUserAdminTestUser(t, db, "target", "target@test.com", false)
+
+		c, w := setupUserAdminTestContext(attacker.ID, false)
+		c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", target.ID)}}
+
+		payload := map[string]interface{}{
+			"new_password": "newpassword456",
+		}
+		jsonBytes, _ := json.Marshal(payload)
+		c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/users/%d/reset-password", target.ID), bytes.NewBuffer(jsonBytes))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		handler := AdminResetUserPassword(db)
+		handler(c)
+
+		if w.Code != http.StatusForbidden {
+			t.Errorf("Expected status %d, got %d. Body: %s", http.StatusForbidden, w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("admin reset does not require current_password", func(t *testing.T) {
+		db := setupUserAdminTestDB(t)
+		admin := createUserAdminTestUser(t, db, "admin", "admin@test.com", true)
+		target := createUserAdminTestUser(t, db, "target", "target@test.com", false)
+
+		c, w := setupUserAdminTestContext(admin.ID, true)
+		c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", target.ID)}}
+
+		payload := map[string]interface{}{
+			"new_password": "newpassword456",
+		}
+		jsonBytes, _ := json.Marshal(payload)
+		c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/users/%d/reset-password", target.ID), bytes.NewBuffer(jsonBytes))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		handler := AdminResetUserPassword(db)
+		handler(c)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+		}
+	})
+}
+
 // TestAdminDeleteUser tests soft-deleting users
 func TestAdminDeleteUser(t *testing.T) {
 	tests := []struct {

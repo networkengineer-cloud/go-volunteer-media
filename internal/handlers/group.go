@@ -546,6 +546,8 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 		type MemberInfo struct {
 			UserID       uint   `json:"user_id"`
 			Username     string `json:"username"`
+			FirstName    string `json:"first_name"`
+			LastName     string `json:"last_name"`
 			Email        string `json:"email"`
 			PhoneNumber  string `json:"phone_number"`
 			IsGroupAdmin bool   `json:"is_group_admin"`
@@ -580,6 +582,8 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 			members = append(members, MemberInfo{
 				UserID:       ug.UserID,
 				Username:     ug.User.Username,
+				FirstName:    ug.User.FirstName,
+				LastName:     ug.User.LastName,
 				Email:        email,
 				PhoneNumber:  phoneNumber,
 				IsGroupAdmin: ug.IsGroupAdmin,

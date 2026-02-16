@@ -1322,6 +1322,10 @@
   .form-grid .form-field:last-child {
     grid-column: 1 / -1;
   }
+
+  .form-field.full-width {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Form Fields */
