@@ -12,15 +12,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// ErrEmailInUse is returned when an email is already in use by another user.
+var ErrEmailInUse = errors.New("email address is already in use")
+
 // validateEmailUniqueness checks if an email is already in use by another user
 func validateEmailUniqueness(ctx context.Context, db *gorm.DB, email string, currentUserID uint) error {
 	var existingUser models.User
 	err := db.WithContext(ctx).Where("email = ? AND id != ?", email, currentUserID).First(&existingUser).Error
 	if err == nil {
-		return fmt.Errorf("email address is already in use")
+		return ErrEmailInUse
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return fmt.Errorf("database error checking email uniqueness")
+		return fmt.Errorf("database error checking email uniqueness: %w", err)
 	}
 	return nil
 }
@@ -204,7 +207,7 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 		// Check if email is being changed to an already-taken email
 		if req.Email != user.Email {
 			if err := validateEmailUniqueness(ctx, db, req.Email, userID.(uint)); err != nil {
-				if err.Error() == "email address is already in use" {
+				if errors.Is(err, ErrEmailInUse) {
 					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 				} else {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate email"})

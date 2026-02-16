@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Link } from 'react-router-dom';
 import './UsersPage.css';
 import type { User, Group, UserStatistics, GroupMember } from '../api/client';
-import { usersApi, groupsApi, statisticsApi, groupAdminApi } from '../api/client';
+import { usersApi, groupsApi, statisticsApi, groupAdminApi, authApi } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { getPasswordStrength } from '../utils/passwordStrength';
 
@@ -227,6 +227,7 @@ const UsersPage: React.FC = () => {
   // Check if current user can edit a given user
   const canEditUser = (user: User): boolean => {
     if (isAdmin) return true;
+    if (currentUser && user.id === currentUser.id) return true;
     if (!isGroupAdmin || !user.groups) return false;
     return user.groups.some(g => isCurrentUserGroupAdminOf(g.id));
   };
@@ -511,6 +512,11 @@ const UsersPage: React.FC = () => {
         await usersApi.update(editUser.id, editData);
       } else if (isGroupAdmin) {
         await groupAdminApi.updateUser(editUser.id, editData);
+      } else if (currentUser && editUser.id === currentUser.id) {
+        await authApi.updateCurrentUserProfile(editData);
+      } else {
+        setEditError('You do not have permission to edit this user');
+        return;
       }
       
       setEditSuccess('User updated successfully');
@@ -1434,65 +1440,65 @@ const UsersPage: React.FC = () => {
             <h2>Edit User: {editUser.username}</h2>
             
             <form onSubmit={handleEditSubmit}>
-              {editError && <div className="users-error" style={{marginBottom: '1rem'}}>{editError}</div>}
-              {editSuccess && <div className="users-success" style={{marginBottom: '1rem'}}>{editSuccess}</div>}
+              {editError && <div className="users-error">{editError}</div>}
+              {editSuccess && <div className="users-success">{editSuccess}</div>}
 
-              <div style={{marginBottom: '1rem'}}>
-                <label>
+              <div className="form-field">
+                <label className="form-label">
                   First Name
-                  <input
-                    type="text"
-                    value={editData.first_name}
-                    onChange={(e) => setEditData({ ...editData, first_name: e.target.value })}
-                    placeholder="First name"
-                    maxLength={100}
-                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
-                  />
                 </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={editData.first_name}
+                  onChange={(e) => setEditData({ ...editData, first_name: e.target.value })}
+                  placeholder="First name"
+                  maxLength={100}
+                />
               </div>
 
-              <div style={{marginBottom: '1rem'}}>
-                <label>
+              <div className="form-field">
+                <label className="form-label">
                   Last Name
-                  <input
-                    type="text"
-                    value={editData.last_name}
-                    onChange={(e) => setEditData({ ...editData, last_name: e.target.value })}
-                    placeholder="Last name"
-                    maxLength={100}
-                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
-                  />
                 </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={editData.last_name}
+                  onChange={(e) => setEditData({ ...editData, last_name: e.target.value })}
+                  placeholder="Last name"
+                  maxLength={100}
+                />
               </div>
 
-              <div style={{marginBottom: '1rem'}}>
-                <label>
-                  Email Address <span style={{color: 'red'}}>*</span>
-                  <input
-                    type="email"
-                    value={editData.email}
-                    onChange={(e) => setEditData({ ...editData, email: e.target.value })}
-                    placeholder="user@example.com"
-                    required
-                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
-                  />
+              <div className="form-field">
+                <label className="form-label">
+                  Email Address <span className="required">*</span>
                 </label>
+                <input
+                  type="email"
+                  className="form-input"
+                  value={editData.email}
+                  onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                  placeholder="user@example.com"
+                  required
+                />
               </div>
 
-              <div style={{marginBottom: '1rem'}}>
-                <label>
+              <div className="form-field">
+                <label className="form-label">
                   Phone Number
-                  <input
-                    type="tel"
-                    value={editData.phone_number}
-                    onChange={(e) => setEditData({ ...editData, phone_number: e.target.value })}
-                    placeholder="555-1234"
-                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
-                  />
                 </label>
+                <input
+                  type="tel"
+                  className="form-input"
+                  value={editData.phone_number}
+                  onChange={(e) => setEditData({ ...editData, phone_number: e.target.value })}
+                  placeholder="555-1234"
+                />
               </div>
 
-              <div style={{display: 'flex', gap: '0.5rem', marginTop: '1rem'}}>
+              <div className="form-actions">
                 <button
                   type="submit"
                   className="user-action-btn"

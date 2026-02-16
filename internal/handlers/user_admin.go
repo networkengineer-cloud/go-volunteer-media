@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -587,8 +588,8 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 
 // UpdateUserRequest is the request body for updating user information
 type UpdateUserRequest struct {
-	FirstName   string `json:"first_name" binding:"omitempty,max=100"`
-	LastName    string `json:"last_name" binding:"omitempty,max=100"`
+	FirstName   string `json:"first_name" binding:"omitempty,min=1,max=100"`
+	LastName    string `json:"last_name" binding:"omitempty,min=1,max=100"`
 	Email       string `json:"email" binding:"required,email"`
 	PhoneNumber string `json:"phone_number" binding:"omitempty"`
 }
@@ -597,7 +598,7 @@ type UpdateUserRequest struct {
 func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *models.User, req UpdateUserRequest) {
 	if req.Email != user.Email {
 		if err := validateEmailUniqueness(ctx, db, req.Email, user.ID); err != nil {
-			if err.Error() == "email address is already in use" {
+			if errors.Is(err, ErrEmailInUse) {
 				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate email"})
