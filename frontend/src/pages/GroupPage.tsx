@@ -985,7 +985,7 @@ const GroupPage: React.FC = () => {
                           </div>
                         )}
                       </div>
-                      <Link to={`/users/${member.user_id}`} className="btn-view-profile">
+                      <Link to={`/users/${member.user_id}/profile`} className="btn-view-profile">
                         View Profile
                       </Link>
                     </div>
