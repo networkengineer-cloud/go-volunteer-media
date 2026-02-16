@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -176,7 +177,7 @@ type UpdateProfileRequest struct {
 	FirstName       string `json:"first_name" binding:"omitempty,max=100"`
 	LastName        string `json:"last_name" binding:"omitempty,max=100"`
 	Email           string `json:"email" binding:"required,email"`
-	PhoneNumber     string `json:"phone_number"`
+	PhoneNumber     string `json:"phone_number" binding:"omitempty,max=20"`
 	HideEmail       bool   `json:"hide_email"`
 	HidePhoneNumber bool   `json:"hide_phone_number"`
 }
@@ -218,8 +219,8 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 
 		// Update user profile (first name, last name, email, phone, and privacy settings)
 		updates := map[string]interface{}{
-			"first_name":        req.FirstName,
-			"last_name":         req.LastName,
+			"first_name":        strings.TrimSpace(req.FirstName),
+			"last_name":         strings.TrimSpace(req.LastName),
 			"email":             req.Email,
 			"phone_number":      req.PhoneNumber,
 			"hide_email":        req.HideEmail,
@@ -230,15 +231,21 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Reload user from DB to return actual persisted values
+		if err := db.WithContext(ctx).First(&user, userID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload profile"})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"message":           "Profile updated successfully",
 			"id":                user.ID,
-			"first_name":        req.FirstName,
-			"last_name":         req.LastName,
-			"email":             req.Email,
-			"phone_number":      req.PhoneNumber,
-			"hide_email":        req.HideEmail,
-			"hide_phone_number": req.HidePhoneNumber,
+			"first_name":        user.FirstName,
+			"last_name":         user.LastName,
+			"email":             user.Email,
+			"phone_number":      user.PhoneNumber,
+			"hide_email":        user.HideEmail,
+			"hide_phone_number": user.HidePhoneNumber,
 		})
 	}
 }

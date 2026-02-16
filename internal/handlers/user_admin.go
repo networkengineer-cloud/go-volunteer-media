@@ -504,12 +504,18 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 	}
 }
 
-// AdminResetUserPassword allows an admin to reset a user's password
+// AdminResetUserPassword allows an admin, group admin, or the user themselves to reset a password
 func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 		userId := c.Param("userId")
+
+		userIdInt, err := strconv.ParseUint(userId, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
 
 		var req AdminResetPasswordRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -517,31 +523,31 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get current user
+		// Get current user ID
 		currentUserID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
 
-		// Check authorization: must be site admin OR group admin of a shared group
-		var currentUser models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&currentUser, currentUserID).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch current user"})
-			return
-		}
-
 		// Find the target user with their groups
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userId).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
-		// If not site admin, verify group admin has access to this user
-		if !currentUser.IsAdmin {
+		// Self-reset is always allowed (user is already authenticated via JWT)
+		isSelf := currentUserID.(uint) == uint(userIdInt)
+
+		if !isSelf && !middleware.IsSiteAdmin(c) {
+			// Group admin path: cannot reset password of admin users
+			if isTargetUserAdmin(ctx, db, &user) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins can only reset passwords for regular volunteers"})
+				return
+			}
+
 			hasAccess := false
-			// Check if current user is group admin of any group the target user belongs to
 			for _, targetGroup := range user.Groups {
 				var userGroup models.UserGroup
 				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
@@ -610,8 +616,8 @@ func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *mod
 	}
 
 	updates := map[string]interface{}{
-		"first_name":   req.FirstName,
-		"last_name":    req.LastName,
+		"first_name":   strings.TrimSpace(req.FirstName),
+		"last_name":    strings.TrimSpace(req.LastName),
 		"phone_number": req.PhoneNumber,
 		"email":        req.Email,
 	}
@@ -658,6 +664,19 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// isTargetUserAdmin checks if the target user holds any admin role (site admin
+// or group admin in any group). Group admins may only modify regular volunteers.
+func isTargetUserAdmin(ctx context.Context, db *gorm.DB, user *models.User) bool {
+	if user.IsAdmin {
+		return true
+	}
+	var count int64
+	db.WithContext(ctx).Model(&models.UserGroup{}).
+		Where("user_id = ? AND is_group_admin = ?", user.ID, true).
+		Count(&count)
+	return count > 0
+}
+
 // GroupAdminUpdateUser allows a group admin to update a user's information for users in their groups
 func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -672,13 +691,12 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get current user ID and admin status from auth context
+		// Get current user ID from auth context
 		currentUserID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
-		isSiteAdmin, _ := c.Get("is_admin")
 
 		var req UpdateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -699,13 +717,19 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		// permissive because the user already exists in those groups — the group admin
 		// is only modifying profile fields, not group assignments.
 		// Users without groups can only be managed by site admins.
-		if isSiteAdmin != true {
+		if !middleware.IsSiteAdmin(c) {
 			if len(user.Groups) == 0 {
 				logger.WithFields(map[string]interface{}{
 					"current_user_id": currentUserID,
 					"target_user_id":  userId,
 				}).Warn("Group admin attempted to update user with no groups")
 				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot update users with no group assignments. Please contact a site administrator."})
+				return
+			}
+
+			// Group admins cannot modify site admins or other group admins
+			if isTargetUserAdmin(ctx, db, &user) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins can only update regular volunteers"})
 				return
 			}
 

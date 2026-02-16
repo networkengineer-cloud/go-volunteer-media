@@ -66,6 +66,11 @@ const UsersPage: React.FC = () => {
   const [editError, setEditError] = React.useState<string | null>(null);
   const [editSuccess, setEditSuccess] = React.useState<string | null>(null);
 
+  // Timeout refs to prevent race conditions when modals are closed early
+  const editTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const createTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Show details state - track which user cards have expanded details
   const [expandedDetails, setExpandedDetails] = React.useState<Set<number>>(new Set());
 
@@ -224,11 +229,27 @@ const UsersPage: React.FC = () => {
     return member?.is_group_admin || false;
   };
 
+  // Check if target user holds any admin role (site admin or group admin)
+  const isUserAdmin = (user: User): boolean => {
+    return user.is_admin || !!user.is_group_admin;
+  };
+
   // Check if current user can edit a given user
   const canEditUser = (user: User): boolean => {
     if (isAdmin) return true;
     if (currentUser && user.id === currentUser.id) return true;
     if (!isGroupAdmin || !user.groups) return false;
+    // Group admins can only edit regular volunteers
+    if (isUserAdmin(user)) return false;
+    return user.groups.some(g => isCurrentUserGroupAdminOf(g.id));
+  };
+
+  // Check if current user can reset a given user's password
+  const canResetPassword = (user: User): boolean => {
+    if (isAdmin) return true;
+    if (currentUser && user.id === currentUser.id) return true;
+    if (!isGroupAdmin || !user.groups) return false;
+    if (isUserAdmin(user)) return false;
     return user.groups.some(g => isCurrentUserGroupAdminOf(g.id));
   };
 
@@ -446,6 +467,10 @@ const UsersPage: React.FC = () => {
   };
 
   const closePasswordResetModal = () => {
+    if (resetTimeoutRef.current) {
+      clearTimeout(resetTimeoutRef.current);
+      resetTimeoutRef.current = null;
+    }
     setResetPasswordUser(null);
     setNewPassword('');
     setResetPasswordError(null);
@@ -463,7 +488,7 @@ const UsersPage: React.FC = () => {
     try {
       await usersApi.resetPassword(resetPasswordUser.id, newPassword);
       setResetPasswordSuccess('Password reset successfully');
-      setTimeout(() => {
+      resetTimeoutRef.current = setTimeout(() => {
         closePasswordResetModal();
       }, 1500);
     } catch (err: unknown) {
@@ -487,6 +512,10 @@ const UsersPage: React.FC = () => {
   };
 
   const closeEditModal = () => {
+    if (editTimeoutRef.current) {
+      clearTimeout(editTimeoutRef.current);
+      editTimeoutRef.current = null;
+    }
     setEditUser(null);
     setEditData({
       first_name: '',
@@ -520,7 +549,7 @@ const UsersPage: React.FC = () => {
       }
       
       setEditSuccess('User updated successfully');
-      setTimeout(() => {
+      editTimeoutRef.current = setTimeout(() => {
         closeEditModal();
         fetchUsers();
       }, 1500);
@@ -744,10 +773,10 @@ const UsersPage: React.FC = () => {
         setCreateSuccess('User created successfully!');
       }
       
-      setTimeout(() => {
+      createTimeoutRef.current = setTimeout(() => {
         setShowCreate(false);
         fetchUsers();
-      }, 3500); // Longer timeout for messages to be read
+      }, 3500);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
       setCreateError(error.response?.data?.error || 'Failed to create user');
@@ -1342,7 +1371,7 @@ const UsersPage: React.FC = () => {
                               Edit User
                             </button>
                           )}
-                          {canEditUser(user) && (
+                          {canResetPassword(user) && (
                             <button
                               className="action-btn secondary"
                               onClick={() => openPasswordResetModal(user)}
@@ -1444,10 +1473,11 @@ const UsersPage: React.FC = () => {
               {editSuccess && <div className="users-success">{editSuccess}</div>}
 
               <div className="form-field">
-                <label className="form-label">
+                <label className="form-label" htmlFor="edit-first-name">
                   First Name
                 </label>
                 <input
+                  id="edit-first-name"
                   type="text"
                   className="form-input"
                   value={editData.first_name}
@@ -1458,10 +1488,11 @@ const UsersPage: React.FC = () => {
               </div>
 
               <div className="form-field">
-                <label className="form-label">
+                <label className="form-label" htmlFor="edit-last-name">
                   Last Name
                 </label>
                 <input
+                  id="edit-last-name"
                   type="text"
                   className="form-input"
                   value={editData.last_name}
@@ -1472,10 +1503,11 @@ const UsersPage: React.FC = () => {
               </div>
 
               <div className="form-field">
-                <label className="form-label">
+                <label className="form-label" htmlFor="edit-email">
                   Email Address <span className="required">*</span>
                 </label>
                 <input
+                  id="edit-email"
                   type="email"
                   className="form-input"
                   value={editData.email}
@@ -1486,10 +1518,11 @@ const UsersPage: React.FC = () => {
               </div>
 
               <div className="form-field">
-                <label className="form-label">
+                <label className="form-label" htmlFor="edit-phone-number">
                   Phone Number
                 </label>
                 <input
+                  id="edit-phone-number"
                   type="tel"
                   className="form-input"
                   value={editData.phone_number}

@@ -4,7 +4,7 @@ export const usersApi = {
   getAll: () => api.get<PaginatedResponse<User>>('/admin/users?limit=100'),
   create: (data: { username: string; first_name?: string; last_name?: string; email: string; password?: string; is_admin?: boolean; group_ids?: number[]; send_setup_email?: boolean }) =>
     api.post<CreateUserResponse>('/admin/users', data),
-  update: (userId: number, data: { first_name?: string; last_name?: string; email?: string; phone_number?: string }) =>
+  update: (userId: number, data: { first_name?: string; last_name?: string; email: string; phone_number?: string }) =>
     api.put<User>(`/admin/users/${userId}`, data),
   promote: (userId: number) => api.post(`/admin/users/${userId}/promote`),
   demote: (userId: number) => api.post(`/admin/users/${userId}/demote`),
@@ -32,7 +32,7 @@ export const groupAdminApi = {
   createUser: (data: { username: string; first_name?: string; last_name?: string; email: string; password?: string; send_setup_email?: boolean; group_ids: number[] }) =>
     api.post<CreateUserResponse>('/users', data),
   // Update a user (group admins can update users in groups they admin)
-  updateUser: (userId: number, data: { first_name?: string; last_name?: string; email?: string; phone_number?: string }) =>
+  updateUser: (userId: number, data: { first_name?: string; last_name?: string; email: string; phone_number?: string }) =>
     api.put<User>(`/users/${userId}`, data),
 };
 import axios from 'axios';
