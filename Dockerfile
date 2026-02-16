@@ -36,6 +36,9 @@ RUN go mod download && go mod verify
 # Copy source code
 COPY . .
 
+# Copy frontend dist so //go:embed can include it at compile time
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "-static"' -o /app/api ./cmd/api
 
@@ -55,9 +58,6 @@ COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy binary from backend builder
 COPY --from=backend-builder /app/api /api
-
-# Copy frontend build if it exists
-COPY --from=frontend-builder /app/frontend/dist /frontend/dist
 
 # Copy public directory for uploads and static assets
 COPY --from=backend-builder /app/public /public

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/networkengineer-cloud/go-volunteer-media/frontend"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
@@ -90,6 +92,20 @@ func main() {
 	// Initialize GroupMe service
 	groupMeService := groupme.NewService()
 	logger.Info("GroupMe service initialized and ready")
+
+	// Load embedded frontend assets at startup
+	distFS, err := fs.Sub(frontend.DistFS, "dist")
+	if err != nil {
+		logger.Fatal("Failed to create dist sub-filesystem", err)
+	}
+	indexBytes, err := fs.ReadFile(distFS, "index.html")
+	if err != nil {
+		logger.Fatal("Failed to read embedded index.html", err)
+	}
+	assetsSubFS, err := fs.Sub(frontend.DistFS, "dist/assets")
+	if err != nil {
+		logger.Fatal("Failed to create assets sub-filesystem", err)
+	}
 
 	// Set up Gin router
 	// Disable Gin's default logger since we're using our own
@@ -346,14 +362,21 @@ func main() {
 		protected.POST("/bulk-animals/bulk-update", handlers.BulkUpdateAnimals(db))
 	}
 
-	// Serve frontend (both development and production environments)
-	// Serve static files
-	router.StaticFile("/", "./frontend/dist/index.html")
-	router.Static("/assets", "./frontend/dist/assets")
+	// Serve frontend from embedded filesystem (guarantees correct MIME types)
+	router.GET("/", func(c *gin.Context) {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", indexBytes)
+	})
+	router.GET("/favicon.svg", func(c *gin.Context) {
+		c.FileFromFS("favicon.svg", http.FS(distFS))
+	})
+	router.GET("/vite.svg", func(c *gin.Context) {
+		c.FileFromFS("vite.svg", http.FS(distFS))
+	})
+	router.StaticFS("/assets", http.FS(assetsSubFS))
 
 	// Serve index.html for all non-API routes (SPA routing)
 	router.NoRoute(func(c *gin.Context) {
-		c.File("./frontend/dist/index.html")
+		c.Data(http.StatusOK, "text/html; charset=utf-8", indexBytes)
 	})
 
 	port := os.Getenv("PORT")
