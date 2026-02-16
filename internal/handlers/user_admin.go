@@ -125,7 +125,8 @@ type AdminCreateUserRequest struct {
 }
 
 type AdminResetPasswordRequest struct {
-	NewPassword string `json:"new_password" binding:"required,min=8,max=72"`
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password" binding:"required,min=8,max=72"`
 }
 
 // AdminCreateUser allows an admin to create a new user
@@ -543,6 +544,18 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 
 		// Self-reset is always allowed (user is already authenticated via JWT)
 		isSelf := currentUserID.(uint) == uint(userIdInt)
+
+		// For self-resets, verify the current password server-side
+		if isSelf {
+			if req.CurrentPassword == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Current password is required"})
+				return
+			}
+			if err := auth.CheckPassword(user.Password, req.CurrentPassword); err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Current password is incorrect"})
+				return
+			}
+		}
 
 		if !isSelf && !middleware.IsSiteAdmin(c) {
 			// Group admin path: cannot reset password of admin users

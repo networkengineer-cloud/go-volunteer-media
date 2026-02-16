@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { groupsApi, animalsApi, authApi, groupAdminApi } from '../api/client';
+import { groupsApi, animalsApi, authApi } from '../api/client';
 import type { Group, Animal, GroupMembership, ActivityItem, GroupMember } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -249,7 +249,7 @@ const GroupPage: React.FC = () => {
     setMembersLoading(true);
     setMembersError('');
     try {
-      const res = await groupAdminApi.getMembers(groupId);
+      const res = await groupsApi.getMembers(groupId);
       setMembers(res.data);
     } catch (err: unknown) {
       console.error('Failed to load members:', err);

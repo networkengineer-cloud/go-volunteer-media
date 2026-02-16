@@ -144,6 +144,8 @@ const Settings: React.FC = () => {
   };
 
   const handleChangePassword = async () => {
+    if (!user) return;
+
     if (!currentPassword) {
       showToast('Please enter your current password', 'error');
       return;
@@ -156,6 +158,10 @@ const Settings: React.FC = () => {
       showToast('New password must be at least 8 characters', 'error');
       return;
     }
+    if (newPassword === currentPassword) {
+      showToast('New password must be different from current password', 'error');
+      return;
+    }
     if (newPassword !== confirmPassword) {
       showToast('New passwords do not match', 'error');
       return;
@@ -163,10 +169,7 @@ const Settings: React.FC = () => {
 
     setSavingPassword(true);
     try {
-      // Verify current password by attempting login
-      await authApi.login(user!.username, currentPassword);
-      // Current password is correct, proceed with change
-      await authApi.changePassword(user!.id, newPassword);
+      await authApi.changePassword(user.id, currentPassword, newPassword);
       showToast('Password changed successfully!', 'success');
       setCurrentPassword('');
       setNewPassword('');
@@ -501,7 +504,11 @@ const Settings: React.FC = () => {
                   onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                   aria-label={showCurrentPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showCurrentPassword ? '🙈' : '👁️'}
+                  {showCurrentPassword ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                  )}
                 </button>
               </div>
             </div>
@@ -534,7 +541,11 @@ const Settings: React.FC = () => {
                   onClick={() => setShowNewPassword(!showNewPassword)}
                   aria-label={showNewPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showNewPassword ? '🙈' : '👁️'}
+                  {showNewPassword ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                  )}
                 </button>
               </div>
               {passwordStrength && (
@@ -577,7 +588,11 @@ const Settings: React.FC = () => {
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showConfirmPassword ? '🙈' : '👁️'}
+                  {showConfirmPassword ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                  )}
                 </button>
               </div>
               {confirmPassword && newPassword !== confirmPassword && (
