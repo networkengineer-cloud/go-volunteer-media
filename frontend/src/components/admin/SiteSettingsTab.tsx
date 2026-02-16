@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { settingsApi } from '../../api/client';
 import { useSiteSettings } from '../../hooks/useSiteSettings';
 import '../../pages/SettingsPage.css';
@@ -8,6 +8,7 @@ const SiteSettingsTab: React.FC = () => {
   const { refetch } = useSiteSettings();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
+  const previewObjectUrl = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -20,6 +21,11 @@ const SiteSettingsTab: React.FC = () => {
 
   useEffect(() => {
     loadSettings();
+    return () => {
+      if (previewObjectUrl.current) {
+        URL.revokeObjectURL(previewObjectUrl.current);
+      }
+    };
   }, []);
 
   const loadSettings = async () => {
@@ -55,9 +61,13 @@ const SiteSettingsTab: React.FC = () => {
     }
 
     setSelectedFile(file);
-    
-    // Create preview URL
+
+    // Revoke previous blob URL before creating a new one
+    if (previewObjectUrl.current) {
+      URL.revokeObjectURL(previewObjectUrl.current);
+    }
     const objectUrl = URL.createObjectURL(file);
+    previewObjectUrl.current = objectUrl;
     setPreviewUrl(objectUrl);
     setMessage('');
   };
@@ -83,7 +93,12 @@ const SiteSettingsTab: React.FC = () => {
       
       // Refresh settings context to update all components
       await refetch();
-      
+
+      // Replace blob URL with server URL and revoke the blob
+      if (previewObjectUrl.current) {
+        URL.revokeObjectURL(previewObjectUrl.current);
+        previewObjectUrl.current = null;
+      }
       setPreviewUrl(imageUrl);
       setSelectedFile(null);
       setMessage('Hero image updated successfully!');

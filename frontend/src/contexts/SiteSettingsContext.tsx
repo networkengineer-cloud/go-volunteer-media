@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { settingsApi } from '../api/client';
 
@@ -35,13 +35,15 @@ export const SiteSettingsProvider: React.FC<{ children: ReactNode }> = ({ childr
   const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const isInitialLoad = useRef(true);
 
   const fetchSettings = useCallback(async () => {
+    const updateLoading = isInitialLoad.current;
     try {
-      setLoading(true);
+      if (updateLoading) setLoading(true);
       const response = await settingsApi.getAll();
       const data = response.data;
-      
+
       // Merge API data with defaults (in case some settings are missing)
       setSettings({
         site_name: data.site_name || DEFAULT_SETTINGS.site_name,
@@ -55,7 +57,10 @@ export const SiteSettingsProvider: React.FC<{ children: ReactNode }> = ({ childr
       setError(err as Error);
       // Keep using default settings on error
     } finally {
-      setLoading(false);
+      if (updateLoading) {
+        setLoading(false);
+        isInitialLoad.current = false;
+      }
     }
   }, []);
 
