@@ -35,12 +35,14 @@ export const SiteSettingsProvider: React.FC<{ children: ReactNode }> = ({ childr
   const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const isInitialLoad = useRef(true);
+  const hasLoadedOnce = useRef(false);
 
   const fetchSettings = useCallback(async () => {
-    const updateLoading = isInitialLoad.current;
+    const isFirstLoad = !hasLoadedOnce.current;
     try {
-      if (updateLoading) setLoading(true);
+      // Only show loading indicator on the initial load to prevent
+      // nav buttons from becoming unresponsive during refetch
+      if (isFirstLoad) setLoading(true);
       const response = await settingsApi.getAll();
       const data = response.data;
 
@@ -57,9 +59,9 @@ export const SiteSettingsProvider: React.FC<{ children: ReactNode }> = ({ childr
       setError(err as Error);
       // Keep using default settings on error
     } finally {
-      if (updateLoading) {
+      if (isFirstLoad) {
         setLoading(false);
-        isInitialLoad.current = false;
+        hasLoadedOnce.current = true;
       }
     }
   }, []);

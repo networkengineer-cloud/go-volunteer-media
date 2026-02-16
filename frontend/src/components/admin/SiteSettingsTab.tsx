@@ -28,6 +28,14 @@ const SiteSettingsTab: React.FC = () => {
     };
   }, []);
 
+  // Revoke blob URLs when transitioning away from them
+  useEffect(() => {
+    if (previewObjectUrl.current && !previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewObjectUrl.current);
+      previewObjectUrl.current = null;
+    }
+  }, [previewUrl]);
+
   const loadSettings = async () => {
     try {
       const response = await settingsApi.getAll();
@@ -94,11 +102,8 @@ const SiteSettingsTab: React.FC = () => {
       // Refresh settings context to update all components
       await refetch();
 
-      // Replace blob URL with server URL and revoke the blob
-      if (previewObjectUrl.current) {
-        URL.revokeObjectURL(previewObjectUrl.current);
-        previewObjectUrl.current = null;
-      }
+      // Set the new URL first, then the useEffect will handle blob cleanup
+      // This prevents a broken-image flash during the transition
       setPreviewUrl(imageUrl);
       setSelectedFile(null);
       setMessage('Hero image updated successfully!');
