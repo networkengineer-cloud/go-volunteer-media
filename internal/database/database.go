@@ -116,10 +116,10 @@ func Initialize() (*gorm.DB, error) {
 	db.Exec(fmt.Sprintf("SET statement_timeout = '%ds'", statementTimeoutSeconds))
 
 	logging.WithFields(map[string]interface{}{
-		"max_idle_conns":           maxIdleConns,
-		"max_open_conns":           maxOpenConns,
-		"conn_max_lifetime_min":    connMaxLifetimeMinutes,
-		"conn_max_idle_time_min":   connMaxIdleTimeMinutes,
+		"max_idle_conns":            maxIdleConns,
+		"max_open_conns":            maxOpenConns,
+		"conn_max_lifetime_min":     connMaxLifetimeMinutes,
+		"conn_max_idle_time_min":    connMaxIdleTimeMinutes,
 		"statement_timeout_seconds": statementTimeoutSeconds,
 	}).Info("Database connection established with pool configuration")
 
@@ -506,6 +506,18 @@ func createDefaultAnimalTags(db *gorm.DB) error {
 // createDefaultSiteSettings creates the default site settings if they don't exist
 func createDefaultSiteSettings(db *gorm.DB) error {
 	defaultSettings := []models.SiteSetting{
+		{
+			Key:   "site_name",
+			Value: models.DefaultSiteName,
+		},
+		{
+			Key:   "site_short_name",
+			Value: models.DefaultSiteShortName,
+		},
+		{
+			Key:   "site_description",
+			Value: models.DefaultSiteDescription,
+		},
 		{
 			Key:   "hero_image_url",
 			Value: "", // Empty by default - admin should upload an image

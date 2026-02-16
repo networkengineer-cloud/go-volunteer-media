@@ -6,6 +6,11 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestNewService(t *testing.T) {
@@ -27,7 +32,7 @@ func TestNewService(t *testing.T) {
 	os.Setenv("SMTP_FROM_EMAIL", "test@example.com")
 	os.Setenv("SMTP_FROM_NAME", "Test User")
 
-	service := NewService()
+	service := NewService(nil)
 
 	if service == nil {
 		t.Fatal("Expected service to be non-nil")
@@ -67,6 +72,7 @@ func TestService_IsConfigured(t *testing.T) {
 					Password:  "pass",
 					FromEmail: "test@example.com",
 				},
+				db: nil,
 			},
 			want: true,
 		},
@@ -74,6 +80,7 @@ func TestService_IsConfigured(t *testing.T) {
 			name: "nil provider",
 			service: &Service{
 				provider: nil,
+				db:       nil,
 			},
 			want: false,
 		},
@@ -87,6 +94,7 @@ func TestService_IsConfigured(t *testing.T) {
 					Password:  "",
 					FromEmail: "",
 				},
+				db: nil,
 			},
 			want: false,
 		},
@@ -105,6 +113,7 @@ func TestService_IsConfigured(t *testing.T) {
 func TestService_SendEmail_NotConfigured(t *testing.T) {
 	service := &Service{
 		provider: nil,
+		db:       nil,
 	}
 
 	err := service.SendEmail("test@example.com", "Test Subject", "<html><body>Test Body</body></html>")
@@ -144,6 +153,7 @@ func TestSendPasswordResetEmail_Structure(t *testing.T) {
 			// Create unconfigured service to avoid actual email sending
 			service := &Service{
 				provider: nil,
+				db:       nil,
 			}
 
 			err := service.SendPasswordResetEmail("test@example.com", "testuser", "test-token-123")
@@ -166,6 +176,7 @@ func TestSendAnnouncementEmail_Structure(t *testing.T) {
 	// Create unconfigured service to avoid actual email sending
 	service := &Service{
 		provider: nil,
+		db:       nil,
 	}
 
 	err := service.SendAnnouncementEmail(
@@ -192,6 +203,7 @@ func TestService_SendPasswordResetEmail_WithConfiguredProvider(t *testing.T) {
 
 	service := &Service{
 		provider: mockProvider,
+		db:       nil,
 	}
 
 	// Save and set frontend URL
@@ -235,6 +247,7 @@ func TestService_SendAnnouncementEmail_WithConfiguredProvider(t *testing.T) {
 
 	service := &Service{
 		provider: mockProvider,
+		db:       nil,
 	}
 
 	err := service.SendAnnouncementEmail("user@example.com", "Important Notice", "This is the content\nLine 2")
@@ -295,4 +308,234 @@ func (m *mockEmailProvider) IsConfigured() bool {
 
 func (m *mockEmailProvider) GetProviderName() string {
 	return "mock"
+}
+
+// setupTestDB creates an in-memory SQLite database for integration testing
+func setupTestDB(t *testing.T) *gorm.DB {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+
+	// Auto-migrate the SiteSetting model
+	if err := db.AutoMigrate(&models.SiteSetting{}); err != nil {
+		t.Fatalf("Failed to migrate test database: %v", err)
+	}
+
+	return db
+}
+
+// TestGetSiteName_WithDatabase tests getSiteName with a real database
+func TestGetSiteName_WithDatabase(t *testing.T) {
+	t.Run("fetches site name from database", func(t *testing.T) {
+		db := setupTestDB(t)
+
+		// Insert test setting
+		setting := models.SiteSetting{
+			Key:   "site_name",
+			Value: "Test Organization",
+		}
+		if err := db.Create(&setting).Error; err != nil {
+			t.Fatalf("Failed to create test setting: %v", err)
+		}
+
+		mockProvider := &mockEmailProvider{configured: true}
+		service := NewServiceWithProvider(mockProvider, db)
+
+		siteName := service.getSiteName()
+
+		if siteName != "Test Organization" {
+			t.Errorf("Expected site name 'Test Organization', got '%s'", siteName)
+		}
+	})
+
+	t.Run("uses default when database returns empty", func(t *testing.T) {
+		db := setupTestDB(t)
+		// No settings in database
+
+		mockProvider := &mockEmailProvider{configured: true}
+		service := NewServiceWithProvider(mockProvider, db)
+
+		siteName := service.getSiteName()
+
+		if siteName != models.DefaultSiteName {
+			t.Errorf("Expected default site name '%s', got '%s'", models.DefaultSiteName, siteName)
+		}
+	})
+
+	t.Run("uses default when db is nil", func(t *testing.T) {
+		mockProvider := &mockEmailProvider{configured: true}
+		service := NewServiceWithProvider(mockProvider, nil)
+
+		siteName := service.getSiteName()
+
+		if siteName != models.DefaultSiteName {
+			t.Errorf("Expected default site name '%s', got '%s'", models.DefaultSiteName, siteName)
+		}
+	})
+
+	t.Run("cache works across multiple calls", func(t *testing.T) {
+		db := setupTestDB(t)
+
+		// Insert test setting
+		setting := models.SiteSetting{
+			Key:   "site_name",
+			Value: "Cached Name",
+		}
+		if err := db.Create(&setting).Error; err != nil {
+			t.Fatalf("Failed to create test setting: %v", err)
+		}
+
+		mockProvider := &mockEmailProvider{configured: true}
+		service := NewServiceWithProvider(mockProvider, db)
+
+		// First call - should fetch from DB and cache
+		siteName1 := service.getSiteName()
+		if siteName1 != "Cached Name" {
+			t.Errorf("Expected 'Cached Name', got '%s'", siteName1)
+		}
+
+		// Update the database value
+		db.Model(&models.SiteSetting{}).Where("key = ?", "site_name").Update("value", "Updated Name")
+
+		// Second call - should still return cached value (not expired yet)
+		siteName2 := service.getSiteName()
+		if siteName2 != "Cached Name" {
+			t.Errorf("Expected cached 'Cached Name', got '%s'", siteName2)
+		}
+	})
+
+	t.Run("cache expires after TTL", func(t *testing.T) {
+		db := setupTestDB(t)
+
+		// Insert test setting
+		setting := models.SiteSetting{
+			Key:   "site_name",
+			Value: "Original Name",
+		}
+		if err := db.Create(&setting).Error; err != nil {
+			t.Fatalf("Failed to create test setting: %v", err)
+		}
+
+		mockProvider := &mockEmailProvider{configured: true}
+		service := NewServiceWithProvider(mockProvider, db)
+
+		// First call - should fetch from DB and cache
+		siteName1 := service.getSiteName()
+		if siteName1 != "Original Name" {
+			t.Errorf("Expected 'Original Name', got '%s'", siteName1)
+		}
+
+		// Update the database value
+		db.Model(&models.SiteSetting{}).Where("key = ?", "site_name").Update("value", "Refreshed Name")
+
+		// Manually expire the cache
+		service.cacheMu.Lock()
+		service.cacheExpiry = time.Now().Add(-1 * time.Minute)
+		service.cacheMu.Unlock()
+
+		// Next call should refresh cache and get new value
+		siteName2 := service.getSiteName()
+		if siteName2 != "Refreshed Name" {
+			t.Errorf("Expected refreshed 'Refreshed Name', got '%s'", siteName2)
+		}
+	})
+}
+
+// TestEmailTemplates_UseDynamicSiteName tests that emails use the dynamic site name
+func TestEmailTemplates_UseDynamicSiteName(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert custom site name
+	setting := models.SiteSetting{
+		Key:   "site_name",
+		Value: "Custom Shelter",
+	}
+	if err := db.Create(&setting).Error; err != nil {
+		t.Fatalf("Failed to create test setting: %v", err)
+	}
+
+	mockProvider := &mockEmailProvider{configured: true}
+	service := NewServiceWithProvider(mockProvider, db)
+
+	// Set frontend URL for tests
+	origFrontendURL := os.Getenv("FRONTEND_URL")
+	os.Setenv("FRONTEND_URL", "http://test.example.com")
+	defer os.Setenv("FRONTEND_URL", origFrontendURL)
+
+	t.Run("password reset email uses custom site name", func(t *testing.T) {
+		mockProvider.sentEmails = nil // Clear sent emails
+
+		err := service.SendPasswordResetEmail("user@example.com", "testuser", "reset-token-123")
+		if err != nil {
+			t.Fatalf("Failed to send password reset email: %v", err)
+		}
+
+		if len(mockProvider.sentEmails) != 1 {
+			t.Fatalf("Expected 1 email, got %d", len(mockProvider.sentEmails))
+		}
+
+		email := mockProvider.sentEmails[0]
+
+		// Check subject contains custom site name
+		if !strings.Contains(email.subject, "Custom Shelter") {
+			t.Errorf("Expected subject to contain 'Custom Shelter', got: %s", email.subject)
+		}
+
+		// Check body contains custom site name
+		if !strings.Contains(email.body, "Custom Shelter") {
+			t.Errorf("Expected body to contain 'Custom Shelter'")
+		}
+	})
+
+	t.Run("password setup email uses custom site name", func(t *testing.T) {
+		mockProvider.sentEmails = nil // Clear sent emails
+
+		err := service.SendPasswordSetupEmail("user@example.com", "newuser", "setup-token-456")
+		if err != nil {
+			t.Fatalf("Failed to send password setup email: %v", err)
+		}
+
+		if len(mockProvider.sentEmails) != 1 {
+			t.Fatalf("Expected 1 email, got %d", len(mockProvider.sentEmails))
+		}
+
+		email := mockProvider.sentEmails[0]
+
+		// Check subject contains custom site name
+		if !strings.Contains(email.subject, "Custom Shelter") {
+			t.Errorf("Expected subject to contain 'Custom Shelter', got: %s", email.subject)
+		}
+
+		// Check body contains custom site name (appears multiple times)
+		bodyCount := strings.Count(email.body, "Custom Shelter")
+		if bodyCount < 2 {
+			t.Errorf("Expected body to contain 'Custom Shelter' at least 2 times, found %d", bodyCount)
+		}
+	})
+
+	t.Run("announcement email uses custom site name", func(t *testing.T) {
+		mockProvider.sentEmails = nil // Clear sent emails
+
+		err := service.SendAnnouncementEmail("user@example.com", "Important Update", "This is the announcement content")
+		if err != nil {
+			t.Fatalf("Failed to send announcement email: %v", err)
+		}
+
+		if len(mockProvider.sentEmails) != 1 {
+			t.Fatalf("Expected 1 email, got %d", len(mockProvider.sentEmails))
+		}
+
+		email := mockProvider.sentEmails[0]
+
+		// Check subject contains custom site name
+		if !strings.Contains(email.subject, "Custom Shelter") {
+			t.Errorf("Expected subject to contain 'Custom Shelter', got: %s", email.subject)
+		}
+
+		// Check footer contains custom site name
+		if !strings.Contains(email.body, "© Custom Shelter") {
+			t.Errorf("Expected footer to contain '© Custom Shelter'")
+		}
+	})
 }

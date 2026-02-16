@@ -80,7 +80,7 @@ func main() {
 	}).Info("Storage provider initialized")
 
 	// Initialize email service
-	emailService := email.NewService()
+	emailService := email.NewService(db)
 	if emailService.IsConfigured() {
 		logger.Info("Email service configured and ready")
 	} else {

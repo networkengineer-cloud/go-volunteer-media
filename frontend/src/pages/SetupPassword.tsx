@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSiteSettings } from '../hooks/useSiteSettings';
 import axios from 'axios';
 import { getPasswordStrength } from '../utils/passwordStrength';
 import './Login.css';
@@ -16,6 +17,7 @@ const SetupPassword: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+  const { settings } = useSiteSettings();
 
   useEffect(() => {
     const tokenParam = searchParams.get('token');
@@ -67,7 +69,7 @@ const SetupPassword: React.FC = () => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1>Haws Volunteers</h1>
+        <h1>{settings.site_name}</h1>
         <h2>Welcome! Set Your Password</h2>
         <p style={{ textAlign: 'center', color: '#666', marginBottom: '1.5rem' }}>
           Create a secure password to access your account

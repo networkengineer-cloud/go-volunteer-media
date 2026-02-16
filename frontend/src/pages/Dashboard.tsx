@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useSiteSettings } from '../hooks/useSiteSettings';
 import { groupsApi, authApi } from '../api/client';
 import type { Group } from '../api/client';
 import EmptyState from '../components/EmptyState';
@@ -12,6 +13,7 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
+  const { settings } = useSiteSettings();
 
   const loadData = useCallback(async () => {
     try {
@@ -86,16 +88,12 @@ const Dashboard: React.FC = () => {
       <div className="dashboard">
         <EmptyState
           icon={welcomeIcon}
-          title={`Welcome to HAWS, ${user?.username}!`}
+          title={`Welcome to ${settings.site_short_name}, ${user?.username}!`}
           description="You haven't been assigned to any volunteer groups yet. Contact an admin to get access to dog, cat, or other volunteer groups where you can share updates and connect with animals."
           primaryAction={user?.is_admin ? {
             label: 'Create a Group',
             onClick: () => navigate('/admin/groups')
           } : undefined}
-          secondaryAction={{
-            label: 'Learn More',
-            onClick: () => window.open('https://hawspets.org/volunteer', '_blank')
-          }}
         />
       </div>
     );
