@@ -585,12 +585,13 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// UpdateUserRequest is the request body for updating user information
+// UpdateUserRequest is the request body for updating user information.
+// Empty strings for FirstName/LastName are allowed to clear those fields.
 type UpdateUserRequest struct {
-	FirstName   string `json:"first_name" binding:"omitempty,min=1,max=100"`
-	LastName    string `json:"last_name" binding:"omitempty,min=1,max=100"`
+	FirstName   string `json:"first_name" binding:"omitempty,max=100"`
+	LastName    string `json:"last_name" binding:"omitempty,max=100"`
 	Email       string `json:"email" binding:"required,email"`
-	PhoneNumber string `json:"phone_number"`
+	PhoneNumber string `json:"phone_number" binding:"omitempty,max=20"`
 }
 
 // applyUserUpdate validates email uniqueness, applies the update, reloads the
@@ -671,23 +672,17 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get current user ID
+		// Get current user ID and admin status from auth context
 		currentUserID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
+		isSiteAdmin, _ := c.Get("is_admin")
 
 		var req UpdateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Get current user to check admin status
-		var currentUser models.User
-		if err := db.WithContext(ctx).First(&currentUser, currentUserID).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch current user"})
 			return
 		}
 
@@ -704,7 +699,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		// permissive because the user already exists in those groups — the group admin
 		// is only modifying profile fields, not group assignments.
 		// Users without groups can only be managed by site admins.
-		if !currentUser.IsAdmin {
+		if isSiteAdmin != true {
 			if len(user.Groups) == 0 {
 				logger.WithFields(map[string]interface{}{
 					"current_user_id": currentUserID,
