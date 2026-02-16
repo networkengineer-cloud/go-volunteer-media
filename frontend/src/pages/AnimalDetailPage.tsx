@@ -571,12 +571,7 @@ const AnimalDetailPage: React.FC = () => {
                   📷 Photo Gallery
                 </Link>
                 
-                {isAdmin && (
-                  <button onClick={handleEdit} className="btn-edit">
-                    Edit Animal Details
-                  </button>
-                )}
-                {!isAdmin && (membership?.is_group_admin) && (
+                {(isAdmin || membership?.is_group_admin) && (
                   <button onClick={handleEdit} className="btn-edit">
                     Edit Animal Details
                   </button>

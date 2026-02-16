@@ -105,9 +105,9 @@ const GroupPage: React.FC = () => {
     const viewParam = searchParams.get('view') as ViewMode;
     if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols')) {
       setViewMode(viewParam);
-    } else if (viewParam === 'members' && membership?.is_member) {
+    } else if (viewParam === 'members' && (membership?.is_member || membership?.is_site_admin)) {
       setViewMode(viewParam);
-    } else if (viewParam === 'members' && !membership?.is_member) {
+    } else if (viewParam === 'members' && !membership?.is_member && !membership?.is_site_admin) {
       setViewMode('activity');
     }
   }, [searchParams, membership]);
@@ -409,7 +409,7 @@ const GroupPage: React.FC = () => {
             <span>Protocols</span>
           </button>
         )}
-        {membership?.is_member && (
+        {(membership?.is_member || membership?.is_site_admin) && (
           <button
             role="tab"
             aria-selected={viewMode === 'members'}
@@ -430,7 +430,7 @@ const GroupPage: React.FC = () => {
       </div>
 
       {/* Group Admin Quick Links - shown only to group admins (site admins already have nav bar) */}
-      {membership?.is_group_admin && !membership?.is_site_admin && (
+      {(membership?.is_group_admin || membership?.is_site_admin) && (
         <div className="group-admin-links" role="navigation" aria-label="Group administration links">
           <span className="group-admin-links__title">Quick Actions:</span>
           <Link to={`/groups/${id}/animals/new`} className="group-admin-link">
@@ -930,7 +930,7 @@ const GroupPage: React.FC = () => {
       )}
 
       {/* Members View */}
-      {viewMode === 'members' && membership?.is_member && (
+      {viewMode === 'members' && (membership?.is_member || membership?.is_site_admin) && (
         <div
           role="tabpanel"
           id="members-panel"
