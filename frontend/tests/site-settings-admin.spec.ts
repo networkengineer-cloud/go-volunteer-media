@@ -224,6 +224,7 @@ test.describe('Admin Site Settings', () => {
 
       // Check for preview area (by label or class)
       const previewLabel = page.locator('label:has-text("Current Image")');
+      await expect(previewLabel).toBeVisible();
       
       // Preview might not be visible if no image is uploaded, but the form should exist
       const heroImageSection = page.locator('form:has(input#heroImage)');
