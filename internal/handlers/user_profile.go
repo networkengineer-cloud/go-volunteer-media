@@ -143,8 +143,8 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			type RegularUserProfileResponse struct {
 				ID          uint           `json:"id"`
 				Username    string         `json:"username"`
-				FirstName   string         `json:"first_name"`
-				LastName    string         `json:"last_name"`
+				FirstName   string         `json:"first_name,omitempty"`
+				LastName    string         `json:"last_name,omitempty"`
 				Email       string         `json:"email,omitempty"`
 				PhoneNumber string         `json:"phone_number,omitempty"`
 				CreatedAt   string         `json:"created_at"`

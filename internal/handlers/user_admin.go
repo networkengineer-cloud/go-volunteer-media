@@ -533,7 +533,11 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 		// Find the target user with their groups
 		var user models.User
 		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
+			}
 			return
 		}
 
@@ -547,6 +551,8 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 				return
 			}
 
+			// Check if caller is group admin of any shared group.
+			// Regular (non-admin) members are excluded by the is_group_admin=true filter.
 			hasAccess := false
 			for _, targetGroup := range user.Groups {
 				var userGroup models.UserGroup
@@ -618,7 +624,7 @@ func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *mod
 	updates := map[string]interface{}{
 		"first_name":   strings.TrimSpace(req.FirstName),
 		"last_name":    strings.TrimSpace(req.LastName),
-		"phone_number": req.PhoneNumber,
+		"phone_number": strings.TrimSpace(req.PhoneNumber),
 		"email":        req.Email,
 	}
 
@@ -656,7 +662,11 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 
 		var user models.User
 		if err := db.WithContext(ctx).First(&user, userIdInt).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
+			}
 			return
 		}
 
@@ -707,7 +717,11 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		// Find the target user with their groups
 		var user models.User
 		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
+			}
 			return
 		}
 

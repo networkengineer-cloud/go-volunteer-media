@@ -222,7 +222,7 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 			"first_name":        strings.TrimSpace(req.FirstName),
 			"last_name":         strings.TrimSpace(req.LastName),
 			"email":             req.Email,
-			"phone_number":      req.PhoneNumber,
+			"phone_number":      strings.TrimSpace(req.PhoneNumber),
 			"hide_email":        req.HideEmail,
 			"hide_phone_number": req.HidePhoneNumber,
 		}

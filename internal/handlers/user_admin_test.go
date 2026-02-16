@@ -692,40 +692,60 @@ func assignUserToGroup(t *testing.T, db *gorm.DB, userID, groupID uint, isGroupA
 func TestAdminUpdateUser(t *testing.T) {
 	tests := []struct {
 		name           string
-		userId         string
+		setupFunc      func(*testing.T, *gorm.DB) string // returns userId
 		body           UpdateUserRequest
 		expectedStatus int
-		checkFunc      func(*testing.T, *gorm.DB)
+		checkFunc      func(*testing.T, *httptest.ResponseRecorder)
 	}{
 		{
-			name:   "successful update",
-			userId: "", // set in test
+			name: "successful update",
+			setupFunc: func(t *testing.T, db *gorm.DB) string {
+				target := createUserAdminTestUser(t, db, "target", "target@example.com", false)
+				return fmt.Sprintf("%d", target.ID)
+			},
 			body: UpdateUserRequest{
 				FirstName: "Updated",
 				LastName:  "Name",
 				Email:     "updated@example.com",
 			},
 			expectedStatus: http.StatusOK,
+			checkFunc: func(t *testing.T, w *httptest.ResponseRecorder) {
+				var resp models.User
+				if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("Failed to parse response: %v", err)
+				}
+				if resp.FirstName != "Updated" || resp.LastName != "Name" {
+					t.Errorf("Expected name Updated Name, got %s %s", resp.FirstName, resp.LastName)
+				}
+			},
 		},
 		{
-			name:   "invalid user ID",
-			userId: "abc",
+			name: "invalid user ID",
+			setupFunc: func(t *testing.T, db *gorm.DB) string {
+				return "abc"
+			},
 			body: UpdateUserRequest{
 				Email: "test@example.com",
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "nonexistent user",
-			userId: "99999",
+			name: "nonexistent user",
+			setupFunc: func(t *testing.T, db *gorm.DB) string {
+				return "99999"
+			},
 			body: UpdateUserRequest{
 				Email: "test@example.com",
 			},
 			expectedStatus: http.StatusNotFound,
 		},
 		{
-			name:   "email conflict",
-			userId: "", // set in test
+			name: "email conflict",
+			setupFunc: func(t *testing.T, db *gorm.DB) string {
+				createUserAdminTestUser(t, db, "existing", "existing@example.com", false)
+				target := createUserAdminTestUser(t, db, "target2", "target2@example.com", false)
+				return fmt.Sprintf("%d", target.ID)
+			},
 			body: UpdateUserRequest{
 				Email: "existing@example.com",
 			},
@@ -737,17 +757,7 @@ func TestAdminUpdateUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := setupUserAdminTestDB(t)
 			admin := createUserAdminTestUser(t, db, "admin", "admin@example.com", true)
-
-			userId := tt.userId
-			if tt.name == "successful update" {
-				target := createUserAdminTestUser(t, db, "target", "target@example.com", false)
-				userId = fmt.Sprintf("%d", target.ID)
-			}
-			if tt.name == "email conflict" {
-				createUserAdminTestUser(t, db, "existing", "existing@example.com", false)
-				target := createUserAdminTestUser(t, db, "target2", "target2@example.com", false)
-				userId = fmt.Sprintf("%d", target.ID)
-			}
+			userId := tt.setupFunc(t, db)
 
 			body, _ := json.Marshal(tt.body)
 			c, w := setupUserAdminTestContext(admin.ID, true)
@@ -762,14 +772,8 @@ func TestAdminUpdateUser(t *testing.T) {
 				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
 			}
 
-			if tt.name == "successful update" {
-				var resp models.User
-				if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-					t.Fatalf("Failed to parse response: %v", err)
-				}
-				if resp.FirstName != "Updated" || resp.LastName != "Name" {
-					t.Errorf("Expected name Updated Name, got %s %s", resp.FirstName, resp.LastName)
-				}
+			if tt.checkFunc != nil && w.Code == tt.expectedStatus {
+				tt.checkFunc(t, w)
 			}
 		})
 	}

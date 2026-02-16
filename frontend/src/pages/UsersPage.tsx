@@ -175,6 +175,15 @@ const UsersPage: React.FC = () => {
     fetchUsers();
   }, [fetchUsers]);
 
+  // Cleanup timeout refs on unmount to prevent state updates after unmount
+  React.useEffect(() => {
+    return () => {
+      if (editTimeoutRef.current) clearTimeout(editTimeoutRef.current);
+      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+      if (createTimeoutRef.current) clearTimeout(createTimeoutRef.current);
+    };
+  }, []);
+
   // Fetch group members when allGroups is populated (for admin group admin management)
   React.useEffect(() => {
     if (allGroups.length > 0 && (isAdmin || isGroupAdmin)) {
@@ -527,7 +536,9 @@ const UsersPage: React.FC = () => {
     setEditSuccess(null);
     
     try {
-      // Self-edit always uses /me endpoint regardless of admin/group-admin status
+      // Self-edit always uses /me endpoint regardless of admin/group-admin status.
+      // Note: This relies on client-side currentUser state. If bypassed or stale,
+      // the request would fall through to groupAdminApi and be rejected with 403.
       if (currentUser && editUser.id === currentUser.id) {
         await authApi.updateCurrentUserProfile({
           ...editData,
@@ -768,6 +779,7 @@ const UsersPage: React.FC = () => {
         setCreateSuccess('User created successfully!');
       }
       
+      // Longer timeout to allow user to read success/warning messages
       createTimeoutRef.current = setTimeout(() => {
         setShowCreate(false);
         fetchUsers();
