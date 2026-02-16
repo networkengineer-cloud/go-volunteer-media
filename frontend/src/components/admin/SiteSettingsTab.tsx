@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { settingsApi } from '../../api/client';
+import { useSiteSettings } from '../../hooks/useSiteSettings';
 import '../../pages/SettingsPage.css';
 import '../../pages/Home.css'; // Import Home.css to reuse hero styles
 
 const SiteSettingsTab: React.FC = () => {
+  const { refetch } = useSiteSettings();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [loading, setLoading] = useState(true);
@@ -100,8 +102,18 @@ const SiteSettingsTab: React.FC = () => {
       return;
     }
     
+    if (!siteShortName.trim()) {
+      setMessage('Site short name is required');
+      return;
+    }
+    
     if (siteName.length > 100) {
       setMessage('Site name must be 100 characters or less');
+      return;
+    }
+    
+    if (siteShortName.length > 50) {
+      setMessage('Site short name must be 50 characters or less');
       return;
     }
     
@@ -122,10 +134,12 @@ const SiteSettingsTab: React.FC = () => {
       ]);
       
       setMessage('Site settings updated successfully!');
-      setTimeout(() => setMessage(''), 3000);
       
-      // Reload page after a delay to show updated branding
-      setTimeout(() => window.location.reload(), 1500);
+      // Refresh settings from context (updates all components without page reload)
+      await refetch();
+      
+      // Clear message after 3 seconds
+      setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Failed to save text settings:', error);
       setMessage('Failed to update settings');

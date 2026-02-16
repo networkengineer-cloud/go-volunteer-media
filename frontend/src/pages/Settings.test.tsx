@@ -3,9 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import Settings from './Settings';
-import { authApi } from '../api/client';
+import { authApi, settingsApi } from '../api/client';
 import { AxiosResponse } from 'axios';
 import { ToastProvider } from '../contexts/ToastContext';
+import { SiteSettingsProvider } from '../contexts/SiteSettingsContext';
 
 // Mock the API client
 vi.mock('../api/client', () => ({
@@ -14,6 +15,11 @@ vi.mock('../api/client', () => ({
     getEmailPreferences: vi.fn(),
     updateEmailPreferences: vi.fn(),
     updateCurrentUserProfile: vi.fn(),
+  },
+  settingsApi: {
+    getAll: vi.fn(),
+    update: vi.fn(),
+    uploadHeroImage: vi.fn(),
   },
 }));
 
@@ -50,14 +56,26 @@ describe('Settings', () => {
         show_length_of_stay: false,
       },
     } as AxiosResponse);
+
+    // Mock site settings API
+    vi.mocked(settingsApi.getAll).mockResolvedValue({
+      data: {
+        site_name: 'MyHAWS',
+        site_short_name: 'MyHAWS',
+        site_description: 'MyHAWS Volunteer Portal',
+        hero_image_url: '',
+      },
+    } as AxiosResponse);
   });
 
   const renderSettings = () => {
     return render(
       <BrowserRouter>
-        <ToastProvider>
-          <Settings />
-        </ToastProvider>
+        <SiteSettingsProvider>
+          <ToastProvider>
+            <Settings />
+          </ToastProvider>
+        </SiteSettingsProvider>
       </BrowserRouter>
     );
   };

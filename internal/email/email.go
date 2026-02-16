@@ -8,6 +8,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -19,8 +21,12 @@ var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]
 
 // Service represents an email service that uses a Provider for sending emails
 type Service struct {
-	provider Provider
-	db       *gorm.DB
+	provider      Provider
+	db            *gorm.DB
+	settingsCache map[string]string
+	cacheMu       sync.RWMutex
+	cacheExpiry   time.Time
+	refreshing    atomic.Bool
 }
 
 // NewService creates a new email service using the configured provider
@@ -31,12 +37,24 @@ func NewService(db *gorm.DB) *Service {
 		// This allows the application to start even if email is misconfigured
 		return &Service{provider: nil, db: db}
 	}
-	return &Service{provider: provider, db: db}
+	s := &Service{provider: provider, db: db}
+	// Preload cache synchronously on initialization
+	if db != nil {
+		s.refreshSettingsCache()
+	}
+	return s
 }
 
 // NewServiceWithProvider creates a new email service with a specific provider (for testing)
+// Breaking change (v2): Added db parameter for dynamic site name fetching.
+// External callers (if any) must update function signature.
 func NewServiceWithProvider(provider Provider, db *gorm.DB) *Service {
-	return &Service{provider: provider, db: db}
+	s := &Service{provider: provider, db: db}
+	// Preload cache synchronously on initialization
+	if db != nil {
+		s.refreshSettingsCache()
+	}
+	return s
 }
 
 // IsConfigured checks if the email service is properly configured
@@ -49,22 +67,67 @@ func isValidEmail(email string) bool {
 	return emailRegex.MatchString(email)
 }
 
-// getSiteName fetches the site name from settings, falls back to "MyHAWS" if not found
+// refreshSettingsCache fetches all site settings from the database and caches them
+// with a 5-minute TTL. Called on service initialization and when cache expires.
+func (s *Service) refreshSettingsCache() {
+	if s.db == nil {
+		return
+	}
+
+	var settings []models.SiteSetting
+	if err := s.db.Find(&settings).Error; err != nil {
+		// On error, keep existing cache or leave empty
+		return
+	}
+
+	// Build cache map
+	cache := make(map[string]string)
+	for _, setting := range settings {
+		cache[setting.Key] = setting.Value
+	}
+
+	// Update cache with write lock
+	s.cacheMu.Lock()
+	s.settingsCache = cache
+	s.cacheExpiry = time.Now().Add(5 * time.Minute)
+	s.cacheMu.Unlock()
+}
+
+// getSiteName fetches the site name from cache, falls back to "MyHAWS" if not found
+// Cache is refreshed automatically when expired (5-minute TTL).
 func (s *Service) getSiteName() string {
 	if s.db == nil {
 		return "MyHAWS"
 	}
 
-	var setting models.SiteSetting
-	if err := s.db.Where("key = ?", "site_name").First(&setting).Error; err != nil {
-		return "MyHAWS"
+	// Fast path: read from cache with read lock
+	s.cacheMu.RLock()
+	if time.Now().Before(s.cacheExpiry) && s.settingsCache != nil {
+		if name := s.settingsCache["site_name"]; name != "" {
+			s.cacheMu.RUnlock()
+			return name
+		}
+	}
+	s.cacheMu.RUnlock()
+
+	// Slow path: cache expired or empty - refresh needed
+	// Use atomic flag to prevent thundering herd (multiple goroutines refreshing simultaneously)
+	if s.refreshing.CompareAndSwap(false, true) {
+		s.refreshSettingsCache()
+		s.refreshing.Store(false)
 	}
 
-	if setting.Value == "" {
-		return "MyHAWS"
+	// Read again after refresh attempt
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+	if s.settingsCache != nil {
+		if name := s.settingsCache["site_name"]; name != "" {
+			return name
+		}
 	}
 
-	return setting.Value
+	// Fallback if cache is still empty
+	return "MyHAWS"
 }
 
 // SendEmail sends an email using the configured provider

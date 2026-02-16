@@ -51,7 +51,7 @@ func TestRequestPasswordReset(t *testing.T) {
 			setupDB: func(db *gorm.DB) {
 				createTestUser(t, db, "testuser", "test@example.com", "password123", false)
 			},
-			emailService: createTestEmailService(true, nil),
+			emailService:   createTestEmailService(true, nil),
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, resp map[string]interface{}, db *gorm.DB) {
 				// Check that reset token was set in database
@@ -73,7 +73,7 @@ func TestRequestPasswordReset(t *testing.T) {
 			payload: map[string]interface{}{
 				"email": "nonexistent@example.com",
 			},
-			emailService: createTestEmailService(true, nil),
+			emailService:   createTestEmailService(true, nil),
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, resp map[string]interface{}, db *gorm.DB) {
 				if msg, ok := resp["message"].(string); !ok || msg == "" {

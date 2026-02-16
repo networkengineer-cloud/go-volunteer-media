@@ -13,6 +13,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// settingValidationRules defines validation rules for specific setting keys
+var settingValidationRules = map[string]struct {
+	required bool
+	maxLen   int
+}{
+	"site_name":        {required: true, maxLen: 100},
+	"site_short_name":  {required: true, maxLen: 50},
+	"site_description": {required: false, maxLen: 500},
+	"hero_image_url":   {required: false, maxLen: 500},
+}
+
 // GetSiteSettings returns all site settings (public endpoint)
 func GetSiteSettings(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -44,6 +55,21 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+
+		// Validate setting value if validation rules exist for this key
+		if rules, ok := settingValidationRules[key]; ok {
+			trimmedValue := strings.TrimSpace(req.Value)
+
+			if rules.required && trimmedValue == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is required", key)})
+				return
+			}
+
+			if len(req.Value) > rules.maxLen {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s must be %d characters or less", key, rules.maxLen)})
+				return
+			}
 		}
 
 		var setting models.SiteSetting
