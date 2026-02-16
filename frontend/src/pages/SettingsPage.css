@@ -102,6 +102,11 @@
   max-height: 200px;
 }
 
+/* Overlay is decorative in preview context; prevent it from absorbing clicks */
+.image-preview .hero-overlay {
+  pointer-events: none;
+}
+
 .message {
   padding: 1rem;
   border-radius: 8px;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { settingsApi } from '../../api/client';
 import { useSiteSettings } from '../../hooks/useSiteSettings';
 import '../../pages/SettingsPage.css';
@@ -8,6 +8,7 @@ const SiteSettingsTab: React.FC = () => {
   const { refetch } = useSiteSettings();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
+  const previewObjectUrl = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -20,7 +21,20 @@ const SiteSettingsTab: React.FC = () => {
 
   useEffect(() => {
     loadSettings();
+    return () => {
+      if (previewObjectUrl.current) {
+        URL.revokeObjectURL(previewObjectUrl.current);
+      }
+    };
   }, []);
+
+  // Revoke blob URLs when transitioning away from them
+  useEffect(() => {
+    if (previewObjectUrl.current && !previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewObjectUrl.current);
+      previewObjectUrl.current = null;
+    }
+  }, [previewUrl]);
 
   const loadSettings = async () => {
     try {
@@ -55,9 +69,13 @@ const SiteSettingsTab: React.FC = () => {
     }
 
     setSelectedFile(file);
-    
-    // Create preview URL
+
+    // Revoke previous blob URL before creating a new one
+    if (previewObjectUrl.current) {
+      URL.revokeObjectURL(previewObjectUrl.current);
+    }
     const objectUrl = URL.createObjectURL(file);
+    previewObjectUrl.current = objectUrl;
     setPreviewUrl(objectUrl);
     setMessage('');
   };
@@ -83,7 +101,9 @@ const SiteSettingsTab: React.FC = () => {
       
       // Refresh settings context to update all components
       await refetch();
-      
+
+      // Set the new URL first, then the useEffect will handle blob cleanup
+      // This prevents a broken-image flash during the transition
       setPreviewUrl(imageUrl);
       setSelectedFile(null);
       setMessage('Hero image updated successfully!');

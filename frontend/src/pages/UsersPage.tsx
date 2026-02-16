@@ -81,7 +81,7 @@ const UsersPage: React.FC = () => {
     try {
       const membersMap = new Map<number, GroupMember[]>();
       for (const group of groups) {
-        const membersRes = await groupAdminApi.getMembers(group.id);
+        const membersRes = await groupsApi.getMembers(group.id);
         membersMap.set(group.id, membersRes.data);
       }
       setGroupMembers(membersMap);
@@ -205,7 +205,7 @@ const UsersPage: React.FC = () => {
       }
       
       // Refresh the group members for this group
-      const membersRes = await groupAdminApi.getMembers(groupId);
+      const membersRes = await groupsApi.getMembers(groupId);
       setGroupMembers(prev => {
         const newMap = new Map(prev);
         newMap.set(groupId, membersRes.data);
