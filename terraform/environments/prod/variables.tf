@@ -197,7 +197,7 @@ variable "resend_from_email" {
 variable "resend_from_name" {
   type        = string
   description = "Display name for the email sender"
-  default     = "Haws Volunteers"
+  default     = "MyHAWS"
 }
 
 # Monitoring Configuration

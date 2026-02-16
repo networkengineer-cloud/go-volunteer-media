@@ -46,7 +46,7 @@ storage_replication_type = "LRS"  # LRS for low cost, GRS for geo-redundancy
 # Get your API key from: https://resend.com
 resend_api_key    = "re_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 resend_from_email = "noreply@notifications.yourdomain.com"  # Must use a verified domain in Resend
-resend_from_name  = "Haws Volunteers"                       # Display name for email sender
+resend_from_name  = "MyHAWS"                                # Display name for email sender
 
 # Application Configuration
 # Generate a strong JWT secret: openssl rand -base64 32

@@ -27,7 +27,7 @@ func TestNewService(t *testing.T) {
 	os.Setenv("SMTP_FROM_EMAIL", "test@example.com")
 	os.Setenv("SMTP_FROM_NAME", "Test User")
 
-	service := NewService()
+	service := NewService(nil)
 
 	if service == nil {
 		t.Fatal("Expected service to be non-nil")
@@ -67,6 +67,7 @@ func TestService_IsConfigured(t *testing.T) {
 					Password:  "pass",
 					FromEmail: "test@example.com",
 				},
+				db: nil,
 			},
 			want: true,
 		},
@@ -74,6 +75,7 @@ func TestService_IsConfigured(t *testing.T) {
 			name: "nil provider",
 			service: &Service{
 				provider: nil,
+				db:       nil,
 			},
 			want: false,
 		},
@@ -87,6 +89,7 @@ func TestService_IsConfigured(t *testing.T) {
 					Password:  "",
 					FromEmail: "",
 				},
+				db: nil,
 			},
 			want: false,
 		},
@@ -105,6 +108,7 @@ func TestService_IsConfigured(t *testing.T) {
 func TestService_SendEmail_NotConfigured(t *testing.T) {
 	service := &Service{
 		provider: nil,
+		db:       nil,
 	}
 
 	err := service.SendEmail("test@example.com", "Test Subject", "<html><body>Test Body</body></html>")
@@ -144,6 +148,7 @@ func TestSendPasswordResetEmail_Structure(t *testing.T) {
 			// Create unconfigured service to avoid actual email sending
 			service := &Service{
 				provider: nil,
+				db:       nil,
 			}
 
 			err := service.SendPasswordResetEmail("test@example.com", "testuser", "test-token-123")
@@ -166,6 +171,7 @@ func TestSendAnnouncementEmail_Structure(t *testing.T) {
 	// Create unconfigured service to avoid actual email sending
 	service := &Service{
 		provider: nil,
+		db:       nil,
 	}
 
 	err := service.SendAnnouncementEmail(
@@ -192,6 +198,7 @@ func TestService_SendPasswordResetEmail_WithConfiguredProvider(t *testing.T) {
 
 	service := &Service{
 		provider: mockProvider,
+		db:       nil,
 	}
 
 	// Save and set frontend URL
@@ -235,6 +242,7 @@ func TestService_SendAnnouncementEmail_WithConfiguredProvider(t *testing.T) {
 
 	service := &Service{
 		provider: mockProvider,
+		db:       nil,
 	}
 
 	err := service.SendAnnouncementEmail("user@example.com", "Important Notice", "This is the content\nLine 2")

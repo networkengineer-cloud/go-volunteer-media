@@ -9,6 +9,12 @@ const SiteSettingsTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  
+  // Site name settings
+  const [siteName, setSiteName] = useState('');
+  const [siteShortName, setSiteShortName] = useState('');
+  const [siteDescription, setSiteDescription] = useState('');
+  const [savingText, setSavingText] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -17,8 +23,11 @@ const SiteSettingsTab: React.FC = () => {
   const loadSettings = async () => {
     try {
       const response = await settingsApi.getAll();
-      const currentUrl = response.data.hero_image_url || '';
-      setPreviewUrl(currentUrl);
+      const settings = response.data;
+      setPreviewUrl(settings.hero_image_url || '');
+      setSiteName(settings.site_name || 'MyHAWS');
+      setSiteShortName(settings.site_short_name || 'MyHAWS');
+      setSiteDescription(settings.site_description || 'MyHAWS Volunteer Portal - Internal volunteer management system');
     } catch (error) {
       console.error('Failed to load settings:', error);
       setMessage('Failed to load settings');
@@ -82,6 +91,49 @@ const SiteSettingsTab: React.FC = () => {
     }
   };
 
+  const handleSaveTextSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate inputs
+    if (!siteName.trim()) {
+      setMessage('Site name is required');
+      return;
+    }
+    
+    if (siteName.length > 100) {
+      setMessage('Site name must be 100 characters or less');
+      return;
+    }
+    
+    if (siteDescription.length > 500) {
+      setMessage('Site description must be 500 characters or less');
+      return;
+    }
+
+    setSavingText(true);
+    setMessage('');
+
+    try {
+      // Update all text settings
+      await Promise.all([
+        settingsApi.update('site_name', siteName.trim()),
+        settingsApi.update('site_short_name', siteShortName.trim()),
+        settingsApi.update('site_description', siteDescription.trim()),
+      ]);
+      
+      setMessage('Site settings updated successfully!');
+      setTimeout(() => setMessage(''), 3000);
+      
+      // Reload page after a delay to show updated branding
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (error) {
+      console.error('Failed to save text settings:', error);
+      setMessage('Failed to update settings');
+    } finally {
+      setSavingText(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading settings...</div>;
   }
@@ -89,10 +141,77 @@ const SiteSettingsTab: React.FC = () => {
   return (
     <div className="tab-panel">
       <h2>Site Configuration</h2>
+      
+      {/* Site Name & Description Settings */}
+      <form onSubmit={handleSaveTextSettings} className="settings-form" style={{ marginBottom: '2rem' }}>
+        <h3>Branding</h3>
+        <div className="form-group">
+          <label htmlFor="siteName">
+            Site Name
+            <span className="label-hint">The full name displayed throughout the site</span>
+          </label>
+          <input
+            type="text"
+            id="siteName"
+            value={siteName}
+            onChange={(e) => setSiteName(e.target.value)}
+            maxLength={100}
+            required
+          />
+          <p className="field-help">
+            Displayed in navigation, authentication pages, and email templates (max 100 characters)
+          </p>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="siteShortName">
+            Short Name
+            <span className="label-hint">Abbreviated name for compact displays</span>
+          </label>
+          <input
+            type="text"
+            id="siteShortName"
+            value={siteShortName}
+            onChange={(e) => setSiteShortName(e.target.value)}
+            maxLength={50}
+            required
+          />
+          <p className="field-help">
+            Used in welcome messages and compact displays (max 50 characters)
+          </p>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="siteDescription">
+            Site Description
+            <span className="label-hint">Brief description for metadata and SEO</span>
+          </label>
+          <textarea
+            id="siteDescription"
+            value={siteDescription}
+            onChange={(e) => setSiteDescription(e.target.value)}
+            maxLength={500}
+            rows={3}
+            required
+          />
+          <p className="field-help">
+            Used in page metadata and site descriptions (max 500 characters)
+          </p>
+        </div>
+
+        <div className="form-actions">
+          <button type="submit" className="btn-save" disabled={savingText}>
+            {savingText ? 'Saving...' : 'Save Branding Settings'}
+          </button>
+        </div>
+      </form>
+
+      {/* Hero Image Settings */}
       <form onSubmit={handleSave} className="settings-form">
+        <h3>Hero Image</h3>
         <div className="form-group">
           <label htmlFor="heroImage">
-            Hero Image
+            Background Image
             <span className="label-hint">The background image for the home page hero section</span>
           </label>
           <input

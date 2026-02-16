@@ -1,6 +1,6 @@
-# Contributing to Haws Volunteers
+# Contributing to MyHAWS Volunteer Portal
 
-Thank you for your interest in contributing to the Haws Volunteers project! This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to the MyHAWS Volunteer Portal project! This document provides guidelines for contributing to the codebase.
 
 ## Code of Conduct
 

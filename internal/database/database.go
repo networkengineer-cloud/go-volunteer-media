@@ -507,6 +507,18 @@ func createDefaultAnimalTags(db *gorm.DB) error {
 func createDefaultSiteSettings(db *gorm.DB) error {
 	defaultSettings := []models.SiteSetting{
 		{
+			Key:   "site_name",
+			Value: "MyHAWS",
+		},
+		{
+			Key:   "site_short_name",
+			Value: "MyHAWS",
+		},
+		{
+			Key:   "site_description",
+			Value: "MyHAWS Volunteer Portal - Internal volunteer management system",
+		},
+		{
 			Key:   "hero_image_url",
 			Value: "", // Empty by default - admin should upload an image
 		},

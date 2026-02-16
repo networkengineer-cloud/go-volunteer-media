@@ -307,7 +307,7 @@ SMTP_PORT=587
 SMTP_USERNAME=user@example.com
 SMTP_PASSWORD=password
 SMTP_FROM_EMAIL=noreply@example.com
-SMTP_FROM_NAME=HAWS Volunteers
+SMTP_FROM_NAME=MyHAWS
 
 # Frontend URL
 FRONTEND_URL=http://localhost:5173

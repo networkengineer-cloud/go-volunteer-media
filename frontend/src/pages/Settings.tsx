@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { authApi } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { useSiteSettings } from '../hooks/useSiteSettings';
 import { getPasswordStrength } from '../utils/passwordStrength';
 import './Settings.css';
 
@@ -28,6 +29,7 @@ const Settings: React.FC = () => {
   const [hideEmail, setHideEmail] = useState(false);
   const [hidePhoneNumber, setHidePhoneNumber] = useState(false);
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false);
+  const { settings } = useSiteSettings();
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -406,7 +408,7 @@ const Settings: React.FC = () => {
         <div className="settings-section">
           <h2>Email Notifications</h2>
           <p className="settings-description">
-            Control how you receive email notifications from Haws Volunteers.
+            Control how you receive email notifications from {settings.site_name}.
           </p>
 
           <div className="setting-item">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { useSiteSettings } from '../hooks/useSiteSettings';
 import axios from 'axios';
 import FormField from '../components/FormField';
 import PasswordField from '../components/PasswordField';
@@ -37,6 +38,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
   const [searchParams] = useSearchParams();
+  const { settings } = useSiteSettings();
 
   // Check if redirected due to session expiration
   useEffect(() => {
@@ -180,7 +182,7 @@ const Login: React.FC = () => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1>Haws Volunteers</h1>
+        <h1>{settings.site_name}</h1>
         <h2>Login</h2>
         
         {sessionExpired && (

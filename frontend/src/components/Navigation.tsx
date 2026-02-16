@@ -1,11 +1,13 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useSiteSettings } from '../hooks/useSiteSettings';
 import './Navigation.css';
 
 const Navigation: React.FC = () => {
   const { user, logout, isAuthenticated, isAdmin, isGroupAdmin } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const { settings } = useSiteSettings();
 
   // Theme state and persistence
   const [theme, setTheme] = React.useState<'light' | 'dark'>(() => {
@@ -48,7 +50,7 @@ const Navigation: React.FC = () => {
       <nav className="navigation" role="navigation" aria-label="Main navigation">
         <div className="nav-container">
           <Link to={isAuthenticated ? '/dashboard' : '/'} className="nav-brand" onClick={closeMobileMenu}>
-          {/* HAWS logo placeholder - using paw icon */}
+          {/* Logo icon placeholder - using paw icon */}
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="4" r="2"></circle>
             <circle cx="19" cy="8" r="1.5"></circle>
@@ -57,7 +59,7 @@ const Navigation: React.FC = () => {
             <circle cx="7" cy="14" r="1.5"></circle>
             <path d="M8.5 17.5 A 4 4 0 0 0 15.5 17.5"></path>
           </svg>
-          <span className="nav-brand-text">HAWS Volunteer Portal</span>
+          <span className="nav-brand-text">{settings.site_name}</span>
         </Link>
         
         {/* Mobile menu toggle */}
