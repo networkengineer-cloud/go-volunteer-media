@@ -250,7 +250,7 @@ func (s *Service) SendPasswordSetupEmail(to, username, setupToken string) error 
             </p>
             <p>Or copy and paste this link into your browser:</p>
             <p style="word-break: break-all; color: #0e6c55;">%s</p>
-            <p><strong>This link will expire in 24 hours.</strong></p>
+            <p><strong>This link will expire in 7 days.</strong></p>
             <p>Once you've set your password, you'll be able to sign in and start contributing to our mission of helping animals in need.</p>
             <p>If you have any questions or didn't expect this invitation, please contact your administrator.</p>
         </div>

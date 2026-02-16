@@ -81,6 +81,59 @@ func setupUserAdminTestContext(userID uint, isAdmin bool) (*gin.Context, *httpte
 	return c, w
 }
 
+// MockEmailService is a mock implementation of email.Service for testing
+type MockEmailService struct {
+	configured bool
+	sentEmails []SentEmail
+}
+
+// SentEmail represents an email that was "sent" by the mock
+type SentEmail struct {
+	To      string
+	Subject string
+	Body    string
+}
+
+func (m *MockEmailService) IsConfigured() bool {
+	return m.configured
+}
+
+func (m *MockEmailService) SendEmail(to, subject, htmlBody string) error {
+	m.sentEmails = append(m.sentEmails, SentEmail{
+		To:      to,
+		Subject: subject,
+		Body:    htmlBody,
+	})
+	return nil
+}
+
+func (m *MockEmailService) SendPasswordSetupEmail(to, username, setupToken string) error {
+	m.sentEmails = append(m.sentEmails, SentEmail{
+		To:      to,
+		Subject: "Password Setup",
+		Body:    setupToken,
+	})
+	return nil
+}
+
+func (m *MockEmailService) SendPasswordResetEmail(to, username, resetToken string) error {
+	m.sentEmails = append(m.sentEmails, SentEmail{
+		To:      to,
+		Subject: "Password Reset",
+		Body:    resetToken,
+	})
+	return nil
+}
+
+func (m *MockEmailService) SendAnnouncementEmail(to, title, content string) error {
+	m.sentEmails = append(m.sentEmails, SentEmail{
+		To:      to,
+		Subject: title,
+		Body:    content,
+	})
+	return nil
+}
+
 // TestPromoteUser tests promoting a regular user to admin
 func TestPromoteUser(t *testing.T) {
 	tests := []struct {
@@ -1197,5 +1250,3 @@ func TestUpdateCurrentUserProfile_NameFields(t *testing.T) {
 				tt.checkFunc(t, w)
 			}
 		})
-	}
-}

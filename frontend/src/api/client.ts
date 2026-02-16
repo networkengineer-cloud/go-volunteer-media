@@ -14,6 +14,7 @@ export const usersApi = {
   getDeleted: () => api.get<User[]>('/admin/users/deleted'),
   restore: (userId: number) => api.post(`/admin/users/${userId}/restore`),
   resetPassword: (userId: number, newPassword: string) => api.post(`/users/${userId}/reset-password`, { new_password: newPassword }),
+  resendInvitation: (userId: number) => api.post(`/users/${userId}/resend-invitation`),
 };
 
 // Group Admin API (accessible by site admins and group admins)
@@ -92,6 +93,7 @@ export interface User {
   default_group_id?: number;
   groups?: Group[];
   deleted_at?: string | null;
+  requires_password_setup?: boolean; // True if user hasn't completed initial password setup
 }
 
 // User creation response - backend returns different formats depending on setup email
