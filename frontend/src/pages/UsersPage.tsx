@@ -507,13 +507,13 @@ const UsersPage: React.FC = () => {
     setEditSuccess(null);
     
     try {
-      // Use appropriate API based on user role
-      if (isAdmin) {
+      // Self-edit always uses /me endpoint regardless of admin/group-admin status
+      if (currentUser && editUser.id === currentUser.id) {
+        await authApi.updateCurrentUserProfile(editData);
+      } else if (isAdmin) {
         await usersApi.update(editUser.id, editData);
       } else if (isGroupAdmin) {
         await groupAdminApi.updateUser(editUser.id, editData);
-      } else if (currentUser && editUser.id === currentUser.id) {
-        await authApi.updateCurrentUserProfile(editData);
       } else {
         setEditError('You do not have permission to edit this user');
         return;

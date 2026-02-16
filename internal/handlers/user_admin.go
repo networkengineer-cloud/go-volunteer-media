@@ -585,16 +585,17 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-
 // UpdateUserRequest is the request body for updating user information
 type UpdateUserRequest struct {
 	FirstName   string `json:"first_name" binding:"omitempty,min=1,max=100"`
 	LastName    string `json:"last_name" binding:"omitempty,min=1,max=100"`
 	Email       string `json:"email" binding:"required,email"`
-	PhoneNumber string `json:"phone_number" binding:"omitempty"`
+	PhoneNumber string `json:"phone_number"`
 }
 
-// applyUserUpdate validates email uniqueness, applies updates, and reloads the user.
+// applyUserUpdate validates email uniqueness, applies the update, reloads the
+// user with groups, and writes the JSON response to c. Callers should return
+// immediately after calling this function.
 func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *models.User, req UpdateUserRequest) {
 	if req.Email != user.Email {
 		if err := validateEmailUniqueness(ctx, db, req.Email, user.ID); err != nil {
@@ -697,8 +698,12 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// A group admin can update a user if they are a group admin of ANY group
-		// the target user belongs to. Users without groups can only be managed by site admins.
+		// Authorization: a group admin can update a user if they admin ANY group the
+		// target user belongs to. This intentionally differs from GroupAdminCreateUser
+		// which requires admin of ALL specified groups. The update case is more
+		// permissive because the user already exists in those groups — the group admin
+		// is only modifying profile fields, not group assignments.
+		// Users without groups can only be managed by site admins.
 		if !currentUser.IsAdmin {
 			if len(user.Groups) == 0 {
 				logger.WithFields(map[string]interface{}{
