@@ -103,10 +103,14 @@ const GroupPage: React.FC = () => {
   // Update view mode when URL search params change
   useEffect(() => {
     const viewParam = searchParams.get('view') as ViewMode;
-    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols' || viewParam === 'members')) {
+    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols')) {
       setViewMode(viewParam);
+    } else if (viewParam === 'members' && membership?.is_member) {
+      setViewMode(viewParam);
+    } else if (viewParam === 'members' && !membership?.is_member) {
+      setViewMode('activity');
     }
-  }, [searchParams]);
+  }, [searchParams, membership]);
 
   useEffect(() => {
     const loadPreferences = async () => {
