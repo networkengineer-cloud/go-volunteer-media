@@ -9,6 +9,9 @@ export interface SiteSettings {
   hero_image_url: string;
 }
 
+// IMPORTANT: These defaults must match the constants in internal/models/models.go
+// (DefaultSiteName, DefaultSiteShortName, DefaultSiteDescription)
+// Used as fallbacks when API is unavailable or during initial load
 const DEFAULT_SETTINGS: SiteSettings = {
   site_name: 'MyHAWS',
   site_short_name: 'MyHAWS',

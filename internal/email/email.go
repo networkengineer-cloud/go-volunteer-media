@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -76,6 +77,9 @@ func (s *Service) refreshSettingsCache() {
 
 	var settings []models.SiteSetting
 	if err := s.db.Find(&settings).Error; err != nil {
+		logging.WithFields(map[string]interface{}{
+			"error": err.Error(),
+		}).Error("Failed to refresh site settings cache", err)
 		// On error, keep existing cache or leave empty
 		return
 	}
@@ -91,13 +95,18 @@ func (s *Service) refreshSettingsCache() {
 	s.settingsCache = cache
 	s.cacheExpiry = time.Now().Add(5 * time.Minute)
 	s.cacheMu.Unlock()
+
+	logging.WithFields(map[string]interface{}{
+		"settings_count": len(settings),
+		"cache_expiry":   s.cacheExpiry.Format(time.RFC3339),
+	}).Debug("Site settings cache refreshed successfully")
 }
 
-// getSiteName fetches the site name from cache, falls back to "MyHAWS" if not found
+// getSiteName fetches the site name from cache, falls back to default if not found
 // Cache is refreshed automatically when expired (5-minute TTL).
 func (s *Service) getSiteName() string {
 	if s.db == nil {
-		return "MyHAWS"
+		return models.DefaultSiteName
 	}
 
 	// Fast path: read from cache with read lock
@@ -127,7 +136,7 @@ func (s *Service) getSiteName() string {
 	}
 
 	// Fallback if cache is still empty
-	return "MyHAWS"
+	return models.DefaultSiteName
 }
 
 // SendEmail sends an email using the configured provider

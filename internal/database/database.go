@@ -508,15 +508,15 @@ func createDefaultSiteSettings(db *gorm.DB) error {
 	defaultSettings := []models.SiteSetting{
 		{
 			Key:   "site_name",
-			Value: "MyHAWS",
+			Value: models.DefaultSiteName,
 		},
 		{
 			Key:   "site_short_name",
-			Value: "MyHAWS",
+			Value: models.DefaultSiteShortName,
 		},
 		{
 			Key:   "site_description",
-			Value: "MyHAWS Volunteer Portal - Internal volunteer management system",
+			Value: models.DefaultSiteDescription,
 		},
 		{
 			Key:   "hero_image_url",

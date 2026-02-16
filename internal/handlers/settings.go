@@ -49,7 +49,7 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 		key := c.Param("key")
 
 		var req struct {
-			Value string `json:"value" binding:"required"`
+			Value string `json:"value"`
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {

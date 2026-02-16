@@ -81,6 +81,9 @@ const SiteSettingsTab: React.FC = () => {
       // Update the setting with the new URL
       await settingsApi.update('hero_image_url', imageUrl);
       
+      // Refresh settings context to update all components
+      await refetch();
+      
       setPreviewUrl(imageUrl);
       setSelectedFile(null);
       setMessage('Hero image updated successfully!');
