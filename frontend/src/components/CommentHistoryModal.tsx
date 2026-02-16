@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CommentHistory, SessionMetadata } from '../api/client';
+import type { CommentHistory, SessionMetadata } from '../api/client';
 import './CommentHistoryModal.css';
 
 interface CommentHistoryModalProps {
