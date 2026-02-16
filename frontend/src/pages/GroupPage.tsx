@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { groupsApi, animalsApi, authApi } from '../api/client';
-import type { Group, Animal, GroupMembership, ActivityItem } from '../api/client';
+import { groupsApi, animalsApi, authApi, groupAdminApi } from '../api/client';
+import type { Group, Animal, GroupMembership, ActivityItem, GroupMember } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
@@ -13,7 +13,7 @@ import Modal from '../components/Modal';
 import ProtocolsList from '../components/ProtocolsList';
 import './GroupPage.css';
 
-type ViewMode = 'activity' | 'animals' | 'protocols';
+type ViewMode = 'activity' | 'animals' | 'protocols' | 'members';
 type FilterType = 'all' | 'comments' | 'announcements';
 
 const GroupPage: React.FC = () => {
@@ -48,6 +48,11 @@ const GroupPage: React.FC = () => {
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityLoadingMore, setActivityLoadingMore] = useState(false);
   const [activityError, setActivityError] = useState('');
+  // Members state
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState('');
+
   const [filterAnimal, setFilterAnimal] = useState<string>('');
   const [animalSearchQuery, setAnimalSearchQuery] = useState<string>('');
   const [showAnimalDropdown, setShowAnimalDropdown] = useState(false);
@@ -98,7 +103,7 @@ const GroupPage: React.FC = () => {
   // Update view mode when URL search params change
   useEffect(() => {
     const viewParam = searchParams.get('view') as ViewMode;
-    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols')) {
+    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols' || viewParam === 'members')) {
       setViewMode(viewParam);
     }
   }, [searchParams]);
@@ -239,6 +244,28 @@ const GroupPage: React.FC = () => {
     setShowAnimalDropdown(false);
   };
 
+  // Load members when switching to members tab
+  const loadMembers = async (groupId: number) => {
+    setMembersLoading(true);
+    setMembersError('');
+    try {
+      const res = await groupAdminApi.getMembers(groupId);
+      setMembers(res.data);
+    } catch (err: unknown) {
+      console.error('Failed to load members:', err);
+      const axiosError = err as { response?: { data?: { error?: string } } };
+      setMembersError(axiosError.response?.data?.error || 'Failed to load members');
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (id && viewMode === 'members') {
+      loadMembers(Number(id));
+    }
+  }, [id, viewMode]);
+
   // Load activity feed when filters change or view mode switches to activity
   useEffect(() => {
     if (id && viewMode === 'activity') {
@@ -376,6 +403,24 @@ const GroupPage: React.FC = () => {
               <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
             </svg>
             <span>Protocols</span>
+          </button>
+        )}
+        {membership?.is_member && (
+          <button
+            role="tab"
+            aria-selected={viewMode === 'members'}
+            aria-controls="members-panel"
+            id="members-tab"
+            className={`group-tab ${viewMode === 'members' ? 'group-tab--active' : ''}`}
+            onClick={() => setViewMode('members')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            <span>Members</span>
           </button>
         )}
       </div>
@@ -877,6 +922,74 @@ const GroupPage: React.FC = () => {
             onShowFormChange={setShowProtocolForm}
             hideAddButton={true}
           />
+        </div>
+      )}
+
+      {/* Members View */}
+      {viewMode === 'members' && membership?.is_member && (
+        <div
+          role="tabpanel"
+          id="members-panel"
+          aria-labelledby="members-tab"
+          className="group-content"
+        >
+          <div className="members-section">
+            <div className="section-header">
+              <h2>Members</h2>
+            </div>
+
+            {membersLoading ? (
+              <SkeletonLoader variant="card" count={4} />
+            ) : membersError ? (
+              <ErrorState
+                title="Unable to Load Members"
+                message={membersError}
+                onRetry={() => id && loadMembers(Number(id))}
+              />
+            ) : members.length === 0 ? (
+              <EmptyState
+                icon={
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                  </svg>
+                }
+                title="No members found"
+                description="This group doesn't have any members yet."
+              />
+            ) : (
+              <div className="members-list">
+                {members.map((member) => {
+                  const displayName = [member.first_name, member.last_name].filter(Boolean).join(' ');
+                  const initial = (displayName || member.username).charAt(0).toUpperCase();
+                  return (
+                    <div key={member.user_id} className="member-card">
+                      <div className="member-avatar">{initial}</div>
+                      <div className="member-info">
+                        <div className="member-name">
+                          {displayName || member.username}
+                          {displayName && <span className="member-username">@{member.username}</span>}
+                        </div>
+                        <div className="member-roles">
+                          {member.is_site_admin && <span className="member-badge member-badge--site-admin">Site Admin</span>}
+                          {member.is_group_admin && <span className="member-badge member-badge--group-admin">Group Admin</span>}
+                        </div>
+                        {(member.email || member.phone_number) && (
+                          <div className="member-contact">
+                            {member.email && <span>{member.email}</span>}
+                            {member.phone_number && <span>{member.phone_number}</span>}
+                          </div>
+                        )}
+                      </div>
+                      <Link to={`/users/${member.user_id}`} className="btn-view-profile">
+                        View Profile
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

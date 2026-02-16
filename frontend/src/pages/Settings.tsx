@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { getPasswordStrength } from '../utils/passwordStrength';
 import './Settings.css';
 
 const Settings: React.FC = () => {
@@ -20,7 +22,15 @@ const Settings: React.FC = () => {
   const [error, setError] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [success, setSuccess] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { showToast } = useToast();
 
   const validatePhoneNumber = (phone: string): boolean => {
@@ -132,6 +142,49 @@ const Settings: React.FC = () => {
       setSavingDisplay(false);
     }
   };
+
+  const handleChangePassword = async () => {
+    if (!currentPassword) {
+      showToast('Please enter your current password', 'error');
+      return;
+    }
+    if (!newPassword) {
+      showToast('Please enter a new password', 'error');
+      return;
+    }
+    if (newPassword.length < 8) {
+      showToast('New password must be at least 8 characters', 'error');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast('New passwords do not match', 'error');
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      // Verify current password by attempting login
+      await authApi.login(user!.username, currentPassword);
+      // Current password is correct, proceed with change
+      await authApi.changePassword(user!.id, newPassword);
+      showToast('Password changed successfully!', 'success');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: unknown) {
+      console.error('Failed to change password:', err);
+      const axiosError = err as { response?: { status?: number; data?: { error?: string } } };
+      if (axiosError.response?.status === 401) {
+        showToast('Current password is incorrect', 'error');
+      } else {
+        showToast(axiosError.response?.data?.error || 'Failed to change password', 'error');
+      }
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  const passwordStrength = newPassword ? getPasswordStrength(newPassword) : null;
 
   if (loading) {
     return (
@@ -410,6 +463,136 @@ const Settings: React.FC = () => {
               disabled={savingDisplay}
             >
               {savingDisplay ? 'Saving...' : 'Save Display Preferences'}
+            </button>
+          </div>
+        </div>
+
+        {/* Change Password Section */}
+        <div className="settings-section">
+          <h2>Change Password</h2>
+          <p className="settings-description">
+            Update your account password. You'll need to enter your current password for verification.
+          </p>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="current-password">
+                <strong>Current Password</strong>
+              </label>
+              <p className="setting-help">
+                Enter your existing password to verify your identity.
+              </p>
+            </div>
+            <div className="setting-input-wrapper">
+              <div className="password-input-wrapper">
+                <input
+                  id="current-password"
+                  type={showCurrentPassword ? 'text' : 'password'}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  disabled={savingPassword}
+                  className="setting-input"
+                  placeholder="Current password"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                  aria-label={showCurrentPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showCurrentPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="new-password">
+                <strong>New Password</strong>
+              </label>
+              <p className="setting-help">
+                Choose a strong password with at least 8 characters.
+              </p>
+            </div>
+            <div className="setting-input-wrapper">
+              <div className="password-input-wrapper">
+                <input
+                  id="new-password"
+                  type={showNewPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  disabled={savingPassword}
+                  className="setting-input"
+                  placeholder="New password"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showNewPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
+              {passwordStrength && (
+                <div className="strength-bar">
+                  <div
+                    className={`strength-fill strength-${passwordStrength.strength}`}
+                  />
+                  <span className="strength-label" style={{ color: passwordStrength.color }}>
+                    {passwordStrength.label}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <label htmlFor="confirm-password">
+                <strong>Confirm New Password</strong>
+              </label>
+              <p className="setting-help">
+                Re-enter your new password to confirm.
+              </p>
+            </div>
+            <div className="setting-input-wrapper">
+              <div className="password-input-wrapper">
+                <input
+                  id="confirm-password"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={savingPassword}
+                  className="setting-input"
+                  placeholder="Confirm new password"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showConfirmPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
+              {confirmPassword && newPassword !== confirmPassword && (
+                <div className="error" style={{ marginTop: '8px' }}>Passwords do not match</div>
+              )}
+            </div>
+          </div>
+
+          <div className="settings-actions">
+            <button
+              onClick={handleChangePassword}
+              className="btn-primary"
+              disabled={savingPassword || !currentPassword || !newPassword || !confirmPassword}
+            >
+              {savingPassword ? 'Changing Password...' : 'Change Password'}
             </button>
           </div>
         </div>

@@ -108,6 +108,8 @@ export type CreateUserResponse =
 export interface GroupMember {
   user_id: number;
   username: string;
+  first_name?: string;
+  last_name?: string;
   email: string;
   phone_number?: string;
   is_group_admin: boolean;
@@ -427,6 +429,9 @@ export const authApi = {
       hide_phone_number?: boolean;
     }>('/me/profile', profile),
   
+  changePassword: (userId: number, newPassword: string) =>
+    api.post(`/users/${userId}/reset-password`, { new_password: newPassword }),
+
   setDefaultGroup: (groupId: number) => api.put('/default-group', { group_id: groupId }),
   
   getDefaultGroup: () => api.get<Group>('/default-group'),

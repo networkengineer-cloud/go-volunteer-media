@@ -912,7 +912,7 @@ const UsersPage: React.FC = () => {
 
           <div className="form-grid">
             {/* Username Field */}
-            <div className="form-field">
+            <div className="form-field full-width">
               <label htmlFor="create-username" className="form-label">
                 Username <span className="required">*</span>
               </label>
@@ -981,7 +981,7 @@ const UsersPage: React.FC = () => {
             </div>
 
             {/* Email Field */}
-            <div className="form-field">
+            <div className="form-field full-width">
               <label htmlFor="create-email" className="form-label">
                 Email Address <span className="required">*</span>
               </label>
