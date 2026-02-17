@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -79,59 +81,6 @@ func setupUserAdminTestContext(userID uint, isAdmin bool) (*gin.Context, *httpte
 	c.Set("user_id", userID)
 	c.Set("is_admin", isAdmin)
 	return c, w
-}
-
-// MockEmailService is a mock implementation of email.Service for testing
-type MockEmailService struct {
-	configured bool
-	sentEmails []SentEmail
-}
-
-// SentEmail represents an email that was "sent" by the mock
-type SentEmail struct {
-	To      string
-	Subject string
-	Body    string
-}
-
-func (m *MockEmailService) IsConfigured() bool {
-	return m.configured
-}
-
-func (m *MockEmailService) SendEmail(to, subject, htmlBody string) error {
-	m.sentEmails = append(m.sentEmails, SentEmail{
-		To:      to,
-		Subject: subject,
-		Body:    htmlBody,
-	})
-	return nil
-}
-
-func (m *MockEmailService) SendPasswordSetupEmail(to, username, setupToken string) error {
-	m.sentEmails = append(m.sentEmails, SentEmail{
-		To:      to,
-		Subject: "Password Setup",
-		Body:    setupToken,
-	})
-	return nil
-}
-
-func (m *MockEmailService) SendPasswordResetEmail(to, username, resetToken string) error {
-	m.sentEmails = append(m.sentEmails, SentEmail{
-		To:      to,
-		Subject: "Password Reset",
-		Body:    resetToken,
-	})
-	return nil
-}
-
-func (m *MockEmailService) SendAnnouncementEmail(to, title, content string) error {
-	m.sentEmails = append(m.sentEmails, SentEmail{
-		To:      to,
-		Subject: title,
-		Body:    content,
-	})
-	return nil
 }
 
 // TestPromoteUser tests promoting a regular user to admin
@@ -1248,6 +1197,159 @@ func TestUpdateCurrentUserProfile_NameFields(t *testing.T) {
 			}
 			if tt.checkFunc != nil && w.Code == tt.expectedStatus {
 				tt.checkFunc(t, w)
+			}
+		})
+	}
+}
+
+// TestResendInvitation tests the ResendInvitation handler
+func TestResendInvitation(t *testing.T) {
+	tests := []struct {
+		name           string
+		userID         string
+		callerID       uint
+		callerIsAdmin  bool
+		setupUser      func(t *testing.T, db *gorm.DB)
+		expectedStatus int
+		expectedError  string
+	}{
+		{
+			name:           "invalid user ID",
+			userID:         "abc",
+			callerID:       1,
+			callerIsAdmin:  true,
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "Invalid user ID",
+		},
+		{
+			name:           "user not found",
+			userID:         "999",
+			callerID:       1,
+			callerIsAdmin:  true,
+			expectedStatus: http.StatusNotFound,
+			expectedError:  "User not found",
+		},
+		{
+			name:          "user already completed setup",
+			userID:        "2",
+			callerID:      1,
+			callerIsAdmin: true,
+			setupUser: func(t *testing.T, db *gorm.DB) {
+				user := &models.User{
+					Username:              "setupdone",
+					Email:                 "done@test.com",
+					Password:              "hashed",
+					RequiresPasswordSetup: false,
+				}
+				if err := db.Create(user).Error; err != nil {
+					t.Fatalf("Failed to create test user: %v", err)
+				}
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "User has already set up their account",
+		},
+		{
+			name:          "non-admin non-group-admin is forbidden",
+			userID:        "2",
+			callerID:      1,
+			callerIsAdmin: false,
+			setupUser: func(t *testing.T, db *gorm.DB) {
+				group := &models.Group{Name: "TestGroup"}
+				db.Create(group)
+				user := &models.User{
+					Username:              "pending",
+					Email:                 "pending@test.com",
+					Password:              "hashed",
+					RequiresPasswordSetup: true,
+					Groups:                []models.Group{*group},
+				}
+				if err := db.Create(user).Error; err != nil {
+					t.Fatalf("Failed to create test user: %v", err)
+				}
+			},
+			expectedStatus: http.StatusForbidden,
+			expectedError:  "You must be a site admin or group admin",
+		},
+		{
+			name:          "group admin forbidden for user in different group",
+			userID:        "2",
+			callerID:      1,
+			callerIsAdmin: false,
+			setupUser: func(t *testing.T, db *gorm.DB) {
+				callerGroup := &models.Group{Name: "CallerGroup"}
+				db.Create(callerGroup)
+				db.Create(&models.UserGroup{UserID: 1, GroupID: callerGroup.ID, IsGroupAdmin: true})
+				targetGroup := &models.Group{Name: "TargetGroup"}
+				db.Create(targetGroup)
+				user := &models.User{
+					Username:              "othergroup",
+					Email:                 "other@test.com",
+					Password:              "hashed",
+					RequiresPasswordSetup: true,
+					Groups:                []models.Group{*targetGroup},
+				}
+				if err := db.Create(user).Error; err != nil {
+					t.Fatalf("Failed to create test user: %v", err)
+				}
+			},
+			expectedStatus: http.StatusForbidden,
+			expectedError:  "You must be a site admin or group admin",
+		},
+		{
+			name:          "email not configured returns error after auth passes",
+			userID:        "2",
+			callerID:      1,
+			callerIsAdmin: true,
+			setupUser: func(t *testing.T, db *gorm.DB) {
+				user := &models.User{
+					Username:              "noemail",
+					Email:                 "noemail@test.com",
+					Password:              "hashed",
+					RequiresPasswordSetup: true,
+				}
+				if err := db.Create(user).Error; err != nil {
+					t.Fatalf("Failed to create test user: %v", err)
+				}
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "Email service is not configured",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupUserAdminTestDB(t)
+
+			callerUser := &models.User{
+				Username: "admin",
+				Email:    "admin@test.com",
+				Password: "hashed",
+				IsAdmin:  tt.callerIsAdmin,
+			}
+			db.Create(callerUser)
+
+			if tt.setupUser != nil {
+				tt.setupUser(t, db)
+			}
+
+			c, w := setupUserAdminTestContext(tt.callerID, tt.callerIsAdmin)
+			c.Params = gin.Params{{Key: "userId", Value: tt.userID}}
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/users/"+tt.userID+"/resend-invitation", nil)
+
+			emailSvc := email.NewService(nil)
+			handler := ResendInvitation(db, emailSvc)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+			if tt.expectedError != "" {
+				var resp map[string]string
+				if err := json.Unmarshal(w.Body.Bytes(), &resp); err == nil {
+					if errMsg := resp["error"]; !strings.Contains(errMsg, tt.expectedError) {
+						t.Errorf("Expected error containing %q, got %q", tt.expectedError, errMsg)
+					}
+				}
 			}
 		})
 	}
