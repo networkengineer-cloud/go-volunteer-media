@@ -25,6 +25,9 @@ type adminUserResponse struct {
 	RequiresPasswordSetup bool `json:"requires_password_setup"`
 }
 
+// toAdminUserResponse copies RequiresPasswordSetup into the outer struct to
+// shadow the embedded models.User field (tagged json:"-") so it appears in
+// admin JSON responses.
 func toAdminUserResponse(u models.User) adminUserResponse {
 	return adminUserResponse{User: u, RequiresPasswordSetup: u.RequiresPasswordSetup}
 }
@@ -804,10 +807,10 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
-		userId := c.Param("userId")
+		userIDParam := c.Param("userId")
 
-		// Parse and validate userId
-		userIdInt, err := strconv.ParseUint(userId, 10, 64)
+		// Parse and validate userID
+		userIDInt, err := strconv.ParseUint(userIDParam, 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 			return
@@ -822,7 +825,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 
 		// Find the target user with their groups (GORM soft-delete filter excludes deleted users)
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIDInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
@@ -831,18 +834,12 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 			return
 		}
 
-		// Check if user has already completed setup
-		if !user.RequiresPasswordSetup {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "User has already set up their account. Use password reset instead."})
-			return
-		}
-
-		// Authorization: site admins can resend for anyone, group admins can resend for their group members
+		// Authorization first: site admins can resend for anyone, group admins can resend for their group members
 		if !middleware.IsSiteAdmin(c) {
 			if len(user.Groups) == 0 {
 				logger.WithFields(map[string]interface{}{
 					"current_user_id": currentUserID,
-					"target_user_id":  userId,
+					"target_user_id":  userIDParam,
 				}).Warn("Group admin attempted to resend invitation for user with no groups")
 				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot resend invitation for users with no group assignments. Please contact a site administrator."})
 				return
@@ -863,11 +860,17 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 			if !hasAccess {
 				logger.WithFields(map[string]interface{}{
 					"current_user_id": currentUserID,
-					"target_user_id":  userId,
+					"target_user_id":  userIDParam,
 				}).Warn("Unauthorized attempt to resend invitation")
 				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to resend invitations"})
 				return
 			}
+		}
+
+		// Check if user has already completed setup (after auth to avoid leaking setup state)
+		if !user.RequiresPasswordSetup {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User has already set up their account. Use password reset instead."})
+			return
 		}
 
 		// Check if email service is configured (after auth to avoid leaking config state)

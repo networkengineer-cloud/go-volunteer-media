@@ -1210,7 +1210,7 @@ func TestResendInvitation(t *testing.T) {
 		userID         string
 		callerID       uint
 		callerIsAdmin  bool
-		setupUser      func(t *testing.T, db *gorm.DB, callerID uint)
+		setupUser      func(t *testing.T, db *gorm.DB, callerID uint) string // returns target user ID
 		expectedStatus int
 		expectedError  string
 	}{
@@ -1232,10 +1232,8 @@ func TestResendInvitation(t *testing.T) {
 		},
 		{
 			name:          "user already completed setup",
-			userID:        "2",
-			callerID:      1,
 			callerIsAdmin: true,
-			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) {
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) string {
 				user := &models.User{
 					Username:              "setupdone",
 					Email:                 "done@test.com",
@@ -1245,16 +1243,15 @@ func TestResendInvitation(t *testing.T) {
 				if err := db.Create(user).Error; err != nil {
 					t.Fatalf("Failed to create test user: %v", err)
 				}
+				return fmt.Sprintf("%d", user.ID)
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "User has already set up their account",
 		},
 		{
 			name:          "non-admin non-group-admin is forbidden",
-			userID:        "2",
-			callerID:      1,
 			callerIsAdmin: false,
-			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) {
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) string {
 				group := &models.Group{Name: "TestGroup"}
 				db.Create(group)
 				user := &models.User{
@@ -1267,16 +1264,15 @@ func TestResendInvitation(t *testing.T) {
 				if err := db.Create(user).Error; err != nil {
 					t.Fatalf("Failed to create test user: %v", err)
 				}
+				return fmt.Sprintf("%d", user.ID)
 			},
 			expectedStatus: http.StatusForbidden,
 			expectedError:  "You must be a site admin or group admin",
 		},
 		{
 			name:          "group admin forbidden for user in different group",
-			userID:        "2",
-			callerID:      1,
 			callerIsAdmin: false,
-			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) {
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) string {
 				callerGroup := &models.Group{Name: "CallerGroup"}
 				db.Create(callerGroup)
 				db.Create(&models.UserGroup{UserID: callerID, GroupID: callerGroup.ID, IsGroupAdmin: true})
@@ -1292,16 +1288,15 @@ func TestResendInvitation(t *testing.T) {
 				if err := db.Create(user).Error; err != nil {
 					t.Fatalf("Failed to create test user: %v", err)
 				}
+				return fmt.Sprintf("%d", user.ID)
 			},
 			expectedStatus: http.StatusForbidden,
 			expectedError:  "You must be a site admin or group admin",
 		},
 		{
 			name:          "email not configured returns error after auth passes",
-			userID:        "2",
-			callerID:      1,
 			callerIsAdmin: true,
-			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) {
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) string {
 				user := &models.User{
 					Username:              "noemail",
 					Email:                 "noemail@test.com",
@@ -1311,6 +1306,7 @@ func TestResendInvitation(t *testing.T) {
 				if err := db.Create(user).Error; err != nil {
 					t.Fatalf("Failed to create test user: %v", err)
 				}
+				return fmt.Sprintf("%d", user.ID)
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "Email service is not configured",
@@ -1329,13 +1325,14 @@ func TestResendInvitation(t *testing.T) {
 			}
 			db.Create(callerUser)
 
+			targetUserID := tt.userID
 			if tt.setupUser != nil {
-				tt.setupUser(t, db, callerUser.ID)
+				targetUserID = tt.setupUser(t, db, callerUser.ID)
 			}
 
 			c, w := setupUserAdminTestContext(callerUser.ID, tt.callerIsAdmin)
-			c.Params = gin.Params{{Key: "userId", Value: tt.userID}}
-			c.Request = httptest.NewRequest(http.MethodPost, "/api/users/"+tt.userID+"/resend-invitation", nil)
+			c.Params = gin.Params{{Key: "userId", Value: targetUserID}}
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/users/"+targetUserID+"/resend-invitation", nil)
 
 			emailSvc := email.NewService(nil)
 			handler := ResendInvitation(db, emailSvc)

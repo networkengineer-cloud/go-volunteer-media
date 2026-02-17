@@ -497,6 +497,22 @@
   margin-bottom: 1.5rem;
 }
 
+.modal-body {
+  margin-bottom: 1rem;
+}
+
+.modal-note {
+  margin-top: 0.5rem;
+  font-size: 0.9em;
+  color: var(--text-secondary, #666);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
 /* Action buttons in table */
 .users-table button {
   padding: 0.5rem 1rem;

@@ -187,6 +187,7 @@ const UsersPage: React.FC = () => {
     return () => {
       if (editTimeoutRef.current) clearTimeout(editTimeoutRef.current);
       if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+      if (resendInviteTimeoutRef.current) clearTimeout(resendInviteTimeoutRef.current);
       if (createTimeoutRef.current) clearTimeout(createTimeoutRef.current);
     };
   }, []);
@@ -1667,15 +1668,15 @@ const UsersPage: React.FC = () => {
         <div className="group-modal-backdrop" onClick={closeResendInviteModal}>
           <div className="group-modal" onClick={e => e.stopPropagation()}>
             <h2>Resend Invitation to {resendInviteUser.username}</h2>
-            <div style={{ marginBottom: '1rem' }}>
+            <div className="modal-body">
               <p>This will send a new invitation email to <strong>{resendInviteUser.email}</strong> with a fresh 7-day setup link.</p>
-              <p style={{ marginTop: '0.5rem', fontSize: '0.9em', color: '#666' }}>
+              <p className="modal-note">
                 The previous invitation link will be invalidated.
               </p>
             </div>
             {resendInviteError && <div className="users-error">{resendInviteError}</div>}
             {resendInviteSuccess && <div className="users-success">{resendInviteSuccess}</div>}
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+            <div className="modal-actions">
               <button
                 type="button"
                 className="user-action-btn"
