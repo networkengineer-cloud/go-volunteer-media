@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -1197,5 +1200,231 @@ func TestUpdateCurrentUserProfile_NameFields(t *testing.T) {
 				tt.checkFunc(t, w)
 			}
 		})
+	}
+}
+
+// TestResendInvitation tests the ResendInvitation handler
+func TestResendInvitation(t *testing.T) {
+	tests := []struct {
+		name           string
+		userID         string
+		callerID       uint
+		callerIsAdmin  bool
+		setupUser      func(t *testing.T, db *gorm.DB, callerID uint) string // returns target user ID
+		expectedStatus int
+		expectedError  string
+	}{
+		{
+			name:           "invalid user ID",
+			userID:         "abc",
+			callerID:       1,
+			callerIsAdmin:  true,
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "Invalid user ID",
+		},
+		{
+			name:           "user not found",
+			userID:         "999",
+			callerID:       1,
+			callerIsAdmin:  true,
+			expectedStatus: http.StatusNotFound,
+			expectedError:  "User not found",
+		},
+		{
+			name:          "user already completed setup",
+			callerIsAdmin: true,
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) string {
+				user := &models.User{
+					Username:              "setupdone",
+					Email:                 "done@test.com",
+					Password:              "hashed",
+					RequiresPasswordSetup: false,
+				}
+				if err := db.Create(user).Error; err != nil {
+					t.Fatalf("Failed to create test user: %v", err)
+				}
+				return fmt.Sprintf("%d", user.ID)
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "User has already set up their account",
+		},
+		{
+			name:          "non-admin non-group-admin is forbidden",
+			callerIsAdmin: false,
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) string {
+				group := &models.Group{Name: "TestGroup"}
+				db.Create(group)
+				user := &models.User{
+					Username:              "pending",
+					Email:                 "pending@test.com",
+					Password:              "hashed",
+					RequiresPasswordSetup: true,
+					Groups:                []models.Group{*group},
+				}
+				if err := db.Create(user).Error; err != nil {
+					t.Fatalf("Failed to create test user: %v", err)
+				}
+				return fmt.Sprintf("%d", user.ID)
+			},
+			expectedStatus: http.StatusForbidden,
+			expectedError:  "You must be a site admin or group admin",
+		},
+		{
+			name:          "group admin forbidden for user in different group",
+			callerIsAdmin: false,
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) string {
+				callerGroup := &models.Group{Name: "CallerGroup"}
+				db.Create(callerGroup)
+				db.Create(&models.UserGroup{UserID: callerID, GroupID: callerGroup.ID, IsGroupAdmin: true})
+				targetGroup := &models.Group{Name: "TargetGroup"}
+				db.Create(targetGroup)
+				user := &models.User{
+					Username:              "othergroup",
+					Email:                 "other@test.com",
+					Password:              "hashed",
+					RequiresPasswordSetup: true,
+					Groups:                []models.Group{*targetGroup},
+				}
+				if err := db.Create(user).Error; err != nil {
+					t.Fatalf("Failed to create test user: %v", err)
+				}
+				return fmt.Sprintf("%d", user.ID)
+			},
+			expectedStatus: http.StatusForbidden,
+			expectedError:  "You must be a site admin or group admin",
+		},
+		{
+			name:          "email not configured returns error after auth passes",
+			callerIsAdmin: true,
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) string {
+				user := &models.User{
+					Username:              "noemail",
+					Email:                 "noemail@test.com",
+					Password:              "hashed",
+					RequiresPasswordSetup: true,
+				}
+				if err := db.Create(user).Error; err != nil {
+					t.Fatalf("Failed to create test user: %v", err)
+				}
+				return fmt.Sprintf("%d", user.ID)
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "Email service is not configured",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupUserAdminTestDB(t)
+
+			callerUser := &models.User{
+				Username: "admin",
+				Email:    "admin@test.com",
+				Password: "hashed",
+				IsAdmin:  tt.callerIsAdmin,
+			}
+			db.Create(callerUser)
+
+			targetUserID := tt.userID
+			if tt.setupUser != nil {
+				targetUserID = tt.setupUser(t, db, callerUser.ID)
+			}
+
+			c, w := setupUserAdminTestContext(callerUser.ID, tt.callerIsAdmin)
+			c.Params = gin.Params{{Key: "userId", Value: targetUserID}}
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/users/"+targetUserID+"/resend-invitation", nil)
+
+			emailSvc := email.NewService(nil)
+			handler := ResendInvitation(db, emailSvc)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+			if tt.expectedError != "" {
+				var resp map[string]string
+				if err := json.Unmarshal(w.Body.Bytes(), &resp); err == nil {
+					if errMsg := resp["error"]; !strings.Contains(errMsg, tt.expectedError) {
+						t.Errorf("Expected error containing %q, got %q", tt.expectedError, errMsg)
+					}
+				}
+			}
+		})
+	}
+}
+
+// mockEmailProvider implements email.Provider for testing
+type mockEmailProvider struct{}
+
+func (m *mockEmailProvider) SendEmail(_ context.Context, _, _, _ string) error { return nil }
+func (m *mockEmailProvider) IsConfigured() bool                               { return true }
+func (m *mockEmailProvider) GetProviderName() string                          { return "mock" }
+
+func TestResendInvitation_SiteAdminSuccess(t *testing.T) {
+	db := setupUserAdminTestDB(t)
+
+	admin := &models.User{Username: "admin", Email: "admin@test.com", Password: "hashed", IsAdmin: true}
+	db.Create(admin)
+
+	target := &models.User{
+		Username:              "pending",
+		Email:                 "pending@test.com",
+		Password:              "hashed",
+		RequiresPasswordSetup: true,
+	}
+	db.Create(target)
+
+	c, w := setupUserAdminTestContext(admin.ID, true)
+	c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", target.ID)}}
+	c.Request = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/users/%d/resend-invitation", target.ID), nil)
+
+	emailSvc := email.NewServiceWithProvider(&mockEmailProvider{}, db)
+	handler := ResendInvitation(db, emailSvc)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify token was updated in DB
+	var updated models.User
+	db.First(&updated, target.ID)
+	if updated.SetupToken == "" {
+		t.Error("Expected setup token to be set after resend")
+	}
+	if updated.SetupTokenExpiry == nil || updated.SetupTokenExpiry.Before(time.Now()) {
+		t.Error("Expected setup token expiry to be in the future")
+	}
+}
+
+func TestResendInvitation_GroupAdminSuccess(t *testing.T) {
+	db := setupUserAdminTestDB(t)
+
+	groupAdmin := &models.User{Username: "gadmin", Email: "gadmin@test.com", Password: "hashed", IsAdmin: false}
+	db.Create(groupAdmin)
+
+	sharedGroup := &models.Group{Name: "SharedGroup"}
+	db.Create(sharedGroup)
+	db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: sharedGroup.ID, IsGroupAdmin: true})
+
+	target := &models.User{
+		Username:              "pending",
+		Email:                 "pending@test.com",
+		Password:              "hashed",
+		RequiresPasswordSetup: true,
+		Groups:                []models.Group{*sharedGroup},
+	}
+	db.Create(target)
+
+	c, w := setupUserAdminTestContext(groupAdmin.ID, false)
+	c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", target.ID)}}
+	c.Request = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/users/%d/resend-invitation", target.ID), nil)
+
+	emailSvc := email.NewServiceWithProvider(&mockEmailProvider{}, db)
+	handler := ResendInvitation(db, emailSvc)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }

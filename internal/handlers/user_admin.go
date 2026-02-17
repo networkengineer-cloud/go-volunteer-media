@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,6 +16,21 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
+
+const setupTokenDuration = 7 * 24 * time.Hour
+
+// adminUserResponse wraps User to expose RequiresPasswordSetup only in admin responses.
+type adminUserResponse struct {
+	models.User
+	RequiresPasswordSetup bool `json:"requires_password_setup"`
+}
+
+// toAdminUserResponse copies RequiresPasswordSetup into the outer struct to
+// shadow the embedded models.User field (tagged json:"-") so it appears in
+// admin JSON responses.
+func toAdminUserResponse(u models.User) adminUserResponse {
+	return adminUserResponse{User: u, RequiresPasswordSetup: u.RequiresPasswordSetup}
+}
 
 // PromoteUser sets is_admin to true for a user
 func PromoteUser(db *gorm.DB) gin.HandlerFunc {
@@ -157,7 +173,6 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 
 		var hashedPassword string
 		var setupToken string
-		var setupTokenExpiry *time.Time
 
 		if req.Password != "" {
 			// Password provided - hash it
@@ -201,9 +216,9 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				return
 			}
 
-			// Setup token expires in 24 hours (longer than password reset)
-			expiry := time.Now().Add(24 * time.Hour)
-			setupTokenExpiry = &expiry
+			// Setup token expires in 7 days (volunteers need time to respond)
+			expiry := time.Now().Add(setupTokenDuration)
+			setupTokenExpiry := &expiry
 
 			// Store hashed token in dedicated setup_token field (separate from reset tokens)
 			user := models.User{
@@ -244,7 +259,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// Log error but don't fail the request - user is created
 				logger := middleware.GetLogger(c)
 				logger.Error("Failed to send password setup email", err)
-				
+
 				// Provide actionable error message - admin can resend invitation
 				c.JSON(http.StatusCreated, gin.H{
 					"user": user,
@@ -293,7 +308,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusCreated, user)
+		c.JSON(http.StatusCreated, toAdminUserResponse(user))
 	}
 }
 
@@ -313,14 +328,14 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
-		
+
 		// Get current user ID
 		currentUserID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
-		
+
 		var req GroupAdminCreateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -364,7 +379,6 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 		var hashedPassword string
 		var setupToken string
-		var setupTokenExpiry *time.Time
 
 		if req.Password != "" {
 			// Password provided - hash it
@@ -407,9 +421,9 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 				return
 			}
 
-			// Setup token expires in 24 hours
-			expiry := time.Now().Add(24 * time.Hour)
-			setupTokenExpiry = &expiry
+			// Setup token expires in 7 days (volunteers need time to respond)
+			expiry := time.Now().Add(setupTokenDuration)
+			setupTokenExpiry := &expiry
 
 			// Create user with setup token
 			user := models.User{
@@ -446,7 +460,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			// Send setup email
 			if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
 				logger.Error("Failed to send password setup email", err)
-				
+
 				c.JSON(http.StatusCreated, gin.H{
 					"user": user,
 					"warning": "User created successfully, but the setup email could not be sent. " +
@@ -503,7 +517,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			"groups":     req.GroupIDs,
 		}).Info("User created by group admin")
 
-		c.JSON(http.StatusCreated, user)
+		c.JSON(http.StatusCreated, toAdminUserResponse(user))
 	}
 }
 
@@ -785,5 +799,128 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		applyUserUpdate(ctx, db, c, &user, req)
+	}
+}
+
+// ResendInvitation sends a new password setup email to a user who hasn't completed setup
+func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
+		userIDParam := c.Param("userId")
+
+		// Parse and validate userID
+		userIDInt, err := strconv.ParseUint(userIDParam, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
+
+		// Get current user ID for authorization
+		currentUserID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		// Find the target user with their groups (GORM soft-delete filter excludes deleted users)
+		var user models.User
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIDInt).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
+			}
+			return
+		}
+
+		// Authorization first: site admins can resend for anyone, group admins can resend for their group members
+		if !middleware.IsSiteAdmin(c) {
+			if len(user.Groups) == 0 {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_user_id":  userIDParam,
+				}).Warn("Group admin attempted to resend invitation for user with no groups")
+				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot resend invitation for users with no group assignments. Please contact a site administrator."})
+				return
+			}
+
+			// Check if caller is group admin of any shared group
+			hasAccess := false
+			for _, targetGroup := range user.Groups {
+				var userGroup models.UserGroup
+				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
+					currentUserID, targetGroup.ID, true).First(&userGroup).Error
+				if err == nil {
+					hasAccess = true
+					break
+				}
+			}
+
+			if !hasAccess {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_user_id":  userIDParam,
+				}).Warn("Unauthorized attempt to resend invitation")
+				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to resend invitations"})
+				return
+			}
+		}
+
+		// Check if user has already completed setup (after auth to avoid leaking setup state)
+		if !user.RequiresPasswordSetup {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User has already set up their account. Use password reset instead."})
+			return
+		}
+
+		// Check if email service is configured (after auth to avoid leaking config state)
+		if !emailService.IsConfigured() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Email service is not configured. Cannot send invitation."})
+			return
+		}
+
+		// Generate new setup token
+		setupToken, err := generateSecureToken()
+		if err != nil {
+			logger.Error("Failed to generate setup token", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate setup token"})
+			return
+		}
+
+		// Hash the setup token before storing
+		hashedSetupToken, err := auth.HashPassword(setupToken)
+		if err != nil {
+			logger.Error("Failed to hash setup token", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process setup token"})
+			return
+		}
+
+		// Send email before persisting token so a failed send doesn't invalidate the old token
+		if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
+			logger.Error("Failed to send password setup email", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send invitation email. Please try again."})
+			return
+		}
+
+		// Email sent successfully — now persist the new token (invalidates old token)
+		expiry := time.Now().Add(setupTokenDuration)
+		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+			"setup_token":        hashedSetupToken,
+			"setup_token_expiry": expiry,
+		}).Error; err != nil {
+			logger.Error("Failed to update user with setup token", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invitation email was sent but the link cannot be activated. Please try again."})
+			return
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"user_id":   user.ID,
+			"resent_by": currentUserID,
+			"expiry":    expiry,
+		}).Info("Invitation resent successfully")
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("Invitation email has been resent to %s. The link will expire in %d days.", user.Email, int(setupTokenDuration.Hours()/24)),
+		})
 	}
 }

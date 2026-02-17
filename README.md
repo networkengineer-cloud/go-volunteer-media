@@ -140,6 +140,13 @@ The application creates three default groups on first run:
 - `POST /api/admin/users/:userId/groups/:groupId` - Add user to group
 - `DELETE /api/admin/users/:userId/groups/:groupId` - Remove user from group
 
+### User Administration
+- `POST /api/users/:userId/reset-password` - Reset user password (admin/group admin)
+- `POST /api/users/:userId/resend-invitation` - Resend invitation email with new 7-day setup link (admin/group admin)
+  - Only works for users who haven't completed password setup
+  - Invalidates previous invitation link
+  - Returns error if user has already set up their account
+
 ## Docker Deployment
 
 ### Build the Docker image

@@ -203,7 +203,7 @@ func SetupPassword(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Check if token has expired (24-hour expiry for setup)
+		// Check if token has expired (7-day expiry for setup)
 		if targetUser.SetupTokenExpiry == nil || targetUser.SetupTokenExpiry.Before(time.Now()) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Setup token has expired. Please contact your administrator for a new invitation."})
 			return

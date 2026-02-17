@@ -54,6 +54,12 @@ const UsersPage: React.FC = () => {
   const [resetPasswordError, setResetPasswordError] = React.useState<string | null>(null);
   const [resetPasswordSuccess, setResetPasswordSuccess] = React.useState<string | null>(null);
 
+  // Resend invitation state
+  const [resendInviteUser, setResendInviteUser] = React.useState<User | null>(null);
+  const [resendInviteLoading, setResendInviteLoading] = React.useState(false);
+  const [resendInviteError, setResendInviteError] = React.useState<string | null>(null);
+  const [resendInviteSuccess, setResendInviteSuccess] = React.useState<string | null>(null);
+
   // Edit user modal state
   const [editUser, setEditUser] = React.useState<User | null>(null);
   const [editData, setEditData] = React.useState({
@@ -69,6 +75,7 @@ const UsersPage: React.FC = () => {
   // Timeout refs to prevent race conditions when modals are closed early
   const editTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const resetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resendInviteTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const createTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Show details state - track which user cards have expanded details
@@ -180,6 +187,7 @@ const UsersPage: React.FC = () => {
     return () => {
       if (editTimeoutRef.current) clearTimeout(editTimeoutRef.current);
       if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+      if (resendInviteTimeoutRef.current) clearTimeout(resendInviteTimeoutRef.current);
       if (createTimeoutRef.current) clearTimeout(createTimeoutRef.current);
     };
   }, []);
@@ -495,6 +503,44 @@ const UsersPage: React.FC = () => {
       setResetPasswordError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to reset password');
     } finally {
       setResetPasswordLoading(false);
+    }
+  };
+
+  // Resend invitation modal functions
+  const openResendInviteModal = (user: User) => {
+    setResendInviteUser(user);
+    setResendInviteError(null);
+    setResendInviteSuccess(null);
+  };
+
+  const closeResendInviteModal = () => {
+    if (resendInviteTimeoutRef.current) {
+      clearTimeout(resendInviteTimeoutRef.current);
+      resendInviteTimeoutRef.current = null;
+    }
+    setResendInviteUser(null);
+    setResendInviteError(null);
+    setResendInviteSuccess(null);
+    setResendInviteLoading(false);
+  };
+
+  const handleResendInvitation = async () => {
+    if (!resendInviteUser) return;
+    
+    setResendInviteLoading(true);
+    setResendInviteError(null);
+    setResendInviteSuccess(null);
+    
+    try {
+      const response = await usersApi.resendInvitation(resendInviteUser.id);
+      setResendInviteSuccess(response.data.message || 'Invitation has been resent successfully');
+      resendInviteTimeoutRef.current = setTimeout(() => {
+        closeResendInviteModal();
+      }, 2000);
+    } catch (err: unknown) {
+      setResendInviteError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to resend invitation');
+    } finally {
+      setResendInviteLoading(false);
     }
   };
 
@@ -1379,13 +1425,26 @@ const UsersPage: React.FC = () => {
                             </button>
                           )}
                           {canEditUser(user) && (
-                            <button
-                              className="action-btn secondary"
-                              onClick={() => openPasswordResetModal(user)}
-                              disabled={user.deleted_at}
-                            >
-                              Reset Password
-                            </button>
+                            <>
+                              {user.requires_password_setup ? (
+                                <button
+                                  className="action-btn primary"
+                                  onClick={() => openResendInviteModal(user)}
+                                  disabled={!!user.deleted_at}
+                                  title="Send a new invitation email with a fresh 7-day setup link"
+                                >
+                                  Resend Invitation
+                                </button>
+                              ) : (
+                                <button
+                                  className="action-btn secondary"
+                                  onClick={() => openPasswordResetModal(user)}
+                                  disabled={!!user.deleted_at}
+                                >
+                                  Reset Password
+                                </button>
+                              )}
+                            </>
                           )}
                           {isAdmin && (
                             <>
@@ -1600,6 +1659,41 @@ const UsersPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      
+      {/* Resend invitation modal */}
+      {resendInviteUser && (
+        <div className="group-modal-backdrop" onClick={closeResendInviteModal}>
+          <div className="group-modal" onClick={e => e.stopPropagation()}>
+            <h2>Resend Invitation to {resendInviteUser.username}</h2>
+            <div className="modal-body">
+              <p>This will send a new invitation email to <strong>{resendInviteUser.email}</strong> with a fresh 7-day setup link.</p>
+              <p className="modal-note">
+                The previous invitation link will be invalidated.
+              </p>
+            </div>
+            {resendInviteError && <div className="users-error">{resendInviteError}</div>}
+            {resendInviteSuccess && <div className="users-success">{resendInviteSuccess}</div>}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="user-action-btn"
+                onClick={handleResendInvitation}
+                disabled={resendInviteLoading}
+              >
+                {resendInviteLoading ? 'Sending…' : 'Resend Invitation'}
+              </button>
+              <button
+                type="button"
+                className="user-action-btn"
+                onClick={closeResendInviteModal}
+                disabled={resendInviteLoading}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
