@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -1209,7 +1210,7 @@ func TestResendInvitation(t *testing.T) {
 		userID         string
 		callerID       uint
 		callerIsAdmin  bool
-		setupUser      func(t *testing.T, db *gorm.DB)
+		setupUser      func(t *testing.T, db *gorm.DB, callerID uint)
 		expectedStatus int
 		expectedError  string
 	}{
@@ -1234,7 +1235,7 @@ func TestResendInvitation(t *testing.T) {
 			userID:        "2",
 			callerID:      1,
 			callerIsAdmin: true,
-			setupUser: func(t *testing.T, db *gorm.DB) {
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) {
 				user := &models.User{
 					Username:              "setupdone",
 					Email:                 "done@test.com",
@@ -1253,7 +1254,7 @@ func TestResendInvitation(t *testing.T) {
 			userID:        "2",
 			callerID:      1,
 			callerIsAdmin: false,
-			setupUser: func(t *testing.T, db *gorm.DB) {
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) {
 				group := &models.Group{Name: "TestGroup"}
 				db.Create(group)
 				user := &models.User{
@@ -1275,10 +1276,10 @@ func TestResendInvitation(t *testing.T) {
 			userID:        "2",
 			callerID:      1,
 			callerIsAdmin: false,
-			setupUser: func(t *testing.T, db *gorm.DB) {
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) {
 				callerGroup := &models.Group{Name: "CallerGroup"}
 				db.Create(callerGroup)
-				db.Create(&models.UserGroup{UserID: 1, GroupID: callerGroup.ID, IsGroupAdmin: true})
+				db.Create(&models.UserGroup{UserID: callerID, GroupID: callerGroup.ID, IsGroupAdmin: true})
 				targetGroup := &models.Group{Name: "TargetGroup"}
 				db.Create(targetGroup)
 				user := &models.User{
@@ -1300,7 +1301,7 @@ func TestResendInvitation(t *testing.T) {
 			userID:        "2",
 			callerID:      1,
 			callerIsAdmin: true,
-			setupUser: func(t *testing.T, db *gorm.DB) {
+			setupUser: func(t *testing.T, db *gorm.DB, callerID uint) {
 				user := &models.User{
 					Username:              "noemail",
 					Email:                 "noemail@test.com",
@@ -1329,10 +1330,10 @@ func TestResendInvitation(t *testing.T) {
 			db.Create(callerUser)
 
 			if tt.setupUser != nil {
-				tt.setupUser(t, db)
+				tt.setupUser(t, db, callerUser.ID)
 			}
 
-			c, w := setupUserAdminTestContext(tt.callerID, tt.callerIsAdmin)
+			c, w := setupUserAdminTestContext(callerUser.ID, tt.callerIsAdmin)
 			c.Params = gin.Params{{Key: "userId", Value: tt.userID}}
 			c.Request = httptest.NewRequest(http.MethodPost, "/api/users/"+tt.userID+"/resend-invitation", nil)
 
@@ -1352,5 +1353,81 @@ func TestResendInvitation(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// mockEmailProvider implements email.Provider for testing
+type mockEmailProvider struct{}
+
+func (m *mockEmailProvider) SendEmail(_ context.Context, _, _, _ string) error { return nil }
+func (m *mockEmailProvider) IsConfigured() bool                               { return true }
+func (m *mockEmailProvider) GetProviderName() string                          { return "mock" }
+
+func TestResendInvitation_SiteAdminSuccess(t *testing.T) {
+	db := setupUserAdminTestDB(t)
+
+	admin := &models.User{Username: "admin", Email: "admin@test.com", Password: "hashed", IsAdmin: true}
+	db.Create(admin)
+
+	target := &models.User{
+		Username:              "pending",
+		Email:                 "pending@test.com",
+		Password:              "hashed",
+		RequiresPasswordSetup: true,
+	}
+	db.Create(target)
+
+	c, w := setupUserAdminTestContext(admin.ID, true)
+	c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", target.ID)}}
+	c.Request = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/users/%d/resend-invitation", target.ID), nil)
+
+	emailSvc := email.NewServiceWithProvider(&mockEmailProvider{}, db)
+	handler := ResendInvitation(db, emailSvc)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify token was updated in DB
+	var updated models.User
+	db.First(&updated, target.ID)
+	if updated.SetupToken == "" {
+		t.Error("Expected setup token to be set after resend")
+	}
+	if updated.SetupTokenExpiry == nil || updated.SetupTokenExpiry.Before(time.Now()) {
+		t.Error("Expected setup token expiry to be in the future")
+	}
+}
+
+func TestResendInvitation_GroupAdminSuccess(t *testing.T) {
+	db := setupUserAdminTestDB(t)
+
+	groupAdmin := &models.User{Username: "gadmin", Email: "gadmin@test.com", Password: "hashed", IsAdmin: false}
+	db.Create(groupAdmin)
+
+	sharedGroup := &models.Group{Name: "SharedGroup"}
+	db.Create(sharedGroup)
+	db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: sharedGroup.ID, IsGroupAdmin: true})
+
+	target := &models.User{
+		Username:              "pending",
+		Email:                 "pending@test.com",
+		Password:              "hashed",
+		RequiresPasswordSetup: true,
+		Groups:                []models.Group{*sharedGroup},
+	}
+	db.Create(target)
+
+	c, w := setupUserAdminTestContext(groupAdmin.ID, false)
+	c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", target.ID)}}
+	c.Request = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/users/%d/resend-invitation", target.ID), nil)
+
+	emailSvc := email.NewServiceWithProvider(&mockEmailProvider{}, db)
+	handler := ResendInvitation(db, emailSvc)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }

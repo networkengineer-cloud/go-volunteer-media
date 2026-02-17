@@ -520,6 +520,7 @@ const UsersPage: React.FC = () => {
     setResendInviteUser(null);
     setResendInviteError(null);
     setResendInviteSuccess(null);
+    setResendInviteLoading(false);
   };
 
   const handleResendInvitation = async () => {

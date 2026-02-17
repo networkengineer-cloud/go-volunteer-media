@@ -19,6 +19,16 @@ import (
 
 const setupTokenDuration = 7 * 24 * time.Hour
 
+// adminUserResponse wraps User to expose RequiresPasswordSetup only in admin responses.
+type adminUserResponse struct {
+	models.User
+	RequiresPasswordSetup bool `json:"requires_password_setup"`
+}
+
+func toAdminUserResponse(u models.User) adminUserResponse {
+	return adminUserResponse{User: u, RequiresPasswordSetup: u.RequiresPasswordSetup}
+}
+
 // PromoteUser sets is_admin to true for a user
 func PromoteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -295,7 +305,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusCreated, user)
+		c.JSON(http.StatusCreated, toAdminUserResponse(user))
 	}
 }
 
@@ -504,7 +514,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			"groups":     req.GroupIDs,
 		}).Info("User created by group admin")
 
-		c.JSON(http.StatusCreated, user)
+		c.JSON(http.StatusCreated, toAdminUserResponse(user))
 	}
 }
 
@@ -896,7 +906,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 			"setup_token_expiry": expiry,
 		}).Error; err != nil {
 			logger.Error("Failed to update user with setup token", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invitation email was sent but failed to save the new token. The previous invitation link may still work."})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invitation email was sent but the link cannot be activated. Please try again."})
 			return
 		}
 
@@ -907,7 +917,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 		}).Info("Invitation resent successfully")
 
 		c.JSON(http.StatusOK, gin.H{
-			"message": fmt.Sprintf("Invitation email has been resent to %s. The link will expire in 7 days.", user.Email),
+			"message": fmt.Sprintf("Invitation email has been resent to %s. The link will expire in %d days.", user.Email, int(setupTokenDuration.Hours()/24)),
 		})
 	}
 }

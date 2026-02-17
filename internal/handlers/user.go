@@ -71,8 +71,14 @@ func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Transform to admin responses to include requires_password_setup
+		adminUsers := make([]adminUserResponse, len(users))
+		for i, u := range users {
+			adminUsers[i] = toAdminUserResponse(u)
+		}
+
 		c.JSON(http.StatusOK, gin.H{
-			"data":    users,
+			"data":    adminUsers,
 			"total":   total,
 			"limit":   limit,
 			"offset":  offset,
