@@ -1250,3 +1250,5 @@ func TestUpdateCurrentUserProfile_NameFields(t *testing.T) {
 				tt.checkFunc(t, w)
 			}
 		})
+	}
+}

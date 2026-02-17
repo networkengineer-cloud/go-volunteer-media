@@ -1428,7 +1428,7 @@ const UsersPage: React.FC = () => {
                                 <button
                                   className="action-btn primary"
                                   onClick={() => openResendInviteModal(user)}
-                                  disabled={user.deleted_at}
+                                  disabled={!!user.deleted_at}
                                   title="Send a new invitation email with a fresh 7-day setup link"
                                 >
                                   Resend Invitation
@@ -1437,7 +1437,7 @@ const UsersPage: React.FC = () => {
                                 <button
                                   className="action-btn secondary"
                                   onClick={() => openPasswordResetModal(user)}
-                                  disabled={user.deleted_at}
+                                  disabled={!!user.deleted_at}
                                 >
                                   Reset Password
                                 </button>

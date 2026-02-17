@@ -17,6 +17,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const setupTokenDuration = 7 * 24 * time.Hour
+
 // PromoteUser sets is_admin to true for a user
 func PromoteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -158,7 +160,6 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 
 		var hashedPassword string
 		var setupToken string
-		var setupTokenExpiry *time.Time
 
 		if req.Password != "" {
 			// Password provided - hash it
@@ -203,8 +204,8 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			}
 
 			// Setup token expires in 7 days (volunteers need time to respond)
-			expiry := time.Now().Add(7 * 24 * time.Hour)
-			setupTokenExpiry = &expiry
+			expiry := time.Now().Add(setupTokenDuration)
+			setupTokenExpiryPtr := &expiry
 
 			// Store hashed token in dedicated setup_token field (separate from reset tokens)
 			user := models.User{
@@ -215,7 +216,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				Password:              hashedPassword,
 				IsAdmin:               req.IsAdmin,
 				SetupToken:            hashedSetupToken,
-				SetupTokenExpiry:      setupTokenExpiry,
+				SetupTokenExpiry:      setupTokenExpiryPtr,
 				RequiresPasswordSetup: true, // Block login until password is set
 			}
 
@@ -245,7 +246,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// Log error but don't fail the request - user is created
 				logger := middleware.GetLogger(c)
 				logger.Error("Failed to send password setup email", err)
-				
+
 				// Provide actionable error message - admin can resend invitation
 				c.JSON(http.StatusCreated, gin.H{
 					"user": user,
@@ -314,14 +315,14 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
-		
+
 		// Get current user ID
 		currentUserID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
-		
+
 		var req GroupAdminCreateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -365,7 +366,6 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 		var hashedPassword string
 		var setupToken string
-		var setupTokenExpiry *time.Time
 
 		if req.Password != "" {
 			// Password provided - hash it
@@ -409,8 +409,8 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			}
 
 			// Setup token expires in 7 days (volunteers need time to respond)
-			expiry := time.Now().Add(7 * 24 * time.Hour)
-			setupTokenExpiry = &expiry
+			expiry := time.Now().Add(setupTokenDuration)
+			setupTokenExpiryPtr := &expiry
 
 			// Create user with setup token
 			user := models.User{
@@ -421,7 +421,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 				Password:              hashedPassword,
 				IsAdmin:               false, // Group admins cannot create site admins
 				SetupToken:            hashedSetupToken,
-				SetupTokenExpiry:      setupTokenExpiry,
+				SetupTokenExpiry:      setupTokenExpiryPtr,
 				RequiresPasswordSetup: true,
 			}
 
@@ -447,7 +447,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			// Send setup email
 			if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
 				logger.Error("Failed to send password setup email", err)
-				
+
 				c.JSON(http.StatusCreated, gin.H{
 					"user": user,
 					"warning": "User created successfully, but the setup email could not be sent. " +
@@ -791,125 +791,125 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 
 // ResendInvitation sends a new password setup email to a user who hasn't completed setup
 func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
-return func(c *gin.Context) {
-ctx := c.Request.Context()
-logger := middleware.GetLogger(c)
-userId := c.Param("userId")
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
+		userId := c.Param("userId")
 
-// Parse and validate userId
-userIdInt, err := strconv.ParseUint(userId, 10, 64)
-if err != nil {
-c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-return
-}
+		// Parse and validate userId
+		userIdInt, err := strconv.ParseUint(userId, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
 
-// Get current user ID for authorization
-currentUserID, exists := c.Get("user_id")
-if !exists {
-c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-return
-}
+		// Get current user ID for authorization
+		currentUserID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
 
-// Check if email service is configured
-if !emailService.IsConfigured() {
-c.JSON(http.StatusBadRequest, gin.H{"error": "Email service is not configured. Cannot send invitation."})
-return
-}
+		// Check if email service is configured
+		if !emailService.IsConfigured() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Email service is not configured. Cannot send invitation."})
+			return
+		}
 
-// Find the target user with their groups
-var user models.User
-if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
-if errors.Is(err, gorm.ErrRecordNotFound) {
-c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-} else {
-c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
-}
-return
-}
+		// Find the target user with their groups
+		var user models.User
+		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
+			}
+			return
+		}
 
-// Check if user has already completed setup
-if !user.RequiresPasswordSetup {
-c.JSON(http.StatusBadRequest, gin.H{"error": "User has already set up their account. Use password reset instead."})
-return
-}
+		// Check if user has already completed setup
+		if !user.RequiresPasswordSetup {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User has already set up their account. Use password reset instead."})
+			return
+		}
 
-// Authorization: site admins can resend for anyone, group admins can resend for their group members
-if !middleware.IsSiteAdmin(c) {
-if len(user.Groups) == 0 {
-logger.WithFields(map[string]interface{}{
-"current_user_id": currentUserID,
-"target_user_id":  userId,
-}).Warn("Group admin attempted to resend invitation for user with no groups")
-c.JSON(http.StatusForbidden, gin.H{"error": "Cannot resend invitation for users with no group assignments. Please contact a site administrator."})
-return
-}
+		// Authorization: site admins can resend for anyone, group admins can resend for their group members
+		if !middleware.IsSiteAdmin(c) {
+			if len(user.Groups) == 0 {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_user_id":  userId,
+				}).Warn("Group admin attempted to resend invitation for user with no groups")
+				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot resend invitation for users with no group assignments. Please contact a site administrator."})
+				return
+			}
 
-// Check if caller is group admin of any shared group
-hasAccess := false
-for _, targetGroup := range user.Groups {
-var userGroup models.UserGroup
-err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
-currentUserID, targetGroup.ID, true).First(&userGroup).Error
-if err == nil {
-hasAccess = true
-break
-}
-}
+			// Check if caller is group admin of any shared group
+			hasAccess := false
+			for _, targetGroup := range user.Groups {
+				var userGroup models.UserGroup
+				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
+					currentUserID, targetGroup.ID, true).First(&userGroup).Error
+				if err == nil {
+					hasAccess = true
+					break
+				}
+			}
 
-if !hasAccess {
-logger.WithFields(map[string]interface{}{
-"current_user_id": currentUserID,
-"target_user_id":  userId,
-}).Warn("Unauthorized attempt to resend invitation")
-c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to resend invitations"})
-return
-}
-}
+			if !hasAccess {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_user_id":  userId,
+				}).Warn("Unauthorized attempt to resend invitation")
+				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to resend invitations"})
+				return
+			}
+		}
 
-// Generate new setup token
-setupToken, err := generateSecureToken()
-if err != nil {
-logger.Error("Failed to generate setup token", err)
-c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate setup token"})
-return
-}
+		// Generate new setup token
+		setupToken, err := generateSecureToken()
+		if err != nil {
+			logger.Error("Failed to generate setup token", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate setup token"})
+			return
+		}
 
-// Hash the setup token before storing
-hashedSetupToken, err := auth.HashPassword(setupToken)
-if err != nil {
-logger.Error("Failed to hash setup token", err)
-c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process setup token"})
-return
-}
+		// Hash the setup token before storing
+		hashedSetupToken, err := auth.HashPassword(setupToken)
+		if err != nil {
+			logger.Error("Failed to hash setup token", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process setup token"})
+			return
+		}
 
-// Setup token expires in 7 days (volunteers need time to respond)
-expiry := time.Now().Add(7 * 24 * time.Hour)
+		// Setup token expires in 7 days (volunteers need time to respond)
+		expiry := time.Now().Add(setupTokenDuration)
 
-// Update user with new setup token (invalidates old token)
-if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
-"setup_token":        hashedSetupToken,
-"setup_token_expiry": expiry,
-}).Error; err != nil {
-logger.Error("Failed to update user with setup token", err)
-c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update invitation"})
-return
-}
+		// Update user with new setup token (invalidates old token)
+		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+			"setup_token":        hashedSetupToken,
+			"setup_token_expiry": expiry,
+		}).Error; err != nil {
+			logger.Error("Failed to update user with setup token", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update invitation"})
+			return
+		}
 
-// Send password setup email (use unhashed token)
-if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
-logger.Error("Failed to send password setup email", err)
-c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send invitation email. Please try again."})
-return
-}
+		// Send password setup email (use unhashed token)
+		if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
+			logger.Error("Failed to send password setup email", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send invitation email. Please try again."})
+			return
+		}
 
-logger.WithFields(map[string]interface{}{
-"user_id":   user.ID,
-"resent_by": currentUserID,
-"expiry":    expiry,
-}).Info("Invitation resent successfully")
+		logger.WithFields(map[string]interface{}{
+			"user_id":   user.ID,
+			"resent_by": currentUserID,
+			"expiry":    expiry,
+		}).Info("Invitation resent successfully")
 
-c.JSON(http.StatusOK, gin.H{
-"message": fmt.Sprintf("Invitation email has been resent to %s. The link will expire in 7 days.", user.Email),
-})
-}
+		c.JSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("Invitation email has been resent to %s. The link will expire in 7 days.", user.Email),
+		})
+	}
 }
