@@ -26,8 +26,9 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	Token string      `json:"token"`
-	User  models.User `json:"user"`
+	Token     string      `json:"token"`
+	User      models.User `json:"user"`
+	LastLogin *time.Time  `json:"last_login,omitempty"`
 }
 
 // Register creates a new user account
@@ -187,16 +188,22 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Successful login - reset failed attempts
-		if user.FailedLoginAttempts > 0 || user.LockedUntil != nil {
-			if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
-				"failed_login_attempts": 0,
-				"locked_until":          nil,
-			}).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
-				return
-			}
+		// Successful login - record last login timestamp and reset failed attempts if needed
+		now := time.Now().UTC()
+		updates := map[string]interface{}{
+			"last_login": now,
 		}
+		if user.FailedLoginAttempts > 0 || user.LockedUntil != nil {
+			updates["failed_login_attempts"] = 0
+			updates["locked_until"] = nil
+			user.FailedLoginAttempts = 0
+			user.LockedUntil = nil
+		}
+		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+			return
+		}
+		user.LastLogin = &now
 
 		// Audit log: successful login
 		logging.LogAuthSuccess(ctx, user.ID, user.Username, c.ClientIP())
@@ -209,8 +216,9 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, AuthResponse{
-			Token: token,
-			User:  user,
+			Token:     token,
+			User:      user,
+			LastLogin: user.LastLogin,
 		})
 	}
 }
@@ -252,6 +260,7 @@ func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 			"is_group_admin":              len(userGroups) > 0,
 			"created_at":                  user.CreatedAt,
 			"updated_at":                  user.UpdatedAt,
+			"last_login":                  user.LastLogin,
 		}
 
 		c.JSON(http.StatusOK, response)

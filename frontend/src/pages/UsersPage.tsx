@@ -7,6 +7,8 @@ import { usersApi, groupsApi, statisticsApi, groupAdminApi, authApi } from '../a
 import { useAuth } from '../hooks/useAuth';
 import { getPasswordStrength } from '../utils/passwordStrength';
 
+type SortBy = 'name' | 'email' | 'last_active' | 'last_login' | 'most_active';
+
 // Create API instance for authenticated requests
 const api = axios.create({
   baseURL: '/api',
@@ -34,7 +36,7 @@ const UsersPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [filterGroup, setFilterGroup] = React.useState<number | 'all'>('all');
   const [filterAdmin, setFilterAdmin] = React.useState<'all' | 'admin' | 'user'>('all');
-  const [sortBy, setSortBy] = React.useState<'name' | 'email' | 'last_active' | 'most_active'>('name');
+  const [sortBy, setSortBy] = React.useState<SortBy>('name');
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
 
   // Group admin management state
@@ -305,6 +307,15 @@ const UsersPage: React.FC = () => {
           const lastActiveA = statsA?.last_active ? new Date(statsA.last_active).getTime() : 0;
           const lastActiveB = statsB?.last_active ? new Date(statsB.last_active).getTime() : 0;
           comparison = lastActiveB - lastActiveA; // Most recent first
+          break;
+        }
+        case 'last_login': {
+          // Nulls always go to the bottom regardless of sort direction — return
+          // directly to bypass the sortOrder multiplier applied after the switch.
+          if (!a.last_login && !b.last_login) return 0;
+          if (!a.last_login) return 1;
+          if (!b.last_login) return -1;
+          comparison = new Date(b.last_login).getTime() - new Date(a.last_login).getTime();
           break;
         }
         case 'most_active': {
@@ -913,12 +924,13 @@ const UsersPage: React.FC = () => {
                 <select
                   className="filter-select"
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as 'name' | 'email' | 'last_active' | 'most_active')}
+                  onChange={(e) => setSortBy(e.target.value as SortBy)}
                   aria-label="Sort by"
                 >
                   <option value="name">Sort by Name</option>
                   <option value="email">Sort by Email</option>
-                  <option value="last_active">Sort by Last Active</option>
+                  <option value="last_login">Sort by Last Login</option>
+                  <option value="last_active">Sort by Last Active (comments)</option>
                   <option value="most_active">Sort by Most Active</option>
                 </select>
 
@@ -1327,6 +1339,14 @@ const UsersPage: React.FC = () => {
                         </div>
                       )}
                       <div className="user-email">{user.email}</div>
+                      {canManageUsers && user.last_login && (
+                        <div className="user-last-login" title={new Date(user.last_login).toLocaleString()}>
+                          Last login: {formatRelativeTime(user.last_login)}
+                        </div>
+                      )}
+                      {canManageUsers && !user.last_login && !user.deleted_at && !user.requires_password_setup && (
+                        <div className="user-last-login inactive">Never logged in</div>
+                      )}
                     </div>
                   </div>
 
@@ -1384,11 +1404,11 @@ const UsersPage: React.FC = () => {
                       </div>
                       <div className="stat-item last-seen">
                         {stats.last_active ? (
-                          <span title={new Date(stats.last_active).toLocaleString()}>
-                            {formatRelativeTime(stats.last_active)}
+                          <span title={`Last comment: ${new Date(stats.last_active).toLocaleString()}`}>
+                            Active: {formatRelativeTime(stats.last_active)}
                           </span>
                         ) : (
-                          <span className="inactive">Never active</span>
+                          <span className="inactive">No comment activity</span>
                         )}
                       </div>
                     </div>
