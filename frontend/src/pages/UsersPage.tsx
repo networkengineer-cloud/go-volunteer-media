@@ -310,11 +310,12 @@ const UsersPage: React.FC = () => {
           break;
         }
         case 'last_login': {
-          // Null last_login always sorts to the bottom regardless of sort direction
-          if (!a.last_login && !b.last_login) { comparison = 0; break; }
-          if (!a.last_login) { comparison = 1; break; }
-          if (!b.last_login) { comparison = -1; break; }
-          comparison = new Date(b.last_login).getTime() - new Date(a.last_login).getTime(); // Most recent first
+          // Nulls always go to the bottom regardless of sort direction — return
+          // directly to bypass the sortOrder multiplier applied after the switch.
+          if (!a.last_login && !b.last_login) return 0;
+          if (!a.last_login) return 1;
+          if (!b.last_login) return -1;
+          comparison = new Date(b.last_login).getTime() - new Date(a.last_login).getTime();
           break;
         }
         case 'most_active': {

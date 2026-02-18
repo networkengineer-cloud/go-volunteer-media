@@ -189,7 +189,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Successful login - record last login timestamp and reset failed attempts if needed
-		now := time.Now()
+		now := time.Now().UTC()
 		updates := map[string]interface{}{
 			"last_login": now,
 		}
