@@ -46,14 +46,16 @@ func CreateAnnouncement(db *gorm.DB, emailService *email.Service, groupMeService
 			return
 		}
 
+		userIDUint, _ := userID.(uint)
+
 		var req AnnouncementRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
 		announcement := models.Announcement{
-			UserID:      userID.(uint),
+			UserID:      userIDUint,
 			Title:       req.Title,
 			Content:     req.Content,
 			SendEmail:   req.SendEmail,
@@ -196,9 +198,11 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 
 		var req AnnouncementRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
+
+		userIDUint, _ := userID.(uint)
 
 		// Verify group exists
 		var group models.Group
@@ -208,7 +212,7 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 		}
 
 		announcement := models.Announcement{
-			UserID:      userID.(uint),
+			UserID:      userIDUint,
 			Title:       req.Title,
 			Content:     req.Content,
 			SendEmail:   req.SendEmail,

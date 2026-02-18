@@ -37,8 +37,10 @@ type User struct {
 	LastLogin                 *time.Time     `json:"-"`
 	ResetToken                string         `json:"-"`
 	ResetTokenExpiry          *time.Time     `json:"-"`
+	ResetTokenLookup          string         `gorm:"index;default:''" json:"-"` // Plaintext prefix for indexed token lookup
 	SetupToken                string         `json:"-"` // Separate field for initial password setup (invite flow)
 	SetupTokenExpiry          *time.Time     `json:"-"`
+	SetupTokenLookup          string         `gorm:"index;default:''" json:"-"` // Plaintext prefix for indexed token lookup
 	RequiresPasswordSetup     bool           `gorm:"default:false" json:"-"` // Flag to prevent login before password setup
 	EmailNotificationsEnabled bool           `gorm:"default:false" json:"email_notifications_enabled"`
 	ShowLengthOfStay          bool           `gorm:"default:false" json:"show_length_of_stay"`

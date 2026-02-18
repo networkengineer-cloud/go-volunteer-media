@@ -58,7 +58,7 @@ func CreateUpdate(db *gorm.DB, groupMeService *groupme.Service) gin.HandlerFunc 
 
 		var req UpdateRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -68,9 +68,10 @@ func CreateUpdate(db *gorm.DB, groupMeService *groupme.Service) gin.HandlerFunc 
 			return
 		}
 
+		userIDUint, _ := userID.(uint)
 		update := models.Update{
 			GroupID:     uint(gid),
-			UserID:      userID.(uint),
+			UserID:      userIDUint,
 			Title:       req.Title,
 			Content:     req.Content,
 			ImageURL:    req.ImageURL,

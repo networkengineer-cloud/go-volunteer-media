@@ -103,7 +103,7 @@ func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 
 		var req SetDefaultGroupRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -116,7 +116,7 @@ func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if user belongs to the group (unless admin)
 		isAdmin, _ := c.Get("is_admin")
-		hasAccess := isAdmin.(bool)
+		hasAccess, _ := isAdmin.(bool)
 		if !hasAccess {
 			for _, group := range user.Groups {
 				if group.ID == req.GroupID {
@@ -197,10 +197,11 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 			return
 		}
+		userIDUint, _ := userID.(uint)
 
 		var req UpdateProfileRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -213,9 +214,9 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if email is being changed to an already-taken email
 		if req.Email != user.Email {
-			if err := validateEmailUniqueness(ctx, db, req.Email, userID.(uint)); err != nil {
+			if err := validateEmailUniqueness(ctx, db, req.Email, userIDUint); err != nil {
 				if errors.Is(err, ErrEmailInUse) {
-					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+					c.JSON(http.StatusConflict, gin.H{"error": formatValidationError(err)})
 				} else {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate email"})
 				}

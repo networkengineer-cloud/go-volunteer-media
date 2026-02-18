@@ -184,13 +184,13 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 
 		var req AnimalCommentRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
 		// Validate metadata if provided
 		if err := validateSessionMetadata(req.Metadata); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -203,9 +203,10 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		userIDUint, _ := userID.(uint)
 		comment := models.AnimalComment{
 			AnimalID: uint(aid),
-			UserID:   userID.(uint),
+			UserID:   userIDUint,
 			Content:  req.Content,
 			ImageURL: req.ImageURL,
 			Metadata: req.Metadata,
@@ -268,20 +269,21 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Users can only edit their own comments
-		if comment.UserID != userID.(uint) {
+		userIDUint, _ := userID.(uint)
+		if comment.UserID != userIDUint {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only edit your own comments"})
 			return
 		}
 
 		var req AnimalCommentRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
 		// Validate metadata if provided
 		if err := validateSessionMetadata(req.Metadata); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -487,7 +489,8 @@ func DeleteAnimalComment(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if user owns the comment, is group admin, or is site admin
 		isGroupAdmin := checkGroupAdminAccess(db, userID, isAdmin, groupID)
-		if comment.UserID != userID.(uint) && !isGroupAdmin {
+		userIDUint, _ := userID.(uint)
+		if comment.UserID != userIDUint && !isGroupAdmin {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own comments"})
 			return
 		}

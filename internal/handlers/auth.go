@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -37,7 +38,7 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		var req RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -93,7 +94,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		var req LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -147,9 +148,9 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 			// Increment failed login attempts
 			user.FailedLoginAttempts++
 
-			// Lock account if 5 or more failed attempts
-			if user.FailedLoginAttempts >= 5 {
-				lockUntil := time.Now().Add(30 * time.Minute)
+			// Lock account if max failed attempts reached
+			if user.FailedLoginAttempts >= MaxFailedLoginAttempts {
+				lockUntil := time.Now().Add(AccountLockoutDuration)
 				user.LockedUntil = &lockUntil
 
 				if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
@@ -166,7 +167,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusForbidden, gin.H{
 					"error":         "Account has been locked due to too many failed login attempts. Please try again in 30 minutes or reset your password.",
 					"locked_until":  lockUntil,
-					"retry_in_mins": 30,
+					"retry_in_mins": int(AccountLockoutDuration.Minutes()),
 				})
 				return
 			}
@@ -180,7 +181,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 			// Audit log: failed login attempt
 			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "invalid_password")
 
-			attemptsRemaining := 5 - user.FailedLoginAttempts
+			attemptsRemaining := MaxFailedLoginAttempts - user.FailedLoginAttempts
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error":              "Invalid credentials",
 				"attempts_remaining": attemptsRemaining,
@@ -227,8 +228,8 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		userID, exists := c.Get("user_id")
-		if !exists {
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}

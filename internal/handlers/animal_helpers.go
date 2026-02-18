@@ -92,7 +92,11 @@ type DuplicateNameInfo struct {
 
 // checkGroupAccess verifies if the user has access to a specific group
 func checkGroupAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, groupID string) bool {
-	if isAdmin.(bool) {
+	adminBool, ok := isAdmin.(bool)
+	if !ok {
+		return false
+	}
+	if adminBool {
 		return true
 	}
 
@@ -109,7 +113,11 @@ func checkGroupAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, grou
 // - User is a group admin for the specified group
 func checkGroupAdminAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, groupID string) bool {
 	// Site admins have access to all groups
-	if isAdmin.(bool) {
+	adminBool, ok := isAdmin.(bool)
+	if !ok {
+		return false
+	}
+	if adminBool {
 		return true
 	}
 

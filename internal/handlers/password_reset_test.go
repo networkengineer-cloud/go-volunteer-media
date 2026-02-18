@@ -161,6 +161,7 @@ func TestResetPassword(t *testing.T) {
 				expiry := time.Now().Add(1 * time.Hour)
 				db.Model(&user).Updates(map[string]interface{}{
 					"reset_token":        hashedToken,
+					"reset_token_lookup": token[:TokenLookupPrefixLength],
 					"reset_token_expiry": expiry,
 				})
 				return token
@@ -200,6 +201,7 @@ func TestResetPassword(t *testing.T) {
 				expiry := time.Now().Add(-1 * time.Hour) // Expired 1 hour ago
 				db.Model(&user).Updates(map[string]interface{}{
 					"reset_token":        hashedToken,
+					"reset_token_lookup": token[:TokenLookupPrefixLength],
 					"reset_token_expiry": expiry,
 				})
 				return token
@@ -217,6 +219,7 @@ func TestResetPassword(t *testing.T) {
 				lockUntil := time.Now().Add(30 * time.Minute)
 				db.Model(&user).Updates(map[string]interface{}{
 					"reset_token":           hashedToken,
+					"reset_token_lookup":    token[:TokenLookupPrefixLength],
 					"reset_token_expiry":    expiry,
 					"failed_login_attempts": 5,
 					"locked_until":          lockUntil,

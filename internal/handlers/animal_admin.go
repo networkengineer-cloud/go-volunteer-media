@@ -20,7 +20,7 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 
 		var req AnimalRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -133,10 +133,15 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		isAdmin, _ := c.Get("is_admin")
-		isSiteAdmin := isAdmin.(bool)
+		isSiteAdmin, _ := isAdmin.(bool)
+		userIDUint, ok := userID.(uint)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context"})
+			return
+		}
 
 		// Check if user is a group admin for any group
-		isGroupAdmin := IsGroupAdminForAnyGroup(db, userID.(uint))
+		isGroupAdmin := IsGroupAdminForAnyGroup(db, userIDUint)
 
 		// Only site admins and group admins can access this endpoint
 		if !isSiteAdmin && !isGroupAdmin {
@@ -146,7 +151,7 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 
 		var req BulkUpdateAnimalsRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -223,10 +228,15 @@ func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		isAdmin, _ := c.Get("is_admin")
-		isSiteAdmin := isAdmin.(bool)
+		isSiteAdmin, _ := isAdmin.(bool)
+		userIDUint, ok := userID.(uint)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context"})
+			return
+		}
 
 		// Check if user is a group admin for any group
-		isGroupAdmin := IsGroupAdminForAnyGroup(db, userID.(uint))
+		isGroupAdmin := IsGroupAdminForAnyGroup(db, userIDUint)
 
 		// Only site admins and group admins can access this endpoint
 		if !isSiteAdmin && !isGroupAdmin {

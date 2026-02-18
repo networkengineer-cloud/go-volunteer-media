@@ -200,7 +200,7 @@ func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) g
 
 		// Create database record
 		animalIDUint, _ := strconv.ParseUint(animalID, 10, 32)
-		userIDUint := userID.(uint)
+		userIDUint, _ := userID.(uint)
 		animalIDVal := uint(animalIDUint)
 
 		animalImage := models.AnimalImage{
@@ -267,8 +267,8 @@ func DeleteAnimalImage(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		}
 
 		// Check if user owns the image or is admin
-		userIDUint := userID.(uint)
-		adminBool := isAdmin.(bool)
+		userIDUint, _ := userID.(uint)
+		adminBool, _ := isAdmin.(bool)
 		if animalImage.UserID != userIDUint && !adminBool {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own images"})
 			return

@@ -140,6 +140,32 @@ func AdminRequired() gin.HandlerFunc {
 
 // IsSiteAdmin checks if the current user is a site-wide admin
 func IsSiteAdmin(c *gin.Context) bool {
-	isAdmin, exists := c.Get("is_admin")
-	return exists && isAdmin.(bool)
+	v, exists := c.Get("is_admin")
+	if !exists {
+		return false
+	}
+	b, ok := v.(bool)
+	return ok && b
+}
+
+// GetUserID retrieves the authenticated user's ID from the Gin context.
+// Returns (0, false) if the key is missing or has an unexpected type.
+func GetUserID(c *gin.Context) (uint, bool) {
+	v, exists := c.Get("user_id")
+	if !exists {
+		return 0, false
+	}
+	id, ok := v.(uint)
+	return id, ok
+}
+
+// GetIsAdmin retrieves the is_admin flag from the Gin context.
+// Returns false if the key is missing or has an unexpected type.
+func GetIsAdmin(c *gin.Context) bool {
+	v, exists := c.Get("is_admin")
+	if !exists {
+		return false
+	}
+	b, ok := v.(bool)
+	return ok && b
 }

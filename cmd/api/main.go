@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
+	"regexp"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin/binding"
-
-	"regexp"
 
 	"github.com/go-playground/validator/v10"
 
@@ -33,7 +34,7 @@ func main() {
 	logging.InitFromEnv()
 	logger := logging.GetDefaultLogger()
 
-	// Register custom username validator
+	// Register custom validators and use JSON tag names in validation error messages
 	v, ok := binding.Validator.Engine().(*validator.Validate)
 	if ok {
 		_ = v.RegisterValidation("usernamechars", func(fl validator.FieldLevel) bool {
@@ -41,6 +42,14 @@ func main() {
 			// Allow letters, numbers, underscore, dot, and dash
 			matched, _ := regexp.MatchString(`^[a-zA-Z0-9_.-]+$`, username)
 			return matched
+		})
+		// Use the json tag name so validation errors report field names as they appear in the API
+		v.RegisterTagNameFunc(func(fld reflect.StructField) string {
+			name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
+			if name == "-" {
+				return ""
+			}
+			return name
 		})
 	}
 	// Load environment variables
