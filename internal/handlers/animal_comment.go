@@ -191,7 +191,7 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 
 		// Validate metadata if provided
 		if err := validateSessionMetadata(req.Metadata); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -292,7 +292,7 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 
 		// Validate metadata if provided
 		if err := validateSessionMetadata(req.Metadata); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 

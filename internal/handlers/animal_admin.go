@@ -126,21 +126,14 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 		logger := middleware.GetLogger(c)
 
 		// Check if user is site admin or group admin
-		userID, exists := c.Get("user_id")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-			return
-		}
-
-		isAdmin, _ := c.Get("is_admin")
-		isSiteAdmin, _ := isAdmin.(bool)
-		userIDUint, ok := userID.(uint)
+		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context"})
 			return
 		}
 
 		// Check if user is a group admin for any group
+		isSiteAdmin := middleware.GetIsAdmin(c)
 		isGroupAdmin := IsGroupAdminForAnyGroup(db, userIDUint)
 
 		// Only site admins and group admins can access this endpoint
@@ -164,7 +157,7 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 		if !isSiteAdmin && isGroupAdmin {
 			// Get the groups this user is an admin of
 			var userGroups []models.UserGroup
-			db.Where("user_id = ? AND is_group_admin = ?", userID, true).Find(&userGroups)
+			db.Where("user_id = ? AND is_group_admin = ?", userIDUint, true).Find(&userGroups)
 
 			groupIDs := make([]uint, len(userGroups))
 			for i, ug := range userGroups {
@@ -221,21 +214,14 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if user is site admin or group admin
-		userID, exists := c.Get("user_id")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-			return
-		}
-
-		isAdmin, _ := c.Get("is_admin")
-		isSiteAdmin, _ := isAdmin.(bool)
-		userIDUint, ok := userID.(uint)
+		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context"})
 			return
 		}
 
 		// Check if user is a group admin for any group
+		isSiteAdmin := middleware.GetIsAdmin(c)
 		isGroupAdmin := IsGroupAdminForAnyGroup(db, userIDUint)
 
 		// Only site admins and group admins can access this endpoint
@@ -251,7 +237,7 @@ func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 		if !isSiteAdmin && isGroupAdmin {
 			// Get the groups this user is an admin of
 			var userGroups []models.UserGroup
-			db.Where("user_id = ? AND is_group_admin = ?", userID, true).Find(&userGroups)
+			db.Where("user_id = ? AND is_group_admin = ?", userIDUint, true).Find(&userGroups)
 
 			groupIDs := make([]uint, len(userGroups))
 			for i, ug := range userGroups {

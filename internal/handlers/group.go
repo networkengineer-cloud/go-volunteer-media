@@ -133,8 +133,11 @@ func GetGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
 
 		var group models.Group
 		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
@@ -143,10 +146,9 @@ func GetGroup(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Check if user has access to this group
-		adminBool, _ := isAdmin.(bool)
-		if !adminBool {
+		if !middleware.GetIsAdmin(c) {
 			var user models.User
-			if err := db.WithContext(ctx).Preload("Groups", "id = ?", groupID).First(&user, userID).Error; err != nil {
+			if err := db.WithContext(ctx).Preload("Groups", "id = ?", groupID).First(&user, userIDUint).Error; err != nil {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 				return
 			}

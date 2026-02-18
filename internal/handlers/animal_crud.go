@@ -228,7 +228,11 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 		oldName := animal.Name
 		if req.Name != oldName {
 			// Create name history record
-			changedByID, _ := userID.(uint)
+			changedByID, ok := middleware.GetUserID(c)
+			if !ok {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+				return
+			}
 			nameHistory := models.AnimalNameHistory{
 				AnimalID:  animal.ID,
 				OldName:   oldName,
