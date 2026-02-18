@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -58,7 +59,7 @@ func CreateUpdate(db *gorm.DB, groupMeService *groupme.Service) gin.HandlerFunc 
 
 		var req UpdateRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -68,9 +69,14 @@ func CreateUpdate(db *gorm.DB, groupMeService *groupme.Service) gin.HandlerFunc 
 			return
 		}
 
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
 		update := models.Update{
 			GroupID:     uint(gid),
-			UserID:      userID.(uint),
+			UserID:      userIDUint,
 			Title:       req.Title,
 			Content:     req.Content,
 			ImageURL:    req.ImageURL,

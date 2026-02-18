@@ -44,7 +44,7 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 		ctx := c.Request.Context()
 		var req RequestPasswordResetRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -84,11 +84,12 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 		}
 
 		// Set token expiry to 1 hour from now
-		expiry := time.Now().Add(1 * time.Hour)
+		expiry := time.Now().Add(PasswordResetTokenExpiry)
 
-		// Update user with reset token and expiry
+		// Update user with reset token, lookup prefix, and expiry
 		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
 			"reset_token":        hashedToken,
+			"reset_token_lookup": token[:TokenLookupPrefixLength],
 			"reset_token_expiry": expiry,
 		}).Error; err != nil {
 			logger := middleware.GetLogger(c)
@@ -117,27 +118,28 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		var req ResetPasswordRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
-		// Find all users with a reset token (we'll check which one matches)
-		var users []models.User
-		if err := db.WithContext(ctx).Where("reset_token IS NOT NULL AND reset_token != ''").Find(&users).Error; err != nil {
+		// Guard against tokens shorter than the lookup prefix length
+		if len(req.Token) < TokenLookupPrefixLength {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired reset token"})
 			return
 		}
 
-		// Find the user whose hashed token matches
-		var targetUser *models.User
-		for i := range users {
-			if err := auth.CheckPassword(users[i].ResetToken, req.Token); err == nil {
-				targetUser = &users[i]
-				break
-			}
+		// Use the lookup prefix to find the candidate user with a single indexed query
+		var targetUser models.User
+		if err := db.WithContext(ctx).Where(
+			"reset_token_lookup = ? AND reset_token IS NOT NULL AND reset_token != ''",
+			req.Token[:TokenLookupPrefixLength],
+		).First(&targetUser).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired reset token"})
+			return
 		}
 
-		if targetUser == nil {
+		// Verify the full bcrypt hash against the single candidate row
+		if err := auth.CheckPassword(targetUser.ResetToken, req.Token); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired reset token"})
 			return
 		}
@@ -151,18 +153,23 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 		// Hash new password
 		hashedPassword, err := auth.HashPassword(req.NewPassword)
 		if err != nil {
+			logger := middleware.GetLogger(c)
+			logger.Error("Failed to hash password during reset", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 			return
 		}
 
-		// Update password and clear reset token
-		if err := db.WithContext(ctx).Model(targetUser).Updates(map[string]interface{}{
+		// Update password and clear reset token and lookup
+		if err := db.WithContext(ctx).Model(&targetUser).Updates(map[string]interface{}{
 			"password":              hashedPassword,
 			"reset_token":           "",
+			"reset_token_lookup":    "",
 			"reset_token_expiry":    nil,
 			"failed_login_attempts": 0,
 			"locked_until":          nil,
 		}).Error; err != nil {
+			logger := middleware.GetLogger(c)
+			logger.Error("Failed to update user password during reset", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset password"})
 			return
 		}
@@ -178,27 +185,28 @@ func SetupPassword(db *gorm.DB) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		var req ResetPasswordRequest // Reuse same request structure
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
-		// Find all users with a setup token (we'll check which one matches)
-		var users []models.User
-		if err := db.WithContext(ctx).Where("setup_token IS NOT NULL AND setup_token != ''").Find(&users).Error; err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired setup token"})
+		// Guard against tokens shorter than the lookup prefix length
+		if len(req.Token) < TokenLookupPrefixLength {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired setup token. Please contact your administrator for a new invitation."})
 			return
 		}
 
-		// Find the user whose hashed setup token matches
-		var targetUser *models.User
-		for i := range users {
-			if err := auth.CheckPassword(users[i].SetupToken, req.Token); err == nil {
-				targetUser = &users[i]
-				break
-			}
+		// Use the lookup prefix to find the candidate user with a single indexed query
+		var targetUser models.User
+		if err := db.WithContext(ctx).Where(
+			"setup_token_lookup = ? AND setup_token IS NOT NULL AND setup_token != ''",
+			req.Token[:TokenLookupPrefixLength],
+		).First(&targetUser).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired setup token. Please contact your administrator for a new invitation."})
+			return
 		}
 
-		if targetUser == nil {
+		// Verify the full bcrypt hash against the single candidate row
+		if err := auth.CheckPassword(targetUser.SetupToken, req.Token); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired setup token. Please contact your administrator for a new invitation."})
 			return
 		}
@@ -218,19 +226,24 @@ func SetupPassword(db *gorm.DB) gin.HandlerFunc {
 		// Hash new password
 		hashedPassword, err := auth.HashPassword(req.NewPassword)
 		if err != nil {
+			logger := middleware.GetLogger(c)
+			logger.Error("Failed to hash password during setup", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 			return
 		}
 
-		// Update password, clear setup token, and mark account as fully set up
-		if err := db.WithContext(ctx).Model(targetUser).Updates(map[string]interface{}{
-			"password":                  hashedPassword,
-			"setup_token":               "",
-			"setup_token_expiry":        nil,
-			"requires_password_setup":   false, // Allow login now
-			"failed_login_attempts":     0,
-			"locked_until":              nil,
+		// Update password, clear setup token and lookup, and mark account as fully set up
+		if err := db.WithContext(ctx).Model(&targetUser).Updates(map[string]interface{}{
+			"password":                hashedPassword,
+			"setup_token":             "",
+			"setup_token_lookup":      "",
+			"setup_token_expiry":      nil,
+			"requires_password_setup": false, // Allow login now
+			"failed_login_attempts":   0,
+			"locked_until":            nil,
 		}).Error; err != nil {
+			logger := middleware.GetLogger(c)
+			logger.Error("Failed to update user password during setup", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set up password"})
 			return
 		}
@@ -243,15 +256,15 @@ func SetupPassword(db *gorm.DB) gin.HandlerFunc {
 func UpdateEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		userID, exists := c.Get("user_id")
-		if !exists {
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
 
 		var req UpdateEmailPreferencesRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -277,8 +290,8 @@ func UpdateEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 func GetEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		userID, exists := c.Get("user_id")
-		if !exists {
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -103,7 +104,7 @@ func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 
 		var req SetDefaultGroupRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -116,7 +117,7 @@ func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if user belongs to the group (unless admin)
 		isAdmin, _ := c.Get("is_admin")
-		hasAccess := isAdmin.(bool)
+		hasAccess, _ := isAdmin.(bool)
 		if !hasAccess {
 			for _, group := range user.Groups {
 				if group.ID == req.GroupID {
@@ -192,28 +193,28 @@ type UpdateProfileRequest struct {
 func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		userID, exists := c.Get("user_id")
-		if !exists {
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 			return
 		}
 
 		var req UpdateProfileRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
 		// Fetch current user to check if email is being changed
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userID).Error; err != nil {
+		if err := db.WithContext(ctx).First(&user, userIDUint).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		// Check if email is being changed to an already-taken email
 		if req.Email != user.Email {
-			if err := validateEmailUniqueness(ctx, db, req.Email, userID.(uint)); err != nil {
+			if err := validateEmailUniqueness(ctx, db, req.Email, userIDUint); err != nil {
 				if errors.Is(err, ErrEmailInUse) {
 					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 				} else {
@@ -238,7 +239,7 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Reload user from DB to return actual persisted values
-		if err := db.WithContext(ctx).First(&user, userID).Error; err != nil {
+		if err := db.WithContext(ctx).First(&user, userIDUint).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload profile"})
 			return
 		}

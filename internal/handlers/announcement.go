@@ -40,20 +40,20 @@ func GetAnnouncements(db *gorm.DB) gin.HandlerFunc {
 func CreateAnnouncement(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		userID, exists := c.Get("user_id")
-		if !exists {
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
 
 		var req AnnouncementRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
 		announcement := models.Announcement{
-			UserID:      userID.(uint),
+			UserID:      userIDUint,
 			Title:       req.Title,
 			Content:     req.Content,
 			SendEmail:   req.SendEmail,
@@ -196,7 +196,13 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 
 		var req AnnouncementRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
+			return
+		}
+
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
 
@@ -208,7 +214,7 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 		}
 
 		announcement := models.Announcement{
-			UserID:      userID.(uint),
+			UserID:      userIDUint,
 			Title:       req.Title,
 			Content:     req.Content,
 			SendEmail:   req.SendEmail,

@@ -97,8 +97,9 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 		isAdmin, _ := c.Get("is_admin")
 
 		// Determine access level
-		isOwnProfile := currentUserID.(uint) == uint(targetUserID)
-		isSiteAdmin := isAdmin.(bool)
+		currentUserIDUint, _ := currentUserID.(uint)
+		isOwnProfile := currentUserIDUint == uint(targetUserID)
+		isSiteAdmin, _ := isAdmin.(bool)
 
 		// Check if current user is a group admin for any shared group with target user
 		var isGroupAdminForSharedGroup bool

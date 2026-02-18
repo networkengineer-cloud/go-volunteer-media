@@ -17,7 +17,6 @@ import (
 	"gorm.io/gorm"
 )
 
-const setupTokenDuration = 7 * 24 * time.Hour
 
 // adminUserResponse wraps User to expose admin-only fields that are hidden
 // on the base model to prevent leaking through embedded User objects in
@@ -165,7 +164,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		var req AdminCreateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -228,7 +227,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			}
 
 			// Setup token expires in 7 days (volunteers need time to respond)
-			expiry := time.Now().Add(setupTokenDuration)
+			expiry := time.Now().Add(SetupTokenExpiry)
 			setupTokenExpiry := &expiry
 
 			// Store hashed token in dedicated setup_token field (separate from reset tokens)
@@ -240,6 +239,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				Password:              hashedPassword,
 				IsAdmin:               req.IsAdmin,
 				SetupToken:            hashedSetupToken,
+				SetupTokenLookup:      setupToken[:TokenLookupPrefixLength],
 				SetupTokenExpiry:      setupTokenExpiry,
 				RequiresPasswordSetup: true, // Block login until password is set
 			}
@@ -349,7 +349,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 		var req GroupAdminCreateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -433,7 +433,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			}
 
 			// Setup token expires in 7 days (volunteers need time to respond)
-			expiry := time.Now().Add(setupTokenDuration)
+			expiry := time.Now().Add(SetupTokenExpiry)
 			setupTokenExpiry := &expiry
 
 			// Create user with setup token
@@ -445,6 +445,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 				Password:              hashedPassword,
 				IsAdmin:               false, // Group admins cannot create site admins
 				SetupToken:            hashedSetupToken,
+				SetupTokenLookup:      setupToken[:TokenLookupPrefixLength],
 				SetupTokenExpiry:      setupTokenExpiry,
 				RequiresPasswordSetup: true,
 			}
@@ -547,7 +548,7 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 
 		var req AdminResetPasswordRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -697,7 +698,7 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 
 		var req UpdateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -751,7 +752,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 
 		var req UpdateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -914,9 +915,10 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 		}
 
 		// Email sent successfully — now persist the new token (invalidates old token)
-		expiry := time.Now().Add(setupTokenDuration)
+		expiry := time.Now().Add(SetupTokenExpiry)
 		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
 			"setup_token":        hashedSetupToken,
+			"setup_token_lookup": setupToken[:TokenLookupPrefixLength],
 			"setup_token_expiry": expiry,
 		}).Error; err != nil {
 			logger.Error("Failed to update user with setup token", err)
@@ -931,7 +933,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 		}).Info("Invitation resent successfully")
 
 		c.JSON(http.StatusOK, gin.H{
-			"message": fmt.Sprintf("Invitation email has been resent to %s. The link will expire in %d days.", user.Email, int(setupTokenDuration.Hours()/24)),
+			"message": fmt.Sprintf("Invitation email has been resent to %s. The link will expire in %d days.", user.Email, int(SetupTokenExpiry.Hours()/24)),
 		})
 	}
 }

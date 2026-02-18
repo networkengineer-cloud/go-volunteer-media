@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -184,7 +185,7 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 
 		var req AnimalCommentRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -203,9 +204,14 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
 		comment := models.AnimalComment{
 			AnimalID: uint(aid),
-			UserID:   userID.(uint),
+			UserID:   userIDUint,
 			Content:  req.Content,
 			ImageURL: req.ImageURL,
 			Metadata: req.Metadata,
@@ -268,14 +274,19 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Users can only edit their own comments
-		if comment.UserID != userID.(uint) {
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+		if comment.UserID != userIDUint {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only edit your own comments"})
 			return
 		}
 
 		var req AnimalCommentRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
 
@@ -487,7 +498,12 @@ func DeleteAnimalComment(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if user owns the comment, is group admin, or is site admin
 		isGroupAdmin := checkGroupAdminAccess(db, userID, isAdmin, groupID)
-		if comment.UserID != userID.(uint) && !isGroupAdmin {
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+		if comment.UserID != userIDUint && !isGroupAdmin {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own comments"})
 			return
 		}
