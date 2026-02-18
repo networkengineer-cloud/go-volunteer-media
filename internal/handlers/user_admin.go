@@ -19,17 +19,24 @@ import (
 
 const setupTokenDuration = 7 * 24 * time.Hour
 
-// adminUserResponse wraps User to expose RequiresPasswordSetup only in admin responses.
+// adminUserResponse wraps User to expose admin-only fields that are hidden
+// on the base model to prevent leaking through embedded User objects in
+// non-admin API responses (e.g. comment authors, announcement authors).
 type adminUserResponse struct {
 	models.User
-	RequiresPasswordSetup bool `json:"requires_password_setup"`
+	RequiresPasswordSetup bool       `json:"requires_password_setup"`
+	LastLogin             *time.Time `json:"last_login,omitempty"`
 }
 
-// toAdminUserResponse copies RequiresPasswordSetup into the outer struct to
-// shadow the embedded models.User field (tagged json:"-") so it appears in
+// toAdminUserResponse copies admin-only fields into the outer struct to
+// shadow the embedded models.User fields (tagged json:"-") so they appear in
 // admin JSON responses.
 func toAdminUserResponse(u models.User) adminUserResponse {
-	return adminUserResponse{User: u, RequiresPasswordSetup: u.RequiresPasswordSetup}
+	return adminUserResponse{
+		User:                  u,
+		RequiresPasswordSetup: u.RequiresPasswordSetup,
+		LastLogin:             u.LastLogin,
+	}
 }
 
 // PromoteUser sets is_admin to true for a user
@@ -85,7 +92,11 @@ func GetDeletedUsers(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch deleted users"})
 			return
 		}
-		c.JSON(http.StatusOK, users)
+		adminUsers := make([]adminUserResponse, len(users))
+		for i, u := range users {
+			adminUsers[i] = toAdminUserResponse(u)
+		}
+		c.JSON(http.StatusOK, adminUsers)
 	}
 }
 
@@ -668,7 +679,7 @@ func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *mod
 		return
 	}
 
-	c.JSON(http.StatusOK, user)
+	c.JSON(http.StatusOK, toAdminUserResponse(*user))
 }
 
 // AdminUpdateUser allows an admin to update a user's information

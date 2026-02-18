@@ -26,8 +26,9 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	Token string      `json:"token"`
-	User  models.User `json:"user"`
+	Token     string      `json:"token"`
+	User      models.User `json:"user"`
+	LastLogin *time.Time  `json:"last_login,omitempty"`
 }
 
 // Register creates a new user account
@@ -215,8 +216,9 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, AuthResponse{
-			Token: token,
-			User:  user,
+			Token:     token,
+			User:      user,
+			LastLogin: user.LastLogin,
 		})
 	}
 }
@@ -258,6 +260,7 @@ func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 			"is_group_admin":              len(userGroups) > 0,
 			"created_at":                  user.CreatedAt,
 			"updated_at":                  user.UpdatedAt,
+			"last_login":                  user.LastLogin,
 		}
 
 		c.JSON(http.StatusOK, response)

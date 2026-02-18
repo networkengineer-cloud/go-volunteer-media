@@ -310,9 +310,11 @@ const UsersPage: React.FC = () => {
           break;
         }
         case 'last_login': {
-          const lastLoginA = a.last_login ? new Date(a.last_login).getTime() : 0;
-          const lastLoginB = b.last_login ? new Date(b.last_login).getTime() : 0;
-          comparison = lastLoginB - lastLoginA; // Most recent first
+          // Null last_login always sorts to the bottom regardless of sort direction
+          if (!a.last_login && !b.last_login) { comparison = 0; break; }
+          if (!a.last_login) { comparison = 1; break; }
+          if (!b.last_login) { comparison = -1; break; }
+          comparison = new Date(b.last_login).getTime() - new Date(a.last_login).getTime(); // Most recent first
           break;
         }
         case 'most_active': {
