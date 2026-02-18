@@ -40,13 +40,11 @@ func GetAnnouncements(db *gorm.DB) gin.HandlerFunc {
 func CreateAnnouncement(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		userID, exists := c.Get("user_id")
-		if !exists {
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
-
-		userIDUint, _ := userID.(uint)
 
 		var req AnnouncementRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -202,7 +200,11 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 			return
 		}
 
-		userIDUint, _ := userID.(uint)
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
 
 		// Verify group exists
 		var group models.Group

@@ -115,8 +115,7 @@ func AuthRequired() gin.HandlerFunc {
 func AdminRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		isAdmin, exists := c.Get("is_admin")
-		if !exists || !isAdmin.(bool) {
+		if !GetIsAdmin(c) {
 			// Log unauthorized admin access attempt
 			logger := GetLogger(c)
 			userID, _ := c.Get("user_id")

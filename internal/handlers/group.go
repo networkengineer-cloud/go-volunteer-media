@@ -617,8 +617,8 @@ func GetGroupMembership(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, exists := c.Get("user_id")
-		if !exists {
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}

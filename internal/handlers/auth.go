@@ -14,7 +14,7 @@ import (
 )
 
 type RegisterRequest struct {
-	Username  string `json:"username" binding:"required,min=3,max=50,alphanum"`
+	Username  string `json:"username" binding:"required,min=3,max=50,usernamechars"`
 	FirstName string `json:"first_name" binding:"omitempty,min=1,max=100"`
 	LastName  string `json:"last_name" binding:"omitempty,min=1,max=100"`
 	Email     string `json:"email" binding:"required,email"`
