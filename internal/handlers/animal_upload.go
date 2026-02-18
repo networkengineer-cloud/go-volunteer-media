@@ -36,8 +36,8 @@ func UploadAnimalImage(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Get user ID from context
-		userID, exists := c.Get("userID")
-		if !exists {
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 			return
 		}
@@ -118,10 +118,9 @@ func UploadAnimalImage(db *gorm.DB) gin.HandlerFunc {
 
 		// Create image record in database
 		animalIDUint := uint(animalID)
-		userIDUint, _ := userID.(uint)
 		animalImage := models.AnimalImage{
 			AnimalID:  &animalIDUint,
-			UserID:    userIDUint,
+			UserID:    userID,
 			ImageURL:  imageURL,
 			ImageData: imageData,
 			MimeType:  "image/jpeg",

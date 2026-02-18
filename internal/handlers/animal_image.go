@@ -28,11 +28,15 @@ func GetAnimalImages(db *gorm.DB) gin.HandlerFunc {
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
-		userID, _ := c.Get("user_id")
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
 		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -69,11 +73,15 @@ func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) g
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
-		userID, _ := c.Get("user_id")
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
 		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -200,7 +208,6 @@ func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) g
 
 		// Create database record
 		animalIDUint, _ := strconv.ParseUint(animalID, 10, 32)
-		userIDUint, _ := userID.(uint)
 		animalIDVal := uint(animalIDUint)
 
 		animalImage := models.AnimalImage{
@@ -250,11 +257,15 @@ func DeleteAnimalImage(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		imageID := c.Param("imageId")
-		userID, _ := c.Get("user_id")
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
 		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -267,9 +278,7 @@ func DeleteAnimalImage(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		}
 
 		// Check if user owns the image or is admin
-		userIDUint, _ := userID.(uint)
-		adminBool, _ := isAdmin.(bool)
-		if animalImage.UserID != userIDUint && !adminBool {
+		if animalImage.UserID != userIDUint && !middleware.GetIsAdmin(c) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own images"})
 			return
 		}
