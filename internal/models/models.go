@@ -34,7 +34,7 @@ type User struct {
 	Groups                    []Group        `gorm:"many2many:user_groups;" json:"groups,omitempty"`
 	FailedLoginAttempts       int            `gorm:"default:0" json:"-"`
 	LockedUntil               *time.Time     `json:"-"`
-	LastLogin                 *time.Time     `json:"last_login"`
+	LastLogin                 *time.Time     `json:"last_login,omitempty"`
 	ResetToken                string         `json:"-"`
 	ResetTokenExpiry          *time.Time     `json:"-"`
 	SetupToken                string         `json:"-"` // Separate field for initial password setup (invite flow)

@@ -7,6 +7,8 @@ import { usersApi, groupsApi, statisticsApi, groupAdminApi, authApi } from '../a
 import { useAuth } from '../hooks/useAuth';
 import { getPasswordStrength } from '../utils/passwordStrength';
 
+type SortBy = 'name' | 'email' | 'last_active' | 'last_login' | 'most_active';
+
 // Create API instance for authenticated requests
 const api = axios.create({
   baseURL: '/api',
@@ -34,7 +36,7 @@ const UsersPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [filterGroup, setFilterGroup] = React.useState<number | 'all'>('all');
   const [filterAdmin, setFilterAdmin] = React.useState<'all' | 'admin' | 'user'>('all');
-  const [sortBy, setSortBy] = React.useState<'name' | 'email' | 'last_active' | 'last_login' | 'most_active'>('name');
+  const [sortBy, setSortBy] = React.useState<SortBy>('name');
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
 
   // Group admin management state
@@ -919,7 +921,7 @@ const UsersPage: React.FC = () => {
                 <select
                   className="filter-select"
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as 'name' | 'email' | 'last_active' | 'last_login' | 'most_active')}
+                  onChange={(e) => setSortBy(e.target.value as SortBy)}
                   aria-label="Sort by"
                 >
                   <option value="name">Sort by Name</option>
