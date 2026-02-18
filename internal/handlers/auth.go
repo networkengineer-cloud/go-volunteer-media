@@ -187,16 +187,22 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Successful login - reset failed attempts
-		if user.FailedLoginAttempts > 0 || user.LockedUntil != nil {
-			if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
-				"failed_login_attempts": 0,
-				"locked_until":          nil,
-			}).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
-				return
-			}
+		// Successful login - record last login timestamp and reset failed attempts if needed
+		now := time.Now()
+		updates := map[string]interface{}{
+			"last_login": now,
 		}
+		if user.FailedLoginAttempts > 0 || user.LockedUntil != nil {
+			updates["failed_login_attempts"] = 0
+			updates["locked_until"] = nil
+			user.FailedLoginAttempts = 0
+			user.LockedUntil = nil
+		}
+		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+			return
+		}
+		user.LastLogin = &now
 
 		// Audit log: successful login
 		logging.LogAuthSuccess(ctx, user.ID, user.Username, c.ClientIP())

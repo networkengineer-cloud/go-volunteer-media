@@ -94,6 +94,7 @@ export interface User {
   groups?: Group[];
   deleted_at?: string | null;
   requires_password_setup?: boolean; // True if user hasn't completed initial password setup
+  last_login?: string;
 }
 
 // User creation response - backend returns different formats depending on setup email
