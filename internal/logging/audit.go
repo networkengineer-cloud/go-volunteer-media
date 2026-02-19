@@ -23,6 +23,7 @@ const (
 	AuditEventUserRestored         AuditEvent = "user_restored"
 	AuditEventUserPromoted         AuditEvent = "user_promoted"
 	AuditEventUserDemoted          AuditEvent = "user_demoted"
+	AuditEventAccountUnlocked      AuditEvent = "account_unlocked"
 	AuditEventGroupCreated         AuditEvent = "group_created"
 	AuditEventGroupUpdated         AuditEvent = "group_updated"
 	AuditEventGroupDeleted         AuditEvent = "group_deleted"
@@ -102,6 +103,16 @@ func (al *AuditLogger) LogAccountLocked(ctx context.Context, userID uint, userna
 		"username":        username,
 		"ip":              ip,
 		"failed_attempts": attempts,
+	})
+}
+
+// LogAccountUnlocked logs when an admin manually unlocks a user account
+func (al *AuditLogger) LogAccountUnlocked(ctx context.Context, targetUserID uint, targetUsername string, adminID uint, ip string) {
+	al.Log(ctx, AuditEventAccountUnlocked, map[string]interface{}{
+		"target_user_id":   targetUserID,
+		"target_username":  targetUsername,
+		"admin_id":         adminID,
+		"ip":               ip,
 	})
 }
 
@@ -185,6 +196,11 @@ func LogAuthFailure(ctx context.Context, username, ip, reason string) {
 // LogAccountLocked logs account lockout using default audit logger
 func LogAccountLocked(ctx context.Context, userID uint, username, ip string, attempts int) {
 	defaultAuditLogger.LogAccountLocked(ctx, userID, username, ip, attempts)
+}
+
+// LogAccountUnlocked logs admin account unlock using default audit logger
+func LogAccountUnlocked(ctx context.Context, targetUserID uint, targetUsername string, adminID uint, ip string) {
+	defaultAuditLogger.LogAccountUnlocked(ctx, targetUserID, targetUsername, adminID, ip)
 }
 
 // LogPasswordResetRequest logs password reset request using default audit logger

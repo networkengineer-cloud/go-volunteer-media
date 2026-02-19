@@ -974,6 +974,11 @@
   color: white;
 }
 
+.badge-locked {
+  background: #b91c1c;
+  color: white;
+}
+
 [data-theme="dark"] .badge-admin {
   background: var(--teal);
 }

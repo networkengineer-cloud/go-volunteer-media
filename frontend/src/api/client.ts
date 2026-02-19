@@ -15,6 +15,7 @@ export const usersApi = {
   restore: (userId: number) => api.post(`/admin/users/${userId}/restore`),
   resetPassword: (userId: number, newPassword: string) => api.post(`/users/${userId}/reset-password`, { new_password: newPassword }),
   resendInvitation: (userId: number) => api.post(`/users/${userId}/resend-invitation`),
+  unlock: (userId: number) => api.post<{ message: string; user: User }>(`/users/${userId}/unlock`),
 };
 
 // Group Admin API (accessible by site admins and group admins)
@@ -95,6 +96,9 @@ export interface User {
   deleted_at?: string | null;
   requires_password_setup?: boolean; // True if user hasn't completed initial password setup
   last_login?: string;
+  // Lockout fields — only present in admin-scoped responses
+  locked_until?: string | null;
+  failed_login_attempts?: number;
 }
 
 // User creation response - backend returns different formats depending on setup email
