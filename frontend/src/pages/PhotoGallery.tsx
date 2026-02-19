@@ -5,6 +5,7 @@ import type { Animal, AnimalImage } from '../api/client';
 import type { AxiosResponse } from 'axios';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import ConfirmDialog from '../components/ConfirmDialog';
 import ImageEditor from '../components/ImageEditor';
 import './PhotoGallery.css';
 
@@ -29,6 +30,9 @@ const PhotoGallery: React.FC = () => {
   const [previewWidth, setPreviewWidth] = useState<number | null>(null);
   const [previewHeight, setPreviewHeight] = useState<number | null>(null);
   const [settingProfile, setSettingProfile] = useState<number | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean; title: string; message: string; onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   const loadData = useCallback(async (gId: number, animalId: number) => {
     try {
@@ -68,22 +72,24 @@ const PhotoGallery: React.FC = () => {
     }
   }, [groupId, id, loadData]);
 
-  const handleDeleteImage = async (imageId: number) => {
+  const handleDeleteImage = (imageId: number) => {
     if (!groupId || !id) return;
-    
-    if (!window.confirm('Are you sure you want to delete this photo?')) {
-      return;
-    }
-
-    try {
-      await animalsApi.deleteImage(Number(groupId), Number(id), imageId);
-      showToast('Photo deleted successfully', 'success');
-      await loadData(Number(groupId), Number(id));
-      closeLightbox();
-    } catch (error) {
-      console.error('Failed to delete image:', error);
-      showToast('Failed to delete photo', 'error');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Photo',
+      message: 'Are you sure you want to delete this photo?',
+      onConfirm: async () => {
+        try {
+          await animalsApi.deleteImage(Number(groupId), Number(id), imageId);
+          showToast('Photo deleted successfully', 'success');
+          await loadData(Number(groupId), Number(id));
+          closeLightbox();
+        } catch (error) {
+          console.error('Failed to delete image:', error);
+          showToast('Failed to delete photo', 'error');
+        }
+      },
+    });
   };
 
   const handleUpload = async () => {
@@ -527,6 +533,15 @@ const PhotoGallery: React.FC = () => {
           />
         )}
       </div>
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+        confirmLabel="Delete"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
+      />
     </div>
   );
 };
