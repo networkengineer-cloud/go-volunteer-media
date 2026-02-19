@@ -9,6 +9,7 @@ import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import ProtocolViewerErrorBoundary from '../components/ProtocolViewerErrorBoundary';
 import SessionReportForm from '../components/SessionReportForm';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
@@ -45,9 +46,7 @@ const AnimalDetailPage: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
   const [showScrollToTop, setShowScrollToTop] = useState(false);
-  const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: () => void | Promise<void>;
-  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
   const [showProtocolModal, setShowProtocolModal] = useState(false);
   const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
@@ -105,11 +104,10 @@ const AnimalDetailPage: React.FC = () => {
 
   const handleDeleteComment = (commentId: number) => {
     if (!groupId || !id) return;
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Delete Comment',
-      message: 'Are you sure you want to delete this comment?',
-      onConfirm: async () => {
+    openConfirmDialog(
+      'Delete Comment',
+      'Are you sure you want to delete this comment?',
+      async () => {
         try {
           await animalCommentsApi.delete(Number(groupId), Number(id), commentId);
           toast.showSuccess('Comment deleted successfully');
@@ -122,7 +120,7 @@ const AnimalDetailPage: React.FC = () => {
           toast.showError('Failed to delete comment. Please try again.');
         }
       },
-    });
+    );
   };
 
   const loadGroupData = useCallback(async (gId: number) => {
@@ -967,7 +965,7 @@ const AnimalDetailPage: React.FC = () => {
         variant="danger"
         confirmLabel="Delete"
         onConfirm={confirmDialog.onConfirm}
-        onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
+        onCancel={closeConfirmDialog}
       />
     </div>
   );

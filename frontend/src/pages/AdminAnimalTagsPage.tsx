@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { commentTagsApi, animalTagsApi, groupsApi, type CommentTag, type Group, type AnimalTag as ApiAnimalTag } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import SkeletonLoader from '../components/SkeletonLoader';
 import './AdminAnimalTagsPage.css';
 
@@ -258,9 +259,7 @@ const AdminAnimalTagsPage: React.FC = () => {
 
   // Active section for mobile
   const [activeSection, setActiveSection] = useState<'animal' | 'comment'>('animal');
-  const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: () => void | Promise<void>;
-  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
 
   // Fetch Groups
   const fetchGroups = useCallback(async () => {
@@ -356,11 +355,10 @@ const AdminAnimalTagsPage: React.FC = () => {
 
   const handleDeleteAnimalTag = useCallback((tagId: number) => {
     if (!selectedGroupId) return;
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Delete Animal Tag',
-      message: 'Are you sure you want to delete this animal tag?',
-      onConfirm: async () => {
+    openConfirmDialog(
+      'Delete Animal Tag',
+      'Are you sure you want to delete this animal tag?',
+      async () => {
         try {
           await animalTagsApi.delete(selectedGroupId, tagId);
           await fetchAnimalTags();
@@ -369,7 +367,7 @@ const AdminAnimalTagsPage: React.FC = () => {
           setAnimalTagError('Failed to delete tag');
         }
       },
-    });
+    );
   }, [selectedGroupId, fetchAnimalTags]);
 
   // Comment Tag handlers
@@ -386,11 +384,10 @@ const AdminAnimalTagsPage: React.FC = () => {
 
   const handleDeleteCommentTag = useCallback((tagId: number) => {
     if (!selectedGroupId) return;
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Delete Comment Tag',
-      message: 'Are you sure you want to delete this comment tag?',
-      onConfirm: async () => {
+    openConfirmDialog(
+      'Delete Comment Tag',
+      'Are you sure you want to delete this comment tag?',
+      async () => {
         try {
           await commentTagsApi.delete(selectedGroupId, tagId);
           await fetchCommentTags();
@@ -399,7 +396,7 @@ const AdminAnimalTagsPage: React.FC = () => {
           setCommentTagError('Failed to delete tag');
         }
       },
-    });
+    );
   }, [selectedGroupId, fetchCommentTags]);
 
   const behaviorTags = animalTags.filter(tag => tag.category === 'behavior');
@@ -655,7 +652,7 @@ const AdminAnimalTagsPage: React.FC = () => {
         variant="danger"
         confirmLabel="Delete"
         onConfirm={confirmDialog.onConfirm}
-        onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
+        onCancel={closeConfirmDialog}
       />
     </div>
   );

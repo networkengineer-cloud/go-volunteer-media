@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getPasswordStrength } from '../utils/passwordStrength';
 import { formatRelativeTime } from '../utils/dateUtils';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import SkeletonLoader from '../components/SkeletonLoader';
 
 type SortBy = 'name' | 'email' | 'last_active' | 'last_login' | 'most_active';
@@ -65,9 +66,7 @@ const UsersPage: React.FC = () => {
   const [editError, setEditError] = React.useState<string | null>(null);
   const [editSuccess, setEditSuccess] = React.useState<string | null>(null);
 
-  const [confirmDialog, setConfirmDialog] = React.useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: () => void | Promise<void>;
-  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
 
   // Timeout refs to prevent race conditions when modals are closed early
   const editTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -343,11 +342,10 @@ const UsersPage: React.FC = () => {
 
 
   const handleDelete = (user: User) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Delete User',
-      message: `Delete user ${user.username}? This cannot be undone.`,
-      onConfirm: async () => {
+    openConfirmDialog(
+      'Delete User',
+      `Delete user ${user.username}? This cannot be undone.`,
+      async () => {
         try {
           await usersApi.delete(user.id);
           fetchUsers();
@@ -355,7 +353,7 @@ const UsersPage: React.FC = () => {
           setError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to delete user' : 'Failed to delete user');
         }
       },
-    });
+    );
   };
 
   // Restore deleted user
@@ -1725,7 +1723,7 @@ const UsersPage: React.FC = () => {
         variant="danger"
         confirmLabel="Delete"
         onConfirm={confirmDialog.onConfirm}
-        onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
+        onCancel={closeConfirmDialog}
       />
     </div>
   );

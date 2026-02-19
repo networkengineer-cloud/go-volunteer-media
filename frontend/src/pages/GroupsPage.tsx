@@ -7,6 +7,7 @@ import { useToast } from '../hooks/useToast';
 import { formatRelativeTime } from '../utils/dateUtils';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import SkeletonLoader from '../components/SkeletonLoader';
 
 const GroupsPage: React.FC = () => {
@@ -37,9 +38,7 @@ const GroupsPage: React.FC = () => {
   });
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
-  const [confirmDialog, setConfirmDialog] = React.useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: () => void | Promise<void>;
-  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
   const [availableAnimals, setAvailableAnimals] = React.useState<Animal[]>([]);
   const [showAnimalSelector, setShowAnimalSelector] = React.useState(false);
 
@@ -227,11 +226,10 @@ const GroupsPage: React.FC = () => {
 
   // Delete group
   const handleDelete = (group: Group) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Delete Group',
-      message: `Delete group "${group.name}"? This cannot be undone and will affect all associated data.`,
-      onConfirm: async () => {
+    openConfirmDialog(
+      'Delete Group',
+      `Delete group "${group.name}"? This cannot be undone and will affect all associated data.`,
+      async () => {
         try {
           await groupsApi.delete(group.id);
           fetchGroups();
@@ -239,7 +237,7 @@ const GroupsPage: React.FC = () => {
           setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete group');
         }
       },
-    });
+    );
   };
 
   return (
@@ -679,7 +677,7 @@ const GroupsPage: React.FC = () => {
         variant="danger"
         confirmLabel="Delete"
         onConfirm={confirmDialog.onConfirm}
-        onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
+        onCancel={closeConfirmDialog}
       />
     </div>
   );

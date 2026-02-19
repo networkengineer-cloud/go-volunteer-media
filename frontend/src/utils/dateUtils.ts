@@ -14,6 +14,9 @@ export function formatRelativeTime(dateString: string, cutoffDays = 30): string 
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
+
+  if (diffMs < 0) return formatDateShort(dateString); // future date
+
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
@@ -38,7 +41,9 @@ export function calculateQuarantineEndDate(startDateString?: string, format: 'sh
     endDate.setDate(endDate.getDate() + 1);
   }
 
-  return format === 'long' ? formatDateLong(endDate.toISOString()) : formatDateShort(endDate.toISOString());
+  return endDate.toLocaleDateString('en-US', format === 'long'
+    ? { year: 'numeric', month: 'long', day: 'numeric' }
+    : { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function calculateDaysSince(dateString?: string): number {

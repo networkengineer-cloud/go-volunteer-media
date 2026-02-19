@@ -6,6 +6,7 @@ import type { AxiosResponse } from 'axios';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import ImageEditor from '../components/ImageEditor';
 import './PhotoGallery.css';
 
@@ -30,9 +31,7 @@ const PhotoGallery: React.FC = () => {
   const [previewWidth, setPreviewWidth] = useState<number | null>(null);
   const [previewHeight, setPreviewHeight] = useState<number | null>(null);
   const [settingProfile, setSettingProfile] = useState<number | null>(null);
-  const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: () => void | Promise<void>;
-  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
 
   const loadData = useCallback(async (gId: number, animalId: number) => {
     try {
@@ -74,11 +73,10 @@ const PhotoGallery: React.FC = () => {
 
   const handleDeleteImage = (imageId: number) => {
     if (!groupId || !id) return;
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Delete Photo',
-      message: 'Are you sure you want to delete this photo?',
-      onConfirm: async () => {
+    openConfirmDialog(
+      'Delete Photo',
+      'Are you sure you want to delete this photo?',
+      async () => {
         try {
           await animalsApi.deleteImage(Number(groupId), Number(id), imageId);
           showToast('Photo deleted successfully', 'success');
@@ -89,7 +87,7 @@ const PhotoGallery: React.FC = () => {
           showToast('Failed to delete photo', 'error');
         }
       },
-    });
+    );
   };
 
   const handleUpload = async () => {
@@ -540,7 +538,7 @@ const PhotoGallery: React.FC = () => {
         variant="danger"
         confirmLabel="Delete"
         onConfirm={confirmDialog.onConfirm}
-        onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
+        onCancel={closeConfirmDialog}
       />
     </div>
   );
