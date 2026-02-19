@@ -619,4 +619,64 @@ describe('UsersPage', () => {
       expect(screen.queryByRole('button', { name: /unlock account/i })).not.toBeInTheDocument();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Unlock action — click path
+  // ---------------------------------------------------------------------------
+  describe('Unlock account action', () => {
+    const futureTimestamp = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+    const lockedUser = {
+      id: 20,
+      username: 'locked_person',
+      email: 'lp@example.com',
+      is_admin: false,
+      groups: [],
+      locked_until: futureTimestamp,
+      failed_login_attempts: 5,
+    };
+
+    beforeEach(() => {
+      vi.mocked(usersApi.getAll).mockResolvedValue({
+        data: { data: [lockedUser], total: 1, limit: 100, offset: 0, hasMore: false },
+      } as AxiosResponse);
+    });
+
+    it('calls usersApi.unlock and removes the Locked badge on success', async () => {
+      const user = userEvent.setup();
+      vi.mocked(usersApi.unlock).mockResolvedValue({ data: { message: 'unlocked', user: { ...lockedUser, locked_until: null, failed_login_attempts: 0 } } } as AxiosResponse);
+
+      renderUsersPage();
+      await waitFor(() => expect(screen.getByText('locked_person')).toBeInTheDocument());
+
+      expect(screen.getByText('Locked')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /unlock account/i }));
+
+      await waitFor(() => {
+        expect(usersApi.unlock).toHaveBeenCalledWith(lockedUser.id);
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByText('Locked')).not.toBeInTheDocument();
+      });
+    });
+
+    it('shows an error message when usersApi.unlock rejects', async () => {
+      const user = userEvent.setup();
+      vi.mocked(usersApi.unlock).mockRejectedValue({
+        isAxiosError: true,
+        response: { data: { error: 'Unable to unlock account' } },
+      });
+
+      renderUsersPage();
+      await waitFor(() => expect(screen.getByText('locked_person')).toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: /unlock account/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/unable to unlock account/i)).toBeInTheDocument();
+      });
+    });
+  });
 });

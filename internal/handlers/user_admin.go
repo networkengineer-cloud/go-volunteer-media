@@ -1016,22 +1016,22 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 				return
 			}
 
-			// Check that the acting user is a group admin of at least one shared group
-			hasAccess := false
-			for _, targetGroup := range user.Groups {
-				var userGroup models.UserGroup
-				if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
-					currentUserID, targetGroup.ID, true).First(&userGroup).Error; err == nil {
-					hasAccess = true
-					break
-				}
+			// Check that the acting user is a group admin of at least one shared group.
+			// Use a single COUNT with an IN clause to avoid N+1 queries.
+			groupIDs := make([]uint, len(user.Groups))
+			for i, g := range user.Groups {
+				groupIDs[i] = g.ID
 			}
-			if !hasAccess {
+			var sharedGroupCount int64
+			db.WithContext(ctx).Model(&models.UserGroup{}).
+				Where("user_id = ? AND group_id IN ? AND is_group_admin = ?", currentUserID, groupIDs, true).
+				Count(&sharedGroupCount)
+			if sharedGroupCount == 0 {
 				logger.WithFields(map[string]interface{}{
 					"current_user_id": currentUserID,
 					"target_user_id":  userIDParam,
 				}).Warn("Unauthorized attempt to unlock user account")
-				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to unlock accounts"})
+				c.JSON(http.StatusForbidden, gin.H{"error": "You can only unlock accounts of volunteers in your groups"})
 				return
 			}
 		}

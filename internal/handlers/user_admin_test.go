@@ -1491,7 +1491,6 @@ func TestUnlockUserAccount(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		contextUserID  func(adminID, targetID uint) uint
 		isAdmin        bool
 		setupFunc      func(*testing.T, *gorm.DB) (actorID, targetID uint)
 		userIDParam    func(targetID uint) string
@@ -1621,7 +1620,7 @@ func TestUnlockUserAccount(t *testing.T) {
 			checkFunc:      nil,
 		},
 		{
-			name:    "group admin cannot unlock user with no shared group",
+			name:    "group admin cannot unlock user with no groups (no-group early-exit)",
 			isAdmin: false,
 			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
 				groupAdmin := createUserAdminTestUser(t, db, "groupadmin", "ga@test.com", false)
@@ -1630,13 +1629,59 @@ func TestUnlockUserAccount(t *testing.T) {
 				group := &models.Group{Name: "GroupAdminGroup"}
 				db.Create(group)
 				db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true})
-				// target is not in any group with groupAdmin
+				// target is not in any group at all — hits the len(Groups)==0 early-exit branch
 
 				return groupAdmin.ID, target.ID
 			},
 			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
 			expectedStatus: http.StatusForbidden,
 			checkFunc:      nil,
+		},
+		{
+			// Distinct from the no-group case: target has groups, but none are shared with
+			// the acting group admin — exercises the COUNT authorization check.
+			name:    "group admin cannot unlock user whose groups are all unshared",
+			isAdmin: false,
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
+				groupAdmin := createUserAdminTestUser(t, db, "groupadmin", "ga@test.com", false)
+				target := createUserAdminTestUser(t, db, "othergroup_user", "other@test.com", false)
+
+				adminGroup := &models.Group{Name: "AdminGroup"}
+				db.Create(adminGroup)
+				db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: adminGroup.ID, IsGroupAdmin: true})
+
+				otherGroup := &models.Group{Name: "OtherGroup"}
+				db.Create(otherGroup)
+				db.Create(&models.UserGroup{UserID: target.ID, GroupID: otherGroup.ID, IsGroupAdmin: false})
+				db.Model(target).Association("Groups").Append(otherGroup)
+
+				return groupAdmin.ID, target.ID
+			},
+			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
+			expectedStatus: http.StatusForbidden,
+			checkFunc:      nil,
+		},
+		{
+			name:    "unlocking an already-unlocked user is idempotent",
+			isAdmin: true,
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
+				actor := createUserAdminTestUser(t, db, "siteadmin", "sa@test.com", true)
+				target := createUserAdminTestUser(t, db, "normaluser", "normal@test.com", false)
+				// target has no lockout — locked_until is nil, failed_login_attempts is 0
+				return actor.ID, target.ID
+			},
+			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
+			expectedStatus: http.StatusOK,
+			checkFunc: func(t *testing.T, db *gorm.DB, targetID uint) {
+				var u models.User
+				db.First(&u, targetID)
+				if u.LockedUntil != nil {
+					t.Error("Expected LockedUntil to remain nil")
+				}
+				if u.FailedLoginAttempts != 0 {
+					t.Error("Expected FailedLoginAttempts to remain 0")
+				}
+			},
 		},
 	}
 

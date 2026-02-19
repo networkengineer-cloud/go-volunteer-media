@@ -895,7 +895,10 @@ const UsersPage: React.FC = () => {
           <button
             className="user-action-btn"
             style={{background: showDeleted ? 'var(--brand, #0e6c55)' : undefined, color: showDeleted ? '#fff' : undefined}}
-            onClick={() => setShowDeleted(v => !v)}
+            onClick={() => {
+              setShowDeleted(v => !v);
+              setFilterLocked(false); // deleted accounts cannot be locked; clear the filter to avoid empty-list confusion
+            }}
           >
             {showDeleted ? 'Show Active Users' : 'Show Deleted Users'}
           </button>
@@ -1391,12 +1394,12 @@ const UsersPage: React.FC = () => {
                         <div className="user-last-login inactive">Never logged in</div>
                       )}
                       {canManageUsers && isUserLocked(user) && user.locked_until && (
-                        <div className="user-last-login" style={{ color: 'var(--danger, #dc2626)' }} title="Account is temporarily locked due to too many failed login attempts">
+                        <div className="user-last-login user-last-login--danger" title="Account is temporarily locked due to too many failed login attempts">
                           Locked until: {new Date(user.locked_until).toLocaleString()}
                         </div>
                       )}
                       {canManageUsers && !isUserLocked(user) && (user.failed_login_attempts ?? 0) > 0 && (
-                        <div className="user-last-login" style={{ color: 'var(--warning, #d97706)' }} title="Recent failed login attempts — account not yet locked">
+                        <div className="user-last-login user-last-login--warning" title="Recent failed login attempts — account not yet locked">
                           {user.failed_login_attempts} failed login attempt{user.failed_login_attempts === 1 ? '' : 's'}
                         </div>
                       )}

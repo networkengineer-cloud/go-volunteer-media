@@ -991,6 +991,23 @@
   color: white;
 }
 
+/* Lockout status rows in user cards */
+.user-last-login--danger {
+  color: var(--danger, #dc2626);
+}
+
+.user-last-login--warning {
+  color: var(--warning, #d97706);
+}
+
+[data-theme='dark'] .user-last-login--danger {
+  color: var(--danger-400, #f87171);
+}
+
+[data-theme='dark'] .user-last-login--warning {
+  color: var(--warning-400, #fbbf24);
+}
+
 [data-theme="dark"] .badge-admin {
   background: var(--teal);
 }
