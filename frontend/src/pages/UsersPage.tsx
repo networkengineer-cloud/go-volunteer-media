@@ -239,11 +239,11 @@ const UsersPage: React.FC = () => {
   const handleUnlock = async (user: User) => {
     setUnlockingUserId(user.id);
     try {
-      await usersApi.unlock(user.id);
+      const { data } = await usersApi.unlock(user.id);
       // Update local state on success to avoid a full page reload
       setUsers(prev => prev.map(u =>
         u.id === user.id
-          ? { ...u, locked_until: null, failed_login_attempts: 0 }
+          ? { ...u, ...data.user }
           : u
       ));
     } catch (err: unknown) {

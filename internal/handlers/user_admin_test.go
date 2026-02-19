@@ -1555,9 +1555,7 @@ func TestUnlockUserAccount(t *testing.T) {
 			},
 			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
 			expectedStatus: http.StatusBadRequest,
-			checkFunc: func(t *testing.T, db *gorm.DB, _ uint) {
-				// Verify the error body is descriptive
-			},
+			checkFunc: nil,
 		},
 		{
 			name:    "invalid user ID returns 400",
@@ -1580,9 +1578,8 @@ func TestUnlockUserAccount(t *testing.T) {
 				group := &models.Group{Name: "TestGroup"}
 				db.Create(group)
 				db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true})
-				db.Create(&models.UserGroup{UserID: target.ID, GroupID: group.ID, IsGroupAdmin: false})
 
-				// Assign groups via association so Preload picks them up
+				// Assign groups via association so Preload picks them up (also creates user_groups record)
 				db.Model(target).Association("Groups").Append(group)
 
 				db.Model(target).Updates(map[string]interface{}{

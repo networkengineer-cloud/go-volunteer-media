@@ -1023,9 +1023,12 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 				groupIDs[i] = g.ID
 			}
 			var sharedGroupCount int64
-			db.WithContext(ctx).Model(&models.UserGroup{}).
+			if err := db.WithContext(ctx).Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id IN ? AND is_group_admin = ?", currentUserID, groupIDs, true).
-				Count(&sharedGroupCount)
+				Count(&sharedGroupCount).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify group membership"})
+				return
+			}
 			if sharedGroupCount == 0 {
 				logger.WithFields(map[string]interface{}{
 					"current_user_id": currentUserID,

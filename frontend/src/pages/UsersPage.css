@@ -1000,11 +1000,11 @@
   color: var(--warning, #d97706);
 }
 
-[data-theme='dark'] .user-last-login--danger {
+[data-theme="dark"] .user-last-login--danger {
   color: var(--danger-400, #f87171);
 }
 
-[data-theme='dark'] .user-last-login--warning {
+[data-theme="dark"] .user-last-login--warning {
   color: var(--warning-400, #fbbf24);
 }
 
