@@ -368,7 +368,7 @@ const AdminAnimalTagsPage: React.FC = () => {
         }
       },
     );
-  }, [selectedGroupId, fetchAnimalTags]);
+  }, [selectedGroupId, fetchAnimalTags, openConfirmDialog]);
 
   // Comment Tag handlers
   const handleCreateCommentTag = useCallback(async (name: string, color: string) => {
@@ -397,7 +397,7 @@ const AdminAnimalTagsPage: React.FC = () => {
         }
       },
     );
-  }, [selectedGroupId, fetchCommentTags]);
+  }, [selectedGroupId, fetchCommentTags, openConfirmDialog]);
 
   const behaviorTags = animalTags.filter(tag => tag.category === 'behavior');
   const walkerStatusTags = animalTags.filter(tag => tag.category === 'walker_status');

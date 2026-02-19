@@ -55,6 +55,7 @@ export function calculateDaysSince(dateString?: string): number {
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return 0;
   const now = new Date();
-  const diffTime = Math.abs(now.getTime() - date.getTime());
+  const diffTime = now.getTime() - date.getTime();
+  if (diffTime < 0) return 0; // future date
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }

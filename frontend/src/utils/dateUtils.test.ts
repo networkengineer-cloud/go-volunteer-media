@@ -149,5 +149,9 @@ describe('dateUtils', () => {
     it('returns correct days for a past date', () => {
       expect(calculateDaysSince('2024-06-10T12:00:00Z')).toBe(5);
     });
+
+    it('returns 0 for a future date', () => {
+      expect(calculateDaysSince('2024-06-20T12:00:00Z')).toBe(0);
+    });
   });
 });

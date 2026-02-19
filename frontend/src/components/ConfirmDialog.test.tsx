@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -182,7 +182,7 @@ describe('ConfirmDialog', () => {
     it('should not close when dialog content clicked', async () => {
       const handleCancel = vi.fn();
       const user = userEvent.setup();
-      
+
       render(
         <ConfirmDialog
           isOpen={true}
@@ -192,12 +192,93 @@ describe('ConfirmDialog', () => {
           onCancel={handleCancel}
         />
       );
-      
+
       const dialog = document.querySelector('.confirm-dialog');
       if (dialog) {
         await user.click(dialog);
         expect(handleCancel).not.toHaveBeenCalled();
       }
+    });
+
+    it('should show loading state and disable buttons while onConfirm is pending', async () => {
+      let resolveConfirm!: () => void;
+      const pendingConfirm = new Promise<void>((resolve) => { resolveConfirm = resolve; });
+      const handleCancel = vi.fn();
+      const user = userEvent.setup();
+
+      render(
+        <ConfirmDialog
+          isOpen={true}
+          title="Title"
+          message="Message"
+          onConfirm={() => pendingConfirm}
+          onCancel={handleCancel}
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+      // While in flight: button label changes to 'Working…' and both buttons are disabled
+      await waitFor(() => expect(screen.getByRole('button', { name: /working/i })).toBeInTheDocument());
+      expect(screen.getByRole('button', { name: /working/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled();
+      expect(handleCancel).not.toHaveBeenCalled();
+
+      // Resolve the promise — onCancel should then be called
+      act(() => { resolveConfirm(); });
+      await waitFor(() => expect(handleCancel).toHaveBeenCalledTimes(1));
+    });
+
+    it('should not close on backdrop click while onConfirm is pending', async () => {
+      let resolveConfirm!: () => void;
+      const pendingConfirm = new Promise<void>((resolve) => { resolveConfirm = resolve; });
+      const handleCancel = vi.fn();
+      const user = userEvent.setup();
+
+      render(
+        <ConfirmDialog
+          isOpen={true}
+          title="Title"
+          message="Message"
+          onConfirm={() => pendingConfirm}
+          onCancel={handleCancel}
+        />
+      );
+
+      // Start the async confirm
+      await user.click(screen.getByRole('button', { name: /confirm/i }));
+      // Wait for loading state to be active
+      await waitFor(() => expect(screen.getByRole('button', { name: /working/i })).toBeInTheDocument());
+
+      // Clicking the backdrop should be a no-op while loading
+      const backdrop = document.querySelector('.confirm-dialog-backdrop');
+      if (backdrop) {
+        await user.click(backdrop);
+      }
+      expect(handleCancel).not.toHaveBeenCalled();
+
+      act(() => { resolveConfirm(); });
+      await waitFor(() => expect(handleCancel).toHaveBeenCalledTimes(1));
+    });
+
+    it('should call onCancel after async onConfirm resolves', async () => {
+      const handleConfirm = vi.fn().mockResolvedValue(undefined);
+      const handleCancel = vi.fn();
+      const user = userEvent.setup();
+
+      render(
+        <ConfirmDialog
+          isOpen={true}
+          title="Title"
+          message="Message"
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: /confirm/i }));
+      await waitFor(() => expect(handleCancel).toHaveBeenCalledTimes(1));
+      expect(handleConfirm).toHaveBeenCalledTimes(1);
     });
   });
 

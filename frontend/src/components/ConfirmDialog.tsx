@@ -22,32 +22,47 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const [isLoading, setIsLoading] = React.useState(false);
+  const isLoadingRef = React.useRef(false);
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const cancelButtonRef = React.useRef<HTMLButtonElement>(null);
 
+  // Keep ref in sync so the escape handler captures current value without re-registering
+  isLoadingRef.current = isLoading;
+
+  // Reset loading state when dialog opens; register escape key handler
   React.useEffect(() => {
     if (isOpen) {
-      // Focus the cancel button when it opens (safer default)
+      setIsLoading(false);
       cancelButtonRef.current?.focus();
-      
-      // Handle escape key
+
       const handleEscape = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
+        if (e.key === 'Escape' && !isLoadingRef.current) {
           onCancel();
         }
       };
       document.addEventListener('keydown', handleEscape);
-      
+
       return () => document.removeEventListener('keydown', handleEscape);
     }
   }, [isOpen, onCancel]);
 
+  const handleConfirm = async () => {
+    setIsLoading(true);
+    try {
+      await onConfirm();
+    } finally {
+      setIsLoading(false);
+      onCancel();
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="confirm-dialog-backdrop"
-      onClick={onCancel}
+      onClick={isLoading ? undefined : onCancel}
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
@@ -82,20 +97,21 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             </svg>
           )}
         </div>
-        
+
         <h2 id="confirm-dialog-title" className="confirm-dialog__title">
           {title}
         </h2>
-        
+
         <p id="confirm-dialog-message" className="confirm-dialog__message">
           {message}
         </p>
-        
+
         <div className="confirm-dialog__actions">
           <button
             type="button"
             className="btn-secondary"
             onClick={onCancel}
+            disabled={isLoading}
             autoFocus
             ref={cancelButtonRef}
           >
@@ -104,12 +120,11 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <button
             type="button"
             className={`btn-${variant}`}
-            onClick={() => {
-              onConfirm();
-              onCancel();
-            }}
+            onClick={handleConfirm}
+            disabled={isLoading}
+            aria-busy={isLoading}
           >
-            {confirmLabel}
+            {isLoading ? 'Working…' : confirmLabel}
           </button>
         </div>
       </div>
