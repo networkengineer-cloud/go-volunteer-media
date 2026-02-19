@@ -295,6 +295,7 @@ export interface ActivityItem {
   id: number;
   type: 'comment' | 'announcement';
   created_at: string;
+  updated_at?: string;
   user_id: number;
   user?: User;
   content: string;

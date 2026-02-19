@@ -862,6 +862,7 @@ const BulkEditAnimalsPage: React.FC = () => {
       {/* Import Modal */}
       {showImportModal && (
         <Modal
+          isOpen={showImportModal}
           title="Import Animals from CSV"
           onClose={() => {
             setShowImportModal(false);

@@ -132,7 +132,7 @@ const GroupsPage: React.FC = () => {
   // Open modal for creating a new group
   const openCreateModal = () => {
     setEditingGroup(null);
-    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false });
+    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false, groupme_bot_id: '', groupme_enabled: false });
     setModalError(null);
     setShowModal(true);
   };
@@ -212,7 +212,7 @@ const GroupsPage: React.FC = () => {
       fetchGroups();
       closeModal();
     } catch (err: unknown) {
-      setModalError(err.response?.data?.error || 'Failed to save group');
+      setModalError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to save group');
     } finally {
       setModalLoading(false);
     }
@@ -228,7 +228,7 @@ const GroupsPage: React.FC = () => {
       await groupsApi.delete(group.id);
       fetchGroups();
     } catch (err: unknown) {
-      setError(err.response?.data?.error || 'Failed to delete group');
+      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete group');
     }
   };
 
@@ -547,7 +547,7 @@ const GroupsPage: React.FC = () => {
                       toast.showSuccess('Image uploaded successfully!');
                     } catch (err: unknown) {
                       console.error('Upload error:', err);
-                      const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
+                      const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload image. Please try again.';
                       toast.showError(errorMsg);
                     } finally {
                       setModalLoading(false);
@@ -592,7 +592,7 @@ const GroupsPage: React.FC = () => {
                       toast.showSuccess('Hero image uploaded successfully!');
                     } catch (err: unknown) {
                       console.error('Upload error:', err);
-                      const errorMsg = err.response?.data?.error || 'Failed to upload hero image. Please try again.';
+                      const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload hero image. Please try again.';
                       toast.showError(errorMsg);
                     } finally {
                       setModalLoading(false);

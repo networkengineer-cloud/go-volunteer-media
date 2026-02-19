@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { groupsApi, animalsApi } from '../api/client';
-import type { ActivityItem, Animal } from '../api/client';
+import type { ActivityItem, Animal, AnimalComment } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
@@ -322,7 +322,7 @@ const ActivityFeedPage: React.FC = () => {
                   )}
 
                   {activity.type === 'comment' ? (
-                    <SessionCommentDisplay comment={activity as ActivityItem & { type: 'comment' }} />
+                    <SessionCommentDisplay comment={activity as unknown as AnimalComment} />
                   ) : (
                     <p className="activity-text">{activity.content}</p>
                   )}

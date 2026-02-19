@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import Settings from './Settings';
 import { authApi, settingsApi } from '../api/client';
-import { AxiosResponse } from 'axios';
+import type { AxiosResponse } from 'axios';
 import { AuthProvider } from '../contexts/AuthContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import { SiteSettingsProvider } from '../contexts/SiteSettingsContext';

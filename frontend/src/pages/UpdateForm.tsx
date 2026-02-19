@@ -90,7 +90,7 @@ const UpdateForm: React.FC = () => {
       toast.showSuccess('Image uploaded successfully!');
     } catch (err: unknown) {
       console.error('Upload error:', err);
-      const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
+      const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setUploading(false);
@@ -120,13 +120,14 @@ const UpdateForm: React.FC = () => {
           parseInt(groupId),
           formData.title,
           formData.content,
+          false,
           formData.image_url
         );
         toast.showSuccess('Announcement created successfully!');
         navigate(`/groups/${groupId}`);
       }
     } catch (error: unknown) {
-      const errorMsg = error.response?.data?.error || 'Failed to create announcement. Please try again.';
+      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to create announcement. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setLoading(false);

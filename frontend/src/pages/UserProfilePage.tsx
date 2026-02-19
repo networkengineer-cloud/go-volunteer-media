@@ -25,9 +25,10 @@ const UserProfilePage: React.FC = () => {
       setProfile(response.data);
     } catch (error: unknown) {
       console.error('Failed to load user profile:', error);
-      if (error.response?.status === 403) {
+      const errAny = error as { response?: { status?: number } };
+      if (errAny.response?.status === 403) {
         showToast('You do not have permission to view this profile', 'error');
-      } else if (error.response?.status === 404) {
+      } else if (errAny.response?.status === 404) {
         showToast('User not found', 'error');
       } else {
         showToast('Failed to load user profile', 'error');

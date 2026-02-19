@@ -81,3 +81,7 @@ terraform.rc
 crash.log
 crash.*.log
 
+# Claude AI
+.claude/
+CLAUDE.MD
+

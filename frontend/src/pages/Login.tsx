@@ -126,9 +126,10 @@ const Login: React.FC = () => {
       }
     } catch (err: unknown) {
       // Enhanced error handling for account lockout
-      const errorResponse = err.response?.data;
+      const errAny = err as { response?: { data?: { error?: string; locked_until?: string; retry_in_mins?: number; attempts_remaining?: number } } };
+      const errorResponse = errAny.response?.data;
       let errorMessage = '';
-      
+
       if (errorResponse?.locked_until) {
         errorMessage = `${errorResponse.error}. You can try again in ${errorResponse.retry_in_mins} minutes or reset your password.`;
       } else if (errorResponse?.attempts_remaining !== undefined) {
@@ -171,7 +172,7 @@ const Login: React.FC = () => {
         setResetSuccess('');
       }, SUCCESS_MESSAGE_TIMEOUT);
     } catch (err: unknown) {
-      const errorMsg = err.response?.data?.error || 'Failed to send reset email';
+      const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to send reset email';
       setResetError(errorMsg);
       toast.showError(errorMsg);
     } finally {

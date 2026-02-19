@@ -23,7 +23,7 @@ const localStorageMock = {
     return keys[index] || null;
   },
 };
-global.localStorage = localStorageMock as Storage;
+Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true });
 
 // Clear localStorage before each test
 beforeEach(() => {
@@ -51,12 +51,15 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 // Mock IntersectionObserver
-global.IntersectionObserver = class IntersectionObserver {
-  constructor() {}
-  disconnect() {}
-  observe() {}
-  takeRecords() {
-    return [];
-  }
-  unobserve() {}
-} as unknown as typeof IntersectionObserver;
+Object.defineProperty(globalThis, 'IntersectionObserver', {
+  value: class IntersectionObserver {
+    constructor() {}
+    disconnect() {}
+    observe() {}
+    takeRecords() {
+      return [];
+    }
+    unobserve() {}
+  } as unknown as typeof IntersectionObserver,
+  writable: true,
+});

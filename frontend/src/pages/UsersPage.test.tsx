@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
 import UsersPage from './UsersPage';
-import { usersApi, groupsApi, groupAdminApi, statisticsApi } from '../api/client';
+import { usersApi, groupsApi, statisticsApi } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 
 // Mock the API client
@@ -58,6 +58,7 @@ const mockAdminAuth = {
   isAdmin: true,
   isGroupAdmin: false,
   isAuthenticated: true,
+  isLoading: false,
   token: 'admin-token',
   login: vi.fn(),
   logout: vi.fn(),
@@ -69,6 +70,7 @@ const mockRegularAuth = {
   isAdmin: false,
   isGroupAdmin: false,
   isAuthenticated: true,
+  isLoading: false,
   token: 'user-token',
   login: vi.fn(),
   logout: vi.fn(),

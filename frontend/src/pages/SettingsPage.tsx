@@ -80,7 +80,7 @@ const SettingsPage: React.FC = () => {
       if (fileInput) fileInput.value = '';
     } catch (error: unknown) {
       console.error('Failed to save settings:', error);
-      const errorMsg = error.response?.data?.error || 'Failed to upload image. Please try again.';
+      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setSaving(false);

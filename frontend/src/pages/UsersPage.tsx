@@ -1430,7 +1430,7 @@ const UsersPage: React.FC = () => {
                             <button
                               className="action-btn secondary"
                               onClick={() => openGroupModal(user)}
-                              disabled={user.deleted_at}
+                              disabled={!!user.deleted_at}
                             >
                               Manage Groups
                             </button>
@@ -1439,7 +1439,7 @@ const UsersPage: React.FC = () => {
                             <button
                               className="action-btn secondary"
                               onClick={() => openEditModal(user)}
-                              disabled={user.deleted_at}
+                              disabled={!!user.deleted_at}
                             >
                               Edit User
                             </button>
@@ -1471,14 +1471,14 @@ const UsersPage: React.FC = () => {
                               <button
                                 className="action-btn secondary"
                                 onClick={() => handlePromoteDemote(user)}
-                                disabled={user.deleted_at}
+                                disabled={!!user.deleted_at}
                               >
                                 {user.is_admin ? 'Demote Admin' : 'Make Admin'}
                               </button>
                               <button
                                 className="action-btn danger"
                                 onClick={() => handleDelete(user)}
-                                disabled={user.deleted_at}
+                                disabled={!!user.deleted_at}
                               >
                                 Delete
                               </button>
