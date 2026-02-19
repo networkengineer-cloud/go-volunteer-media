@@ -472,7 +472,7 @@ const AnimalForm: React.FC = () => {
         animalId = response.data.id;
       }
 
-      const endDate = calculateQuarantineEndDate(quarantineDate, true);
+      const endDate = calculateQuarantineEndDate(quarantineDate, 'long');
       
       // Create a comment on the animal with behavior tag
       if (animalId && groupId) {
@@ -971,7 +971,7 @@ const AnimalForm: React.FC = () => {
             }}
           />
           <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Quarantine will end: {calculateQuarantineEndDate(quarantineDate, true)}
+            Quarantine will end: {calculateQuarantineEndDate(quarantineDate, 'long')}
           </p>
         </div>
 

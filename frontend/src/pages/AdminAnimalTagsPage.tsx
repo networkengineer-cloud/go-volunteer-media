@@ -259,7 +259,7 @@ const AdminAnimalTagsPage: React.FC = () => {
   // Active section for mobile
   const [activeSection, setActiveSection] = useState<'animal' | 'comment'>('animal');
   const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: () => void;
+    isOpen: boolean; title: string; message: string; onConfirm: () => void | Promise<void>;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Fetch Groups

@@ -158,7 +158,7 @@ const AdminDashboard: React.FC = () => {
                       {user.username}
                       {user.is_admin && <span className="admin-badge">Admin</span>}
                     </div>
-                    <div className="user-meta">{formatRelativeTime(user.created_at)}</div>
+                    <div className="user-meta">{formatRelativeTime(user.created_at, 7)}</div>
                   </div>
                 </Link>
               ))}

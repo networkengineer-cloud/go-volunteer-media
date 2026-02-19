@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { isAxiosError } from 'axios';
 import './UsersPage.css';
 import type { User, Group, UserStatistics, GroupMember } from '../api/client';
 import { usersApi, groupsApi, statisticsApi, groupAdminApi, authApi } from '../api/client';
@@ -65,7 +66,7 @@ const UsersPage: React.FC = () => {
   const [editSuccess, setEditSuccess] = React.useState<string | null>(null);
 
   const [confirmDialog, setConfirmDialog] = React.useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: () => void;
+    isOpen: boolean; title: string; message: string; onConfirm: () => void | Promise<void>;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Timeout refs to prevent race conditions when modals are closed early
@@ -169,7 +170,7 @@ const UsersPage: React.FC = () => {
       
       setLoading(false);
     } catch (err) {
-      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to fetch users');
+      setError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to fetch users' : 'Failed to fetch users');
       setLoading(false);
     }
   }, [isAdmin, currentUser?.groups, showDeleted]);
@@ -336,7 +337,7 @@ const UsersPage: React.FC = () => {
       }
       fetchUsers();
     } catch (err: unknown) {
-      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to update admin status');
+      setError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to update admin status' : 'Failed to update admin status');
     }
   };
 
@@ -351,7 +352,7 @@ const UsersPage: React.FC = () => {
           await usersApi.delete(user.id);
           fetchUsers();
         } catch (err: unknown) {
-          setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete user');
+          setError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to delete user' : 'Failed to delete user');
         }
       },
     });
@@ -363,7 +364,7 @@ const UsersPage: React.FC = () => {
       await usersApi.restore(user.id);
       fetchUsers();
     } catch (err: unknown) {
-      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to restore user');
+      setError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to restore user' : 'Failed to restore user');
     }
   };
 
@@ -389,7 +390,7 @@ const UsersPage: React.FC = () => {
       
       setAllGroups(groupsToShow);
     } catch (err: unknown) {
-      setGroupModalError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to fetch groups');
+      setGroupModalError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to fetch groups' : 'Failed to fetch groups');
     } finally {
       setGroupModalLoading(false);
     }
@@ -468,7 +469,7 @@ const UsersPage: React.FC = () => {
       // Refresh the full user list in the background
       fetchUsers();
     } catch (err: unknown) {
-      setGroupModalError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to update group');
+      setGroupModalError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to update group' : 'Failed to update group');
     }
   };
 
@@ -511,7 +512,7 @@ const UsersPage: React.FC = () => {
         closePasswordResetModal();
       }, 1500);
     } catch (err: unknown) {
-      setResetPasswordError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to reset password');
+      setResetPasswordError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to reset password' : 'Failed to reset password');
     } finally {
       setResetPasswordLoading(false);
     }
@@ -549,7 +550,7 @@ const UsersPage: React.FC = () => {
         closeResendInviteModal();
       }, 2000);
     } catch (err: unknown) {
-      setResendInviteError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to resend invitation');
+      setResendInviteError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to resend invitation' : 'Failed to resend invitation');
     } finally {
       setResendInviteLoading(false);
     }
@@ -617,7 +618,7 @@ const UsersPage: React.FC = () => {
         fetchUsers();
       }, 1500);
     } catch (err: unknown) {
-      setEditError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to update user');
+      setEditError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to update user' : 'Failed to update user');
     } finally {
       setEditLoading(false);
     }

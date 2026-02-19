@@ -10,7 +10,7 @@ export function formatDateLong(dateString?: string): string {
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-export function formatRelativeTime(dateString: string): string {
+export function formatRelativeTime(dateString: string, cutoffDays = 30): string {
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -21,13 +21,13 @@ export function formatRelativeTime(dateString: string): string {
   if (diffMins < 1) return 'Just now';
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 30) return `${diffDays}d ago`;
+  if (diffDays < cutoffDays) return `${diffDays}d ago`;
   return formatDateShort(dateString);
 }
 
 // Calculates the quarantine end date: 10 days after the start date,
 // shifted forward if it falls on a weekend.
-export function calculateQuarantineEndDate(startDateString?: string, long = false): string {
+export function calculateQuarantineEndDate(startDateString?: string, format: 'short' | 'long' = 'short'): string {
   if (!startDateString) return '-';
 
   const startDate = new Date(startDateString);
@@ -38,7 +38,7 @@ export function calculateQuarantineEndDate(startDateString?: string, long = fals
     endDate.setDate(endDate.getDate() + 1);
   }
 
-  return long ? formatDateLong(endDate.toISOString()) : formatDateShort(endDate.toISOString());
+  return format === 'long' ? formatDateLong(endDate.toISOString()) : formatDateShort(endDate.toISOString());
 }
 
 export function calculateDaysSince(dateString?: string): number {

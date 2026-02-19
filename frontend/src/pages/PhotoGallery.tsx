@@ -31,7 +31,7 @@ const PhotoGallery: React.FC = () => {
   const [previewHeight, setPreviewHeight] = useState<number | null>(null);
   const [settingProfile, setSettingProfile] = useState<number | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: () => void;
+    isOpen: boolean; title: string; message: string; onConfirm: () => void | Promise<void>;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   const loadData = useCallback(async (gId: number, animalId: number) => {

@@ -46,7 +46,7 @@ const AnimalDetailPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: () => void;
+    isOpen: boolean; title: string; message: string; onConfirm: () => void | Promise<void>;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
   const [showProtocolModal, setShowProtocolModal] = useState(false);
   const commentsTopRef = useRef<HTMLDivElement>(null);
@@ -470,7 +470,7 @@ const AnimalDetailPage: React.FC = () => {
                     Start: {new Date(animal.quarantine_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                   </p>
                   <p className="quarantine-dates">
-                    End: {calculateQuarantineEndDate(animal.quarantine_start_date, true)}
+                    End: {calculateQuarantineEndDate(animal.quarantine_start_date, 'long')}
                   </p>
                 </div>
               )}
