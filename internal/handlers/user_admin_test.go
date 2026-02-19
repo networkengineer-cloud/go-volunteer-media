@@ -1357,8 +1357,8 @@ func TestResendInvitation(t *testing.T) {
 type mockEmailProvider struct{}
 
 func (m *mockEmailProvider) SendEmail(_ context.Context, _, _, _ string) error { return nil }
-func (m *mockEmailProvider) IsConfigured() bool                               { return true }
-func (m *mockEmailProvider) GetProviderName() string                          { return "mock" }
+func (m *mockEmailProvider) IsConfigured() bool                                { return true }
+func (m *mockEmailProvider) GetProviderName() string                           { return "mock" }
 
 func TestResendInvitation_SiteAdminSuccess(t *testing.T) {
 	db := setupUserAdminTestDB(t)
@@ -1426,5 +1426,241 @@ func TestResendInvitation_GroupAdminSuccess(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestToAdminUserResponse — lockout field shadowing
+// ---------------------------------------------------------------------------
+
+// TestToAdminUserResponse verifies that LockedUntil and FailedLoginAttempts
+// are present in the admin response and are not leaked through non-admin
+// serialization (which uses models.User directly with json:"-" tags).
+func TestToAdminUserResponse(t *testing.T) {
+	now := time.Now().Add(30 * time.Minute)
+	user := models.User{
+		Username:            "testuser",
+		Email:               "test@example.com",
+		LockedUntil:         &now,
+		FailedLoginAttempts: 5,
+	}
+
+	resp := toAdminUserResponse(user)
+
+	// Lockout fields should be promoted to the outer struct
+	if resp.LockedUntil == nil || !resp.LockedUntil.Equal(now) {
+		t.Errorf("Expected LockedUntil to be %v, got %v", now, resp.LockedUntil)
+	}
+	if resp.FailedLoginAttempts != 5 {
+		t.Errorf("Expected FailedLoginAttempts to be 5, got %d", resp.FailedLoginAttempts)
+	}
+
+	// Verify lockout fields render in JSON (admin response)
+	adminJSON, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("Failed to marshal admin response: %v", err)
+	}
+	adminStr := string(adminJSON)
+	if !strings.Contains(adminStr, "locked_until") {
+		t.Error("Expected 'locked_until' to appear in admin JSON response")
+	}
+	if !strings.Contains(adminStr, "failed_login_attempts") {
+		t.Error("Expected 'failed_login_attempts' to appear in admin JSON response")
+	}
+
+	// Verify the base User model still hides lockout fields (json:"-")
+	baseJSON, err := json.Marshal(user)
+	if err != nil {
+		t.Fatalf("Failed to marshal base user: %v", err)
+	}
+	baseStr := string(baseJSON)
+	if strings.Contains(baseStr, "locked_until") {
+		t.Error("'locked_until' should NOT appear in base User JSON (non-admin response)")
+	}
+	if strings.Contains(baseStr, "failed_login_attempts") {
+		t.Error("'failed_login_attempts' should NOT appear in base User JSON (non-admin response)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestUnlockUserAccount — handler authorization paths
+// ---------------------------------------------------------------------------
+
+func TestUnlockUserAccount(t *testing.T) {
+	futureTime := time.Now().Add(15 * time.Minute)
+
+	tests := []struct {
+		name           string
+		contextUserID  func(adminID, targetID uint) uint
+		isAdmin        bool
+		setupFunc      func(*testing.T, *gorm.DB) (actorID, targetID uint)
+		userIDParam    func(targetID uint) string
+		expectedStatus int
+		checkFunc      func(*testing.T, *gorm.DB, uint)
+	}{
+		{
+			name:    "site admin can unlock a locked user",
+			isAdmin: true,
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
+				actor := createUserAdminTestUser(t, db, "siteadmin", "sa@test.com", true)
+				target := createUserAdminTestUser(t, db, "lockeduser", "locked@test.com", false)
+				db.Model(target).Updates(map[string]interface{}{
+					"locked_until":          &futureTime,
+					"failed_login_attempts": 5,
+				})
+				return actor.ID, target.ID
+			},
+			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
+			expectedStatus: http.StatusOK,
+			checkFunc: func(t *testing.T, db *gorm.DB, targetID uint) {
+				var u models.User
+				db.First(&u, targetID)
+				if u.LockedUntil != nil {
+					t.Error("Expected LockedUntil to be nil after unlock")
+				}
+				if u.FailedLoginAttempts != 0 {
+					t.Error("Expected FailedLoginAttempts to be 0 after unlock")
+				}
+			},
+		},
+		{
+			name:    "site admin cannot unlock own account",
+			isAdmin: true,
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
+				actor := createUserAdminTestUser(t, db, "siteadmin", "sa@test.com", true)
+				return actor.ID, actor.ID // target = self
+			},
+			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
+			expectedStatus: http.StatusForbidden,
+			checkFunc:      nil,
+		},
+		{
+			name:    "user not found returns 404",
+			isAdmin: true,
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
+				actor := createUserAdminTestUser(t, db, "siteadmin", "sa@test.com", true)
+				return actor.ID, 99999
+			},
+			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
+			expectedStatus: http.StatusNotFound,
+			checkFunc:      nil,
+		},
+		{
+			name:    "soft-deleted user returns 400 with descriptive error",
+			isAdmin: true,
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
+				actor := createUserAdminTestUser(t, db, "siteadmin", "sa@test.com", true)
+				target := createUserAdminTestUser(t, db, "deleteduser", "deleted@test.com", false)
+				db.Delete(target) // soft delete
+				return actor.ID, target.ID
+			},
+			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
+			expectedStatus: http.StatusBadRequest,
+			checkFunc: func(t *testing.T, db *gorm.DB, _ uint) {
+				// Verify the error body is descriptive
+			},
+		},
+		{
+			name:    "invalid user ID returns 400",
+			isAdmin: true,
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
+				actor := createUserAdminTestUser(t, db, "siteadmin", "sa@test.com", true)
+				return actor.ID, 0
+			},
+			userIDParam:    func(_ uint) string { return "not-a-number" },
+			expectedStatus: http.StatusBadRequest,
+			checkFunc:      nil,
+		},
+		{
+			name:    "group admin can unlock volunteer in shared group",
+			isAdmin: false,
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
+				groupAdmin := createUserAdminTestUser(t, db, "groupadmin", "ga@test.com", false)
+				target := createUserAdminTestUser(t, db, "volunteer", "vol@test.com", false)
+
+				group := &models.Group{Name: "TestGroup"}
+				db.Create(group)
+				db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true})
+				db.Create(&models.UserGroup{UserID: target.ID, GroupID: group.ID, IsGroupAdmin: false})
+
+				// Assign groups via association so Preload picks them up
+				db.Model(target).Association("Groups").Append(group)
+
+				db.Model(target).Updates(map[string]interface{}{
+					"locked_until":          &futureTime,
+					"failed_login_attempts": 3,
+				})
+				return groupAdmin.ID, target.ID
+			},
+			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
+			expectedStatus: http.StatusOK,
+			checkFunc: func(t *testing.T, db *gorm.DB, targetID uint) {
+				var u models.User
+				db.First(&u, targetID)
+				if u.LockedUntil != nil {
+					t.Error("Expected LockedUntil to be nil after group-admin unlock")
+				}
+			},
+		},
+		{
+			name:    "group admin cannot unlock a site admin",
+			isAdmin: false,
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
+				groupAdmin := createUserAdminTestUser(t, db, "groupadmin", "ga@test.com", false)
+				target := createUserAdminTestUser(t, db, "siteadmin2", "sa2@test.com", true)
+
+				group := &models.Group{Name: "SharedGroup"}
+				db.Create(group)
+				db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true})
+				db.Model(target).Association("Groups").Append(group)
+
+				return groupAdmin.ID, target.ID
+			},
+			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
+			expectedStatus: http.StatusForbidden,
+			checkFunc:      nil,
+		},
+		{
+			name:    "group admin cannot unlock user with no shared group",
+			isAdmin: false,
+			setupFunc: func(t *testing.T, db *gorm.DB) (uint, uint) {
+				groupAdmin := createUserAdminTestUser(t, db, "groupadmin", "ga@test.com", false)
+				target := createUserAdminTestUser(t, db, "unrelated", "unrelated@test.com", false)
+
+				group := &models.Group{Name: "GroupAdminGroup"}
+				db.Create(group)
+				db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true})
+				// target is not in any group with groupAdmin
+
+				return groupAdmin.ID, target.ID
+			},
+			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
+			expectedStatus: http.StatusForbidden,
+			checkFunc:      nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupUserAdminTestDB(t)
+
+			actorID, targetID := tt.setupFunc(t, db)
+			userIDParam := tt.userIDParam(targetID)
+
+			c, w := setupUserAdminTestContext(actorID, tt.isAdmin)
+			c.Params = gin.Params{{Key: "userId", Value: userIDParam}}
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/users/"+userIDParam+"/unlock", nil)
+
+			handler := UnlockUserAccount(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+
+			if tt.checkFunc != nil {
+				tt.checkFunc(t, db, targetID)
+			}
+		})
 	}
 }

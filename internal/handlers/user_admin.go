@@ -18,7 +18,6 @@ import (
 	"gorm.io/gorm"
 )
 
-
 // adminUserResponse wraps User to expose admin-only fields that are hidden
 // on the base model to prevent leaking through embedded User objects in
 // non-admin API responses (e.g. comment authors, announcement authors).
@@ -28,8 +27,8 @@ type adminUserResponse struct {
 	LastLogin             *time.Time `json:"last_login,omitempty"`
 	// Lockout fields shadow the json:"-" fields on models.User so they appear
 	// only in admin-scoped responses.
-	LockedUntil          *time.Time `json:"locked_until,omitempty"`
-	FailedLoginAttempts  int        `json:"failed_login_attempts"`
+	LockedUntil         *time.Time `json:"locked_until,omitempty"`
+	FailedLoginAttempts int        `json:"failed_login_attempts"`
 }
 
 // toAdminUserResponse copies admin-only fields into the outer struct to
@@ -980,14 +979,19 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Load target user with groups for authz checks
+		// Load target user with groups for authz checks.
+		// Use Unscoped so we can distinguish a deleted user from a never-existing one.
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIDInt).Error; err != nil {
+		if err := db.WithContext(ctx).Unscoped().Preload("Groups").First(&user, userIDInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
 			}
+			return
+		}
+		if user.DeletedAt.Valid {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot unlock a deleted account"})
 			return
 		}
 
@@ -1046,8 +1050,8 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 		// Audit log
 		logging.LogAccountUnlocked(ctx, user.ID, user.Username, currentUserID, c.ClientIP())
 		logger.WithFields(map[string]interface{}{
-			"target_user_id":  user.ID,
-			"unlocked_by":     currentUserID,
+			"target_user_id": user.ID,
+			"unlocked_by":    currentUserID,
 		}).Info("Account unlocked successfully")
 
 		c.JSON(http.StatusOK, gin.H{

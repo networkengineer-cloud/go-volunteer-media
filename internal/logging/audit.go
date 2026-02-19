@@ -109,10 +109,10 @@ func (al *AuditLogger) LogAccountLocked(ctx context.Context, userID uint, userna
 // LogAccountUnlocked logs when an admin manually unlocks a user account
 func (al *AuditLogger) LogAccountUnlocked(ctx context.Context, targetUserID uint, targetUsername string, adminID uint, ip string) {
 	al.Log(ctx, AuditEventAccountUnlocked, map[string]interface{}{
-		"target_user_id":   targetUserID,
-		"target_username":  targetUsername,
-		"admin_id":         adminID,
-		"ip":               ip,
+		"target_user_id":  targetUserID,
+		"target_username": targetUsername,
+		"admin_id":        adminID,
+		"ip":              ip,
 	})
 }
 

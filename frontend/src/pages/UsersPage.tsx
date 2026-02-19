@@ -240,7 +240,7 @@ const UsersPage: React.FC = () => {
     setUnlockingUserId(user.id);
     try {
       await usersApi.unlock(user.id);
-      // Optimistically clear lockout state in the local list
+      // Update local state on success to avoid a full page reload
       setUsers(prev => prev.map(u =>
         u.id === user.id
           ? { ...u, locked_until: null, failed_login_attempts: 0 }
@@ -900,8 +900,7 @@ const UsersPage: React.FC = () => {
             {showDeleted ? 'Show Active Users' : 'Show Deleted Users'}
           </button>
           <button
-            className="user-action-btn"
-            style={{background: filterLocked ? '#b91c1c' : undefined, color: filterLocked ? '#fff' : undefined}}
+            className={`user-action-btn${filterLocked ? ' user-action-btn--active' : ''}`}
             onClick={() => setFilterLocked(v => !v)}
             title="Show only users with locked accounts"
           >
@@ -1518,7 +1517,7 @@ const UsersPage: React.FC = () => {
                                   Reset Password
                                 </button>
                               )}
-                              {isUserLocked(user) && (
+                              {canManageUsers && isUserLocked(user) && (
                                 <button
                                   className="action-btn danger"
                                   onClick={() => handleUnlock(user)}

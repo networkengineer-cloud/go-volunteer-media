@@ -401,6 +401,18 @@
   color: white;
 }
 
+.user-action-btn--active {
+  background: #b91c1c;
+  color: white;
+  border-color: #b91c1c;
+}
+
+.user-action-btn--active:hover:not(:disabled) {
+  background: #991b1b;
+  color: white;
+  border-color: #991b1b;
+}
+
 .user-actions {
   display: flex;
   gap: 0.5rem;
