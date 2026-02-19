@@ -1,17 +1,20 @@
 export function formatDateShort(dateString?: string): string {
   if (!dateString) return '-';
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '-';
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function formatDateLong(dateString?: string): string {
   if (!dateString) return '-';
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '-';
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 export function formatRelativeTime(dateString: string, cutoffDays = 30): string {
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '-';
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
 
@@ -34,6 +37,7 @@ export function calculateQuarantineEndDate(startDateString?: string, format: 'sh
   if (!startDateString) return '-';
 
   const startDate = new Date(startDateString);
+  if (isNaN(startDate.getTime())) return '-';
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + 10);
 
@@ -49,6 +53,7 @@ export function calculateQuarantineEndDate(startDateString?: string, format: 'sh
 export function calculateDaysSince(dateString?: string): number {
   if (!dateString) return 0;
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 0;
   const now = new Date();
   const diffTime = Math.abs(now.getTime() - date.getTime());
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));

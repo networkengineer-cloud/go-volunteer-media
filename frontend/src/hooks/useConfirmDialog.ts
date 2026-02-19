@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 
 interface ConfirmDialogState {
   isOpen: boolean;
@@ -12,13 +12,13 @@ const CLOSED: ConfirmDialogState = { isOpen: false, title: '', message: '', onCo
 export function useConfirmDialog() {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(CLOSED);
 
-  const openConfirmDialog = (
+  const openConfirmDialog = useCallback((
     title: string,
     message: string,
     onConfirm: () => void | Promise<void>,
-  ) => setConfirmDialog({ isOpen: true, title, message, onConfirm });
+  ) => setConfirmDialog({ isOpen: true, title, message, onConfirm }), []);
 
-  const closeConfirmDialog = () => setConfirmDialog(d => ({ ...d, isOpen: false }));
+  const closeConfirmDialog = useCallback(() => setConfirmDialog(CLOSED), []);
 
   return { confirmDialog, openConfirmDialog, closeConfirmDialog };
 }
