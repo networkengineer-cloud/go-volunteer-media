@@ -12,11 +12,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
-
 
 // adminUserResponse wraps User to expose admin-only fields that are hidden
 // on the base model to prevent leaking through embedded User objects in
@@ -25,6 +25,10 @@ type adminUserResponse struct {
 	models.User
 	RequiresPasswordSetup bool       `json:"requires_password_setup"`
 	LastLogin             *time.Time `json:"last_login,omitempty"`
+	// Lockout fields shadow the json:"-" fields on models.User so they appear
+	// only in admin-scoped responses.
+	LockedUntil         *time.Time `json:"locked_until,omitempty"`
+	FailedLoginAttempts int        `json:"failed_login_attempts"`
 }
 
 // toAdminUserResponse copies admin-only fields into the outer struct to
@@ -35,6 +39,8 @@ func toAdminUserResponse(u models.User) adminUserResponse {
 		User:                  u,
 		RequiresPasswordSetup: u.RequiresPasswordSetup,
 		LastLogin:             u.LastLogin,
+		LockedUntil:           u.LockedUntil,
+		FailedLoginAttempts:   u.FailedLoginAttempts,
 	}
 }
 
@@ -934,6 +940,126 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 
 		c.JSON(http.StatusOK, gin.H{
 			"message": fmt.Sprintf("Invitation email has been resent to %s. The link will expire in %d days.", user.Email, int(SetupTokenExpiry.Hours()/24)),
+		})
+	}
+}
+
+// UnlockUserAccount clears the account lockout for a user (site admins and group admins).
+// Group admins may only unlock regular volunteers in their groups; they cannot unlock
+// site admins or other group admins.
+func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
+		userIDParam := c.Param("userId")
+
+		// Parse and validate userId
+		userIDInt, err := strconv.ParseUint(userIDParam, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
+
+		// Get current (acting) user ID from auth context
+		currentUserIDRaw, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		currentUserID, ok := currentUserIDRaw.(uint)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		// Prevent self-unlock — a locked user wouldn't have a valid session, but block
+		// explicitly to avoid any edge case with long-lived tokens.
+		if currentUserID == uint(userIDInt) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You cannot unlock your own account"})
+			return
+		}
+
+		// Load target user with groups for authz checks.
+		// Use Unscoped so we can distinguish a deleted user from a never-existing one.
+		var user models.User
+		if err := db.WithContext(ctx).Unscoped().Preload("Groups").First(&user, userIDInt).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
+			}
+			return
+		}
+		if user.DeletedAt.Valid {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot unlock a deleted account"})
+			return
+		}
+
+		// Authorization
+		if !middleware.IsSiteAdmin(c) {
+			// Group admins cannot unlock site admins or other group admins
+			if isTargetUserAdmin(ctx, db, &user) {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_user_id":  userIDParam,
+				}).Warn("Group admin attempted to unlock admin/group-admin account")
+				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins can only unlock regular volunteers"})
+				return
+			}
+
+			if len(user.Groups) == 0 {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_user_id":  userIDParam,
+				}).Warn("Group admin attempted to unlock user with no groups")
+				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot unlock users with no group assignments. Please contact a site administrator."})
+				return
+			}
+
+			// Check that the acting user is a group admin of at least one shared group.
+			// Use a single COUNT with an IN clause to avoid N+1 queries.
+			groupIDs := make([]uint, len(user.Groups))
+			for i, g := range user.Groups {
+				groupIDs[i] = g.ID
+			}
+			var sharedGroupCount int64
+			if err := db.WithContext(ctx).Model(&models.UserGroup{}).
+				Where("user_id = ? AND group_id IN ? AND is_group_admin = ?", currentUserID, groupIDs, true).
+				Count(&sharedGroupCount).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify group membership"})
+				return
+			}
+			if sharedGroupCount == 0 {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"target_user_id":  userIDParam,
+				}).Warn("Unauthorized attempt to unlock user account")
+				c.JSON(http.StatusForbidden, gin.H{"error": "You can only unlock accounts of volunteers in your groups"})
+				return
+			}
+		}
+
+		// Clear the lockout fields
+		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+			"locked_until":          nil,
+			"failed_login_attempts": 0,
+		}).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unlock account"})
+			return
+		}
+		user.LockedUntil = nil
+		user.FailedLoginAttempts = 0
+
+		// Audit log
+		logging.LogAccountUnlocked(ctx, user.ID, user.Username, currentUserID, c.ClientIP())
+		logger.WithFields(map[string]interface{}{
+			"target_user_id": user.ID,
+			"unlocked_by":    currentUserID,
+		}).Info("Account unlocked successfully")
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("Account for %s has been unlocked", user.Username),
+			"user":    toAdminUserResponse(user),
 		})
 	}
 }

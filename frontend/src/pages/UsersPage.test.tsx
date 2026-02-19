@@ -18,8 +18,10 @@ vi.mock('../api/client', () => ({
     getDeleted: vi.fn(),
     restore: vi.fn(),
     resetPassword: vi.fn(),
+    resendInvitation: vi.fn(),
     assignGroup: vi.fn(),
     removeGroup: vi.fn(),
+    unlock: vi.fn(),
   },
   groupsApi: {
     getAll: vi.fn(),
@@ -532,6 +534,148 @@ describe('UsersPage', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/username or email already exists/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Account lockout display — isUserLocked edge cases
+  // ---------------------------------------------------------------------------
+  describe('Account lockout display', () => {
+    const futureTimestamp = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min from now
+    const pastTimestamp = new Date(Date.now() - 30 * 60 * 1000).toISOString();   // 30 min ago
+
+    it('shows Locked badge for a user whose locked_until is in the future', async () => {
+      vi.mocked(usersApi.getAll).mockResolvedValue({
+        data: {
+          data: [{ id: 10, username: 'locked_user', email: 'locked@example.com', is_admin: false, groups: [], locked_until: futureTimestamp, failed_login_attempts: 5 }],
+          total: 1, limit: 100, offset: 0, hasMore: false,
+        },
+      } as AxiosResponse);
+
+      renderUsersPage();
+      await waitFor(() => expect(screen.getByText('locked_user')).toBeInTheDocument());
+
+      expect(screen.getByText('Locked')).toBeInTheDocument();
+    });
+
+    it('does not show Locked badge when locked_until is in the past', async () => {
+      vi.mocked(usersApi.getAll).mockResolvedValue({
+        data: {
+          data: [{ id: 11, username: 'prev_locked', email: 'prev@example.com', is_admin: false, groups: [], locked_until: pastTimestamp, failed_login_attempts: 0 }],
+          total: 1, limit: 100, offset: 0, hasMore: false,
+        },
+      } as AxiosResponse);
+
+      renderUsersPage();
+      await waitFor(() => expect(screen.getByText('prev_locked')).toBeInTheDocument());
+
+      expect(screen.queryByText('Locked')).not.toBeInTheDocument();
+    });
+
+    it('does not show Locked badge when locked_until is null', async () => {
+      vi.mocked(usersApi.getAll).mockResolvedValue({
+        data: {
+          data: [{ id: 12, username: 'unlocked_user', email: 'unl@example.com', is_admin: false, groups: [], locked_until: null, failed_login_attempts: 0 }],
+          total: 1, limit: 100, offset: 0, hasMore: false,
+        },
+      } as AxiosResponse);
+
+      renderUsersPage();
+      await waitFor(() => expect(screen.getByText('unlocked_user')).toBeInTheDocument());
+
+      expect(screen.queryByText('Locked')).not.toBeInTheDocument();
+    });
+
+    it('does not show Locked badge for a locked user when the viewer is non-admin', async () => {
+      vi.mocked(useAuth).mockReturnValue(mockRegularAuth);
+      // Non-admins with no groups see an empty list; locked badge is never rendered
+      renderUsersPage();
+      await waitFor(() => expect(screen.getByRole('heading', { name: /team members/i })).toBeInTheDocument());
+
+      expect(screen.queryByText('Locked')).not.toBeInTheDocument();
+    });
+
+    it('shows Unlock Account button for admin viewing a locked user', async () => {
+      vi.mocked(usersApi.getAll).mockResolvedValue({
+        data: {
+          data: [{ id: 14, username: 'btn_locked', email: 'btnl@example.com', is_admin: false, groups: [], locked_until: futureTimestamp, failed_login_attempts: 3 }],
+          total: 1, limit: 100, offset: 0, hasMore: false,
+        },
+      } as AxiosResponse);
+
+      renderUsersPage();
+      await waitFor(() => expect(screen.getByText('btn_locked')).toBeInTheDocument());
+
+      expect(screen.getByRole('button', { name: /unlock account/i })).toBeInTheDocument();
+    });
+
+    it('does not show Unlock Account button when viewer is non-admin', async () => {
+      vi.mocked(useAuth).mockReturnValue(mockRegularAuth);
+      // Non-admins with no groups see an empty list; Unlock Account button is never rendered
+      renderUsersPage();
+      await waitFor(() => expect(screen.getByRole('heading', { name: /team members/i })).toBeInTheDocument());
+
+      expect(screen.queryByRole('button', { name: /unlock account/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Unlock action — click path
+  // ---------------------------------------------------------------------------
+  describe('Unlock account action', () => {
+    const futureTimestamp = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+    const lockedUser = {
+      id: 20,
+      username: 'locked_person',
+      email: 'lp@example.com',
+      is_admin: false,
+      groups: [],
+      locked_until: futureTimestamp,
+      failed_login_attempts: 5,
+    };
+
+    beforeEach(() => {
+      vi.mocked(usersApi.getAll).mockResolvedValue({
+        data: { data: [lockedUser], total: 1, limit: 100, offset: 0, hasMore: false },
+      } as AxiosResponse);
+    });
+
+    it('calls usersApi.unlock and removes the Locked badge on success', async () => {
+      const user = userEvent.setup();
+      vi.mocked(usersApi.unlock).mockResolvedValue({ data: { message: 'unlocked', user: { ...lockedUser, locked_until: null, failed_login_attempts: 0 } } } as AxiosResponse);
+
+      renderUsersPage();
+      await waitFor(() => expect(screen.getByText('locked_person')).toBeInTheDocument());
+
+      expect(screen.getByText('Locked')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /unlock account/i }));
+
+      await waitFor(() => {
+        expect(usersApi.unlock).toHaveBeenCalledWith(lockedUser.id);
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByText('Locked')).not.toBeInTheDocument();
+      });
+    });
+
+    it('shows an error message when usersApi.unlock rejects', async () => {
+      const user = userEvent.setup();
+      vi.mocked(usersApi.unlock).mockRejectedValue({
+        isAxiosError: true,
+        response: { data: { error: 'Unable to unlock account' } },
+      });
+
+      renderUsersPage();
+      await waitFor(() => expect(screen.getByText('locked_person')).toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: /unlock account/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/unable to unlock account/i)).toBeInTheDocument();
       });
     });
   });

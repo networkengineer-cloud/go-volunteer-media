@@ -28,8 +28,12 @@ const UsersPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [filterGroup, setFilterGroup] = React.useState<number | 'all'>('all');
   const [filterAdmin, setFilterAdmin] = React.useState<'all' | 'admin' | 'user'>('all');
+  const [filterLocked, setFilterLocked] = React.useState(false);
   const [sortBy, setSortBy] = React.useState<SortBy>('name');
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
+
+  // Unlock state
+  const [unlockingUserId, setUnlockingUserId] = React.useState<number | null>(null);
 
   // Group admin management state
   const [groupMembers, setGroupMembers] = React.useState<Map<number, GroupMember[]>>(new Map());
@@ -225,6 +229,30 @@ const UsersPage: React.FC = () => {
     }
   };
 
+  // Returns true if the user's account is currently locked
+  const isUserLocked = (user: User): boolean => {
+    if (!user.locked_until) return false;
+    return new Date(user.locked_until) > new Date();
+  };
+
+  // Unlock an account
+  const handleUnlock = async (user: User) => {
+    setUnlockingUserId(user.id);
+    try {
+      const { data } = await usersApi.unlock(user.id);
+      // Update local state on success to avoid a full page reload
+      setUsers(prev => prev.map(u =>
+        u.id === user.id
+          ? { ...u, ...data.user }
+          : u
+      ));
+    } catch (err: unknown) {
+      setError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to unlock account' : 'Failed to unlock account');
+    } finally {
+      setUnlockingUserId(null);
+    }
+  };
+
   // Check if a user is a group admin for a specific group
   const isUserGroupAdmin = (userId: number, groupId: number): boolean => {
     const members = groupMembers.get(groupId);
@@ -284,6 +312,14 @@ const UsersPage: React.FC = () => {
       );
     }
 
+    // Apply locked filter
+    if (filterLocked) {
+      const now = new Date();
+      filtered = filtered.filter(user =>
+        !!user.locked_until && new Date(user.locked_until) > now
+      );
+    }
+
     // Apply sorting
     filtered.sort((a, b) => {
       let comparison = 0;
@@ -324,7 +360,7 @@ const UsersPage: React.FC = () => {
     });
 
     setFilteredUsers(filtered);
-  }, [users, searchQuery, filterGroup, filterAdmin, sortBy, sortOrder, statistics]);
+  }, [users, searchQuery, filterGroup, filterAdmin, filterLocked, sortBy, sortOrder, statistics]);
 
   // Admin actions
   const handlePromoteDemote = async (user: User) => {
@@ -859,9 +895,19 @@ const UsersPage: React.FC = () => {
           <button
             className="user-action-btn"
             style={{background: showDeleted ? 'var(--brand, #0e6c55)' : undefined, color: showDeleted ? '#fff' : undefined}}
-            onClick={() => setShowDeleted(v => !v)}
+            onClick={() => {
+              setShowDeleted(v => !v);
+              setFilterLocked(false); // deleted accounts cannot be locked; clear the filter to avoid empty-list confusion
+            }}
           >
             {showDeleted ? 'Show Active Users' : 'Show Deleted Users'}
+          </button>
+          <button
+            className={`user-action-btn${filterLocked ? ' user-action-btn--active' : ''}`}
+            onClick={() => setFilterLocked(v => !v)}
+            title="Show only users with locked accounts"
+          >
+            {filterLocked ? 'All Users' : 'Locked Accounts'}
           </button>
         </div>
       )}
@@ -1331,6 +1377,7 @@ const UsersPage: React.FC = () => {
                         </Link>
                         {user.is_admin && <span className="badge badge-admin">Admin</span>}
                         {user.deleted_at && <span className="badge badge-deleted">Deleted</span>}
+                        {canManageUsers && isUserLocked(user) && <span className="badge badge-locked">Locked</span>}
                       </div>
                       {(user.first_name || user.last_name) && (
                         <div className="user-fullname">
@@ -1345,6 +1392,16 @@ const UsersPage: React.FC = () => {
                       )}
                       {canManageUsers && !user.last_login && !user.deleted_at && !user.requires_password_setup && (
                         <div className="user-last-login inactive">Never logged in</div>
+                      )}
+                      {canManageUsers && isUserLocked(user) && user.locked_until && (
+                        <div className="user-last-login user-last-login--danger" title="Account is temporarily locked due to too many failed login attempts">
+                          Locked until: {new Date(user.locked_until).toLocaleString()}
+                        </div>
+                      )}
+                      {canManageUsers && !isUserLocked(user) && (user.failed_login_attempts ?? 0) > 0 && (
+                        <div className="user-last-login user-last-login--warning" title="Recent failed login attempts — account not yet locked">
+                          {user.failed_login_attempts} failed login attempt{user.failed_login_attempts === 1 ? '' : 's'}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1461,6 +1518,16 @@ const UsersPage: React.FC = () => {
                                   disabled={!!user.deleted_at}
                                 >
                                   Reset Password
+                                </button>
+                              )}
+                              {canManageUsers && isUserLocked(user) && (
+                                <button
+                                  className="action-btn danger"
+                                  onClick={() => handleUnlock(user)}
+                                  disabled={unlockingUserId === user.id || !!user.deleted_at}
+                                  title="Clear the account lockout so the user can log in again"
+                                >
+                                  {unlockingUserId === user.id ? 'Unlocking…' : 'Unlock Account'}
                                 </button>
                               )}
                             </>
