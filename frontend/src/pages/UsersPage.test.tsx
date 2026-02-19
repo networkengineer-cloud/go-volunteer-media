@@ -111,7 +111,7 @@ describe('UsersPage', () => {
 
   const waitForLoad = () =>
     waitFor(() => {
-      expect(screen.queryByText(/loading users/i)).not.toBeInTheDocument();
+      expect(screen.queryAllByRole('status')).toHaveLength(0);
     });
 
   // ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ describe('UsersPage', () => {
     it('shows loading indicator while fetching users', () => {
       vi.mocked(usersApi.getAll).mockImplementation(() => new Promise(() => {}));
       renderUsersPage();
-      expect(screen.getByText(/loading users/i)).toBeInTheDocument();
+      expect(screen.getAllByRole('status').length).toBeGreaterThan(0);
     });
   });
 

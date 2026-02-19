@@ -4,6 +4,11 @@ import './GroupsPage.css';
 import type { Group, Animal, GroupStatistics } from '../api/client';
 import { groupsApi, animalsApi, statisticsApi } from '../api/client';
 import { useToast } from '../hooks/useToast';
+import { formatRelativeTime } from '../utils/dateUtils';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 const GroupsPage: React.FC = () => {
   const toast = useToast();
@@ -33,6 +38,7 @@ const GroupsPage: React.FC = () => {
   });
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
+  const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
   const [availableAnimals, setAvailableAnimals] = React.useState<Animal[]>([]);
   const [showAnimalSelector, setShowAnimalSelector] = React.useState(false);
 
@@ -219,17 +225,19 @@ const GroupsPage: React.FC = () => {
   };
 
   // Delete group
-  const handleDelete = async (group: Group) => {
-    if (!window.confirm(`Delete group "${group.name}"? This cannot be undone and will affect all associated data.`)) {
-      return;
-    }
-
-    try {
-      await groupsApi.delete(group.id);
-      fetchGroups();
-    } catch (err: unknown) {
-      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete group');
-    }
+  const handleDelete = (group: Group) => {
+    openConfirmDialog(
+      'Delete Group',
+      `Delete group "${group.name}"? This cannot be undone and will affect all associated data.`,
+      async () => {
+        try {
+          await groupsApi.delete(group.id);
+          fetchGroups();
+        } catch (err: unknown) {
+          setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete group');
+        }
+      },
+    );
   };
 
   return (
@@ -315,7 +323,7 @@ const GroupsPage: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="groups-loading">Loading groups…</div>
+        <SkeletonLoader variant="rectangular" height="60px" count={4} />
       ) : error ? (
         <div className="groups-error">{error}</div>
       ) : filteredGroups.length === 0 ? (
@@ -429,259 +437,251 @@ const GroupsPage: React.FC = () => {
       )}
 
       {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="group-modal-backdrop" onClick={closeModal}>
-          <div className="group-modal" onClick={e => e.stopPropagation()}>
-            <h2>{editingGroup ? 'Edit Group' : 'Create New Group'}</h2>
-            <form onSubmit={handleModalSubmit}>
-              <div className="form-group">
-                <label htmlFor="name">
-                  Name <span className="required">*</span>
-                </label>
+      <Modal
+        isOpen={showModal}
+        onClose={closeModal}
+        title={editingGroup ? 'Edit Group' : 'Create New Group'}
+        size="medium"
+      >
+        <form onSubmit={handleModalSubmit}>
+          <div className="form-group">
+            <label htmlFor="name">
+              Name <span className="required">*</span>
+            </label>
+            <input
+              id="name"
+              name="name"
+              type="text"
+              value={modalData.name}
+              onChange={handleModalChange}
+              required
+              minLength={2}
+              maxLength={100}
+              placeholder="Enter group name"
+              autoFocus
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="description">Description</label>
+            <textarea
+              id="description"
+              name="description"
+              value={modalData.description}
+              onChange={handleModalChange}
+              maxLength={500}
+              placeholder="Enter group description (optional)"
+              rows={4}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="has_protocols" className="group-modal-checkbox-label">
+              <input
+                id="has_protocols"
+                name="has_protocols"
+                type="checkbox"
+                checked={modalData.has_protocols}
+                onChange={(e) => setModalData(d => ({ ...d, has_protocols: e.target.checked }))}
+              />
+              <span>Enable Protocols for this group</span>
+            </label>
+            <small className="group-modal-hint">
+              Protocols allow you to document standardized procedures and workflows for this group.
+            </small>
+          </div>
+
+          {/* GroupMe Integration Section */}
+          <div className="form-group group-modal-section-divider">
+            <h4 className="group-modal-section-heading">GroupMe Integration</h4>
+            <label htmlFor="groupme_enabled" className="group-modal-checkbox-label group-modal-checkbox-label--spaced">
+              <input
+                id="groupme_enabled"
+                name="groupme_enabled"
+                type="checkbox"
+                checked={modalData.groupme_enabled}
+                onChange={(e) => setModalData(d => ({ ...d, groupme_enabled: e.target.checked }))}
+              />
+              <span>Enable GroupMe integration for this group</span>
+            </label>
+            <small className="group-modal-hint">
+              Allow announcements to be automatically sent to this group's GroupMe chat.
+            </small>
+
+            {modalData.groupme_enabled && (
+              <div className="group-modal-nested-field">
+                <label htmlFor="groupme_bot_id">GroupMe Bot ID</label>
                 <input
-                  id="name"
-                  name="name"
+                  id="groupme_bot_id"
+                  name="groupme_bot_id"
                   type="text"
-                  value={modalData.name}
+                  value={modalData.groupme_bot_id}
                   onChange={handleModalChange}
-                  required
-                  minLength={2}
-                  maxLength={100}
-                  placeholder="Enter group name"
-                  autoFocus
+                  placeholder="Enter your GroupMe Bot ID"
+                  required={modalData.groupme_enabled}
+                  className="group-modal-nested-input"
                 />
-              </div>
-              <div className="form-group">
-                <label htmlFor="description">Description</label>
-                <textarea
-                  id="description"
-                  name="description"
-                  value={modalData.description}
-                  onChange={handleModalChange}
-                  maxLength={500}
-                  placeholder="Enter group description (optional)"
-                  rows={4}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="has_protocols" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    id="has_protocols"
-                    name="has_protocols"
-                    type="checkbox"
-                    checked={modalData.has_protocols}
-                    onChange={(e) => setModalData(d => ({ ...d, has_protocols: e.target.checked }))}
-                    style={{ width: 'auto', cursor: 'pointer' }}
-                  />
-                  <span>Enable Protocols for this group</span>
-                </label>
-                <small style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block', marginLeft: '1.75rem' }}>
-                  Protocols allow you to document standardized procedures and workflows for this group.
+                <small className="group-modal-hint group-modal-hint--no-indent">
+                  Create a bot at <a href="https://dev.groupme.com/bots" target="_blank" rel="noopener noreferrer" className="group-modal-link">dev.groupme.com/bots</a> and paste the Bot ID here.
                 </small>
               </div>
+            )}
+          </div>
 
-              {/* GroupMe Integration Section */}
-              <div className="form-group" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
-                <h4 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>GroupMe Integration</h4>
-                <label htmlFor="groupme_enabled" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '1rem' }}>
-                  <input
-                    id="groupme_enabled"
-                    name="groupme_enabled"
-                    type="checkbox"
-                    checked={modalData.groupme_enabled}
-                    onChange={(e) => setModalData(d => ({ ...d, groupme_enabled: e.target.checked }))}
-                    style={{ width: 'auto', cursor: 'pointer' }}
-                  />
-                  <span>Enable GroupMe integration for this group</span>
-                </label>
-                <small style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem', display: 'block', marginLeft: '1.75rem' }}>
-                  Allow announcements to be automatically sent to this group's GroupMe chat.
-                </small>
+          <div className="form-group">
+            <label htmlFor="image_upload">Group Card Image</label>
+            <input
+              id="image_upload"
+              type="file"
+              accept=".jpg,.jpeg,.png,.gif"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
                 
-                {modalData.groupme_enabled && (
-                  <div style={{ marginLeft: '1.75rem', marginTop: '1rem' }}>
-                    <label htmlFor="groupme_bot_id">GroupMe Bot ID</label>
-                    <input
-                      id="groupme_bot_id"
-                      name="groupme_bot_id"
-                      type="text"
-                      value={modalData.groupme_bot_id}
-                      onChange={handleModalChange}
-                      placeholder="Enter your GroupMe Bot ID"
-                      required={modalData.groupme_enabled}
-                      style={{ marginTop: '0.5rem' }}
-                    />
-                    <small style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.5rem', display: 'block' }}>
-                      Create a bot at <a href="https://dev.groupme.com/bots" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>dev.groupme.com/bots</a> and paste the Bot ID here.
-                    </small>
-                  </div>
-                )}
+                // Validate file type
+                if (!file.type.startsWith('image/')) {
+                  toast.showError('Please select an image file (JPG, PNG, or GIF)');
+                  return;
+                }
+                
+                // Validate file size (max 10MB)
+                if (file.size > 10 * 1024 * 1024) {
+                  toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+                  return;
+                }
+                
+                setModalLoading(true);
+                try {
+                  const res = await groupsApi.uploadImage(file);
+                  setModalData({ ...modalData, image_url: res.data.url });
+                  toast.showSuccess('Image uploaded successfully!');
+                } catch (err: unknown) {
+                  console.error('Upload error:', err);
+                  const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload image. Please try again.';
+                  toast.showError(errorMsg);
+                } finally {
+                  setModalLoading(false);
+                  // Clear the file input
+                  e.target.value = '';
+                }
+              }}
+            />
+            {modalData.image_url && (
+              <div className="image-preview">
+                <label>Preview:</label>
+                <img src={modalData.image_url} alt="Group Card Preview" />
               </div>
-
-              <div className="form-group">
-                <label htmlFor="image_upload">Group Card Image</label>
-                <input
-                  id="image_upload"
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.gif"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    
-                    // Validate file type
-                    if (!file.type.startsWith('image/')) {
-                      toast.showError('Please select an image file (JPG, PNG, or GIF)');
-                      return;
-                    }
-                    
-                    // Validate file size (max 10MB)
-                    if (file.size > 10 * 1024 * 1024) {
-                      toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
-                      return;
-                    }
-                    
-                    setModalLoading(true);
-                    try {
-                      const res = await groupsApi.uploadImage(file);
-                      setModalData({ ...modalData, image_url: res.data.url });
-                      toast.showSuccess('Image uploaded successfully!');
-                    } catch (err: unknown) {
-                      console.error('Upload error:', err);
-                      const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload image. Please try again.';
-                      toast.showError(errorMsg);
-                    } finally {
-                      setModalLoading(false);
-                      // Clear the file input
-                      e.target.value = '';
-                    }
-                  }}
-                />
-                {modalData.image_url && (
-                  <div className="image-preview">
-                    <label>Preview:</label>
-                    <img src={modalData.image_url} alt="Group Card Preview" />
-                  </div>
-                )}
-              </div>
-              <div className="form-group">
-                <label htmlFor="hero_image_upload">Hero Image (Group Page Banner)</label>
-                <input
-                  id="hero_image_upload"
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.gif"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    
-                    // Validate file type
-                    if (!file.type.startsWith('image/')) {
-                      toast.showError('Please select an image file (JPG, PNG, or GIF)');
-                      return;
-                    }
-                    
-                    // Validate file size (max 10MB)
-                    if (file.size > 10 * 1024 * 1024) {
-                      toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
-                      return;
-                    }
-                    
-                    setModalLoading(true);
-                    try {
-                      const res = await groupsApi.uploadImage(file);
-                      setModalData({ ...modalData, hero_image_url: res.data.url });
-                      toast.showSuccess('Hero image uploaded successfully!');
-                    } catch (err: unknown) {
-                      console.error('Upload error:', err);
-                      const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload hero image. Please try again.';
-                      toast.showError(errorMsg);
-                    } finally {
-                      setModalLoading(false);
-                      // Clear the file input
-                      e.target.value = '';
-                    }
-                  }}
-                />
-                {editingGroup && availableAnimals.length > 0 && (
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <button
-                      type="button"
-                      className="group-action-btn secondary"
-                      onClick={() => setShowAnimalSelector(!showAnimalSelector)}
-                    >
-                      {showAnimalSelector ? 'Hide' : 'Select from Animal Images'}
-                    </button>
-                  </div>
-                )}
-                {showAnimalSelector && availableAnimals.length > 0 && (
-                  <div className="animal-selector">
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-                      Click an animal image to use it as the hero image:
-                    </p>
-                    <div className="animal-images-grid">
-                      {availableAnimals.map((animal) => (
-                        <div
-                          key={animal.id}
-                          className="animal-image-option"
-                          onClick={() => {
-                            setModalData({ ...modalData, hero_image_url: animal.image_url });
-                            setShowAnimalSelector(false);
-                            toast.showSuccess(`Selected ${animal.name}'s image as hero image`);
-                          }}
-                        >
-                          <img src={animal.image_url} alt={animal.name} />
-                          <span>{animal.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {modalData.hero_image_url && (
-                  <div className="image-preview">
-                    <label>Preview:</label>
-                    <img src={modalData.hero_image_url} alt="Hero Image Preview" />
-                  </div>
-                )}
-              </div>
-              {modalError && <div className="groups-error">{modalError}</div>}
-              <div className="modal-actions">
+            )}
+          </div>
+          <div className="form-group">
+            <label htmlFor="hero_image_upload">Hero Image (Group Page Banner)</label>
+            <input
+              id="hero_image_upload"
+              type="file"
+              accept=".jpg,.jpeg,.png,.gif"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                
+                // Validate file type
+                if (!file.type.startsWith('image/')) {
+                  toast.showError('Please select an image file (JPG, PNG, or GIF)');
+                  return;
+                }
+                
+                // Validate file size (max 10MB)
+                if (file.size > 10 * 1024 * 1024) {
+                  toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+                  return;
+                }
+                
+                setModalLoading(true);
+                try {
+                  const res = await groupsApi.uploadImage(file);
+                  setModalData({ ...modalData, hero_image_url: res.data.url });
+                  toast.showSuccess('Hero image uploaded successfully!');
+                } catch (err: unknown) {
+                  console.error('Upload error:', err);
+                  const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload hero image. Please try again.';
+                  toast.showError(errorMsg);
+                } finally {
+                  setModalLoading(false);
+                  // Clear the file input
+                  e.target.value = '';
+                }
+              }}
+            />
+            {editingGroup && availableAnimals.length > 0 && (
+              <div className="group-modal-animal-selector-toggle">
                 <button
                   type="button"
                   className="group-action-btn secondary"
-                  onClick={closeModal}
-                  disabled={modalLoading}
+                  onClick={() => setShowAnimalSelector(!showAnimalSelector)}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="group-action-btn"
-                  disabled={modalLoading}
-                >
-                  {modalLoading ? 'Saving…' : editingGroup ? 'Update' : 'Create'}
+                  {showAnimalSelector ? 'Hide' : 'Select from Animal Images'}
                 </button>
               </div>
-            </form>
+            )}
+            {showAnimalSelector && availableAnimals.length > 0 && (
+              <div className="animal-selector">
+                <p className="group-modal-animal-hint">
+                  Click an animal image to use it as the hero image:
+                </p>
+                <div className="animal-images-grid">
+                  {availableAnimals.map((animal) => (
+                    <div
+                      key={animal.id}
+                      className="animal-image-option"
+                      onClick={() => {
+                        setModalData({ ...modalData, hero_image_url: animal.image_url });
+                        setShowAnimalSelector(false);
+                        toast.showSuccess(`Selected ${animal.name}'s image as hero image`);
+                      }}
+                    >
+                      <img src={animal.image_url} alt={animal.name} />
+                      <span>{animal.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {modalData.hero_image_url && (
+              <div className="image-preview">
+                <label>Preview:</label>
+                <img src={modalData.hero_image_url} alt="Hero Image Preview" />
+              </div>
+            )}
           </div>
-        </div>
-      )}
+          {modalError && <div className="groups-error">{modalError}</div>}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="group-action-btn secondary"
+              onClick={closeModal}
+              disabled={modalLoading}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="group-action-btn"
+              disabled={modalLoading}
+            >
+              {modalLoading ? 'Saving…' : editingGroup ? 'Update' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+        confirmLabel="Delete"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={closeConfirmDialog}
+      />
     </div>
   );
 };
 
-// Helper function to format relative time
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 30) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
 
 export default GroupsPage;

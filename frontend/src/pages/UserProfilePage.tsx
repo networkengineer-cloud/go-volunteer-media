@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { userProfileApi } from '../api/client';
 import type { UserProfile } from '../api/client';
 import { useToast } from '../hooks/useToast';
+import { formatDateLong, formatRelativeTime } from '../utils/dateUtils';
+import SkeletonLoader from '../components/SkeletonLoader';
 import './UserProfilePage.css';
 
 const UserProfilePage: React.FC = () => {
@@ -43,37 +45,12 @@ const UserProfilePage: React.FC = () => {
     loadProfile();
   }, [loadProfile]);
 
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const formatRelativeTime = (dateString: string): string => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 30) return `${diffDays}d ago`;
-    return formatDate(dateString);
-  };
 
   if (loading) {
     return (
       <div className="user-profile-page">
-        <div className="loading-container">
-          <div className="spinner"></div>
-          <p>Loading profile...</p>
-        </div>
+        <SkeletonLoader variant="text" width="200px" height="2rem" />
+        <SkeletonLoader variant="card" count={3} />
       </div>
     );
   }
@@ -117,7 +94,7 @@ const UserProfilePage: React.FC = () => {
               {profile.email && <p className="profile-email">{profile.email}</p>}
               {profile.phone_number && <p className="profile-phone">{profile.phone_number}</p>}
               {profile.is_admin && <span className="admin-badge">Admin</span>}
-              {profile.created_at && <p className="member-since">Member since {formatDate(profile.created_at)}</p>}
+              {profile.created_at && <p className="member-since">Member since {formatDateLong(profile.created_at)}</p>}
             </div>
           </div>
         </div>
