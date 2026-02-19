@@ -441,6 +441,7 @@ const AnimalForm: React.FC = () => {
   };
 
   const handleQuarantineSubmit = async () => {
+    if (!groupId) return;
     if (!quarantineContext.trim()) {
       toast.showError('Please provide context about the bite incident');
       return;
@@ -518,7 +519,7 @@ const AnimalForm: React.FC = () => {
 
       // Create group update (shows in activity feed) with GroupMe notification
       // Parameters: (groupId, title, content, send_groupme, image_url?)
-      await updatesApi.create(parseInt(groupId!), updateTitle, updateContent, true);
+      await updatesApi.create(parseInt(groupId), updateTitle, updateContent, true);
 
       toast.showSuccess('Animal updated, comment added, and announcement posted successfully!');
       setShowQuarantineModal(false);
