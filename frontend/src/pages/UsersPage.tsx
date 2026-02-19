@@ -1,26 +1,16 @@
 import React from 'react';
-import axios from 'axios';
 import { Link } from 'react-router-dom';
 import './UsersPage.css';
 import type { User, Group, UserStatistics, GroupMember } from '../api/client';
 import { usersApi, groupsApi, statisticsApi, groupAdminApi, authApi } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { getPasswordStrength } from '../utils/passwordStrength';
+import { formatRelativeTime } from '../utils/dateUtils';
+import ConfirmDialog from '../components/ConfirmDialog';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 type SortBy = 'name' | 'email' | 'last_active' | 'last_login' | 'most_active';
 
-// Create API instance for authenticated requests
-const api = axios.create({
-  baseURL: '/api',
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = 'Bearer ' + token;
-  }
-  return config;
-});
 
 const UsersPage: React.FC = () => {
   const { user: currentUser, isAdmin, isGroupAdmin } = useAuth();
@@ -73,6 +63,10 @@ const UsersPage: React.FC = () => {
   const [editLoading, setEditLoading] = React.useState(false);
   const [editError, setEditError] = React.useState<string | null>(null);
   const [editSuccess, setEditSuccess] = React.useState<string | null>(null);
+
+  const [confirmDialog, setConfirmDialog] = React.useState<{
+    isOpen: boolean; title: string; message: string; onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Timeout refs to prevent race conditions when modals are closed early
   const editTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -137,7 +131,7 @@ const UsersPage: React.FC = () => {
           // Fetch members from each group the user is in
           for (const group of currentUser.groups) {
             try {
-              const membersRes = await api.get<GroupMember[]>(`/groups/${group.id}/members`);
+              const membersRes = await groupsApi.getMembers(group.id);
               const members: GroupMember[] = membersRes.data;
               
               // Convert GroupMember to User
@@ -175,7 +169,7 @@ const UsersPage: React.FC = () => {
       
       setLoading(false);
     } catch (err) {
-      setError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to fetch users');
+      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to fetch users');
       setLoading(false);
     }
   }, [isAdmin, currentUser?.groups, showDeleted]);
@@ -342,19 +336,25 @@ const UsersPage: React.FC = () => {
       }
       fetchUsers();
     } catch (err: unknown) {
-      setError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to update admin status');
+      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to update admin status');
     }
   };
 
 
-  const handleDelete = async (user: User) => {
-    if (!window.confirm(`Delete user ${user.username}? This cannot be undone.`)) return;
-    try {
-      await usersApi.delete(user.id);
-      fetchUsers();
-    } catch (err: unknown) {
-      setError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to delete user');
-    }
+  const handleDelete = (user: User) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete User',
+      message: `Delete user ${user.username}? This cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          await usersApi.delete(user.id);
+          fetchUsers();
+        } catch (err: unknown) {
+          setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete user');
+        }
+      },
+    });
   };
 
   // Restore deleted user
@@ -363,7 +363,7 @@ const UsersPage: React.FC = () => {
       await usersApi.restore(user.id);
       fetchUsers();
     } catch (err: unknown) {
-      setError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to restore user');
+      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to restore user');
     }
   };
 
@@ -389,7 +389,7 @@ const UsersPage: React.FC = () => {
       
       setAllGroups(groupsToShow);
     } catch (err: unknown) {
-      setGroupModalError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to fetch groups');
+      setGroupModalError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to fetch groups');
     } finally {
       setGroupModalLoading(false);
     }
@@ -468,7 +468,7 @@ const UsersPage: React.FC = () => {
       // Refresh the full user list in the background
       fetchUsers();
     } catch (err: unknown) {
-      setGroupModalError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to update group');
+      setGroupModalError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to update group');
     }
   };
 
@@ -511,7 +511,7 @@ const UsersPage: React.FC = () => {
         closePasswordResetModal();
       }, 1500);
     } catch (err: unknown) {
-      setResetPasswordError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to reset password');
+      setResetPasswordError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to reset password');
     } finally {
       setResetPasswordLoading(false);
     }
@@ -549,7 +549,7 @@ const UsersPage: React.FC = () => {
         closeResendInviteModal();
       }, 2000);
     } catch (err: unknown) {
-      setResendInviteError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to resend invitation');
+      setResendInviteError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to resend invitation');
     } finally {
       setResendInviteLoading(false);
     }
@@ -617,7 +617,7 @@ const UsersPage: React.FC = () => {
         fetchUsers();
       }, 1500);
     } catch (err: unknown) {
-      setEditError(axios.isAxiosError(err) && err.response?.data?.error ? err.response.data.error : 'Failed to update user');
+      setEditError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to update user');
     } finally {
       setEditLoading(false);
     }
@@ -1294,7 +1294,7 @@ const UsersPage: React.FC = () => {
         </form>
       )}
       {loading ? (
-        <div className="users-loading">Loading users…</div>
+        <SkeletonLoader variant="rectangular" height="60px" count={5} />
       ) : error ? (
         <div className="users-error">{error}</div>
       ) : (
@@ -1521,7 +1521,7 @@ const UsersPage: React.FC = () => {
           <div className="group-modal" onClick={e => e.stopPropagation()}>
             <h2>Manage Groups for {groupModalUser.username}</h2>
             {groupModalLoading ? (
-              <div className="users-loading">Loading groups…</div>
+              <SkeletonLoader variant="rectangular" height="40px" count={3} />
             ) : groupModalError ? (
               <div className="users-error">{groupModalError}</div>
             ) : (
@@ -1717,24 +1717,18 @@ const UsersPage: React.FC = () => {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+        confirmLabel="Delete"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
+      />
     </div>
   );
 };
 
-// Helper function to format relative time
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 30) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
 
 export default UsersPage;

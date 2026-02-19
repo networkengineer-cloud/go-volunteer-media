@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { animalsApi, updatesApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
 import type { AnimalTag, Animal, DuplicateNameInfo, AnimalImage } from '../api/client';
 import { useToast } from '../hooks/useToast';
+import { calculateQuarantineEndDate } from '../utils/dateUtils';
 import FormField from '../components/FormField';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
@@ -471,7 +472,7 @@ const AnimalForm: React.FC = () => {
         animalId = response.data.id;
       }
 
-      const endDate = calculateQuarantineEndDate(quarantineDate);
+      const endDate = calculateQuarantineEndDate(quarantineDate, true);
       
       // Create a comment on the animal with behavior tag
       if (animalId && groupId) {
@@ -532,18 +533,6 @@ const AnimalForm: React.FC = () => {
     }
   };
 
-  const calculateQuarantineEndDate = (startDateString: string): string => {
-    const startDate = new Date(startDateString);
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 10);
-    
-    // Adjust for weekends
-    while (endDate.getDay() === 0 || endDate.getDay() === 6) {
-      endDate.setDate(endDate.getDate() + 1);
-    }
-    
-    return endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  };
 
   const handleDelete = async () => {
     try {
@@ -982,7 +971,7 @@ const AnimalForm: React.FC = () => {
             }}
           />
           <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Quarantine will end: {calculateQuarantineEndDate(quarantineDate)}
+            Quarantine will end: {calculateQuarantineEndDate(quarantineDate, true)}
           </p>
         </div>
 

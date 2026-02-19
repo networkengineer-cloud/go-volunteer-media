@@ -4,9 +4,11 @@ import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi } from '../api
 import type { Animal, AnimalComment, CommentTag, CommentHistory, Group, GroupMembership, SessionMetadata } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { calculateQuarantineEndDate } from '../utils/dateUtils';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
+import ConfirmDialog from '../components/ConfirmDialog';
 import ProtocolViewerErrorBoundary from '../components/ProtocolViewerErrorBoundary';
 import SessionReportForm from '../components/SessionReportForm';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
@@ -15,23 +17,6 @@ import './AnimalDetailPage.css';
 
 // Lazy load ProtocolViewer to reduce initial bundle size (~350KB savings)
 const ProtocolViewer = lazy(() => import('../components/ProtocolViewer'));
-
-// Helper function to calculate quarantine end date (10 days, cannot end on weekend)
-const calculateQuarantineEndDate = (startDateString?: string): string => {
-  if (!startDateString) return '-';
-  
-  const startDate = new Date(startDateString);
-  // Add 10 days
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 10);
-  
-  // If end date is Saturday (6) or Sunday (0), move to Monday
-  while (endDate.getDay() === 0 || endDate.getDay() === 6) {
-    endDate.setDate(endDate.getDate() + 1);
-  }
-  
-  return endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-};
 
 const AnimalDetailPage: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
@@ -60,6 +45,9 @@ const AnimalDetailPage: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
   const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean; title: string; message: string; onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
   const [showProtocolModal, setShowProtocolModal] = useState(false);
   const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
@@ -115,28 +103,26 @@ const AnimalDetailPage: React.FC = () => {
     }
   }, [isAdmin]);
 
-  const handleDeleteComment = async (commentId: number) => {
+  const handleDeleteComment = (commentId: number) => {
     if (!groupId || !id) return;
-    
-    if (!window.confirm('Are you sure you want to delete this comment?')) {
-      return;
-    }
-
-    try {
-      await animalCommentsApi.delete(Number(groupId), Number(id), commentId);
-      toast.showSuccess('Comment deleted successfully');
-      
-      // Reload comments
-      await loadComments(Number(groupId), Number(id), filterTags.join(','), 0, sortOrder, false);
-      
-      // Reload deleted comments if admin
-      if (isAdmin) {
-        await loadDeletedComments(Number(groupId));
-      }
-    } catch (error) {
-      console.error('Failed to delete comment:', error);
-      toast.showError('Failed to delete comment. Please try again.');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Comment',
+      message: 'Are you sure you want to delete this comment?',
+      onConfirm: async () => {
+        try {
+          await animalCommentsApi.delete(Number(groupId), Number(id), commentId);
+          toast.showSuccess('Comment deleted successfully');
+          await loadComments(Number(groupId), Number(id), filterTags.join(','), 0, sortOrder, false);
+          if (isAdmin) {
+            await loadDeletedComments(Number(groupId));
+          }
+        } catch (error) {
+          console.error('Failed to delete comment:', error);
+          toast.showError('Failed to delete comment. Please try again.');
+        }
+      },
+    });
   };
 
   const loadGroupData = useCallback(async (gId: number) => {
@@ -484,7 +470,7 @@ const AnimalDetailPage: React.FC = () => {
                     Start: {new Date(animal.quarantine_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                   </p>
                   <p className="quarantine-dates">
-                    End: {calculateQuarantineEndDate(animal.quarantine_start_date)}
+                    End: {calculateQuarantineEndDate(animal.quarantine_start_date, true)}
                   </p>
                 </div>
               )}
@@ -974,6 +960,15 @@ const AnimalDetailPage: React.FC = () => {
           <CommentHistoryModal history={commentHistory} onClose={() => setShowHistoryModal(false)} />
         )}
       </div>
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+        confirmLabel="Delete"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
+      />
     </div>
   );
 };

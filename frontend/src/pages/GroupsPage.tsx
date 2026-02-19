@@ -4,6 +4,10 @@ import './GroupsPage.css';
 import type { Group, Animal, GroupStatistics } from '../api/client';
 import { groupsApi, animalsApi, statisticsApi } from '../api/client';
 import { useToast } from '../hooks/useToast';
+import { formatRelativeTime } from '../utils/dateUtils';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 const GroupsPage: React.FC = () => {
   const toast = useToast();
@@ -33,6 +37,9 @@ const GroupsPage: React.FC = () => {
   });
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = React.useState<{
+    isOpen: boolean; title: string; message: string; onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
   const [availableAnimals, setAvailableAnimals] = React.useState<Animal[]>([]);
   const [showAnimalSelector, setShowAnimalSelector] = React.useState(false);
 
@@ -219,17 +226,20 @@ const GroupsPage: React.FC = () => {
   };
 
   // Delete group
-  const handleDelete = async (group: Group) => {
-    if (!window.confirm(`Delete group "${group.name}"? This cannot be undone and will affect all associated data.`)) {
-      return;
-    }
-
-    try {
-      await groupsApi.delete(group.id);
-      fetchGroups();
-    } catch (err: unknown) {
-      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete group');
-    }
+  const handleDelete = (group: Group) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Group',
+      message: `Delete group "${group.name}"? This cannot be undone and will affect all associated data.`,
+      onConfirm: async () => {
+        try {
+          await groupsApi.delete(group.id);
+          fetchGroups();
+        } catch (err: unknown) {
+          setError((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete group');
+        }
+      },
+    });
   };
 
   return (
@@ -315,7 +325,7 @@ const GroupsPage: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="groups-loading">Loading groups…</div>
+        <SkeletonLoader variant="rectangular" height="60px" count={4} />
       ) : error ? (
         <div className="groups-error">{error}</div>
       ) : filteredGroups.length === 0 ? (
@@ -429,11 +439,13 @@ const GroupsPage: React.FC = () => {
       )}
 
       {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="group-modal-backdrop" onClick={closeModal}>
-          <div className="group-modal" onClick={e => e.stopPropagation()}>
-            <h2>{editingGroup ? 'Edit Group' : 'Create New Group'}</h2>
-            <form onSubmit={handleModalSubmit}>
+      <Modal
+        isOpen={showModal}
+        onClose={closeModal}
+        title={editingGroup ? 'Edit Group' : 'Create New Group'}
+        size="medium"
+      >
+        <form onSubmit={handleModalSubmit}>
               <div className="form-group">
                 <label htmlFor="name">
                   Name <span className="required">*</span>
@@ -464,42 +476,40 @@ const GroupsPage: React.FC = () => {
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="has_protocols" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <label htmlFor="has_protocols" className="group-modal-checkbox-label">
                   <input
                     id="has_protocols"
                     name="has_protocols"
                     type="checkbox"
                     checked={modalData.has_protocols}
                     onChange={(e) => setModalData(d => ({ ...d, has_protocols: e.target.checked }))}
-                    style={{ width: 'auto', cursor: 'pointer' }}
                   />
                   <span>Enable Protocols for this group</span>
                 </label>
-                <small style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block', marginLeft: '1.75rem' }}>
+                <small className="group-modal-hint">
                   Protocols allow you to document standardized procedures and workflows for this group.
                 </small>
               </div>
 
               {/* GroupMe Integration Section */}
-              <div className="form-group" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
-                <h4 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>GroupMe Integration</h4>
-                <label htmlFor="groupme_enabled" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '1rem' }}>
+              <div className="form-group group-modal-section-divider">
+                <h4 className="group-modal-section-heading">GroupMe Integration</h4>
+                <label htmlFor="groupme_enabled" className="group-modal-checkbox-label group-modal-checkbox-label--spaced">
                   <input
                     id="groupme_enabled"
                     name="groupme_enabled"
                     type="checkbox"
                     checked={modalData.groupme_enabled}
                     onChange={(e) => setModalData(d => ({ ...d, groupme_enabled: e.target.checked }))}
-                    style={{ width: 'auto', cursor: 'pointer' }}
                   />
                   <span>Enable GroupMe integration for this group</span>
                 </label>
-                <small style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem', display: 'block', marginLeft: '1.75rem' }}>
+                <small className="group-modal-hint">
                   Allow announcements to be automatically sent to this group's GroupMe chat.
                 </small>
-                
+
                 {modalData.groupme_enabled && (
-                  <div style={{ marginLeft: '1.75rem', marginTop: '1rem' }}>
+                  <div className="group-modal-nested-field">
                     <label htmlFor="groupme_bot_id">GroupMe Bot ID</label>
                     <input
                       id="groupme_bot_id"
@@ -509,10 +519,10 @@ const GroupsPage: React.FC = () => {
                       onChange={handleModalChange}
                       placeholder="Enter your GroupMe Bot ID"
                       required={modalData.groupme_enabled}
-                      style={{ marginTop: '0.5rem' }}
+                      className="group-modal-nested-input"
                     />
-                    <small style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.5rem', display: 'block' }}>
-                      Create a bot at <a href="https://dev.groupme.com/bots" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>dev.groupme.com/bots</a> and paste the Bot ID here.
+                    <small className="group-modal-hint group-modal-hint--no-indent">
+                      Create a bot at <a href="https://dev.groupme.com/bots" target="_blank" rel="noopener noreferrer" className="group-modal-link">dev.groupme.com/bots</a> and paste the Bot ID here.
                     </small>
                   </div>
                 )}
@@ -602,7 +612,7 @@ const GroupsPage: React.FC = () => {
                   }}
                 />
                 {editingGroup && availableAnimals.length > 0 && (
-                  <div style={{ marginTop: '0.5rem' }}>
+                  <div className="group-modal-animal-selector-toggle">
                     <button
                       type="button"
                       className="group-action-btn secondary"
@@ -614,7 +624,7 @@ const GroupsPage: React.FC = () => {
                 )}
                 {showAnimalSelector && availableAnimals.length > 0 && (
                   <div className="animal-selector">
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                    <p className="group-modal-animal-hint">
                       Click an animal image to use it as the hero image:
                     </p>
                     <div className="animal-images-grid">
@@ -660,28 +670,20 @@ const GroupsPage: React.FC = () => {
                   {modalLoading ? 'Saving…' : editingGroup ? 'Update' : 'Create'}
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </form>
+      </Modal>
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+        confirmLabel="Delete"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
+      />
     </div>
   );
 };
 
-// Helper function to format relative time
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 30) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
 
 export default GroupsPage;

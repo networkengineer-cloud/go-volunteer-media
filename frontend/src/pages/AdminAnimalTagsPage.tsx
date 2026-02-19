@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { commentTagsApi, animalTagsApi, groupsApi, type CommentTag, type Group, type AnimalTag as ApiAnimalTag } from '../api/client';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
+import SkeletonLoader from '../components/SkeletonLoader';
 import './AdminAnimalTagsPage.css';
 
 type AnimalTag = ApiAnimalTag;
@@ -256,6 +258,9 @@ const AdminAnimalTagsPage: React.FC = () => {
 
   // Active section for mobile
   const [activeSection, setActiveSection] = useState<'animal' | 'comment'>('animal');
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean; title: string; message: string; onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Fetch Groups
   const fetchGroups = useCallback(async () => {
@@ -349,17 +354,22 @@ const AdminAnimalTagsPage: React.FC = () => {
     }
   }, [selectedGroupId, editingAnimalTag, fetchAnimalTags, handleCloseAnimalTagModal]);
 
-  const handleDeleteAnimalTag = useCallback(async (tagId: number) => {
+  const handleDeleteAnimalTag = useCallback((tagId: number) => {
     if (!selectedGroupId) return;
-    if (!window.confirm('Are you sure you want to delete this animal tag?')) return;
-    
-    try {
-      await animalTagsApi.delete(selectedGroupId, tagId);
-      await fetchAnimalTags();
-    } catch (err) {
-      console.error('Error deleting animal tag:', err);
-      setAnimalTagError('Failed to delete tag');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Animal Tag',
+      message: 'Are you sure you want to delete this animal tag?',
+      onConfirm: async () => {
+        try {
+          await animalTagsApi.delete(selectedGroupId, tagId);
+          await fetchAnimalTags();
+        } catch (err) {
+          console.error('Error deleting animal tag:', err);
+          setAnimalTagError('Failed to delete tag');
+        }
+      },
+    });
   }, [selectedGroupId, fetchAnimalTags]);
 
   // Comment Tag handlers
@@ -374,17 +384,22 @@ const AdminAnimalTagsPage: React.FC = () => {
     }
   }, [selectedGroupId, fetchCommentTags]);
 
-  const handleDeleteCommentTag = useCallback(async (tagId: number) => {
+  const handleDeleteCommentTag = useCallback((tagId: number) => {
     if (!selectedGroupId) return;
-    if (!window.confirm('Are you sure you want to delete this comment tag?')) return;
-    
-    try {
-      await commentTagsApi.delete(selectedGroupId, tagId);
-      await fetchCommentTags();
-    } catch (err) {
-      console.error('Error deleting comment tag:', err);
-      setCommentTagError('Failed to delete tag');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Comment Tag',
+      message: 'Are you sure you want to delete this comment tag?',
+      onConfirm: async () => {
+        try {
+          await commentTagsApi.delete(selectedGroupId, tagId);
+          await fetchCommentTags();
+        } catch (err) {
+          console.error('Error deleting comment tag:', err);
+          setCommentTagError('Failed to delete tag');
+        }
+      },
+    });
   }, [selectedGroupId, fetchCommentTags]);
 
   const behaviorTags = animalTags.filter(tag => tag.category === 'behavior');
@@ -393,7 +408,11 @@ const AdminAnimalTagsPage: React.FC = () => {
   const isLoading = loadingGroups || loadingAnimalTags || loadingCommentTags;
 
   if (loadingGroups) {
-    return <div className="admin-tags-page loading">Loading groups...</div>;
+    return (
+      <div className="admin-tags-page">
+        <SkeletonLoader variant="rectangular" height="40px" count={3} />
+      </div>
+    );
   }
 
   if (groups.length === 0) {
@@ -628,6 +647,15 @@ const AdminAnimalTagsPage: React.FC = () => {
         isOpen={isCommentTagModalOpen}
         onClose={() => setIsCommentTagModalOpen(false)}
         onSubmit={handleCreateCommentTag}
+      />
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+        confirmLabel="Delete"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
       />
     </div>
   );

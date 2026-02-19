@@ -3,60 +3,13 @@ import { Link } from 'react-router-dom';
 import { animalsApi, groupsApi } from '../api/client';
 import type { Animal, Group } from '../api/client';
 import { useToast } from '../hooks/useToast';
+import { formatDateShort, calculateQuarantineEndDate, calculateDaysSince } from '../utils/dateUtils';
+import { useDebounce } from '../hooks/useDebounce';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import Modal from '../components/Modal';
 import './BulkEditAnimalsPage.css';
-
-// Helper function to calculate days since a date
-const calculateDaysSince = (dateString?: string): number => {
-  if (!dateString) return 0;
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffTime = Math.abs(now.getTime() - date.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
-};
-
-// Helper function to format a date
-const formatDate = (dateString?: string): string => {
-  if (!dateString) return '-';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
-
-// Helper function to calculate quarantine end date (10 days, cannot end on weekend)
-const calculateQuarantineEndDate = (startDateString?: string): string => {
-  if (!startDateString) return '-';
-
-  const startDate = new Date(startDateString);
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 10);
-
-  while (endDate.getDay() === 0 || endDate.getDay() === 6) {
-    endDate.setDate(endDate.getDate() + 1);
-  }
-
-  return endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
-
-// Debounce hook
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-}
 
 const BulkEditAnimalsPage: React.FC = () => {
   const toast = useToast();
@@ -740,7 +693,7 @@ const BulkEditAnimalsPage: React.FC = () => {
 
                       <div className="info-item">
                         <div className="info-label">Arrived</div>
-                        <div className="info-value">{formatDate(animal.arrival_date)}</div>
+                        <div className="info-value">{formatDateShort(animal.arrival_date)}</div>
                       </div>
 
                       <div className="info-item">
@@ -841,7 +794,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                           ))}
                         </select>
                       </td>
-                      <td>{formatDate(animal.arrival_date)}</td>
+                      <td>{formatDateShort(animal.arrival_date)}</td>
                       <td>{calculateDaysSince(animal.arrival_date)}</td>
                       <td>{calculateDaysSince(animal.last_status_change)}</td>
                       <td>
