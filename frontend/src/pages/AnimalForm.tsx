@@ -152,7 +152,7 @@ const AnimalForm: React.FC = () => {
 
   const handleBlur = (field: string) => {
     setTouched({ ...touched, [field]: true });
-    const error = validateField(field, formData[field as keyof typeof formData]);
+    const error = validateField(field, formData[field as keyof typeof formData] as string | number);
     setErrors({ ...errors, [field]: error });
   };
 
@@ -235,7 +235,7 @@ const AnimalForm: React.FC = () => {
       }, 100);
     } catch (err: unknown) {
       console.error('Upload error:', err);
-      const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
+      const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload image. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setUploading(false);
@@ -283,7 +283,7 @@ const AnimalForm: React.FC = () => {
         toast.showSuccess('Protocol document uploaded successfully!');
       } catch (error: unknown) {
         console.error('Upload error:', error);
-        const errorMsg = error.response?.data?.error || 'Failed to upload document. Please try again.';
+        const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload document. Please try again.';
         toast.showError(errorMsg);
       } finally {
         setUploadingDocument(false);
@@ -397,7 +397,7 @@ const AnimalForm: React.FC = () => {
       // Clean up formData: convert empty quarantine_start_date to null
       const cleanedFormData = {
         ...formData,
-        quarantine_start_date: formData.quarantine_start_date || null,
+        quarantine_start_date: formData.quarantine_start_date || undefined,
       };
       
       if (id && groupId) {
@@ -433,7 +433,7 @@ const AnimalForm: React.FC = () => {
       
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
-      const errorMsg = error.response?.data?.error || 'Failed to save animal. Please try again.';
+      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to save animal. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setLoading(false);
@@ -441,6 +441,7 @@ const AnimalForm: React.FC = () => {
   };
 
   const handleQuarantineSubmit = async () => {
+    if (!groupId) return;
     if (!quarantineContext.trim()) {
       toast.showError('Please provide context about the bite incident');
       return;
@@ -524,7 +525,7 @@ const AnimalForm: React.FC = () => {
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
-      const errorMsg = error.response?.data?.error || 'Failed to save animal. Please try again.';
+      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to save animal. Please try again.';
       toast.showError(errorMsg);
     } finally {
       setLoading(false);
@@ -552,7 +553,7 @@ const AnimalForm: React.FC = () => {
         navigate(`/groups/${groupId}`);
       }
     } catch (error: unknown) {
-      const errorMsg = error.response?.data?.error || 'Failed to delete animal. Please try again.';
+      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete animal. Please try again.';
       toast.showError(errorMsg);
     }
     setShowDeleteModal(false);

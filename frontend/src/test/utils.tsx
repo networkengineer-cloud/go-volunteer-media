@@ -1,8 +1,9 @@
-import { render, RenderOptions } from '@testing-library/react';
+import { render } from '@testing-library/react';
+import type { RenderOptions } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from '../contexts/AuthContext';
 import { ToastProvider } from '../contexts/ToastContext';
-import { ReactElement } from 'react';
+import type { ReactElement } from 'react';
 
 /**
  * Custom render function that wraps components with necessary providers

@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { AuthProvider } from './AuthContext';
 import { useAuth } from '../hooks/useAuth';
-import { authApi, User } from '../api/client';
-import { AxiosResponse } from 'axios';
+import { authApi } from '../api/client';
+import type { User } from '../api/client';
+import type { AxiosResponse } from 'axios';
 
 // Mock the API client
 vi.mock('../api/client', () => ({
@@ -40,7 +41,7 @@ describe('AuthContext', () => {
         },
       };
 
-      vi.mocked(authApi.login).mockResolvedValue(mockResponse);
+      vi.mocked(authApi.login).mockResolvedValue(mockResponse as never);
 
       const { result } = renderHook(() => useAuth(), {
         wrapper: AuthProvider,
@@ -100,7 +101,7 @@ describe('AuthContext', () => {
         },
       };
 
-      vi.mocked(authApi.register).mockResolvedValue(mockResponse);
+      vi.mocked(authApi.register).mockResolvedValue(mockResponse as never);
 
       const { result } = renderHook(() => useAuth(), {
         wrapper: AuthProvider,
@@ -135,7 +136,7 @@ describe('AuthContext', () => {
         },
       };
 
-      vi.mocked(authApi.login).mockResolvedValue(mockResponse);
+      vi.mocked(authApi.login).mockResolvedValue(mockResponse as never);
 
       const { result } = renderHook(() => useAuth(), {
         wrapper: AuthProvider,
@@ -175,7 +176,7 @@ describe('AuthContext', () => {
         },
       };
 
-      vi.mocked(authApi.login).mockResolvedValue(mockResponse);
+      vi.mocked(authApi.login).mockResolvedValue(mockResponse as never);
 
       const { result } = renderHook(() => useAuth(), {
         wrapper: AuthProvider,
@@ -203,7 +204,7 @@ describe('AuthContext', () => {
         },
       };
 
-      vi.mocked(authApi.login).mockResolvedValue(mockResponse);
+      vi.mocked(authApi.login).mockResolvedValue(mockResponse as never);
 
       const { result } = renderHook(() => useAuth(), {
         wrapper: AuthProvider,

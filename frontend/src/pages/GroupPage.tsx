@@ -38,7 +38,6 @@ const GroupPage: React.FC = () => {
   const [nameSearch, setNameSearch] = useState<string>('');
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showProtocolForm, setShowProtocolForm] = useState(false);
-  const [activityFeedKey, setActivityFeedKey] = useState(0);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
   
   // Activity Feed state (integrated from ActivityFeedPage)

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { animalsApi } from '../api/client';
 import type { Animal, AnimalImage } from '../api/client';
+import type { AxiosResponse } from 'axios';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import ImageEditor from '../components/ImageEditor';
@@ -41,13 +42,17 @@ const PhotoGallery: React.FC = () => {
       }
 
       const results = await Promise.all(promises);
-      const [animalRes, imagesRes, deletedRes] = results;
+      const [animalRes, imagesRes, deletedRes] = results as [
+        AxiosResponse<Animal>,
+        AxiosResponse<AnimalImage[]>,
+        AxiosResponse<{ data?: AnimalImage[] }> | undefined,
+      ];
 
       setAnimal(animalRes.data);
       setImages(imagesRes.data);
 
       if (isAdmin && deletedRes) {
-        setDeletedImages(deletedRes.data.data || deletedRes.data);
+        setDeletedImages(deletedRes.data.data || (deletedRes.data as unknown as AnimalImage[]));
       }
     } catch (error) {
       console.error('Failed to load data:', error);
