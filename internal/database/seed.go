@@ -947,7 +947,9 @@ func seedProtocols(db *gorm.DB, users []models.User, groups []models.Group) erro
 	return nil
 }
 
-// updateSiteSettings updates site-wide settings with Unsplash hero image for fresh databases
+// updateSiteSettings updates site-wide settings with Unsplash hero image for fresh databases.
+// Note: the hero_image_url row is always created (with an empty value) by createDefaultSiteSettings
+// in RunMigrations, which runs at startup before seeding — so First() will find the row here.
 func updateSiteSettings(db *gorm.DB) error {
 	// Only set the hero image if none has been configured yet (preserve any admin-uploaded image)
 	var heroSetting models.SiteSetting

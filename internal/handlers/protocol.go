@@ -3,7 +3,9 @@ package handlers
 import (
 	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
@@ -65,8 +67,15 @@ func UploadProtocolImage(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 			return
 		}
 
-		// Detect MIME type from file content
+		// Detect MIME type from file content; fall back to extension-based lookup
+		// for formats like HEIC/HEIF that http.DetectContentType does not recognise.
 		mimeType := http.DetectContentType(data)
+		if mimeType == "application/octet-stream" {
+			ext := strings.ToLower(filepath.Ext(file.Filename))
+			if types, ok := upload.AllowedImageTypes[ext]; ok {
+				mimeType = types[0]
+			}
+		}
 
 		// Upload to storage provider
 		imageURL, _, _, err := storageProvider.UploadImage(ctx, data, mimeType, nil)
