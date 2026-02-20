@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"fmt"
+	"io"
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 	"gorm.io/gorm"
 )
@@ -102,8 +102,10 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 }
 
 // UploadHeroImage handles hero image upload (admin only)
-func UploadHeroImage() gin.HandlerFunc {
+func UploadHeroImage(storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+
 		file, err := c.FormFile("image")
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "No image file provided"})
@@ -116,21 +118,30 @@ func UploadHeroImage() gin.HandlerFunc {
 			return
 		}
 
-		// Get validated extension
-		ext := strings.ToLower(filepath.Ext(file.Filename))
+		// Open and read file bytes
+		src, err := file.Open()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read image"})
+			return
+		}
+		defer src.Close()
 
-		// Generate unique filename
-		filename := fmt.Sprintf("hero-%s%s", uuid.New().String(), ext)
-		filepath := fmt.Sprintf("./public/uploads/%s", filename)
-
-		// Save file
-		if err := c.SaveUploadedFile(file, filepath); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+		data, err := io.ReadAll(src)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read image"})
 			return
 		}
 
-		// Return the URL path
-		imageURL := fmt.Sprintf("/uploads/%s", filename)
+		// Detect MIME type from file content
+		mimeType := http.DetectContentType(data)
+
+		// Upload to storage provider
+		imageURL, _, _, err := storageProvider.UploadImage(ctx, data, mimeType, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{"url": imageURL})
 	}
 }

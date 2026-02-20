@@ -237,7 +237,7 @@ func main() {
 			admin.POST("/groups", handlers.CreateGroup(db))
 			admin.PUT("/groups/:id", handlers.UpdateGroup(db))
 			admin.DELETE("/groups/:id", handlers.DeleteGroup(db))
-			admin.POST("/groups/upload-image", handlers.UploadGroupImage())
+			admin.POST("/groups/upload-image", handlers.UploadGroupImage(storageProvider))
 			admin.POST("/users/:userId/groups/:groupId", handlers.AddUserToGroup(db))
 			admin.DELETE("/users/:userId/groups/:groupId", handlers.RemoveUserFromGroup(db))
 
@@ -247,7 +247,7 @@ func main() {
 
 			// Site settings management (admin only)
 			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))
-			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage())
+			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage(storageProvider))
 
 			// Bulk animal management (admin only)
 			admin.GET("/animals", handlers.GetAllAnimals(db))
@@ -361,7 +361,7 @@ func main() {
 		// These routes check for site admin OR group admin access within the handlers
 		groupAdminProtocols := protected.Group("/groups/:id/protocols")
 		{
-			groupAdminProtocols.POST("/upload-image", handlers.UploadProtocolImage(db))
+			groupAdminProtocols.POST("/upload-image", handlers.UploadProtocolImage(db, storageProvider))
 			groupAdminProtocols.POST("", handlers.CreateProtocol(db))
 			groupAdminProtocols.PUT("/:protocolId", handlers.UpdateProtocol(db))
 			groupAdminProtocols.DELETE("/:protocolId", handlers.DeleteProtocol(db))
