@@ -42,9 +42,12 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Check if username or email already exists
+		// Normalize username to lowercase
+		req.Username = strings.ToLower(strings.TrimSpace(req.Username))
+
+		// Check if username or email already exists (case-insensitive username check)
 		var existing models.User
-		if err := db.WithContext(ctx).Where("username = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
+		if err := db.WithContext(ctx).Where("LOWER(username) = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or email already exists"})
 			return
 		}
@@ -98,9 +101,9 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Find user
+		// Find user (case-insensitive username match)
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").Where("username = ?", strings.ToLower(req.Username)).First(&user).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").Where("LOWER(username) = ?", strings.ToLower(req.Username)).First(&user).Error; err != nil {
 			// Audit log: failed login attempt (user not found)
 			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "user_not_found")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})

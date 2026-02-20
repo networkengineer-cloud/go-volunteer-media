@@ -183,9 +183,9 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		// Normalize username to lowercase
 		req.Username = strings.ToLower(strings.TrimSpace(req.Username))
 
-		// Check if username or email already exists
+		// Check if username or email already exists (case-insensitive username check)
 		var existing models.User
-		if err := db.WithContext(ctx).Where("LOWER(username) = LOWER(?) OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
+		if err := db.WithContext(ctx).Where("LOWER(username) = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or email already exists"})
 			return
 		}
@@ -393,9 +393,9 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 		// Normalize username to lowercase
 		req.Username = strings.ToLower(strings.TrimSpace(req.Username))
 
-		// Check if username or email already exists
+		// Check if username or email already exists (case-insensitive username check)
 		var existing models.User
-		if err := db.WithContext(ctx).Where("LOWER(username) = LOWER(?) OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
+		if err := db.WithContext(ctx).Where("LOWER(username) = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or email already exists"})
 			return
 		}

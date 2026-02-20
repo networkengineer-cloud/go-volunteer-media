@@ -353,6 +353,18 @@ func quoteIdentifier(name string) string {
 // createCustomIndexes creates custom indexes that GORM doesn't support via struct tags
 // This includes functional indexes and partial indexes for performance optimization
 func createCustomIndexes(db *gorm.DB) error {
+	// Functional index for case-insensitive username lookups
+	// This enables efficient LOWER(username) queries for login and duplicate checks
+	usernameIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_users_username_lower 
+		ON users(LOWER(username))
+	`
+	if err := db.Exec(usernameIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create functional index on users.username")
+	} else {
+		logging.Info("Created functional index idx_users_username_lower")
+	}
+
 	// Functional index for case-insensitive animal name searches
 	// This enables efficient LOWER(name) queries without table scans
 	functionalIndexQuery := `
