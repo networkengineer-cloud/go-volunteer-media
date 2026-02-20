@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -1461,6 +1462,76 @@ func TestUpdateGroupSettings(t *testing.T) {
 
 			if tt.expectedError != "" && !strings.Contains(w.Body.String(), tt.expectedError) {
 				t.Errorf("Expected error containing %q, got %q", tt.expectedError, w.Body.String())
+			}
+		})
+	}
+}
+
+// TestUploadGroupImage tests the group image upload handler.
+func TestUploadGroupImage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		provider       *mockStorageProvider
+		request        func(*testing.T) *http.Request
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name:     "valid PNG uploads successfully",
+			provider: &mockStorageProvider{},
+			request: func(t *testing.T) *http.Request {
+				return createImageMultipartRequest(t, "image", "group.png", minimalPNG)
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "/api/images/test-uuid",
+		},
+		{
+			name:     "storage provider error returns 500",
+			provider: &mockStorageProvider{UploadImageErr: errors.New("blob unavailable")},
+			request: func(t *testing.T) *http.Request {
+				return createImageMultipartRequest(t, "image", "group.png", minimalPNG)
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "Failed to upload image",
+		},
+		{
+			name:     "missing file field returns 400",
+			provider: &mockStorageProvider{},
+			request: func(t *testing.T) *http.Request {
+				return httptest.NewRequest(http.MethodPost, "/test", nil)
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "No file uploaded",
+		},
+		{
+			name:     "disallowed file type returns 400",
+			provider: &mockStorageProvider{},
+			request: func(t *testing.T) *http.Request {
+				return createImageMultipartRequest(t, "image", "group.txt", []byte("not an image"))
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Invalid file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = tt.request(t)
+			c.Set("user_id", uint(1))
+			c.Set("is_admin", true)
+
+			handler := UploadGroupImage(tt.provider)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+			if !strings.Contains(w.Body.String(), tt.expectedBody) {
+				t.Errorf("Expected body to contain %q, got %s", tt.expectedBody, w.Body.String())
 			}
 		})
 	}

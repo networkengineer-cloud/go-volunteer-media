@@ -103,7 +103,9 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// UploadHeroImage handles hero image upload (admin only)
+// UploadHeroImage handles hero image upload (admin only).
+// This handler only uploads the file to durable storage and returns its URL.
+// The caller must persist the URL separately via PUT /api/admin/settings/hero_image_url.
 func UploadHeroImage(storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
