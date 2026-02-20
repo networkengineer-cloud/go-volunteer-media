@@ -1250,6 +1250,18 @@
   cursor: not-allowed;
 }
 
+.unlock-success-msg {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--success-600, #16a34a);
+  padding: 4px 0;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .unlock-success-msg {
+  color: var(--success-400, #4ade80);
+}
+
 [data-theme="dark"] .action-btn {
   background: var(--dark-surface-alt);
   border-color: var(--neutral-700);

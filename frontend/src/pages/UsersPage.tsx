@@ -34,6 +34,7 @@ const UsersPage: React.FC = () => {
 
   // Unlock state
   const [unlockingUserId, setUnlockingUserId] = React.useState<number | null>(null);
+  const [unlockedUserId, setUnlockedUserId] = React.useState<number | null>(null);
 
   // Group admin management state
   const [groupMembers, setGroupMembers] = React.useState<Map<number, GroupMember[]>>(new Map());
@@ -246,6 +247,8 @@ const UsersPage: React.FC = () => {
           ? { ...u, ...data.user }
           : u
       ));
+      setUnlockedUserId(user.id);
+      setTimeout(() => setUnlockedUserId(prev => prev === user.id ? null : prev), 3000);
     } catch (err: unknown) {
       setError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to unlock account' : 'Failed to unlock account');
     } finally {
@@ -1529,6 +1532,9 @@ const UsersPage: React.FC = () => {
                                 >
                                   {unlockingUserId === user.id ? 'Unlocking…' : 'Unlock Account'}
                                 </button>
+                              )}
+                              {canManageUsers && unlockedUserId === user.id && (
+                                <span className="unlock-success-msg">✓ Account unlocked</span>
                               )}
                             </>
                           )}
