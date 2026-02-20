@@ -27,7 +27,7 @@ type adminUserResponse struct {
 	LastLogin             *time.Time `json:"last_login,omitempty"`
 	// Lockout fields shadow the json:"-" fields on models.User so they appear
 	// only in admin-scoped responses.
-	LockedUntil         *time.Time `json:"locked_until,omitempty"`
+	LockedUntil         *time.Time `json:"locked_until"`
 	FailedLoginAttempts int        `json:"failed_login_attempts"`
 }
 
@@ -180,9 +180,12 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			return
 		}
 
+		// Normalize username to lowercase
+		req.Username = strings.ToLower(strings.TrimSpace(req.Username))
+
 		// Check if username or email already exists
 		var existing models.User
-		if err := db.WithContext(ctx).Where("username = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
+		if err := db.WithContext(ctx).Where("LOWER(username) = LOWER(?) OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or email already exists"})
 			return
 		}
@@ -387,9 +390,12 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			}
 		}
 
+		// Normalize username to lowercase
+		req.Username = strings.ToLower(strings.TrimSpace(req.Username))
+
 		// Check if username or email already exists
 		var existing models.User
-		if err := db.WithContext(ctx).Where("username = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
+		if err := db.WithContext(ctx).Where("LOWER(username) = LOWER(?) OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or email already exists"})
 			return
 		}

@@ -100,7 +100,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 
 		// Find user
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").Where("username = ?", req.Username).First(&user).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups").Where("username = ?", strings.ToLower(req.Username)).First(&user).Error; err != nil {
 			// Audit log: failed login attempt (user not found)
 			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "user_not_found")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
