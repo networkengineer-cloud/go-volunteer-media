@@ -1555,7 +1555,7 @@ func TestUnlockUserAccount(t *testing.T) {
 			},
 			userIDParam:    func(targetID uint) string { return fmt.Sprintf("%d", targetID) },
 			expectedStatus: http.StatusBadRequest,
-			checkFunc: nil,
+			checkFunc:      nil,
 		},
 		{
 			name:    "invalid user ID returns 400",
@@ -1706,11 +1706,12 @@ func TestUnlockUserAccount(t *testing.T) {
 		})
 	}
 }
+
 // TestUnlockUserAccountSoftDeletedGroups verifies that unlocking an account
 // does not return soft-deleted groups in the response
 func TestUnlockUserAccountSoftDeletedGroups(t *testing.T) {
 	db := setupUserAdminTestDB(t)
-	
+
 	// Create a site admin user
 	adminUser := models.User{
 		Username: "admin",
@@ -1719,7 +1720,7 @@ func TestUnlockUserAccountSoftDeletedGroups(t *testing.T) {
 		IsAdmin:  true,
 	}
 	db.Create(&adminUser)
-	
+
 	// Create a volunteer user to unlock
 	volunteerUser := models.User{
 		Username:            "volunteer",
@@ -1729,48 +1730,48 @@ func TestUnlockUserAccountSoftDeletedGroups(t *testing.T) {
 		LockedUntil:         func() *time.Time { t := time.Now().Add(30 * time.Minute); return &t }(),
 	}
 	db.Create(&volunteerUser)
-	
+
 	// Create two groups
 	activeGroup := models.Group{Name: "active-group"}
 	deletedGroup := models.Group{Name: "deleted-group"}
 	db.Create(&activeGroup)
 	db.Create(&deletedGroup)
-	
+
 	// Assign volunteer to both groups
 	db.Model(&volunteerUser).Association("Groups").Append(&activeGroup, &deletedGroup)
-	
+
 	// Soft-delete the second group
 	db.Delete(&deletedGroup)
-	
+
 	// Unlock the volunteer account
 	c, w := setupUserAdminTestContext(adminUser.ID, true)
 	c.Params = gin.Params{{Key: "userId", Value: fmt.Sprintf("%d", volunteerUser.ID)}}
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/users/"+fmt.Sprintf("%d", volunteerUser.ID)+"/unlock", nil)
-	
+
 	handler := UnlockUserAccount(db)
 	handler(c)
-	
+
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
 	}
-	
+
 	// Parse response
 	var response gin.H
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
-	
+
 	userData, ok := response["user"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("Failed to get user data from response")
 	}
-	
+
 	groupList, ok := userData["groups"].([]interface{})
 	if !ok {
 		t.Fatalf("Failed to get groups from user data. User data: %+v", userData)
 	}
-	
+
 	// Verify only active group is returned
 	if len(groupList) != 1 {
 		t.Errorf("Expected 1 group in response, got %d. Groups: %v", len(groupList), groupList)

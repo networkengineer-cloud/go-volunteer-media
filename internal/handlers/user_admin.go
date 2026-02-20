@@ -18,12 +18,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// activeGroupsPreload is a reusable preload function that excludes soft-deleted groups.
-// Use with Preload("Groups", activeGroupsPreload) to ensure only active groups are loaded.
-func activeGroupsPreload(db *gorm.DB) *gorm.DB {
-	return db.Where("groups.deleted_at IS NULL")
-}
-
 // adminUserResponse wraps User to expose admin-only fields that are hidden
 // on the base model to prevent leaking through embedded User objects in
 // non-admin API responses (e.g. comment authors, announcement authors).
@@ -993,9 +987,7 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 		// Use Unscoped so we can distinguish a deleted user from a never-existing one.
 		// Use conditional Preload to exclude soft-deleted groups.
 		var user models.User
-		if err := db.WithContext(ctx).Unscoped().Preload("Groups", func(db *gorm.DB) *gorm.DB {
-			return db.Where("groups.deleted_at IS NULL")
-		}).First(&user, userIDInt).Error; err != nil {
+		if err := db.WithContext(ctx).Unscoped().Preload("Groups", activeGroupsPreload).First(&user, userIDInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {

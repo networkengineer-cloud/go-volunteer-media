@@ -401,86 +401,59 @@ func TestLogin(t *testing.T) {
 func TestLoginSoftDeletedGroups(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	tests := []struct {
-		name           string
-		payload        map[string]interface{}
-		setupDB        func(*gorm.DB)
-		expectedStatus int
-		checkResponse  func(*testing.T, map[string]interface{})
-	}{
-		{
-			name: "login response excludes soft-deleted groups",
-			payload: map[string]interface{}{
-				"username": "testuser",
-				"password": "password123",
-			},
-			setupDB: func(db *gorm.DB) {
-				// Create two groups
-				group1 := models.Group{Name: "active-group"}
-				group2 := models.Group{Name: "deleted-group"}
-				db.Create(&group1)
-				db.Create(&group2)
+	db := setupTestDB(t)
 
-				// Create user and assign to both groups
-				user := createTestUser(t, db, "testuser", "test@example.com", "password123", false)
-				db.Model(user).Association("Groups").Append(&group1, &group2)
+	group1 := models.Group{Name: "active-group"}
+	group2 := models.Group{Name: "deleted-group"}
+	db.Create(&group1)
+	db.Create(&group2)
 
-				// Soft-delete the second group
-				db.Delete(&group2)
-			},
-			expectedStatus: http.StatusOK,
-			checkResponse: func(t *testing.T, resp map[string]interface{}) {
-				// Verify groups in response
-				if user, ok := resp["user"].(map[string]interface{}); ok {
-					if groupList, ok := user["groups"].([]interface{}); ok {
-						if len(groupList) != 1 {
-							t.Errorf("Expected 1 group in login response, got %d. Groups: %v", len(groupList), groupList)
-						} else {
-							group := groupList[0].(map[string]interface{})
-							groupName := group["name"].(string)
-							if groupName != "active-group" {
-								t.Errorf("Expected 'active-group', got '%s'", groupName)
-							}
-						}
-					} else {
-						t.Error("Expected groups array in user data")
-					}
-				} else {
-					t.Error("Expected user object in response")
-				}
-			},
-		},
+	user := createTestUser(t, db, "testuser", "test@example.com", "password123", false)
+	db.Model(user).Association("Groups").Append(&group1, &group2)
+
+	db.Delete(&group2)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/auth/login", nil)
+
+	payload := map[string]interface{}{
+		"username": "testuser",
+		"password": "password123",
+	}
+	body, _ := json.Marshal(payload)
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := Login(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Response: %s", http.StatusOK, w.Code, w.Body.String())
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db := setupTestDB(t)
-			if tt.setupDB != nil {
-				tt.setupDB(db)
-			}
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
 
-			w := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(w)
-			c.Request = httptest.NewRequest("POST", "/api/auth/login", nil)
+	userData, ok := response["user"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected user object in response")
+	}
 
-			body, _ := json.Marshal(tt.payload)
-			c.Request.Body = io.NopCloser(bytes.NewReader(body))
-			c.Request.Header.Set("Content-Type", "application/json")
+	groupList, ok := userData["groups"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected groups array in user data")
+	}
 
-			handler := Login(db)
-			handler(c)
+	if len(groupList) != 1 {
+		t.Errorf("Expected 1 group in login response, got %d. Groups: %v", len(groupList), groupList)
+		return
+	}
 
-			if w.Code != tt.expectedStatus {
-				t.Errorf("Expected status %d, got %d. Response: %s", tt.expectedStatus, w.Code, w.Body.String())
-			}
-
-			var response map[string]interface{}
-			json.Unmarshal(w.Body.Bytes(), &response)
-
-			if tt.checkResponse != nil {
-				tt.checkResponse(t, response)
-			}
-		})
+	group := groupList[0].(map[string]interface{})
+	groupName := group["name"].(string)
+	if groupName != "active-group" {
+		t.Errorf("Expected 'active-group', got '%s'", groupName)
 	}
 }
 
@@ -573,7 +546,7 @@ func TestGetCurrentUserSoftDeletedGroups(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := setupTestDB(t)
-	
+
 	// Create two groups: one active, one to be deleted
 	group1 := models.Group{Name: "active-group"}
 	group2 := models.Group{Name: "deleted-group"}
@@ -620,5 +593,3 @@ func TestGetCurrentUserSoftDeletedGroups(t *testing.T) {
 		}
 	}
 }
-
-
