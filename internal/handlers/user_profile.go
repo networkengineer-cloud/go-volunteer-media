@@ -129,7 +129,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 
 		// Fetch user details
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, targetUserID).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, targetUserID).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 				return

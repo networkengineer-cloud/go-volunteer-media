@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -396,6 +397,66 @@ func TestLogin(t *testing.T) {
 	}
 }
 
+// TestLoginSoftDeletedGroups verifies that logging in does not return soft-deleted groups
+func TestLoginSoftDeletedGroups(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := setupTestDB(t)
+
+	group1 := models.Group{Name: "active-group"}
+	group2 := models.Group{Name: "deleted-group"}
+	db.Create(&group1)
+	db.Create(&group2)
+
+	user := createTestUser(t, db, "testuser", "test@example.com", "password123", false)
+	db.Model(user).Association("Groups").Append(&group1, &group2)
+
+	db.Delete(&group2)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/auth/login", nil)
+
+	payload := map[string]interface{}{
+		"username": "testuser",
+		"password": "password123",
+	}
+	body, _ := json.Marshal(payload)
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := Login(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Response: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	userData, ok := response["user"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected user object in response")
+	}
+
+	groupList, ok := userData["groups"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected groups array in user data")
+	}
+
+	if len(groupList) != 1 {
+		t.Errorf("Expected 1 group in login response, got %d. Groups: %v", len(groupList), groupList)
+		return
+	}
+
+	group := groupList[0].(map[string]interface{})
+	groupName := group["name"].(string)
+	if groupName != "active-group" {
+		t.Errorf("Expected 'active-group', got '%s'", groupName)
+	}
+}
+
 func TestGetCurrentUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -477,5 +538,58 @@ func TestGetCurrentUser(t *testing.T) {
 				tt.checkResponse(t, response)
 			}
 		})
+	}
+}
+
+// Regression test for soft-deleted groups not appearing in GetCurrentUser response
+func TestGetCurrentUserSoftDeletedGroups(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := setupTestDB(t)
+
+	// Create two groups: one active, one to be deleted
+	group1 := models.Group{Name: "active-group"}
+	group2 := models.Group{Name: "deleted-group"}
+	db.Create(&group1)
+	db.Create(&group2)
+
+	// Create user and assign to both groups
+	user := createTestUser(t, db, "testuser", "test@example.com", "password123", false)
+	db.Model(user).Association("Groups").Append(&group1, &group2)
+
+	// Soft-delete group2
+	db.Delete(&group2)
+
+	// Create test context with user_id
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/api/v1/auth/me", nil)
+	c.Set("user_id", user.ID) // Simulate middleware setting user context
+
+	handler := GetCurrentUser(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Response: %s", w.Code, w.Body.String())
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	// Verify response has groups - GetCurrentUser returns user data directly, not wrapped in "data"
+	groupsRaw, ok := response["groups"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected groups array in response, got %T. Response: %v", response["groups"], response)
+	}
+
+	if len(groupsRaw) != 1 {
+		t.Errorf("Expected 1 group (active), got %d. Groups: %v", len(groupsRaw), groupsRaw)
+	} else {
+		group := groupsRaw[0].(map[string]interface{})
+		if groupName, ok := group["name"].(string); ok {
+			if groupName != "active-group" {
+				t.Errorf("Expected 'active-group', got '%s'", groupName)
+			}
+		}
 	}
 }

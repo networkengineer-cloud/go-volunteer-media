@@ -103,7 +103,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 
 		// Find user (case-insensitive username match)
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").Where("LOWER(username) = ?", strings.ToLower(req.Username)).First(&user).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).Where("LOWER(username) = ?", strings.ToLower(req.Username)).First(&user).Error; err != nil {
 			// Audit log: failed login attempt (user not found)
 			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "user_not_found")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
@@ -238,7 +238,7 @@ func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userID).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
