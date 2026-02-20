@@ -143,8 +143,6 @@ func AdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// (removed duplicate import block)
-
 type AdminCreateUserRequest struct {
 	Username       string `json:"username" binding:"required,min=3,max=50,usernamechars"`
 	FirstName      string `json:"first_name" binding:"omitempty,min=1,max=100"`
@@ -987,8 +985,11 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 
 		// Load target user with groups for authz checks.
 		// Use Unscoped so we can distinguish a deleted user from a never-existing one.
+		// Use conditional Preload to exclude soft-deleted groups.
 		var user models.User
-		if err := db.WithContext(ctx).Unscoped().Preload("Groups").First(&user, userIDInt).Error; err != nil {
+		if err := db.WithContext(ctx).Unscoped().Preload("Groups", func(db *gorm.DB) *gorm.DB {
+			return db.Where("groups.deleted_at IS NULL")
+		}).First(&user, userIDInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
