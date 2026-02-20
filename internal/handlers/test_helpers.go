@@ -1,6 +1,11 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -116,4 +121,54 @@ func AddUserToGroupWithAdmin(t *testing.T, db *gorm.DB, userID, groupID uint, is
 	if err := db.Create(userGroup).Error; err != nil {
 		t.Fatalf("Failed to add user to group: %v", err)
 	}
+}
+
+// minimalPNG is a valid PNG header sufficient to pass ValidateImageUpload without a real image.
+var minimalPNG = []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+
+// mockStorageProvider is a test double for storage.Provider.
+// Set UploadImageErr to simulate a storage failure.
+type mockStorageProvider struct {
+	UploadImageErr error
+	LastMimeType   string
+}
+
+func (m *mockStorageProvider) Name() string { return "mock" }
+func (m *mockStorageProvider) UploadImage(_ context.Context, _ []byte, mimeType string, _ map[string]string) (string, string, string, error) {
+	m.LastMimeType = mimeType
+	if m.UploadImageErr != nil {
+		return "", "", "", m.UploadImageErr
+	}
+	return "/api/images/test-uuid", "test-uuid", ".png", nil
+}
+func (m *mockStorageProvider) UploadDocument(_ context.Context, _ []byte, _, _ string) (string, string, string, error) {
+	return "/api/documents/test-uuid", "test-uuid", ".pdf", nil
+}
+func (m *mockStorageProvider) GetImage(_ context.Context, _ string) ([]byte, string, error) {
+	return nil, "", nil
+}
+func (m *mockStorageProvider) GetDocument(_ context.Context, _ string) ([]byte, string, error) {
+	return nil, "", nil
+}
+func (m *mockStorageProvider) DeleteImage(_ context.Context, _ string) error    { return nil }
+func (m *mockStorageProvider) DeleteDocument(_ context.Context, _ string) error { return nil }
+func (m *mockStorageProvider) GetImageURL(_ string) string                      { return "" }
+func (m *mockStorageProvider) GetDocumentURL(_ string) string                   { return "" }
+
+// createImageMultipartRequest builds a multipart/form-data POST request containing one image file.
+func createImageMultipartRequest(t *testing.T, fieldName, filename string, content []byte) *http.Request {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile(fieldName, filename)
+	if err != nil {
+		t.Fatalf("Failed to create form file: %v", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("Failed to write file content: %v", err)
+	}
+	writer.Close()
+	req := httptest.NewRequest(http.MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
 }

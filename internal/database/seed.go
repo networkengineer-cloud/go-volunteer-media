@@ -947,17 +947,23 @@ func seedProtocols(db *gorm.DB, users []models.User, groups []models.Group) erro
 	return nil
 }
 
-// updateSiteSettings updates site-wide settings with Unsplash hero image
+// updateSiteSettings updates site-wide settings with Unsplash hero image for fresh databases.
+// Note: the hero_image_url row is always created (with an empty value) by createDefaultSiteSettings
+// in RunMigrations, which runs at startup before seeding — so First() will find the row here.
 func updateSiteSettings(db *gorm.DB) error {
-	// Update hero image for home page
+	// Only set the hero image if none has been configured yet (preserve any admin-uploaded image)
 	var heroSetting models.SiteSetting
 	if err := db.Where("key = ?", "hero_image_url").First(&heroSetting).Error; err == nil {
-		// Beautiful hero image of happy dogs for the home page
-		heroSetting.Value = "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=1920&q=80"
-		if err := db.Save(&heroSetting).Error; err != nil {
-			return fmt.Errorf("failed to update hero_image_url setting: %w", err)
+		if heroSetting.Value == "" {
+			// Beautiful hero image of happy dogs for the home page
+			heroSetting.Value = "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=1920&q=80"
+			if err := db.Save(&heroSetting).Error; err != nil {
+				return fmt.Errorf("failed to update hero_image_url setting: %w", err)
+			}
+			logging.Info("Updated site-wide hero image with Unsplash image")
+		} else {
+			logging.Info("Skipping hero image update - custom image already configured")
 		}
-		logging.Info("Updated site-wide hero image with Unsplash image")
 	}
 
 	return nil

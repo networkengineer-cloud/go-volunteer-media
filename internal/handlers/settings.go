@@ -2,13 +2,15 @@ package handlers
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 	"gorm.io/gorm"
 )
@@ -101,36 +103,63 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// UploadHeroImage handles hero image upload (admin only)
-func UploadHeroImage() gin.HandlerFunc {
+// UploadHeroImage handles hero image upload (admin only).
+// This handler only uploads the file to durable storage and returns its URL.
+// The caller must persist the URL separately via PUT /api/admin/settings/hero_image_url.
+func UploadHeroImage(storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
+
 		file, err := c.FormFile("image")
 		if err != nil {
+			logger.Error("Failed to get form file", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "No image file provided"})
 			return
 		}
 
 		// Validate file upload (size, type, content) - use smaller limit for hero images
 		if err := upload.ValidateImageUpload(file, upload.MaxHeroImageSize); err != nil {
+			logger.Error("File validation failed", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file: " + err.Error()})
 			return
 		}
 
-		// Get validated extension
-		ext := strings.ToLower(filepath.Ext(file.Filename))
+		// Open and read file bytes
+		src, err := file.Open()
+		if err != nil {
+			logger.Error("Failed to open file", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read image"})
+			return
+		}
+		defer src.Close()
 
-		// Generate unique filename
-		filename := fmt.Sprintf("hero-%s%s", uuid.New().String(), ext)
-		filepath := fmt.Sprintf("./public/uploads/%s", filename)
-
-		// Save file
-		if err := c.SaveUploadedFile(file, filepath); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+		data, err := io.ReadAll(src)
+		if err != nil {
+			logger.Error("Failed to read file bytes", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read image"})
 			return
 		}
 
-		// Return the URL path
-		imageURL := fmt.Sprintf("/uploads/%s", filename)
+		// Detect MIME type from file content; fall back to extension-based lookup
+		// for formats like HEIC/HEIF that http.DetectContentType does not recognise.
+		mimeType := http.DetectContentType(data)
+		if mimeType == "application/octet-stream" {
+			ext := strings.ToLower(filepath.Ext(file.Filename))
+			if types, ok := upload.AllowedImageTypes[ext]; ok {
+				mimeType = types[0]
+			}
+		}
+
+		// Upload to storage provider
+		imageURL, _, _, err := storageProvider.UploadImage(ctx, data, mimeType, nil)
+		if err != nil {
+			logger.Error("Failed to upload image to storage", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
+			return
+		}
+
+		logger.WithField("url", imageURL).Info("Hero image uploaded successfully")
 		c.JSON(http.StatusOK, gin.H{"url": imageURL})
 	}
 }

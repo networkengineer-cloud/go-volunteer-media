@@ -1,17 +1,16 @@
 package handlers
 
 import (
-	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 	"gorm.io/gorm"
 )
@@ -24,8 +23,9 @@ type ProtocolRequest struct {
 }
 
 // UploadProtocolImage handles secure protocol image uploads (group admin or site admin)
-func UploadProtocolImage(db *gorm.DB) gin.HandlerFunc {
+func UploadProtocolImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -51,26 +51,42 @@ func UploadProtocolImage(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get validated extension
-		ext := strings.ToLower(filepath.Ext(file.Filename))
+		// Open and read file bytes
+		src, err := file.Open()
+		if err != nil {
+			logger.Error("Failed to open file", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read image"})
+			return
+		}
+		defer src.Close()
 
-		// Generate unique filename
-		fname := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), uuid.New().String(), ext)
-		uploadPath := filepath.Join("public", "uploads", fname)
-
-		logger.WithField("path", uploadPath).Debug("Saving protocol image")
-
-		// Save file
-		if err := c.SaveUploadedFile(file, uploadPath); err != nil {
-			logger.Error("Failed to save file", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file: " + err.Error()})
+		data, err := io.ReadAll(src)
+		if err != nil {
+			logger.Error("Failed to read file bytes", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read image"})
 			return
 		}
 
-		// Return public URL
-		url := "/uploads/" + fname
-		logger.WithField("url", url).Info("Protocol image uploaded successfully")
-		c.JSON(http.StatusOK, gin.H{"url": url})
+		// Detect MIME type from file content; fall back to extension-based lookup
+		// for formats like HEIC/HEIF that http.DetectContentType does not recognise.
+		mimeType := http.DetectContentType(data)
+		if mimeType == "application/octet-stream" {
+			ext := strings.ToLower(filepath.Ext(file.Filename))
+			if types, ok := upload.AllowedImageTypes[ext]; ok {
+				mimeType = types[0]
+			}
+		}
+
+		// Upload to storage provider
+		imageURL, _, _, err := storageProvider.UploadImage(ctx, data, mimeType, nil)
+		if err != nil {
+			logger.Error("Failed to upload image to storage", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
+			return
+		}
+
+		logger.WithField("url", imageURL).Info("Protocol image uploaded successfully")
+		c.JSON(http.StatusOK, gin.H{"url": imageURL})
 	}
 }
 
