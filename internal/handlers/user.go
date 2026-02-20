@@ -63,7 +63,7 @@ func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
 		// Get users with pagination
 		var users []models.User
 		if err := db.WithContext(ctx).
-			Preload("Groups").
+			Preload("Groups", activeGroupsPreload).
 			Limit(limit).
 			Offset(offset).
 			Order("created_at DESC").
@@ -110,7 +110,7 @@ func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify user has access to the group
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userID).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}

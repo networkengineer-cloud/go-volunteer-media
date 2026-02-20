@@ -117,7 +117,7 @@ func GetGroups(db *gorm.DB) gin.HandlerFunc {
 		} else {
 			// Regular users see only their groups
 			var user models.User
-			if err := db.WithContext(ctx).Preload("Groups").First(&user, userID).Error; err != nil {
+			if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user groups"})
 				return
 			}

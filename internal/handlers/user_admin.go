@@ -18,6 +18,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// activeGroupsPreload is a reusable preload function that excludes soft-deleted groups.
+// Use with Preload("Groups", activeGroupsPreload) to ensure only active groups are loaded.
+func activeGroupsPreload(db *gorm.DB) *gorm.DB {
+	return db.Where("groups.deleted_at IS NULL")
+}
+
 // adminUserResponse wraps User to expose admin-only fields that are hidden
 // on the base model to prevent leaking through embedded User objects in
 // non-admin API responses (e.g. comment authors, announcement authors).
@@ -93,7 +99,7 @@ func GetDeletedUsers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		var users []models.User
-		if err := db.WithContext(ctx).Unscoped().Preload("Groups").Where("deleted_at IS NOT NULL").Find(&users).Error; err != nil {
+		if err := db.WithContext(ctx).Unscoped().Preload("Groups", activeGroupsPreload).Where("deleted_at IS NOT NULL").Find(&users).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch deleted users"})
 			return
 		}
@@ -267,7 +273,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			}
 
 			// Preload groups for response
-			if err := db.WithContext(ctx).Preload("Groups").First(&user, user.ID).Error; err != nil {
+			if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user groups"})
 				return
 			}
@@ -321,7 +327,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		}
 
 		// Preload groups for response
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, user.ID).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user groups"})
 			return
 		}
@@ -474,7 +480,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			}
 
 			// Preload groups for response
-			if err := db.WithContext(ctx).Preload("Groups").First(&user, user.ID).Error; err != nil {
+			if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user groups"})
 				return
 			}
@@ -528,7 +534,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 		}
 
 		// Preload groups for response
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, user.ID).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user groups"})
 			return
 		}
@@ -571,7 +577,7 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 
 		// Find the target user with their groups
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userIdInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
@@ -685,7 +691,7 @@ func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *mod
 		return
 	}
 
-	if err := db.WithContext(ctx).Preload("Groups").First(user, user.ID).Error; err != nil {
+	if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(user, user.ID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload user"})
 		return
 	}
@@ -768,7 +774,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 
 		// Find the target user with their groups
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIdInt).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userIdInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
@@ -847,7 +853,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 
 		// Find the target user with their groups (GORM soft-delete filter excludes deleted users)
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&user, userIDInt).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userIDInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
