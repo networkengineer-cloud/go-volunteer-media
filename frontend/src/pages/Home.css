@@ -54,6 +54,8 @@
 }
 
 .hero-cta .btn {
+  display: inline-block;
+  width: auto;
   padding: 1rem 2rem;
   border-radius: 8px;
   font-weight: 600;
@@ -82,6 +84,19 @@
   transform: translateY(0);
 }
 
+[data-theme='dark'] .hero-cta .btn.btn-primary {
+  background-color: var(--brand);
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  text-decoration: none;
+}
+
+[data-theme='dark'] .hero-cta .btn.btn-primary:hover {
+  background-color: var(--brand-600);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  text-decoration: none;
+}
+
 .features {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -104,7 +119,6 @@
 }
 
 [data-theme='dark'] .feature {
-  border-color: var(--neutral-700);
   border-top: 6px solid var(--accent);
 }
 

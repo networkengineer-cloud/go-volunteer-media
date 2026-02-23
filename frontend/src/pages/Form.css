@@ -12,10 +12,6 @@
   border: 1px solid var(--neutral-200);
 }
 
-[data-theme='dark'] .form-container {
-  border-color: var(--neutral-700);
-}
-
 .form-container h1 {
   color: var(--navy);
   margin-bottom: 2rem;
@@ -82,10 +78,6 @@
   margin-top: 2.5rem;
   padding-top: 2rem;
   border-top: 2px solid var(--neutral-200);
-}
-
-[data-theme='dark'] .form-actions {
-  border-top-color: var(--neutral-700);
 }
 
 .btn-primary {
@@ -163,10 +155,6 @@
   background: var(--bg);
   border: 2px solid var(--neutral-200);
   border-radius: 12px;
-}
-
-[data-theme='dark'] .image-preview {
-  border-color: var(--neutral-700);
 }
 
 .image-preview label {
@@ -450,8 +438,6 @@
 }
 
 [data-theme='dark'] .document-preview {
-  background: var(--surface);
-  border-color: var(--neutral-700);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 

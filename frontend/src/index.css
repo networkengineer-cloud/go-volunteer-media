@@ -167,7 +167,6 @@
   --neutral-700: #f3f4f6;
   --neutral-800: #f9fafb;
   --neutral-900: #ffffff;
-  --neutral-950: #000000;
 
   /* Text Colors */
   --text-primary: #f9fafb;
@@ -185,7 +184,7 @@
   --card-bg: #1f2937;
   
   /* Input Field Variables for Dark Mode */
-  --input-bg: #1f2937;
+  --input-bg: #111827;
   --input-border: #4b5563;
 }
 

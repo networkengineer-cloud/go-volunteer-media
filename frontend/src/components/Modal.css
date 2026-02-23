@@ -82,7 +82,7 @@
 
 [data-theme='dark'] .modal__header {
   border-bottom-color: var(--gray-700, #374151);
-  background: var(--neutral-800);
+  background: var(--surface);
 }
 
 .modal__title {
@@ -94,7 +94,7 @@
 }
 
 [data-theme='dark'] .modal__title {
-  color: var(--neutral-50);
+  color: var(--text-primary);
 }
 
 .modal__close {
@@ -141,7 +141,7 @@
 }
 
 [data-theme='dark'] .modal__content {
-  background: var(--neutral-800);
+  background: var(--surface);
 }
 
 .modal__content > :first-child {

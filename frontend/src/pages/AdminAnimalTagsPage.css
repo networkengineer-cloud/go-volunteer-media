@@ -531,9 +531,7 @@
 
 [data-theme='dark'] .form-group input[type="text"],
 [data-theme='dark'] .form-group select {
-  background: var(--neutral-800);
-  color: var(--neutral-50);
-  border-color: var(--neutral-700);
+  color-scheme: dark;
 }
 
 .form-group input[type="text"]::placeholder {

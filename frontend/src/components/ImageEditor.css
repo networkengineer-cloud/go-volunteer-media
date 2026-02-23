@@ -342,13 +342,12 @@
 
 /* Dark theme adjustments */
 [data-theme='dark'] .image-editor-modal {
-  background: var(--neutral-800);
+  background: var(--surface);
   box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 [data-theme='dark'] .image-editor-header {
-  background: var(--neutral-800);
-  border-bottom-color: var(--neutral-700);
+  background: var(--surface);
 }
 
 [data-theme='dark'] .image-editor-header h2 {
@@ -356,12 +355,11 @@
 }
 
 [data-theme='dark'] .image-editor-controls {
-  background: var(--neutral-800);
+  background: var(--surface);
 }
 
 [data-theme='dark'] .image-editor-actions {
-  background: var(--neutral-800);
-  border-top-color: var(--neutral-700);
+  background: var(--surface);
 }
 
 [data-theme='dark'] .image-editor-actions .btn-secondary {

@@ -5,12 +5,23 @@ type Theme = 'light' | 'dark';
 
 interface ThemeContextType {
   theme: Theme;
+  setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [hasUserPreference, setHasUserPreference] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const stored = localStorage.getItem('theme');
+      return stored === 'light' || stored === 'dark';
+    } catch {
+      return false;
+    }
+  });
+
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === 'undefined') return 'light';
     try {
@@ -25,23 +36,54 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   });
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const root = document.documentElement;
     if (theme === 'dark') {
       root.setAttribute('data-theme', 'dark');
     } else {
       root.removeAttribute('data-theme');
     }
-    try {
-      localStorage.setItem('theme', theme);
-    } catch {
-      // ignore write errors (e.g., private mode)
-    }
-  }, [theme]);
 
-  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+    try {
+      if (hasUserPreference) {
+        localStorage.setItem('theme', theme);
+      } else {
+        localStorage.removeItem('theme');
+      }
+    } catch {
+      // ignore storage errors (e.g., private mode)
+    }
+  }, [theme, hasUserPreference]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || hasUserPreference || !window.matchMedia) return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (event: MediaQueryListEvent) => {
+      setTheme(event.matches ? 'dark' : 'light');
+    };
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, [hasUserPreference]);
+
+  const toggleTheme = () => {
+    setHasUserPreference(true);
+    setTheme((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'));
+  };
+
+  const setThemePreference = (nextTheme: Theme) => {
+    setHasUserPreference(true);
+    setTheme(nextTheme);
+  };
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme: setThemePreference, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );

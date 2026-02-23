@@ -8,12 +8,12 @@
 
 /* Dark mode support */
 [data-theme="dark"] .session-report-form {
-  --card-bg: var(--neutral-800);
-  --border-color: var(--neutral-700);
-  --text-color: var(--neutral-100);
+  --card-bg: var(--surface);
+  --border-color: var(--neutral-200);
+  --text-color: var(--text-primary);
   --label-color: var(--neutral-400);
-  --input-bg: var(--neutral-900);
-  --input-border: var(--neutral-700);
+  --input-bg: var(--neutral-100);
+  --input-border: var(--neutral-300);
 }
 
 /* Draft Restore Prompt */
@@ -520,13 +520,13 @@ details[open] .tags-toggle::before {
 }
 
 [data-theme="dark"] .btn-cancel {
-  background: var(--neutral-700, #374151);
+  background: var(--neutral-100, #374151);
   color: var(--text-primary, #f3f4f6);
-  border-color: var(--neutral-600, #4b5563);
+  border-color: var(--neutral-200, #4b5563);
 }
 
 [data-theme="dark"] .btn-cancel:hover:not(:disabled) {
-  background: var(--neutral-600, #4b5563);
+  background: var(--neutral-200, #4b5563);
 }
 
 /* Mobile Optimizations */
@@ -640,10 +640,6 @@ details[open] .tags-toggle::before {
   overflow: hidden;
 }
 
-[data-theme="dark"] .accordion-section {
-  border-color: var(--neutral-700);
-}
-
 .accordion-header {
   width: 100%;
   display: flex;
@@ -662,7 +658,7 @@ details[open] .tags-toggle::before {
 
 [data-theme="dark"] .accordion-header {
   background: rgba(255, 255, 255, 0.03);
-  color: var(--neutral-200);
+  color: var(--text-primary);
 }
 
 .accordion-header:hover {
@@ -697,7 +693,7 @@ details[open] .tags-toggle::before {
 }
 
 [data-theme="dark"] .accordion-content {
-  background: var(--neutral-800);
+  background: var(--surface);
 }
 
 @keyframes slideDown {

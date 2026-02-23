@@ -38,6 +38,21 @@
   transition-property: border-color, box-shadow, background-color;
 }
 
+[data-theme='dark'] .form-field__input,
+[data-theme='dark'] .form-field__textarea {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .form-field__input:-webkit-autofill,
+[data-theme='dark'] .form-field__input:-webkit-autofill:hover,
+[data-theme='dark'] .form-field__input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-primary);
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 .form-field__input:focus,
 .form-field__textarea:focus {
   outline: none;
@@ -115,7 +130,7 @@
 }
 
 [data-theme='dark'] .form-field__helper {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 /* Textarea specific styles */

@@ -8,10 +8,6 @@
   border: 1px solid var(--neutral-200);
 }
 
-[data-theme='dark'] .users-page {
-  border-color: var(--neutral-700);
-}
-
 .users-page h1 {
   color: var(--navy);
   margin-bottom: 1.5rem;
@@ -39,11 +35,6 @@
   padding: 1rem 1.25rem;
   text-align: left;
   border-bottom: 1px solid var(--neutral-200);
-}
-
-[data-theme='dark'] .users-table th,
-[data-theme='dark'] .users-table td {
-  border-bottom-color: var(--neutral-700);
 }
 
 .users-table th {
@@ -112,10 +103,6 @@
   margin-bottom: 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border: 1px solid var(--neutral-200);
-}
-
-[data-theme='dark'] .users-filters {
-  border-color: var(--neutral-700);
 }
 
 .filter-row {
@@ -257,10 +244,6 @@
   margin-bottom: 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border: 1px solid var(--neutral-200);
-}
-
-[data-theme='dark'] .users-create-form {
-  border-color: var(--neutral-700);
 }
 
 .users-create-form > div {
@@ -572,10 +555,6 @@
     border: 1px solid var(--neutral-200);
   }
 
-  [data-theme='dark'] .user-card {
-    border-color: var(--neutral-700);
-  }
-
   .user-card-header {
     display: flex;
     justify-content: space-between;
@@ -583,10 +562,6 @@
     margin-bottom: 1rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--neutral-200);
-  }
-
-  [data-theme='dark'] .user-card-header {
-    border-bottom-color: var(--neutral-700);
   }
 
   .user-card-title {
@@ -770,7 +745,6 @@
 [data-theme="dark"] .group-admin-toggle-btn.not-admin {
   background: var(--bg);
   color: var(--text-secondary);
-  border-color: var(--neutral-700);
 }
 
 [data-theme="dark"] .group-admin-toggle-btn.not-admin:hover:not(:disabled) {
@@ -824,7 +798,6 @@
 }
 
 [data-theme="dark"] .user-card-new {
-  border-color: var(--neutral-700);
   background: var(--surface);
 }
 
@@ -1017,7 +990,6 @@
 
 [data-theme="dark"] .admin-toggle {
   background: var(--bg);
-  border-color: var(--neutral-700);
   color: var(--text-secondary);
 }
 
@@ -1063,10 +1035,6 @@
   padding: 0.75rem 0;
   border-top: 1px solid var(--neutral-100);
   border-bottom: 1px solid var(--neutral-100);
-}
-
-[data-theme="dark"] .user-stats-row {
-  border-color: var(--neutral-800);
 }
 
 .stat-item {
@@ -1183,13 +1151,11 @@
 
 [data-theme="dark"] .action-btn {
   background: var(--bg);
-  border-color: var(--neutral-700);
   color: var(--text-primary);
 }
 
 [data-theme="dark"] .action-btn.secondary {
   background: var(--bg);
-  border-color: var(--neutral-700);
   color: var(--text-primary);
 }
 
@@ -1209,7 +1175,6 @@
 [data-theme="dark"] .action-btn.danger {
   background: var(--bg);
   color: var(--danger);
-  border-color: var(--neutral-700);
 }
 
 /* Empty state */
@@ -1254,10 +1219,6 @@
   margin-bottom: 2rem;
   padding-bottom: 1.5rem;
   border-bottom: 2px solid var(--neutral-200);
-}
-
-[data-theme='dark'] .create-form-header {
-  border-bottom-color: var(--neutral-700);
 }
 
 .create-form-header h2 {
@@ -1356,16 +1317,6 @@
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
 }
 
-[data-theme='dark'] .form-input {
-  background: var(--surface);
-  border-color: var(--neutral-700);
-  color: var(--text-primary);
-}
-
-[data-theme='dark'] .form-input:hover {
-  border-color: var(--neutral-600);
-}
-
 [data-theme='dark'] .form-input:focus {
   border-color: var(--teal);
   box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.1);
@@ -1434,10 +1385,6 @@
   box-shadow: 0 0 0 3px rgba(14, 108, 85, 0.1);
 }
 
-[data-theme='dark'] .password-toggle:hover {
-  background: var(--neutral-800);
-}
-
 /* Password Strength Indicator */
 .password-strength {
   display: flex;
@@ -1452,10 +1399,6 @@
   background: var(--neutral-200);
   border-radius: 3px;
   overflow: hidden;
-}
-
-[data-theme='dark'] .strength-bar {
-  background: var(--neutral-700);
 }
 
 .strength-fill {
@@ -1526,11 +1469,6 @@
   margin-top: 0.125rem;
 }
 
-[data-theme='dark'] .checkbox-box {
-  background: var(--surface);
-  border-color: var(--neutral-700);
-}
-
 .checkbox-icon {
   opacity: 0;
   transform: scale(0.7);
@@ -1599,7 +1537,6 @@
 
 [data-theme='dark'] .group-checkboxes {
   background: var(--surface);
-  border-color: var(--neutral-700);
 }
 
 .group-checkbox-label {
@@ -1621,7 +1558,6 @@
 
 [data-theme='dark'] .group-checkbox-label {
   background: var(--bg);
-  border-color: var(--neutral-700);
 }
 
 [data-theme='dark'] .group-checkbox-label:hover {
@@ -1722,10 +1658,6 @@
   margin-top: 1rem;
 }
 
-[data-theme='dark'] .form-actions {
-  border-top-color: var(--neutral-700);
-}
-
 .btn-primary,
 .btn-secondary {
   display: flex;
@@ -1786,13 +1718,11 @@
 
 [data-theme='dark'] .btn-secondary {
   background: var(--bg);
-  border-color: var(--neutral-700);
   color: var(--text-primary);
 }
 
 [data-theme='dark'] .btn-secondary:hover:not(:disabled) {
   background: var(--surface);
-  border-color: var(--neutral-600);
 }
 
 .btn-primary:disabled,

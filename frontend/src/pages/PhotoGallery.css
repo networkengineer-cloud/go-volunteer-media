@@ -524,17 +524,16 @@
 
 /* Dark theme support */
 [data-theme='dark'] .modal-content {
-  background: var(--neutral-800);
+  background: var(--surface);
   box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 [data-theme='dark'] .modal-header {
-  background: var(--neutral-800);
-  border-bottom-color: var(--neutral-700);
+  background: var(--surface);
 }
 
 [data-theme='dark'] .modal-body {
-  background: var(--neutral-800);
+  background: var(--surface);
 }
 
 [data-theme='dark'] .modal-content::before {
@@ -748,8 +747,7 @@
 }
 
 [data-theme='dark'] .modal-actions {
-  background: var(--neutral-800);
-  border-top-color: var(--neutral-700);
+  background: var(--surface);
 }
 
 .modal-content .btn-primary {
@@ -871,16 +869,6 @@
   border-color: var(--neutral-400);
 }
 
-[data-theme='dark'] .btn-toggle-deleted {
-  background: var(--neutral-700);
-  border-color: var(--neutral-600);
-}
-
-[data-theme='dark'] .btn-toggle-deleted:hover {
-  background: var(--neutral-600);
-  border-color: var(--neutral-500);
-}
-
 .deleted-photos-section {
   background: var(--neutral-100);
   border: 2px solid var(--neutral-300);
@@ -942,6 +930,5 @@
 }
 
 [data-theme='dark'] .photo-meta {
-  border-top-color: var(--neutral-700);
   color: var(--text-tertiary);
 }

@@ -258,10 +258,6 @@
   color: #dbeafe;
 }
 
-[data-theme='dark'] .activity-item__animal-name {
-  background: var(--neutral-700);
-}
-
 [data-theme='dark'] .activity-item__animal-name:hover {
   background: #064e3b;
 }

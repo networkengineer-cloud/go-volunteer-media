@@ -112,7 +112,6 @@
 
 [data-theme="dark"] .session-rating-display {
   background: rgba(255, 255, 255, 0.03);
-  border-color: var(--neutral-700);
 }
 
 .rating-emoji-large {

@@ -14,7 +14,7 @@
 }
 
 [data-theme='dark'] .toast {
-  background: var(--gray-800, var(--neutral-800));
+  background: var(--gray-800, var(--surface));
   box-shadow: var(--shadow-lg, 0 10px 15px rgba(0, 0, 0, 0.3)), 
               0 0 0 1px rgba(255, 255, 255, 0.1);
 }
@@ -46,7 +46,7 @@
 }
 
 [data-theme='dark'] .toast__message {
-  color: var(--text-primary-dark, var(--neutral-50));
+  color: var(--text-primary-dark, var(--text-primary));
 }
 
 .toast__close {
@@ -70,8 +70,8 @@
 }
 
 [data-theme='dark'] .toast__close:hover {
-  color: var(--text-primary-dark, var(--neutral-50));
-  background: var(--gray-700, var(--neutral-700));
+  color: var(--text-primary-dark, var(--text-primary));
+  background: var(--gray-700, var(--neutral-100));
 }
 
 .toast__close:focus-visible {

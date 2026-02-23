@@ -81,10 +81,6 @@
   min-width: 200px;
 }
 
-[data-theme='dark'] .group-select {
-  border-color: var(--neutral-700);
-}
-
 .group-select:hover {
   border-color: var(--brand);
 }
@@ -149,10 +145,6 @@
   border: 1px solid var(--neutral-200);
 }
 
-[data-theme='dark'] .latest-comments-section {
-  border-color: var(--neutral-700);
-}
-
 .no-comments {
   color: var(--text-secondary);
   font-style: italic;
@@ -187,10 +179,6 @@
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--neutral-200);
-}
-
-[data-theme='dark'] .comment-animal-info {
-  border-bottom-color: var(--neutral-700);
 }
 
 .animal-link {
@@ -255,10 +243,6 @@
   border-top: 1px solid var(--neutral-200);
 }
 
-[data-theme='dark'] .comment-meta {
-  border-top-color: var(--neutral-700);
-}
-
 .comment-author {
   font-weight: 500;
 }
@@ -275,10 +259,6 @@
   margin-bottom: 2.5rem;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   border: 1px solid var(--neutral-200);
-}
-
-[data-theme='dark'] .animals-section {
-  border-color: var(--neutral-700);
 }
 
 .section-header {
@@ -314,10 +294,6 @@
   transition: transform 0.2s, box-shadow 0.2s;
   overflow: hidden;
   border: 1px solid var(--neutral-200);
-}
-
-[data-theme='dark'] .animal-card-mini {
-  border-color: var(--neutral-700);
 }
 
 .animal-card-mini:hover {
@@ -382,10 +358,6 @@
   border: 1px solid var(--neutral-200);
 }
 
-[data-theme='dark'] .announcements-section {
-  border-color: var(--neutral-700);
-}
-
 .announcements-header {
   display: flex;
   justify-content: space-between;
@@ -441,10 +413,6 @@
   margin-bottom: 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   border: 1px solid var(--neutral-200);
-}
-
-[data-theme='dark'] .announcement-form {
-  border-color: var(--neutral-700);
 }
 
 .form-group {
@@ -575,10 +543,6 @@
   border-top: 1px solid var(--neutral-200);
 }
 
-[data-theme='dark'] .announcement-meta {
-  border-top-color: var(--neutral-700);
-}
-
 .announcement-author {
   font-weight: 500;
 }
@@ -606,10 +570,6 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--neutral-200);
-}
-
-[data-theme='dark'] .group-card {
-  border-color: var(--neutral-700);
 }
 
 .group-card:hover {
