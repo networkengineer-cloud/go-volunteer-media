@@ -25,7 +25,7 @@
 }
 
 .modal {
-  background: #ffffff;
+  background: var(--surface);
   border-radius: var(--radius-lg, 0.5rem);
   box-shadow: var(--shadow-xl, 0 20px 25px rgba(0, 0, 0, 0.15));
   max-height: calc(100vh - 2rem);
@@ -47,7 +47,7 @@
 }
 
 [data-theme='dark'] .modal {
-  background: var(--gray-800, #1f2937);
+  background: var(--surface);
 }
 
 .modal:focus {
@@ -76,25 +76,20 @@
   justify-content: space-between;
   gap: var(--space-md, 1rem);
   padding: var(--space-lg, 1.5rem);
-  border-bottom: 1px solid var(--gray-200, #e5e7eb);
-  background: #ffffff;
-}
-
-[data-theme='dark'] .modal__header {
-  border-bottom-color: var(--gray-700, #374151);
-  background: #1f2937;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .modal__title {
   margin: 0;
   font-size: var(--text-xl, 1.25rem);
   font-weight: var(--font-semibold, 600);
-  color: #1f2937;
+  color: var(--text-primary);
   line-height: var(--leading-tight, 1.25);
 }
 
 [data-theme='dark'] .modal__title {
-  color: #f9fafb;
+  color: var(--text-primary);
 }
 
 .modal__close {
@@ -116,16 +111,7 @@
 
 .modal__close:hover {
   color: var(--text-primary);
-  background: var(--gray-100, #f3f4f6);
-}
-
-[data-theme='dark'] .modal__close {
-  color: var(--text-secondary-dark, #9ca3af);
-}
-
-[data-theme='dark'] .modal__close:hover {
-  color: var(--text-primary-dark, #f9fafb);
-  background: var(--gray-700, #374151);
+  background: var(--neutral-100);
 }
 
 .modal__close:focus-visible {
@@ -137,11 +123,11 @@
   padding: var(--space-lg, 1.5rem);
   overflow-y: auto;
   flex: 1;
-  background: #ffffff;
+  background: var(--surface);
 }
 
 [data-theme='dark'] .modal__content {
-  background: #1f2937;
+  background: var(--surface);
 }
 
 .modal__content > :first-child {
@@ -160,11 +146,7 @@
   gap: var(--space-md, 1rem);
   padding-top: var(--space-lg, 1.5rem);
   margin-top: var(--space-lg, 1.5rem);
-  border-top: 1px solid var(--gray-200, #e5e7eb);
-}
-
-[data-theme='dark'] .modal__actions {
-  border-top-color: var(--gray-700, #374151);
+  border-top: 1px solid var(--border);
 }
 
 /* Responsive adjustments */

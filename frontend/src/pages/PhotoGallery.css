@@ -46,7 +46,7 @@
 .no-photos {
   text-align: center;
   padding: 4rem 2rem;
-  background: white;
+  background: var(--surface);
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
@@ -88,7 +88,7 @@
 }
 
 .photo-card {
-  background: white;
+  background: var(--surface);
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
@@ -367,7 +367,7 @@
 
 .btn-danger {
   padding: 0.6rem 1.2rem;
-  background: #dc3545;
+  background: var(--danger);
   color: white;
   border: none;
   border-radius: 6px;
@@ -377,12 +377,12 @@
 }
 
 .btn-danger:hover {
-  background: #c82333;
+  background: var(--danger-600);
 }
 
 .btn-secondary {
   padding: 0.6rem 1.2rem;
-  background: #6c757d;
+  background: var(--neutral-500);
   color: white;
   border: none;
   border-radius: 6px;
@@ -392,7 +392,7 @@
 }
 
 .btn-secondary:hover {
-  background: #5a6268;
+  background: var(--neutral-600);
 }
 
 /* Upload Modal */
@@ -412,7 +412,7 @@
 }
 
 .modal-content {
-  background: #ffffff;
+  background: var(--surface);
   border-radius: 12px;
   padding: 0;
   max-width: 500px;
@@ -435,15 +435,15 @@
 
 .modal-header {
   padding: 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
-  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .modal-body {
   padding: 1.5rem;
   flex: 1;
   overflow-y: auto;
-  background: #ffffff;
+  background: var(--surface);
 }
 
 /* Image Upload Modal – styled similar to bite quarantine info for clarity */
@@ -524,17 +524,16 @@
 
 /* Dark theme support */
 [data-theme='dark'] .modal-content {
-  background: #1f2937;
+  background: var(--surface);
   box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 [data-theme='dark'] .modal-header {
-  background: #1f2937;
-  border-bottom-color: #374151;
+  background: var(--surface);
 }
 
 [data-theme='dark'] .modal-body {
-  background: #1f2937;
+  background: var(--surface);
 }
 
 [data-theme='dark'] .modal-content::before {
@@ -670,7 +669,7 @@
   padding: 1.25rem;
   border: 2px dashed var(--brand);
   border-radius: 10px;
-  background: linear-gradient(to bottom, #ffffff, #fafafa);
+  background: linear-gradient(to bottom, var(--surface), var(--neutral-50));
   color: var(--text-primary);
   font-size: 0.9rem;
   cursor: pointer;
@@ -698,7 +697,7 @@
 }
 
 .form-field input[type="file"]:hover {
-  background: #fff;
+  background: var(--surface);
   border-color: var(--brand-600);
   box-shadow: 0 0 0 4px rgba(14, 108, 85, 0.08);
 }
@@ -714,7 +713,7 @@
   padding: 0.875rem;
   border: 2px solid var(--border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface);
   color: var(--text-primary);
   font-family: inherit;
   resize: vertical;
@@ -743,13 +742,12 @@
   justify-content: flex-end;
   gap: 0.875rem;
   padding: 1.5rem;
-  border-top: 1px solid #e5e7eb;
-  background: #ffffff;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
 [data-theme='dark'] .modal-actions {
-  background: #1f2937;
-  border-top-color: #374151;
+  background: var(--surface);
 }
 
 .modal-content .btn-primary {
@@ -871,16 +869,6 @@
   border-color: var(--neutral-400);
 }
 
-[data-theme='dark'] .btn-toggle-deleted {
-  background: var(--neutral-700);
-  border-color: var(--neutral-600);
-}
-
-[data-theme='dark'] .btn-toggle-deleted:hover {
-  background: var(--neutral-600);
-  border-color: var(--neutral-500);
-}
-
 .deleted-photos-section {
   background: var(--neutral-100);
   border: 2px solid var(--neutral-300);
@@ -897,7 +885,7 @@
 
 [data-theme='dark'] .deleted-photos-section {
   background: rgba(31, 41, 55, 0.8);
-  border-color: #ef4444;
+  border-color: var(--danger);
 }
 
 .deleted-photo {
@@ -913,7 +901,7 @@
 
 [data-theme='dark'] .deleted-photo {
   opacity: 1;
-  border-color: #ef4444 !important;
+  border-color: var(--danger) !important;
   background: rgba(127, 29, 29, 0.1) !important;
 }
 
@@ -921,7 +909,7 @@
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
-  background: #ef4444;
+  background: var(--danger);
   color: white;
   padding: 0.35rem 0.85rem;
   border-radius: 6px;
@@ -942,6 +930,5 @@
 }
 
 [data-theme='dark'] .photo-meta {
-  border-top-color: #374151;
-  color: #9ca3af;
+  color: var(--text-tertiary);
 }

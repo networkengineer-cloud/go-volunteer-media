@@ -1,4 +1,6 @@
 :root {
+  color-scheme: light;
+
   /* HAWS Brand Colors - matching hawspets.org official green */
   --brand: #006b54; /* HAWS official green */
   --brand-600: #005443; /* Darker shade for hover states */
@@ -43,6 +45,7 @@
   --neutral-700: #374151;
   --neutral-800: #1f2937;
   --neutral-900: #111827;
+  --neutral-950: #030712;
 
   /* Text Colors */
   --text-primary: #1f2937;
@@ -119,9 +122,25 @@
   /* Input Field Variables */
   --input-bg: #ffffff;
   --input-border: #d1d5db;
+
+  /* Semantic Contrast Colors */
+  --danger-contrast: #991b1b;
+
+  /* Status message banner colors */
+  --success-bg: #d1fae5;
+  --success-text: #065f46;
+  --success-border: #6ee7b7;
+  --danger-bg: #fee2e2;
+  --danger-text: #7f1d1d;
+  --danger-border: #f87171;
+
+  /* Teal accent */
+  --teal: #0d9488;
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
+
   /* HAWS Brand Colors - lighter shade for dark mode visibility */
   --brand: #00a87e; /* Lighter green for dark mode */
   --brand-600: #006b54; /* HAWS official green */
@@ -183,8 +202,22 @@
   --card-bg: #1f2937;
   
   /* Input Field Variables for Dark Mode */
-  --input-bg: #1f2937;
+  --input-bg: #111827;
   --input-border: #4b5563;
+
+  /* Semantic Contrast Colors */
+  --danger-contrast: #fca5a5;
+
+  /* Status message banner colors */
+  --success-bg: rgba(16, 185, 129, 0.15);
+  --success-text: #10b981;
+  --success-border: #059669;
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --danger-text: #ef4444;
+  --danger-border: #dc2626;
+
+  /* Teal accent */
+  --teal: #2dd4bf;
 }
 
 * {

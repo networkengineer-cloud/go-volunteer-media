@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { SiteSettingsProvider } from './contexts/SiteSettingsContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { useAuth } from './hooks/useAuth';
 import { ToastProvider } from './contexts/ToastContext';
 import { groupsApi } from './api/client';
@@ -104,12 +105,13 @@ const UsersRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 function App() {
   return (
     <BrowserRouter>
-      <SiteSettingsProvider>
-        <AuthProvider>
-          <ToastProvider>
-            <Navigation />
-            <main id="main-content" role="main">
-              <Routes>
+      <ThemeProvider>
+        <SiteSettingsProvider>
+          <AuthProvider>
+            <ToastProvider>
+              <Navigation />
+              <main id="main-content" role="main">
+                <Routes>
           <Route
             path="/"
             element={
@@ -274,11 +276,12 @@ function App() {
               </UsersRoute>
             }
           />
-        </Routes>
-        </main>
-        </ToastProvider>
-      </AuthProvider>
-      </SiteSettingsProvider>
+                </Routes>
+              </main>
+            </ToastProvider>
+          </AuthProvider>
+        </SiteSettingsProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

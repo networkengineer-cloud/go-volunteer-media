@@ -11,7 +11,7 @@
 .error-state-icon {
   font-size: 4rem;
   margin-bottom: var(--space-lg, 1.5rem);
-  color: var(--color-danger, #ef4444);
+  color: var(--danger, #ef4444);
   line-height: 1;
 }
 

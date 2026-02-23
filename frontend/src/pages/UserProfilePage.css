@@ -436,12 +436,12 @@
 
 /* Dark Mode */
 [data-theme="dark"] .user-profile-page {
-  background: var(--dark-background, #111827);
+  background: var(--bg);
 }
 
 [data-theme="dark"] .profile-header {
-  background: var(--dark-surface, #1f2937);
-  border-bottom-color: var(--dark-border, #374151);
+  background: var(--surface);
+  border-bottom-color: var(--border);
 }
 
 [data-theme="dark"] .back-button {
@@ -457,12 +457,12 @@
 }
 
 [data-theme="dark"] .profile-details h1 {
-  color: var(--dark-text-primary, #f9fafb);
+  color: var(--text-primary);
 }
 
 [data-theme="dark"] .profile-email,
 [data-theme="dark"] .member-since {
-  color: var(--dark-text-secondary, #9ca3af);
+  color: var(--text-tertiary);
 }
 
 [data-theme="dark"] .admin-badge {
@@ -471,8 +471,8 @@
 
 [data-theme="dark"] .stat-card,
 [data-theme="dark"] .profile-section {
-  background: var(--dark-surface, #1f2937);
-  border-color: var(--dark-border, #374151);
+  background: var(--surface);
+  border-color: var(--border);
 }
 
 [data-theme="dark"] .stat-icon {
@@ -484,7 +484,7 @@
 [data-theme="dark"] .profile-section h2,
 [data-theme="dark"] .group-info h3,
 [data-theme="dark"] .animal-info h3 {
-  color: var(--dark-text-primary, #f9fafb);
+  color: var(--text-primary);
 }
 
 [data-theme="dark"] .stat-label,
@@ -493,13 +493,13 @@
 [data-theme="dark"] .comment-count,
 [data-theme="dark"] .activity-group,
 [data-theme="dark"] .empty-state p {
-  color: var(--dark-text-secondary, #9ca3af);
+  color: var(--text-tertiary);
 }
 
 [data-theme="dark"] .group-card,
 [data-theme="dark"] .animal-card,
 [data-theme="dark"] .activity-item {
-  border-color: var(--dark-border, #374151);
+  border-color: var(--border);
 }
 
 [data-theme="dark"] .group-card:hover,
@@ -522,25 +522,25 @@
 }
 
 [data-theme="dark"] .animal-image-placeholder {
-  background: var(--dark-surface-alt, #111827);
-  color: var(--dark-text-secondary, #6b7280);
+  background: var(--bg);
+  color: var(--text-secondary);
 }
 
 [data-theme="dark"] .activity-content p {
-  color: var(--dark-text-primary, #e5e7eb);
+  color: var(--text-primary);
 }
 
 [data-theme="dark"] .activity-time,
 [data-theme="dark"] .animal-stats {
-  color: var(--dark-text-secondary, #6b7280);
+  color: var(--text-secondary);
 }
 
 [data-theme="dark"] .empty-state h3 {
-  color: var(--dark-text-primary, #f9fafb);
+  color: var(--text-primary);
 }
 
 [data-theme="dark"] .spinner {
-  border-color: var(--dark-border, #374151);
+  border-color: var(--border);
   border-top-color: var(--teal, #14b8a6);
 }
 
@@ -628,13 +628,11 @@
 }
 
 /* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .limited-profile-notice {
-    background: rgba(251, 191, 36, 0.1);
-    border-color: rgba(251, 191, 36, 0.3);
-  }
-  
-  .limited-profile-notice p {
-    color: #fbbf24;
-  }
+[data-theme='dark'] .limited-profile-notice {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+[data-theme='dark'] .limited-profile-notice p {
+  color: var(--warning);
 }
