@@ -125,6 +125,17 @@
 
   /* Semantic Contrast Colors */
   --danger-contrast: #991b1b;
+
+  /* Status message banner colors */
+  --success-bg: #d1fae5;
+  --success-text: #065f46;
+  --success-border: #6ee7b7;
+  --danger-bg: #fee2e2;
+  --danger-text: #7f1d1d;
+  --danger-border: #f87171;
+
+  /* Teal accent */
+  --teal: #0d9488;
 }
 
 [data-theme='dark'] {
@@ -196,6 +207,17 @@
 
   /* Semantic Contrast Colors */
   --danger-contrast: #fca5a5;
+
+  /* Status message banner colors */
+  --success-bg: rgba(16, 185, 129, 0.15);
+  --success-text: #10b981;
+  --success-border: #059669;
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --danger-text: #ef4444;
+  --danger-border: #dc2626;
+
+  /* Teal accent */
+  --teal: #2dd4bf;
 }
 
 * {

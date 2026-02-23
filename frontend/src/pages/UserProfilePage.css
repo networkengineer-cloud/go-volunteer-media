@@ -634,5 +634,5 @@
 }
 
 [data-theme='dark'] .limited-profile-notice p {
-  color: #fbbf24;
+  color: var(--warning);
 }

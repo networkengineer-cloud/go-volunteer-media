@@ -114,27 +114,15 @@
 }
 
 .message.success {
-  background: #d1fae5;
-  color: #065f46;
-  border: 1px solid #6ee7b7;
+  background: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid var(--success-border);
 }
 
 .message.error {
-  background: #fee2e2;
-  color: #7f1d1d;
-  border: 1px solid #f87171;
-}
-
-[data-theme='dark'] .message.success {
-  background: rgba(16, 185, 129, 0.15);
-  color: var(--success);
-  border-color: var(--success-600);
-}
-
-[data-theme='dark'] .message.error {
-  background: rgba(239, 68, 68, 0.15);
-  color: var(--danger);
-  border-color: var(--danger-600);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
 }
 
 .form-actions {
