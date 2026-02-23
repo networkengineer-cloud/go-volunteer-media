@@ -43,6 +43,7 @@
   --neutral-700: #374151;
   --neutral-800: #1f2937;
   --neutral-900: #111827;
+  --neutral-950: #000000;
 
   /* Text Colors */
   --text-primary: #1f2937;
@@ -166,6 +167,7 @@
   --neutral-700: #f3f4f6;
   --neutral-800: #f9fafb;
   --neutral-900: #ffffff;
+  --neutral-950: #000000;
 
   /* Text Colors */
   --text-primary: #f9fafb;
