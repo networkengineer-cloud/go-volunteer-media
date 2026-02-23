@@ -284,7 +284,7 @@
 /* Duplicate Name Warning */
 .duplicate-warning {
   background: #fef3c7;
-  border: 2px solid #f59e0b;
+  border: 2px solid var(--warning);
   border-radius: 8px;
   padding: 1.25rem;
   margin-bottom: 1.5rem;
@@ -293,7 +293,7 @@
 
 [data-theme='dark'] .duplicate-warning {
   background: #451a03;
-  border-color: #b45309;
+  border-color: var(--warning-600);
   color: #fef3c7;
 }
 
@@ -306,11 +306,7 @@
 
 .duplicate-warning-header svg {
   flex-shrink: 0;
-  color: #f59e0b;
-}
-
-[data-theme='dark'] .duplicate-warning-header svg {
-  color: #fbbf24;
+  color: var(--warning);
 }
 
 .duplicate-warning-header strong {

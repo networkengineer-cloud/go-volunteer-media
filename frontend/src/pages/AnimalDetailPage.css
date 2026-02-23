@@ -317,7 +317,7 @@
 
 .btn-export {
   padding: 0.6rem 1.2rem;
-  background: #f59e0b;
+  background: var(--warning);
   color: white;
   border: none;
   border-radius: 6px;
@@ -329,7 +329,7 @@
 }
 
 .btn-export:hover {
-  background: #d97706;
+  background: var(--warning-600);
 }
 
 .btn-view-gallery {
@@ -484,10 +484,6 @@
   font-size: 0.95rem;
 }
 
-[data-theme='dark'] .tag-select-label {
-  color: var(--text-primary);
-}
-
 .tag-multi-select {
   width: 100%;
   max-width: 400px;
@@ -538,10 +534,6 @@
   font-size: 0.85rem;
   color: var(--text-secondary);
   font-style: italic;
-}
-
-[data-theme='dark'] .tag-select-hint {
-  color: var(--text-secondary);
 }
 
 .selected-tags-preview {
@@ -1125,7 +1117,7 @@
 
 [data-theme='dark'] .quarantine-info {
   background: rgba(239, 68, 68, 0.2);
-  border-color: #ef4444;
+  border-color: var(--danger);
 }
 
 [data-theme='dark'] .quarantine-dates {
@@ -1262,7 +1254,7 @@
 
 [data-theme='dark'] .deleted-comments-section {
   background: rgba(31, 41, 55, 0.8);
-  border-color: #ef4444;
+  border-color: var(--danger);
 }
 
 .deleted-comment {
@@ -1275,26 +1267,26 @@
 [data-theme='dark'] .deleted-comment {
   opacity: 1;
   background: rgba(127, 29, 29, 0.2) !important;
-  border-color: #ef4444 !important;
+  border-color: var(--danger) !important;
 }
 
 [data-theme='dark'] .deleted-comment .comment-author {
-  color: #f3f4f6;
+  color: var(--neutral-100);
 }
 
 [data-theme='dark'] .deleted-comment .comment-content {
-  color: #e5e7eb;
+  color: var(--neutral-200);
 }
 
 [data-theme='dark'] .deleted-comment .comment-date {
-  color: #d1d5db;
+  color: var(--neutral-300);
 }
 
 .deleted-badge {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
-  background: #ef4444;
+  background: var(--danger);
   color: white;
   padding: 0.35rem 0.85rem;
   border-radius: 6px;
@@ -1314,8 +1306,8 @@
 }
 
 [data-theme='dark'] .comment-meta {
-  border-top-color: #374151;
-  color: #9ca3af;
+  border-top-color: var(--neutral-700);
+  color: var(--text-tertiary);
 }
 
 .name-history-old {

@@ -114,15 +114,15 @@
 }
 
 .message.success {
-  background: #c6f6d5;
-  color: #22543d;
-  border: 1px solid #9ae6b4;
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
 }
 
 .message.error {
-  background: #fed7d7;
-  color: #742a2a;
-  border: 1px solid #fc8181;
+  background: #fee2e2;
+  color: #7f1d1d;
+  border: 1px solid #f87171;
 }
 
 .form-actions {

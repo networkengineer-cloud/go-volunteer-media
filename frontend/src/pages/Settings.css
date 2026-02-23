@@ -279,15 +279,6 @@
   box-shadow: none;
 }
 
-[data-theme='dark'] .btn-primary {
-  background: var(--brand);
-  color: var(--text-on-brand);
-}
-
-[data-theme='dark'] .btn-primary:hover:not(:disabled) {
-  background: var(--brand-600);
-}
-
 .info-box {
   background: rgba(0, 163, 173, 0.05);
   padding: 1.5rem;
@@ -367,17 +358,17 @@
 
 .strength-fill.strength-weak::after {
   width: 33%;
-  background-color: #ef4444;
+  background-color: var(--danger);
 }
 
 .strength-fill.strength-medium::after {
   width: 66%;
-  background-color: #f59e0b;
+  background-color: var(--warning);
 }
 
 .strength-fill.strength-strong::after {
   width: 100%;
-  background-color: #10b981;
+  background-color: var(--success);
 }
 
 .strength-label {

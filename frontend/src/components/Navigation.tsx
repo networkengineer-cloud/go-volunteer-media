@@ -2,42 +2,14 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useSiteSettings } from '../hooks/useSiteSettings';
+import { useTheme } from '../contexts/ThemeContext';
 import './Navigation.css';
 
 const Navigation: React.FC = () => {
   const { user, logout, isAuthenticated, isAdmin, isGroupAdmin } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const { settings } = useSiteSettings();
-
-  // Theme state and persistence
-  const [theme, setTheme] = React.useState<'light' | 'dark'>(() => {
-    if (typeof window === 'undefined') return 'light';
-    try {
-      const stored = localStorage.getItem('theme');
-      if (stored === 'light' || stored === 'dark') return stored;
-    } catch {
-      // ignore read errors (e.g., restricted storage)
-    }
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light';
-  });
-
-  React.useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.setAttribute('data-theme', 'dark');
-    } else {
-      root.removeAttribute('data-theme');
-    }
-    try {
-      localStorage.setItem('theme', theme);
-    } catch {
-      // ignore write errors (e.g., private mode)
-    }
-  }, [theme]);
-
-  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  const { theme, toggleTheme } = useTheme();
   const toggleMobileMenu = () => setMobileMenuOpen(!mobileMenuOpen);
   const closeMobileMenu = () => setMobileMenuOpen(false);
 

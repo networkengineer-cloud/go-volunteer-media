@@ -38,7 +38,7 @@
 .nav-brand {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #ffffff;
+  color: white;
   text-decoration: none;
   letter-spacing: -0.02em;
   display: flex;
@@ -47,7 +47,7 @@
 }
 
 .nav-brand:hover {
-  color: #ffffff;
+  color: white;
   text-decoration: none;
   opacity: 0.9;
 }
@@ -61,7 +61,7 @@
   display: none;
   background: none;
   border: none;
-  color: #ffffff;
+  color: white;
   cursor: pointer;
   padding: 0.5rem;
   border-radius: 6px;
@@ -88,7 +88,7 @@
 }
 
 .nav-right a {
-  color: #ffffff;
+  color: white;
   font-weight: 500;
   text-decoration: none;
   padding: 0.5rem 0.75rem;
@@ -97,13 +97,13 @@
 }
 
 .nav-right a:hover {
-  color: #ffffff;
+  color: white;
   background: rgba(255, 255, 255, 0.15);
   text-decoration: none;
 }
 
 .nav-user {
-  color: #ffffff;
+  color: white;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -112,7 +112,7 @@
 
 .admin-badge {
   background: var(--purple);
-  color: #fff;
+  color: white;
   padding: 0.25rem 0.625rem;
   border-radius: 6px;
   font-size: 0.75rem;
@@ -164,7 +164,7 @@
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  color: white;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -172,7 +172,7 @@
 .theme-toggle:hover {
   border-color: rgba(255, 255, 255, 0.4);
   background: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
+  color: white;
 }
 
 .theme-toggle:focus-visible {
@@ -227,7 +227,7 @@
   }
 
   .nav-right a {
-    color: #ffffff;
+    color: white;
     font-size: 1rem;
     padding: 0.75rem 1rem;
     border-radius: 6px;
@@ -250,7 +250,7 @@
     padding: 0.75rem 1rem;
     display: block;
     width: 100%;
-    color: #ffffff;
+    color: white;
     border-top: 1px solid rgba(255, 255, 255, 0.2);
     margin-top: 0.5rem;
     padding-top: 1rem;

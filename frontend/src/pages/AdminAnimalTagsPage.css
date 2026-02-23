@@ -200,7 +200,7 @@
 /* Error Message */
 .error-message {
   background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
+  color: var(--danger-600);
   border: 1px solid rgba(239, 68, 68, 0.3);
   padding: 1rem;
   border-radius: 8px;
@@ -209,7 +209,6 @@
 
 [data-theme='dark'] .error-message {
   background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
 }
 
 /* Tag Categories (for Animal Tags) */
@@ -468,7 +467,7 @@
 }
 
 .btn-text.btn-danger:hover {
-  color: #ef4444;
+  color: var(--danger);
   background: rgba(239, 68, 68, 0.1);
 }
 
@@ -532,9 +531,9 @@
 
 [data-theme='dark'] .form-group input[type="text"],
 [data-theme='dark'] .form-group select {
-  background: #1f2937;
-  color: #f9fafb;
-  border-color: #374151;
+  background: var(--neutral-800);
+  color: var(--neutral-50);
+  border-color: var(--neutral-700);
 }
 
 .form-group input[type="text"]::placeholder {

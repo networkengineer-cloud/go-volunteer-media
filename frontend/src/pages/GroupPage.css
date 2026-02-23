@@ -547,7 +547,7 @@
 .badge-duplicate {
   background: #fbbf24;
   color: #78350f;
-  border: 1px solid #f59e0b;
+  border: 1px solid var(--warning);
 }
 
 [data-theme='dark'] .badge-duplicate {
@@ -753,8 +753,8 @@
 }
 
 [data-theme='dark'] .activity-filter-bar {
-  background: #1f2937;
-  border-color: #374151;
+  background: var(--neutral-800);
+  border-color: var(--neutral-700);
 }
 
 .activity-filter-bar .filter-row {
@@ -808,8 +808,8 @@
 [data-theme='dark'] .activity-filter-bar .filter-select,
 [data-theme='dark'] .activity-filter-bar .filter-input,
 [data-theme='dark'] .activity-filter-bar input[type="date"] {
-  background: #111827;
-  border-color: #374151;
+  background: var(--neutral-900);
+  border-color: var(--neutral-700);
   color: var(--text-primary);
   color-scheme: dark; /* Ensures date picker uses dark theme */
 }
@@ -881,8 +881,8 @@
 }
 
 [data-theme='dark'] .animal-dropdown {
-  background: #1f2937;
-  border-color: #374151;
+  background: var(--neutral-800);
+  border-color: var(--neutral-700);
 }
 
 .animal-dropdown-item {
@@ -903,7 +903,7 @@
 }
 
 [data-theme='dark'] .animal-dropdown-item:hover {
-  background: #374151;
+  background: var(--neutral-700);
 }
 
 .animal-dropdown-more {
@@ -916,7 +916,7 @@
 }
 
 [data-theme='dark'] .animal-dropdown-more {
-  border-color: #374151;
+  border-color: var(--neutral-700);
 }
 
 .btn-clear-filters {
@@ -964,8 +964,8 @@
 }
 
 [data-theme='dark'] .quick-filter-btn {
-  background: #1f2937;
-  border-color: #4b5563;
+  background: var(--neutral-800);
+  border-color: var(--neutral-600);
 }
 
 .quick-filter-btn:hover {
@@ -975,7 +975,7 @@
 }
 
 [data-theme='dark'] .quick-filter-btn:hover {
-  background: #374151;
+  background: var(--neutral-700);
   border-color: var(--brand);
 }
 
@@ -1007,8 +1007,8 @@
 }
 
 [data-theme='dark'] .activity-card {
-  background: #1f2937;
-  border-color: #374151;
+  background: var(--neutral-800);
+  border-color: var(--neutral-700);
 }
 
 .activity-card:hover {
@@ -1273,7 +1273,7 @@
 
 .member-badge--site-admin {
   background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
+  color: var(--danger);
 }
 
 [data-theme='dark'] .member-badge--site-admin {

@@ -359,17 +359,17 @@
 
 .status-foster {
   background-color: rgba(59, 130, 246, 0.2);
-  color: #2563eb;
+  color: var(--info-600);
 }
 
 .status-bite_quarantine {
   background-color: rgba(239, 68, 68, 0.2);
-  color: #dc2626;
+  color: var(--danger-600);
 }
 
 .status-archived {
   background-color: rgba(156, 163, 175, 0.2);
-  color: #6b7280;
+  color: var(--neutral-500);
 }
 
 /* Announcements Section */

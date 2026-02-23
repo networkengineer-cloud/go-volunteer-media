@@ -19,7 +19,7 @@
 }
 
 [data-theme="dark"] .page-header h1 {
-  color: #f3f4f6;
+  color: var(--neutral-100);
 }
 
 .btn-back {
@@ -56,8 +56,8 @@
 }
 
 [data-theme="dark"] .summary-card {
-  background: #1f2937;
-  border-color: #374151;
+  background: var(--neutral-800);
+  border-color: var(--neutral-700);
 }
 
 .summary-card:hover {
@@ -95,8 +95,8 @@
 }
 
 [data-theme="dark"] .filter-bar {
-  background: #1f2937;
-  border-color: #374151;
+  background: var(--neutral-800);
+  border-color: var(--neutral-700);
 }
 
 .filter-bar-header {
@@ -114,7 +114,7 @@
 }
 
 [data-theme="dark"] .filter-bar-title {
-  color: #f3f4f6;
+  color: var(--neutral-100);
 }
 
 .filter-toggle-btn {
@@ -131,8 +131,8 @@
 
 [data-theme="dark"] .filter-toggle-btn {
   background: rgba(255, 255, 255, 0.05);
-  border-color: #374151;
-  color: #f3f4f6;
+  border-color: var(--neutral-700);
+  color: var(--neutral-100);
 }
 
 .filter-toggle-btn:hover {
@@ -208,7 +208,7 @@
 }
 
 .btn-clear-filters:hover {
-  background: #dc2626;
+  background: var(--danger-600);
 }
 
 .quick-filters {
@@ -225,7 +225,7 @@
 }
 
 [data-theme="dark"] .quick-filters-label {
-  color: #f3f4f6;
+  color: var(--neutral-100);
 }
 
 .quick-filter-btn {
@@ -240,8 +240,8 @@
 
 [data-theme="dark"] .quick-filter-btn {
   background: rgba(255, 255, 255, 0.03);
-  border-color: #374151;
-  color: #e5e7eb;
+  border-color: var(--neutral-700);
+  color: var(--neutral-200);
 }
 
 .quick-filter-btn:hover {
@@ -276,8 +276,8 @@
 }
 
 [data-theme="dark"] .activity-card {
-  background: #1f2937;
-  border-color: #374151;
+  background: var(--neutral-800);
+  border-color: var(--neutral-700);
 }
 
 .activity-card:hover {
@@ -295,7 +295,7 @@
 }
 
 [data-theme="dark"] .activity-header {
-  border-bottom-color: #374151;
+  border-bottom-color: var(--neutral-700);
 }
 
 .activity-animal {
@@ -359,7 +359,7 @@
 }
 
 [data-theme="dark"] .activity-title {
-  color: #f3f4f6;
+  color: var(--neutral-100);
 }
 
 .activity-text {
@@ -371,7 +371,7 @@
 }
 
 [data-theme="dark"] .activity-text {
-  color: #d1d5db;
+  color: var(--neutral-300);
 }
 
 .activity-image {
@@ -388,7 +388,7 @@
 }
 
 [data-theme="dark"] .activity-footer {
-  border-top-color: #374151;
+  border-top-color: var(--neutral-700);
 }
 
 .btn-view-profile {
