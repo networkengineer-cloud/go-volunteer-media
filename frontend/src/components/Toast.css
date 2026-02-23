@@ -14,7 +14,7 @@
 }
 
 [data-theme='dark'] .toast {
-  background: var(--gray-800, var(--surface));
+  background: var(--surface);
   box-shadow: var(--shadow-lg, 0 10px 15px rgba(0, 0, 0, 0.3)), 
               0 0 0 1px rgba(255, 255, 255, 0.1);
 }
@@ -66,12 +66,12 @@
 
 .toast__close:hover {
   color: var(--text-primary);
-  background: var(--gray-100, var(--neutral-100));
+  background: var(--neutral-100);
 }
 
 [data-theme='dark'] .toast__close:hover {
   color: var(--text-primary-dark, var(--text-primary));
-  background: var(--gray-700, var(--neutral-100));
+  background: var(--neutral-100);
 }
 
 .toast__close:focus-visible {
