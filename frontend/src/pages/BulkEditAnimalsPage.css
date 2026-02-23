@@ -86,7 +86,7 @@
 }
 
 .stat-icon.total {
-  background: linear-gradient(135deg, var(--purple) 0%, #6b46c1 100%);
+  background: linear-gradient(135deg, var(--purple) 0%, var(--purple-600) 100%);
   color: white;
 }
 

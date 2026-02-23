@@ -106,12 +106,12 @@ function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
-      <SiteSettingsProvider>
-        <AuthProvider>
-          <ToastProvider>
-            <Navigation />
-            <main id="main-content" role="main">
-              <Routes>
+        <SiteSettingsProvider>
+          <AuthProvider>
+            <ToastProvider>
+              <Navigation />
+              <main id="main-content" role="main">
+                <Routes>
           <Route
             path="/"
             element={
@@ -276,11 +276,11 @@ function App() {
               </UsersRoute>
             }
           />
-        </Routes>
-        </main>
-        </ToastProvider>
-      </AuthProvider>
-      </SiteSettingsProvider>
+                </Routes>
+              </main>
+            </ToastProvider>
+          </AuthProvider>
+        </SiteSettingsProvider>
       </ThemeProvider>
     </BrowserRouter>
   );

@@ -125,6 +125,18 @@
   border: 1px solid #f87171;
 }
 
+[data-theme='dark'] .message.success {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+  border-color: var(--success-600);
+}
+
+[data-theme='dark'] .message.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+  border-color: var(--danger-600);
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;

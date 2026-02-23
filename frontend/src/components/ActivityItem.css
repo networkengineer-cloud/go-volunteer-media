@@ -35,7 +35,7 @@
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--purple) 0%, #6b46c1 100%);
+  background: linear-gradient(135deg, var(--purple) 0%, var(--purple-600) 100%);
   color: white;
   display: flex;
   align-items: center;

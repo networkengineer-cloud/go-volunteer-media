@@ -63,15 +63,14 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setTheme(event.matches ? 'dark' : 'light');
     };
 
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', handleChange);
-      return () => mediaQuery.removeEventListener('change', handleChange);
-    }
-
-    mediaQuery.addListener(handleChange);
-    return () => mediaQuery.removeListener(handleChange);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
   }, [hasUserPreference]);
 
+  // TODO: Add a "Follow system" option in Settings to allow users to clear the stored
+  // preference and re-enable OS-level theme tracking (setHasUserPreference(false) +
+  // localStorage.removeItem('theme')). Once hasUserPreference is true it persists across
+  // sessions with no user-facing escape hatch.
   const toggleTheme = () => {
     setHasUserPreference(true);
     setTheme((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'));
