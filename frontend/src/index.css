@@ -1,4 +1,6 @@
 :root {
+  color-scheme: light;
+
   /* HAWS Brand Colors - matching hawspets.org official green */
   --brand: #006b54; /* HAWS official green */
   --brand-600: #005443; /* Darker shade for hover states */
@@ -120,9 +122,14 @@
   /* Input Field Variables */
   --input-bg: #ffffff;
   --input-border: #d1d5db;
+
+  /* Semantic Contrast Colors */
+  --danger-contrast: #991b1b;
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
+
   /* HAWS Brand Colors - lighter shade for dark mode visibility */
   --brand: #00a87e; /* Lighter green for dark mode */
   --brand-600: #006b54; /* HAWS official green */
@@ -186,6 +193,9 @@
   /* Input Field Variables for Dark Mode */
   --input-bg: #111827;
   --input-border: #4b5563;
+
+  /* Semantic Contrast Colors */
+  --danger-contrast: #fca5a5;
 }
 
 * {

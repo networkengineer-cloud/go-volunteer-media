@@ -43,6 +43,7 @@
   background: var(--input-bg);
   border-color: var(--input-border);
   color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
 }
 
 [data-theme='dark'] .form-field__input:-webkit-autofill,
