@@ -138,7 +138,7 @@
 }
 
 [data-theme='dark'] .control-slider {
-  background: var(--gray-700);
+  background: var(--neutral-200);
 }
 
 .control-slider::-webkit-slider-thumb {
@@ -363,13 +363,13 @@
 }
 
 [data-theme='dark'] .image-editor-actions .btn-secondary {
-  border-color: var(--gray-700);
+  border-color: var(--border);
   color: var(--text-secondary);
 }
 
 [data-theme='dark'] .image-editor-actions .btn-secondary:hover:not(:disabled) {
-  background: var(--gray-800);
-  border-color: var(--gray-600);
+  background: var(--neutral-100);
+  border-color: var(--neutral-200);
 }
 
 [data-theme='dark'] .image-editor-actions .btn-primary {

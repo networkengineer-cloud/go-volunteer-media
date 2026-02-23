@@ -12,25 +12,25 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [hasUserPreference, setHasUserPreference] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
+  // Single localStorage read shared between both state initializers
+  const storedTheme = (() => {
+    if (typeof window === 'undefined') return null;
     try {
       const stored = localStorage.getItem('theme');
-      return stored === 'light' || stored === 'dark';
+      return stored === 'light' || stored === 'dark' ? stored : null;
     } catch {
-      return false;
+      return null;
     }
-  });
+  })();
+
+  const [hasUserPreference, setHasUserPreference] = useState<boolean>(
+    () => storedTheme !== null,
+  );
 
   const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === 'undefined') return 'light';
-    try {
-      const stored = localStorage.getItem('theme');
-      if (stored === 'light' || stored === 'dark') return stored;
-    } catch {
-      // ignore read errors (e.g., restricted storage)
-    }
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    if (storedTheme) return storedTheme;
+    return typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-color-scheme: dark)').matches
       ? 'dark'
       : 'light';
   });

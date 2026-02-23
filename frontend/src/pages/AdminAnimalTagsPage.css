@@ -209,6 +209,7 @@
 
 [data-theme='dark'] .error-message {
   background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
 }
 
 /* Tag Categories (for Animal Tags) */
