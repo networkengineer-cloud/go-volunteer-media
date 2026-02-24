@@ -398,6 +398,9 @@ const AnimalDetailPage: React.FC = () => {
     );
   }
 
+  const { years: animalAgeYears, months: animalAgeMonths } = calculateAge(animal.estimated_birth_date, animal.age);
+  const animalAgeLabel = formatAge(animalAgeYears, animalAgeMonths);
+
   return (
     <div className="animal-detail-page">
       <div className="animal-detail-container">
@@ -446,7 +449,7 @@ const AnimalDetailPage: React.FC = () => {
             <div className="animal-details">
               <h1>{animal.name}</h1>
               <p className="animal-meta">
-                {animal.breed && `${animal.breed} \u2022 `}{(({ years, months }) => formatAge(years, months))(calculateAge(animal.estimated_birth_date, animal.age))} \u2022 ID: {animal.id}
+                {animal.breed && `${animal.breed} \u2022 `}{animalAgeLabel} {'\u2022'} ID: {animal.id}
               </p>
               <div className="status-badges">
                 <span className={`status ${animal.status}`}>{animal.status}</span>
