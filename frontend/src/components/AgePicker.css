@@ -27,11 +27,6 @@
   font-weight: 600;
 }
 
-.age-picker__number::-webkit-inner-spin-button,
-.age-picker__number::-webkit-outer-spin-button {
-  opacity: 1;
-}
-
 .age-picker__toggle {
   display: inline-block;
   margin-top: 0.5rem;
@@ -53,7 +48,6 @@
 
 @media (max-width: 768px) {
   .age-picker__inputs {
-    grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
   }
 }

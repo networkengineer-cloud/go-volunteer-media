@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { calculateAge, computeEstimatedBirthDate } from '../utils/dateUtils';
 import './AgePicker.css';
 
@@ -48,7 +48,7 @@ export default function AgePicker({ years, months, exactDate, useExactDate, onCh
     }
   }, [useExactDate, exactDate, years, months, onChange]);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   return (
     <div className="age-picker">
@@ -61,9 +61,9 @@ export default function AgePicker({ years, months, exactDate, useExactDate, onCh
               <label htmlFor="birth-years" className="age-picker__sub-label">Years</label>
               <input
                 id="birth-years"
-                type="number"
-                min={0}
-                max={30}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={years}
                 onChange={(e) => handleYearsChange(e.target.value)}
                 className={`form-field__input age-picker__number ${error ? 'form-field__input--error' : ''}`}
@@ -74,9 +74,9 @@ export default function AgePicker({ years, months, exactDate, useExactDate, onCh
               <label htmlFor="birth-months" className="age-picker__sub-label">Months</label>
               <input
                 id="birth-months"
-                type="number"
-                min={0}
-                max={11}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={months}
                 onChange={(e) => handleMonthsChange(e.target.value)}
                 className={`form-field__input age-picker__number ${error ? 'form-field__input--error' : ''}`}
