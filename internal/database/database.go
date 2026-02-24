@@ -562,7 +562,7 @@ func backfillEstimatedBirthDates(db *gorm.DB) error {
 	now := time.Now()
 	result := db.Exec(`
 		UPDATE animals
-		SET estimated_birth_date = ? - (age * INTERVAL '1 year')
+		SET estimated_birth_date = ?::timestamptz - (age * INTERVAL '1 year')
 		WHERE estimated_birth_date IS NULL
 		  AND age > 0
 		  AND deleted_at IS NULL
