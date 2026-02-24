@@ -41,9 +41,17 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 		if req.Breed != "" {
 			updates["breed"] = req.Breed
 		}
-		if req.Age > 0 {
+		if req.Age >= 0 && req.Age != animal.Age {
 			updates["age"] = req.Age
 		}
+		if req.EstimatedBirthDate.Valid && req.EstimatedBirthDate.Time != nil {
+			updates["estimated_birth_date"] = *req.EstimatedBirthDate.Time
+			// Auto-compute Age from birth date to keep fields in sync
+			tempAnimal := models.Animal{EstimatedBirthDate: req.EstimatedBirthDate.Time}
+			updates["age"] = tempAnimal.AgeYearsFromBirthDate()
+		}
+		// Always include trainer_notes so it can be cleared by setting an empty value
+		updates["trainer_notes"] = req.TrainerNotes
 		if req.Description != "" {
 			updates["description"] = req.Description
 		}

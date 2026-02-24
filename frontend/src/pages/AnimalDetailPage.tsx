@@ -4,7 +4,7 @@ import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi } from '../api
 import type { Animal, AnimalComment, CommentTag, CommentHistory, Group, GroupMembership, SessionMetadata } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { calculateQuarantineEndDate } from '../utils/dateUtils';
+import { calculateQuarantineEndDate, calculateAge, formatAge } from '../utils/dateUtils';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
@@ -48,6 +48,7 @@ const AnimalDetailPage: React.FC = () => {
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
   const [showProtocolModal, setShowProtocolModal] = useState(false);
+  const [trainerNotesExpanded, setTrainerNotesExpanded] = useState(false);
   const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
 
@@ -397,6 +398,9 @@ const AnimalDetailPage: React.FC = () => {
     );
   }
 
+  const { years: animalAgeYears, months: animalAgeMonths } = calculateAge(animal.estimated_birth_date, animal.age);
+  const animalAgeLabel = formatAge(animalAgeYears, animalAgeMonths);
+
   return (
     <div className="animal-detail-page">
       <div className="animal-detail-container">
@@ -445,7 +449,7 @@ const AnimalDetailPage: React.FC = () => {
             <div className="animal-details">
               <h1>{animal.name}</h1>
               <p className="animal-meta">
-                {animal.breed && `${animal.breed} • `}{animal.age} years old • ID: {animal.id}
+                {animal.breed && `${animal.breed} \u2022 `}{animalAgeLabel} {'\u2022'} ID: {animal.id}
               </p>
               <div className="status-badges">
                 <span className={`status ${animal.status}`}>{animal.status}</span>
@@ -543,6 +547,26 @@ const AnimalDetailPage: React.FC = () => {
                       View Protocol →
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Trainer Notes Section (collapsed by default) */}
+              {animal.trainer_notes && (
+                <div className="trainer-notes-section">
+                  <button
+                    className={`trainer-notes-toggle ${trainerNotesExpanded ? 'expanded' : ''}`}
+                    onClick={() => setTrainerNotesExpanded(!trainerNotesExpanded)}
+                    aria-expanded={trainerNotesExpanded}
+                    aria-controls="trainer-notes-content"
+                  >
+                    <span className="trainer-notes-icon">{trainerNotesExpanded ? '▼' : '▶'}</span>
+                    <h3>🐾 Meet With Trainer Notes</h3>
+                  </button>
+                  {trainerNotesExpanded && (
+                    <div id="trainer-notes-content" className="trainer-notes-content">
+                      <p>{animal.trainer_notes}</p>
+                    </div>
+                  )}
                 </div>
               )}
               

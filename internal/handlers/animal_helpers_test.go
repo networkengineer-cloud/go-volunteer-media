@@ -79,16 +79,18 @@ func createAnimalTestUser(t *testing.T, db *gorm.DB, username, email string, isA
 // createTestAnimal creates an animal in the database for testing
 func createTestAnimal(t *testing.T, db *gorm.DB, groupID uint, name, species string) *models.Animal {
 	now := time.Now()
+	birthDate := now.AddDate(-2, -3, 0) // 2 years 3 months ago
 	animal := &models.Animal{
-		GroupID:          groupID,
-		Name:             name,
-		Species:          species,
-		Breed:            "Test Breed",
-		Age:              2,
-		Description:      "Test animal",
-		Status:           "available",
-		ArrivalDate:      &now,
-		LastStatusChange: &now,
+		GroupID:            groupID,
+		Name:               name,
+		Species:            species,
+		Breed:              "Test Breed",
+		Age:                2,
+		EstimatedBirthDate: &birthDate,
+		Description:        "Test animal",
+		Status:             "available",
+		ArrivalDate:        &now,
+		LastStatusChange:   &now,
 	}
 
 	if err := db.Create(animal).Error; err != nil {

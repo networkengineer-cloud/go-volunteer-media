@@ -59,3 +59,73 @@ export function calculateDaysSince(dateString?: string): number {
   if (diffTime < 0) return 0; // future date
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
+
+/**
+ * Calculate age in years and months from a birth date string.
+ * Falls back to { years: fallbackYears, months: 0 } when birthDate is missing/invalid.
+ */
+export function calculateAge(birthDateString?: string, fallbackYears?: number): { years: number; months: number } {
+  if (!birthDateString) {
+    return { years: fallbackYears ?? 0, months: 0 };
+  }
+  // Bare YYYY-MM-DD strings are parsed as UTC midnight by browsers; appending a
+  // local-time suffix forces local midnight so that age doesn't appear off by one
+  // day for users in timezones west of UTC.
+  const normalised = /^\d{4}-\d{2}-\d{2}$/.test(birthDateString)
+    ? birthDateString + 'T00:00:00'
+    : birthDateString;
+  const bd = new Date(normalised);
+  if (isNaN(bd.getTime())) {
+    return { years: fallbackYears ?? 0, months: 0 };
+  }
+  const now = new Date();
+  let years = now.getFullYear() - bd.getFullYear();
+  let months = now.getMonth() - bd.getMonth();
+  if (now.getDate() < bd.getDate()) {
+    months--;
+  }
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+  if (years < 0) {
+    return { years: 0, months: 0 };
+  }
+  return { years, months };
+}
+
+/**
+ * Format age as a human-readable string.
+ * Examples: "1 yr 6 mo", "2 yrs", "3 mo", "< 1 mo"
+ */
+export function formatAge(years: number, months: number): string {
+  if (years <= 0 && months <= 0) return '< 1 mo';
+  const parts: string[] = [];
+  if (years > 0) {
+    parts.push(`${years} ${years === 1 ? 'yr' : 'yrs'}`);
+  }
+  if (months > 0) {
+    parts.push(`${months} mo`);
+  }
+  return parts.join(' ') || '< 1 mo';
+}
+
+/**
+ * Compute an estimated birth date by subtracting years and months from today.
+ * The day-of-month is clamped to the last day of the target month to prevent
+ * overflow — e.g. Mar 31 minus 1 month must yield Feb 28, not Mar 3.
+ */
+export function computeEstimatedBirthDate(years: number, months: number): string {
+  const now = new Date();
+  const targetYear = now.getFullYear() - years;
+  const targetMonth = now.getMonth() - months;
+  // day=0 of the month after the target gives the last day of the target month
+  const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const day = Math.min(now.getDate(), lastDayOfTargetMonth);
+  const bd = new Date(targetYear, targetMonth, day);
+  // Format as YYYY-MM-DD
+  const y = bd.getFullYear();
+  const m = String(bd.getMonth() + 1).padStart(2, '0');
+  const d = String(bd.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}

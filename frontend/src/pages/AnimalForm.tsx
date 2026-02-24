@@ -3,8 +3,9 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { animalsApi, updatesApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
 import type { AnimalTag, Animal, DuplicateNameInfo, AnimalImage } from '../api/client';
 import { useToast } from '../hooks/useToast';
-import { calculateQuarantineEndDate } from '../utils/dateUtils';
+import { calculateQuarantineEndDate, calculateAge, computeEstimatedBirthDate } from '../utils/dateUtils';
 import FormField from '../components/FormField';
+import AgePicker from '../components/AgePicker';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
 import ImageEditor from '../components/ImageEditor';
@@ -37,7 +38,9 @@ const AnimalForm: React.FC = () => {
     species: '',
     breed: '',
     age: 0,
+    estimated_birth_date: '',
     description: '',
+    trainer_notes: '',
     image_url: '',
     status: 'available',
     arrival_date: '',
@@ -46,6 +49,9 @@ const AnimalForm: React.FC = () => {
     protocol_document_url: '',
     protocol_document_name: '',
   });
+  const [birthYears, setBirthYears] = useState(0);
+  const [birthMonths, setBirthMonths] = useState(0);
+  const [useExactBirthDate, setUseExactBirthDate] = useState(false);
   const [protocolDocumentFile, setProtocolDocumentFile] = useState<File | null>(null);
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -103,11 +109,22 @@ const AnimalForm: React.FC = () => {
       const animal = response.data;
       setFormData({
         ...animal,
+        estimated_birth_date: animal.estimated_birth_date ? animal.estimated_birth_date.split('T')[0] : '',
+        trainer_notes: animal.trainer_notes || '',
         arrival_date: animal.arrival_date ? animal.arrival_date.split('T')[0] : '',
         quarantine_start_date: animal.quarantine_start_date ? animal.quarantine_start_date.split('T')[0] : '',
         protocol_document_url: animal.protocol_document_url || '',
         protocol_document_name: animal.protocol_document_name || '',
       });
+      // Populate birth years/months from estimated_birth_date or fall back to age
+      if (animal.estimated_birth_date) {
+        const { years: y, months: m } = calculateAge(animal.estimated_birth_date);
+        setBirthYears(y);
+        setBirthMonths(m);
+      } else {
+        setBirthYears(animal.age || 0);
+        setBirthMonths(0);
+      }
       setOriginalStatus(animal.status);
       // Set selected tags
       if (animal.tags) {
@@ -396,8 +413,14 @@ const AnimalForm: React.FC = () => {
       let animalId = id ? parseInt(id) : null;
       
       // Clean up formData: convert empty quarantine_start_date to null
+      // Ensure estimated_birth_date is computed from years/months if in approximate mode
+      const finalBirthDate = formData.estimated_birth_date || 
+        (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
+      
       const cleanedFormData = {
         ...formData,
+        estimated_birth_date: finalBirthDate || undefined,
+        age: birthYears,
         quarantine_start_date: formData.quarantine_start_date || undefined,
       };
       
@@ -586,16 +609,22 @@ const AnimalForm: React.FC = () => {
                 There {duplicateInfo.count === 1 ? 'is' : 'are'} already <strong>{duplicateInfo.count}</strong> other animal{duplicateInfo.count > 1 ? 's' : ''} named "{formData.name}" in this group.
               </p>
               <div className="duplicate-animals-list">
-                {duplicateInfo.animals.slice(0, 3).map((animal: Animal) => (
-                  <div key={animal.id} className="duplicate-animal-item">
-                    <span className="duplicate-animal-name">
-                      {animal.name} (ID: {animal.id})
-                    </span>
-                    <span className="duplicate-animal-details">
-                      {animal.breed || 'Unknown breed'} • {animal.age} years • {animal.status}
-                    </span>
-                  </div>
-                ))}
+                {duplicateInfo.animals.slice(0, 3).map((animal: Animal) => {
+                  const { years: dupYears, months: dupMonths } = calculateAge(animal.estimated_birth_date, animal.age);
+                  const dupAgeLabel = animal.estimated_birth_date
+                    ? `${dupYears} yr${dupYears !== 1 ? 's' : ''} ${dupMonths} mo`
+                    : `${animal.age} yrs`;
+                  return (
+                    <div key={animal.id} className="duplicate-animal-item">
+                      <span className="duplicate-animal-name">
+                        {animal.name} (ID: {animal.id})
+                      </span>
+                      <span className="duplicate-animal-details">
+                        {animal.breed || 'Unknown breed'} • {dupAgeLabel} • {animal.status}
+                      </span>
+                    </div>
+                  );
+                })}
                 {duplicateInfo.count > 3 && (
                   <p className="duplicate-more">+ {duplicateInfo.count - 3} more</p>
                 )}
@@ -628,19 +657,25 @@ const AnimalForm: React.FC = () => {
             />
           </div>
 
-          <div className="form-row">
-            <FormField
-              label="Age (years)"
-              id="age"
-              type="number"
-              value={formData.age}
-              onChange={(value) => handleFieldChange('age', parseInt(value) || 0)}
-              onBlur={() => handleBlur('age')}
+          <AgePicker
+              years={birthYears}
+              months={birthMonths}
+              exactDate={formData.estimated_birth_date}
+              useExactDate={useExactBirthDate}
+              onChange={(y, m, exactDate, useExact) => {
+                setBirthYears(y);
+                setBirthMonths(m);
+                setUseExactBirthDate(useExact);
+                setFormData(prev => ({
+                  ...prev,
+                  estimated_birth_date: exactDate,
+                  age: y,
+                }));
+              }}
               error={touched.age ? errors.age : ''}
-              success={touched.age && !errors.age && formData.age >= 0}
-              helperText="Approximate age in years"
             />
 
+          <div className="form-row">
             <div className="form-field">
               <label htmlFor="status" className="form-field__label">
                 Status
@@ -668,23 +703,23 @@ const AnimalForm: React.FC = () => {
               </select>
               <p className="form-field__helper">Current status of the animal</p>
             </div>
-          </div>
 
-          <div className="form-field">
-            <label htmlFor="arrival_date" className="form-field__label">
-              Date in Shelter
-            </label>
-            <input
-              id="arrival_date"
-              type="date"
-              value={formData.arrival_date}
-              onChange={(e) => setFormData({ ...formData, arrival_date: e.target.value })}
-              className="form-field__input"
-              max={new Date().toISOString().split('T')[0]}
-            />
-            <p className="form-field__helper">
-              Date the animal entered the shelter. Used to calculate length of stay. Leave empty to use today's date.
-            </p>
+            <div className="form-field">
+              <label htmlFor="arrival_date" className="form-field__label">
+                Date in Shelter
+              </label>
+              <input
+                id="arrival_date"
+                type="date"
+                value={formData.arrival_date}
+                onChange={(e) => setFormData({ ...formData, arrival_date: e.target.value })}
+                className="form-field__input"
+                max={new Date().toISOString().split('T')[0]}
+              />
+              <p className="form-field__helper">
+                Date the animal entered the shelter. Used to calculate length of stay. Leave empty to use today's date.
+              </p>
+            </div>
           </div>
 
           <div className="form-field">
@@ -752,6 +787,17 @@ const AnimalForm: React.FC = () => {
             rows={4}
             helperText="Optional details about the animal's personality, care needs, or history"
             maxLength={1000}
+          />
+
+          <FormField
+            label="Meet With Trainer Notes"
+            id="trainer_notes"
+            type="textarea"
+            value={formData.trainer_notes}
+            onChange={(value) => setFormData({ ...formData, trainer_notes: value })}
+            rows={3}
+            helperText="Optional notes for trainer meetings (visible as a collapsible section on the animal detail page)"
+            maxLength={2000}
           />
 
           {/* Animal Tags Selection */}

@@ -168,7 +168,9 @@ export interface Animal {
   species: string;
   breed: string;
   age: number;
+  estimated_birth_date?: string;
   description: string;
+  trainer_notes?: string;
   image_url: string;
   status: string;
   arrival_date?: string;
