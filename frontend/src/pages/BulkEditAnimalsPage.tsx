@@ -745,6 +745,7 @@ const BulkEditAnimalsPage: React.FC = () => {
               <tbody>
                 {animals.map((animal) => {
                   const isUpdating = updatingAnimal === animal.id;
+                  const { years: tableAgeYears, months: tableAgeMonths } = calculateAge(animal.estimated_birth_date, animal.age);
                   return (
                     <tr key={animal.id} className={isUpdating ? 'updating' : ''}>
                       <td className="checkbox-col">
@@ -766,7 +767,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                       </td>
                       <td>{animal.species || '-'}</td>
                       <td>{animal.breed || '-'}</td>
-                      <td>{animal.estimated_birth_date ? formatAge(...Object.values(calculateAge(animal.estimated_birth_date, animal.age)) as [number, number]) : (animal.age || '-')}</td>
+                      <td>{animal.estimated_birth_date ? formatAge(tableAgeYears, tableAgeMonths) : (animal.age || '-')}</td>
                       <td>
                         <select
                           value={animal.status}

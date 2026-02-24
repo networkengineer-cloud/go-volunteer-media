@@ -99,7 +99,7 @@ export function formatAge(years: number, months: number): string {
     parts.push(`${years} ${years === 1 ? 'yr' : 'yrs'}`);
   }
   if (months > 0) {
-    parts.push(`${months} ${months === 1 ? 'mo' : 'mo'}`);
+    parts.push(`${months} mo`);
   }
   return parts.join(' ') || '< 1 mo';
 }

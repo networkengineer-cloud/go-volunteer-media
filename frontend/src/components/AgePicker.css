@@ -27,7 +27,6 @@
   font-weight: 600;
 }
 
-/* Remove spinner arrows for cleaner look */
 .age-picker__number::-webkit-inner-spin-button,
 .age-picker__number::-webkit-outer-spin-button {
   opacity: 1;

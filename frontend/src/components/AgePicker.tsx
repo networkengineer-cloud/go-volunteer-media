@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { calculateAge, computeEstimatedBirthDate } from '../utils/dateUtils';
 import './AgePicker.css';
 
@@ -12,13 +12,6 @@ interface AgePickerProps {
 }
 
 export default function AgePicker({ years, months, exactDate, useExactDate, onChange, error }: AgePickerProps) {
-  const [showExactDate, setShowExactDate] = useState(useExactDate);
-
-  // Sync external useExactDate prop
-  useEffect(() => {
-    setShowExactDate(useExactDate);
-  }, [useExactDate]);
-
   const handleYearsChange = useCallback((val: string) => {
     const y = Math.max(0, Math.min(30, parseInt(val) || 0));
     const computedDate = computeEstimatedBirthDate(y, months);
@@ -41,8 +34,7 @@ export default function AgePicker({ years, months, exactDate, useExactDate, onCh
   }, [years, months, onChange]);
 
   const toggleExactDate = useCallback(() => {
-    const newShow = !showExactDate;
-    setShowExactDate(newShow);
+    const newShow = !useExactDate;
     if (newShow && !exactDate && (years > 0 || months > 0)) {
       // Switching to exact date mode — pre-compute a date from years/months
       const computedDate = computeEstimatedBirthDate(years, months);
@@ -54,7 +46,7 @@ export default function AgePicker({ years, months, exactDate, useExactDate, onCh
     } else {
       onChange(years, months, exactDate, newShow);
     }
-  }, [showExactDate, exactDate, years, months, onChange]);
+  }, [useExactDate, exactDate, years, months, onChange]);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -62,7 +54,7 @@ export default function AgePicker({ years, months, exactDate, useExactDate, onCh
     <div className="age-picker">
       <label className="form-field__label">Age</label>
 
-      {!showExactDate ? (
+      {!useExactDate ? (
         <>
           <div className="age-picker__inputs">
             <div className="age-picker__field">
@@ -120,7 +112,7 @@ export default function AgePicker({ years, months, exactDate, useExactDate, onCh
         className="age-picker__toggle"
         onClick={toggleExactDate}
       >
-        {showExactDate ? '← Use approximate age instead' : 'Know the exact birth date? →'}
+        {useExactDate ? '← Use approximate age instead' : 'Know the exact birth date? →'}
       </button>
     </div>
   );

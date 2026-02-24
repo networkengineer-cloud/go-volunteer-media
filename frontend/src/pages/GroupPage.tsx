@@ -820,6 +820,7 @@ const GroupPage: React.FC = () => {
                   const duplicateIndex = hasDuplicates 
                     ? duplicates.sort((a, b) => a.id - b.id).findIndex(a => a.id === animal.id) + 1
                     : 0;
+                  const { years: cardAgeYears, months: cardAgeMonths } = calculateAge(animal.estimated_birth_date, animal.age);
                   
                   return (
                     <Link
@@ -857,7 +858,7 @@ const GroupPage: React.FC = () => {
                           )}
                         </div>
                         {animal.breed && <p className="breed">{animal.breed}</p>}
-                        <p className="age">{formatAge(...Object.values(calculateAge(animal.estimated_birth_date, animal.age)) as [number, number])}</p>
+                        <p className="age">{formatAge(cardAgeYears, cardAgeMonths)}</p>
                         <span className={`status ${animal.status}`}>{animal.status}</span>
                         {showLengthOfStay && animal.arrival_date && (
                           <p className="length-of-stay">
