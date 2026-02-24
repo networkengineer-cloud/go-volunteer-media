@@ -9,9 +9,11 @@ interface AgePickerProps {
   useExactDate: boolean;
   onChange: (years: number, months: number, exactDate: string, useExactDate: boolean) => void;
   error?: string;
+  /** Prefix for input element IDs — must be unique per page when the component is used more than once. Defaults to 'age-picker'. */
+  idPrefix?: string;
 }
 
-export default function AgePicker({ years, months, exactDate, useExactDate, onChange, error }: AgePickerProps) {
+export default function AgePicker({ years, months, exactDate, useExactDate, onChange, error, idPrefix = 'age-picker' }: AgePickerProps) {
   const handleYearsChange = useCallback((val: string) => {
     const y = Math.max(0, Math.min(30, parseInt(val) || 0));
     const computedDate = computeEstimatedBirthDate(y, months);
@@ -50,17 +52,21 @@ export default function AgePicker({ years, months, exactDate, useExactDate, onCh
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
 
+  const yearsId = `${idPrefix}-years`;
+  const monthsId = `${idPrefix}-months`;
+  const dateId = `${idPrefix}-date`;
+
   return (
     <div className="age-picker">
-      <label className="form-field__label">Age</label>
+      <label className="form-field__label" htmlFor={useExactDate ? dateId : yearsId}>Age</label>
 
       {!useExactDate ? (
         <>
           <div className="age-picker__inputs">
             <div className="age-picker__field">
-              <label htmlFor="birth-years" className="age-picker__sub-label">Years</label>
+              <label htmlFor={yearsId} className="age-picker__sub-label">Years</label>
               <input
-                id="birth-years"
+                id={yearsId}
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
@@ -71,9 +77,9 @@ export default function AgePicker({ years, months, exactDate, useExactDate, onCh
               />
             </div>
             <div className="age-picker__field">
-              <label htmlFor="birth-months" className="age-picker__sub-label">Months</label>
+              <label htmlFor={monthsId} className="age-picker__sub-label">Months</label>
               <input
-                id="birth-months"
+                id={monthsId}
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
@@ -91,7 +97,7 @@ export default function AgePicker({ years, months, exactDate, useExactDate, onCh
       ) : (
         <>
           <input
-            id="estimated-birth-date"
+            id={dateId}
             type="date"
             value={exactDate}
             onChange={(e) => handleExactDateChange(e.target.value)}

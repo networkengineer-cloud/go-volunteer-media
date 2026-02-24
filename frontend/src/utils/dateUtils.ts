@@ -68,7 +68,13 @@ export function calculateAge(birthDateString?: string, fallbackYears?: number): 
   if (!birthDateString) {
     return { years: fallbackYears ?? 0, months: 0 };
   }
-  const bd = new Date(birthDateString);
+  // Bare YYYY-MM-DD strings are parsed as UTC midnight by browsers; appending a
+  // local-time suffix forces local midnight so that age doesn't appear off by one
+  // day for users in timezones west of UTC.
+  const normalised = /^\d{4}-\d{2}-\d{2}$/.test(birthDateString)
+    ? birthDateString + 'T00:00:00'
+    : birthDateString;
+  const bd = new Date(normalised);
   if (isNaN(bd.getTime())) {
     return { years: fallbackYears ?? 0, months: 0 };
   }
@@ -106,11 +112,17 @@ export function formatAge(years: number, months: number): string {
 
 /**
  * Compute an estimated birth date by subtracting years and months from today.
- * The day-of-month is today's day (implied from when the record is entered).
+ * The day-of-month is clamped to the last day of the target month to prevent
+ * overflow — e.g. Mar 31 minus 1 month must yield Feb 28, not Mar 3.
  */
 export function computeEstimatedBirthDate(years: number, months: number): string {
   const now = new Date();
-  const bd = new Date(now.getFullYear() - years, now.getMonth() - months, now.getDate());
+  const targetYear = now.getFullYear() - years;
+  const targetMonth = now.getMonth() - months;
+  // day=0 of the month after the target gives the last day of the target month
+  const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const day = Math.min(now.getDate(), lastDayOfTargetMonth);
+  const bd = new Date(targetYear, targetMonth, day);
   // Format as YYYY-MM-DD
   const y = bd.getFullYear();
   const m = String(bd.getMonth() + 1).padStart(2, '0');
