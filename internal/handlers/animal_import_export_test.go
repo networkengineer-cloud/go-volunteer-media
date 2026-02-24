@@ -58,7 +58,7 @@ func TestExportAnimalsCSV_Success(t *testing.T) {
 	}
 
 	// Check header
-	expectedHeader := []string{"id", "group_id", "name", "species", "breed", "age", "description", "status", "image_url"}
+	expectedHeader := []string{"id", "group_id", "name", "species", "breed", "age", "estimated_birth_date", "description", "trainer_notes", "status", "image_url"}
 	if len(records[0]) != len(expectedHeader) {
 		t.Errorf("Expected %d header columns, got %d", len(expectedHeader), len(records[0]))
 	}

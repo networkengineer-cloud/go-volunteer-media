@@ -41,8 +41,14 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 		if req.Breed != "" {
 			updates["breed"] = req.Breed
 		}
-		if req.Age > 0 {
+		if req.Age >= 0 && req.Age != animal.Age {
 			updates["age"] = req.Age
+		}
+		if req.EstimatedBirthDate.Valid && req.EstimatedBirthDate.Time != nil {
+			updates["estimated_birth_date"] = *req.EstimatedBirthDate.Time
+		}
+		if req.TrainerNotes != "" {
+			updates["trainer_notes"] = req.TrainerNotes
 		}
 		if req.Description != "" {
 			updates["description"] = req.Description

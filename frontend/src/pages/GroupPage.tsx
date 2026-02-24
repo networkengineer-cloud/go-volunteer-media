@@ -11,6 +11,7 @@ import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import Modal from '../components/Modal';
 import ProtocolsList from '../components/ProtocolsList';
+import { calculateAge, formatAge } from '../utils/dateUtils';
 import './GroupPage.css';
 
 type ViewMode = 'activity' | 'animals' | 'protocols' | 'members';
@@ -856,7 +857,7 @@ const GroupPage: React.FC = () => {
                           )}
                         </div>
                         {animal.breed && <p className="breed">{animal.breed}</p>}
-                        <p className="age">{animal.age} years old</p>
+                        <p className="age">{formatAge(...Object.values(calculateAge(animal.estimated_birth_date, animal.age)) as [number, number])}</p>
                         <span className={`status ${animal.status}`}>{animal.status}</span>
                         {showLengthOfStay && animal.arrival_date && (
                           <p className="length-of-stay">

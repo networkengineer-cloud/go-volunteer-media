@@ -5,6 +5,9 @@ import {
   formatRelativeTime,
   calculateQuarantineEndDate,
   calculateDaysSince,
+  calculateAge,
+  formatAge,
+  computeEstimatedBirthDate,
 } from './dateUtils';
 
 describe('dateUtils', () => {
@@ -152,6 +155,98 @@ describe('dateUtils', () => {
 
     it('returns 0 for a future date', () => {
       expect(calculateDaysSince('2024-06-20T12:00:00Z')).toBe(0);
+    });
+  });
+
+  describe('calculateAge', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2024-06-15T12:00:00Z'));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('returns fallback when no birth date', () => {
+      expect(calculateAge(undefined, 5)).toEqual({ years: 5, months: 0 });
+    });
+
+    it('returns {0,0} when no birth date and no fallback', () => {
+      expect(calculateAge(undefined)).toEqual({ years: 0, months: 0 });
+    });
+
+    it('returns fallback for invalid date string', () => {
+      expect(calculateAge('garbage', 3)).toEqual({ years: 3, months: 0 });
+    });
+
+    it('calculates exact years', () => {
+      expect(calculateAge('2022-06-15T12:00:00Z')).toEqual({ years: 2, months: 0 });
+    });
+
+    it('calculates years and months', () => {
+      expect(calculateAge('2022-12-15T12:00:00Z')).toEqual({ years: 1, months: 6 });
+    });
+
+    it('calculates months only', () => {
+      expect(calculateAge('2024-03-15T12:00:00Z')).toEqual({ years: 0, months: 3 });
+    });
+
+    it('returns {0,0} for future birth date', () => {
+      expect(calculateAge('2025-01-01T12:00:00Z')).toEqual({ years: 0, months: 0 });
+    });
+  });
+
+  describe('formatAge', () => {
+    it('formats years and months', () => {
+      expect(formatAge(1, 6)).toBe('1 yr 6 mo');
+    });
+
+    it('formats plural years', () => {
+      expect(formatAge(3, 0)).toBe('3 yrs');
+    });
+
+    it('formats single year', () => {
+      expect(formatAge(1, 0)).toBe('1 yr');
+    });
+
+    it('formats months only', () => {
+      expect(formatAge(0, 4)).toBe('4 mo');
+    });
+
+    it('formats less than 1 month', () => {
+      expect(formatAge(0, 0)).toBe('< 1 mo');
+    });
+
+    it('formats 1 month', () => {
+      expect(formatAge(0, 1)).toBe('1 mo');
+    });
+  });
+
+  describe('computeEstimatedBirthDate', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2024-06-15T12:00:00Z'));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('subtracts years correctly', () => {
+      expect(computeEstimatedBirthDate(2, 0)).toBe('2022-06-15');
+    });
+
+    it('subtracts years and months', () => {
+      expect(computeEstimatedBirthDate(1, 6)).toBe('2022-12-15');
+    });
+
+    it('subtracts months only', () => {
+      expect(computeEstimatedBirthDate(0, 3)).toBe('2024-03-15');
+    });
+
+    it('returns today for 0 years 0 months', () => {
+      expect(computeEstimatedBirthDate(0, 0)).toBe('2024-06-15');
     });
   });
 });

@@ -1,11 +1,11 @@
-group_id,name,species,breed,age,description,status,image_url
-3,Buddy,Dog,Golden Retriever,4,Friendly and energetic golden retriever who loves to play fetch. Great with kids and other dogs.,available,https://images.unsplash.com/photo-1633722715463-d30f4f325e24?w=800&q=80
-3,Luna,Dog,German Shepherd Mix,2,Smart and loyal companion. Very food motivated and loves training.,foster,https://images.unsplash.com/photo-1568572933382-74d440642117?w=800&q=80
-3,Charlie,Dog,Beagle,5,Sweet beagle with a curious nose. Calm and affectionate family dog.,available,https://images.unsplash.com/photo-1505628346881-b72b27e84530?w=800&q=80
-3,Max,Dog,Labrador Retriever,3,High-energy chocolate lab who loves water and fetching.,available,https://images.unsplash.com/photo-1579270183931-b2fd69f83db4?w=800&q=80
-3,Daisy,Dog,Border Collie Mix,3,Incredibly intelligent and eager to please. Excels at agility.,available,https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800&q=80
-3,Cooper,Dog,Australian Shepherd,2,Beautiful blue merle coat. Energetic and smart.,foster,https://images.unsplash.com/photo-1568393691622-c7ba131d63b4?w=800&q=80
-3,Bella,Dog,Husky Mix,4,Gorgeous husky with striking blue eyes. Loves cool weather and long runs.,available,https://images.unsplash.com/photo-1605568427561-40dd23c2acea?w=800&q=80
-3,Zeus,Dog,Great Dane,5,Gentle giant who thinks he's a lap dog. Calm and affectionate.,available,https://images.unsplash.com/photo-1534361960057-19889db9621e?w=800&q=80
-3,Rosie,Dog,Corgi Mix,3,Adorable corgi mix with short legs and big personality!,available,https://images.unsplash.com/photo-1612536409413-0e95d00c7ab5?w=800&q=80
+group_id,name,species,breed,age,estimated_birth_date,description,trainer_notes,status,image_url
+3,Buddy,Dog,Golden Retriever,4,2021-08-24,Friendly and energetic golden retriever who loves to play fetch. Great with kids and other dogs.,Buddy responds well to positive reinforcement. Focus on leash manners and impulse control during walks.,available,https://images.unsplash.com/photo-1633722715463-d30f4f325e24?w=800&q=80
+3,Luna,Dog,German Shepherd Mix,2,2023-11-24,Smart and loyal companion. Very food motivated and loves training.,Luna is reactive to other dogs on leash. Use BAT 2.0 protocol. Keep 15ft distance from triggers.,foster,https://images.unsplash.com/photo-1568572933382-74d440642117?w=800&q=80
+3,Charlie,Dog,Beagle,5,2020-06-24,Sweet beagle with a curious nose. Calm and affectionate family dog.,,available,https://images.unsplash.com/photo-1505628346881-b72b27e84530?w=800&q=80
+3,Max,Dog,Labrador Retriever,3,2022-12-24,High-energy chocolate lab who loves water and fetching.,,available,https://images.unsplash.com/photo-1579270183931-b2fd69f83db4?w=800&q=80
+3,Daisy,Dog,Border Collie Mix,3,2022-04-24,Incredibly intelligent and eager to please. Excels at agility.,,available,https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800&q=80
+3,Cooper,Dog,Australian Shepherd,2,2023-07-24,Beautiful blue merle coat. Energetic and smart.,,foster,https://images.unsplash.com/photo-1568393691622-c7ba131d63b4?w=800&q=80
+3,Bella,Dog,Husky Mix,4,2021-10-24,Gorgeous husky with striking blue eyes. Loves cool weather and long runs.,,available,https://images.unsplash.com/photo-1605568427561-40dd23c2acea?w=800&q=80
+3,Zeus,Dog,Great Dane,5,2020-03-24,Gentle giant who thinks he's a lap dog. Calm and affectionate.,,available,https://images.unsplash.com/photo-1534361960057-19889db9621e?w=800&q=80
+3,Rosie,Dog,Corgi Mix,3,2022-09-24,Adorable corgi mix with short legs and big personality!,,available,https://images.unsplash.com/photo-1612536409413-0e95d00c7ab5?w=800&q=80
 

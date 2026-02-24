@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { animalsApi, groupsApi } from '../api/client';
 import type { Animal, Group } from '../api/client';
 import { useToast } from '../hooks/useToast';
-import { formatDateShort, calculateQuarantineEndDate, calculateDaysSince } from '../utils/dateUtils';
+import { formatDateShort, calculateQuarantineEndDate, calculateDaysSince, calculateAge, formatAge } from '../utils/dateUtils';
 import { useDebounce } from '../hooks/useDebounce';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
@@ -766,7 +766,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                       </td>
                       <td>{animal.species || '-'}</td>
                       <td>{animal.breed || '-'}</td>
-                      <td>{animal.age || '-'}</td>
+                      <td>{animal.estimated_birth_date ? formatAge(...Object.values(calculateAge(animal.estimated_birth_date, animal.age)) as [number, number]) : (animal.age || '-')}</td>
                       <td>
                         <select
                           value={animal.status}
@@ -827,7 +827,7 @@ const BulkEditAnimalsPage: React.FC = () => {
               Upload a CSV file with the following columns:
             </p>
             <code className="csv-format">
-              group_id, name, species, breed, age, description, status, image_url
+              group_id, name, species, breed, age, estimated_birth_date, description, trainer_notes, status, image_url
             </code>
             <div className="import-note">
               <strong>Note:</strong> Only <code>group_id</code> and <code>name</code> are required.

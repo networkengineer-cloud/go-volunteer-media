@@ -239,6 +239,90 @@ func TestAnimal_QuarantineEndDate(t *testing.T) {
 	}
 }
 
+func TestAnimal_AgeDisplay(t *testing.T) {
+	tests := []struct {
+		name           string
+		birthDate      *time.Time
+		ageFallback    int
+		expectedYears  int
+		expectedMonths int
+	}{
+		{
+			name:           "nil birth date falls back to Age field",
+			birthDate:      nil,
+			ageFallback:    5,
+			expectedYears:  5,
+			expectedMonths: 0,
+		},
+		{
+			name: "exactly 2 years ago",
+			birthDate: func() *time.Time {
+				bd := time.Now().AddDate(-2, 0, 0)
+				return &bd
+			}(),
+			expectedYears:  2,
+			expectedMonths: 0,
+		},
+		{
+			name: "1 year 6 months ago",
+			birthDate: func() *time.Time {
+				bd := time.Now().AddDate(-1, -6, 0)
+				return &bd
+			}(),
+			expectedYears:  1,
+			expectedMonths: 6,
+		},
+		{
+			name: "3 months ago",
+			birthDate: func() *time.Time {
+				bd := time.Now().AddDate(0, -3, 0)
+				return &bd
+			}(),
+			expectedYears:  0,
+			expectedMonths: 3,
+		},
+		{
+			name: "future date returns 0,0",
+			birthDate: func() *time.Time {
+				bd := time.Now().AddDate(1, 0, 0)
+				return &bd
+			}(),
+			expectedYears:  0,
+			expectedMonths: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			animal := &Animal{
+				Age:                tt.ageFallback,
+				EstimatedBirthDate: tt.birthDate,
+			}
+			years, months := animal.AgeDisplay()
+			if years != tt.expectedYears {
+				t.Errorf("AgeDisplay() years = %d, expected %d", years, tt.expectedYears)
+			}
+			if months != tt.expectedMonths {
+				t.Errorf("AgeDisplay() months = %d, expected %d", months, tt.expectedMonths)
+			}
+		})
+	}
+}
+
+func TestAnimal_AgeYearsFromBirthDate(t *testing.T) {
+	bd := time.Now().AddDate(-3, -7, 0)
+	animal := &Animal{EstimatedBirthDate: &bd}
+	if got := animal.AgeYearsFromBirthDate(); got != 3 {
+		t.Errorf("AgeYearsFromBirthDate() = %d, expected 3", got)
+	}
+
+	// Fallback when no birth date
+	animal2 := &Animal{Age: 8}
+	if got := animal2.AgeYearsFromBirthDate(); got != 8 {
+		t.Errorf("AgeYearsFromBirthDate() fallback = %d, expected 8", got)
+	}
+}
+
 func TestAnimal_MethodsWithRealData(t *testing.T) {
 	// Test with a realistic animal scenario
 	t.Run("realistic shelter animal", func(t *testing.T) {

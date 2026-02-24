@@ -200,6 +200,11 @@ func RunMigrations(db *gorm.DB) error {
 		return err
 	}
 
+	// Backfill EstimatedBirthDate for existing animals that only have an integer Age
+	if err := backfillEstimatedBirthDates(db); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to backfill estimated birth dates")
+	}
+
 	return nil
 }
 
@@ -545,6 +550,30 @@ func createDefaultSiteSettings(db *gorm.DB) error {
 			}
 			logging.WithField("setting_key", setting.Key).Info("Created default site setting")
 		}
+	}
+
+	return nil
+}
+
+// backfillEstimatedBirthDates sets EstimatedBirthDate for animals that have an Age > 0
+// but no EstimatedBirthDate. Uses today's date minus Age years, preserving current day-of-month.
+// This is idempotent — only updates animals where estimated_birth_date IS NULL.
+func backfillEstimatedBirthDates(db *gorm.DB) error {
+	now := time.Now()
+	result := db.Exec(`
+		UPDATE animals
+		SET estimated_birth_date = ? - (age * INTERVAL '1 year')
+		WHERE estimated_birth_date IS NULL
+		  AND age > 0
+		  AND deleted_at IS NULL
+	`, now)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to backfill estimated birth dates: %w", result.Error)
+	}
+
+	if result.RowsAffected > 0 {
+		logging.WithField("count", result.RowsAffected).Info("Backfilled estimated birth dates for existing animals")
 	}
 
 	return nil

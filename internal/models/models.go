@@ -38,10 +38,10 @@ type User struct {
 	ResetToken                string         `json:"-"`
 	ResetTokenExpiry          *time.Time     `json:"-"`
 	ResetTokenLookup          string         `gorm:"index;default:''" json:"-"` // Plaintext prefix for indexed token lookup
-	SetupToken                string         `json:"-"` // Separate field for initial password setup (invite flow)
+	SetupToken                string         `json:"-"`                         // Separate field for initial password setup (invite flow)
 	SetupTokenExpiry          *time.Time     `json:"-"`
 	SetupTokenLookup          string         `gorm:"index;default:''" json:"-"` // Plaintext prefix for indexed token lookup
-	RequiresPasswordSetup     bool           `gorm:"default:false" json:"-"` // Flag to prevent login before password setup
+	RequiresPasswordSetup     bool           `gorm:"default:false" json:"-"`    // Flag to prevent login before password setup
 	EmailNotificationsEnabled bool           `gorm:"default:false" json:"email_notifications_enabled"`
 	ShowLengthOfStay          bool           `gorm:"default:false" json:"show_length_of_stay"`
 }
@@ -76,7 +76,9 @@ type Animal struct {
 	Species                        string              `json:"species"`
 	Breed                          string              `json:"breed"`
 	Age                            int                 `json:"age"`
+	EstimatedBirthDate             *time.Time          `json:"estimated_birth_date"` // Estimated date of birth for real-time age calculation
 	Description                    string              `json:"description"`
+	TrainerNotes                   string              `json:"trainer_notes"` // Optional notes for trainer meetings
 	ImageURL                       string              `json:"image_url"`
 	Status                         string              `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, foster, bite_quarantine, archived
 	ArrivalDate                    *time.Time          `json:"arrival_date"`                                                    // When animal first became available
@@ -98,6 +100,36 @@ type Animal struct {
 	Tags                           []AnimalTag         `gorm:"many2many:animal_animal_tags;" json:"tags,omitempty"`             // Tags associated with this animal
 	NameHistory                    []AnimalNameHistory `gorm:"foreignKey:AnimalID" json:"name_history,omitempty"`               // History of name changes for this animal
 	Images                         []AnimalImage       `gorm:"foreignKey:AnimalID" json:"images,omitempty"`                     // Images uploaded for this animal
+}
+
+// AgeDisplay computes the animal's age in years and months from EstimatedBirthDate.
+// Falls back to (Age, 0) when EstimatedBirthDate is nil.
+func (a *Animal) AgeDisplay() (years int, months int) {
+	if a.EstimatedBirthDate == nil {
+		return a.Age, 0
+	}
+	now := time.Now()
+	bd := *a.EstimatedBirthDate
+	years = now.Year() - bd.Year()
+	months = int(now.Month()) - int(bd.Month())
+	if now.Day() < bd.Day() {
+		months--
+	}
+	if months < 0 {
+		years--
+		months += 12
+	}
+	if years < 0 {
+		years = 0
+		months = 0
+	}
+	return years, months
+}
+
+// AgeYearsFromBirthDate computes whole years from EstimatedBirthDate for backward compatibility.
+func (a *Animal) AgeYearsFromBirthDate() int {
+	y, _ := a.AgeDisplay()
+	return y
 }
 
 // LengthOfStay returns the number of days since the animal's arrival date

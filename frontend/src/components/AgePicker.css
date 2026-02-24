@@ -1,0 +1,60 @@
+.age-picker {
+  margin-bottom: 1.75rem;
+}
+
+.age-picker__inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.age-picker__field {
+  display: flex;
+  flex-direction: column;
+}
+
+.age-picker__sub-label {
+  display: block;
+  margin-bottom: 0.375rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.8125rem;
+}
+
+.age-picker__number {
+  text-align: center;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+/* Remove spinner arrows for cleaner look */
+.age-picker__number::-webkit-inner-spin-button,
+.age-picker__number::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+.age-picker__toggle {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--brand);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.age-picker__toggle:hover {
+  color: var(--brand-600);
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .age-picker__inputs {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+}

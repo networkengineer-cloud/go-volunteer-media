@@ -59,3 +59,61 @@ export function calculateDaysSince(dateString?: string): number {
   if (diffTime < 0) return 0; // future date
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
+
+/**
+ * Calculate age in years and months from a birth date string.
+ * Falls back to { years: fallbackYears, months: 0 } when birthDate is missing/invalid.
+ */
+export function calculateAge(birthDateString?: string, fallbackYears?: number): { years: number; months: number } {
+  if (!birthDateString) {
+    return { years: fallbackYears ?? 0, months: 0 };
+  }
+  const bd = new Date(birthDateString);
+  if (isNaN(bd.getTime())) {
+    return { years: fallbackYears ?? 0, months: 0 };
+  }
+  const now = new Date();
+  let years = now.getFullYear() - bd.getFullYear();
+  let months = now.getMonth() - bd.getMonth();
+  if (now.getDate() < bd.getDate()) {
+    months--;
+  }
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+  if (years < 0) {
+    return { years: 0, months: 0 };
+  }
+  return { years, months };
+}
+
+/**
+ * Format age as a human-readable string.
+ * Examples: "1 yr 6 mo", "2 yrs", "3 mo", "< 1 mo"
+ */
+export function formatAge(years: number, months: number): string {
+  if (years <= 0 && months <= 0) return '< 1 mo';
+  const parts: string[] = [];
+  if (years > 0) {
+    parts.push(`${years} ${years === 1 ? 'yr' : 'yrs'}`);
+  }
+  if (months > 0) {
+    parts.push(`${months} ${months === 1 ? 'mo' : 'mo'}`);
+  }
+  return parts.join(' ') || '< 1 mo';
+}
+
+/**
+ * Compute an estimated birth date by subtracting years and months from today.
+ * The day-of-month is today's day (implied from when the record is entered).
+ */
+export function computeEstimatedBirthDate(years: number, months: number): string {
+  const now = new Date();
+  const bd = new Date(now.getFullYear() - years, now.getMonth() - months, now.getDate());
+  // Format as YYYY-MM-DD
+  const y = bd.getFullYear();
+  const m = String(bd.getMonth() + 1).padStart(2, '0');
+  const d = String(bd.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}

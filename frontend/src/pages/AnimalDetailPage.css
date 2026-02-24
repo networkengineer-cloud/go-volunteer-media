@@ -1773,3 +1773,90 @@
     height: 18px;
   }
 }
+
+/* Trainer Notes Section (collapsible) */
+.trainer-notes-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--neutral-200);
+}
+
+.trainer-notes-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+  transition: color 0.2s ease;
+}
+
+.trainer-notes-toggle:hover {
+  color: var(--brand);
+}
+
+.trainer-notes-toggle:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.trainer-notes-toggle h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.trainer-notes-icon {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.trainer-notes-toggle.expanded .trainer-notes-icon {
+  color: var(--brand);
+}
+
+.trainer-notes-content {
+  margin-top: 0.75rem;
+  padding: 1.25rem;
+  background: var(--neutral-50);
+  border: 1px solid var(--neutral-200);
+  border-radius: 8px;
+  animation: trainerNotesSlideDown 0.2s ease-out;
+}
+
+.trainer-notes-content p {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+@keyframes trainerNotesSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-theme='dark'] .trainer-notes-content {
+  background: var(--neutral-800);
+  border-color: var(--neutral-600);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trainer-notes-content {
+    animation: none;
+  }
+}

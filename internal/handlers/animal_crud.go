@@ -125,13 +125,13 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		now := time.Now()
-		
+
 		// Use provided arrival_date if available, otherwise use current time
 		arrivalDate := &now
 		if req.ArrivalDate.Valid && req.ArrivalDate.Time != nil {
 			arrivalDate = req.ArrivalDate.Time
 		}
-		
+
 		animal := models.Animal{
 			GroupID:          uint(gid),
 			Name:             req.Name,
@@ -139,10 +139,18 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 			Breed:            req.Breed,
 			Age:              req.Age,
 			Description:      req.Description,
+			TrainerNotes:     req.TrainerNotes,
 			ImageURL:         req.ImageURL,
 			Status:           req.Status,
 			ArrivalDate:      arrivalDate,
 			LastStatusChange: &now,
+		}
+
+		// Set estimated birth date if provided
+		if req.EstimatedBirthDate.Valid && req.EstimatedBirthDate.Time != nil {
+			animal.EstimatedBirthDate = req.EstimatedBirthDate.Time
+			// Auto-compute Age (whole years) from birth date for backward compatibility
+			animal.Age = animal.AgeYearsFromBirthDate()
 		}
 
 		if animal.Status == "" {
@@ -303,13 +311,24 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			animal.ArrivalDate = req.ArrivalDate.Time
 		}
 
+		// Update estimated birth date if provided
+		if req.EstimatedBirthDate.Valid && req.EstimatedBirthDate.Time != nil {
+			animal.EstimatedBirthDate = req.EstimatedBirthDate.Time
+		}
+
 		// Update other fields
 		animal.Name = req.Name
 		animal.Species = req.Species
 		animal.Breed = req.Breed
 		animal.Age = req.Age
 		animal.Description = req.Description
+		animal.TrainerNotes = req.TrainerNotes
 		animal.ImageURL = req.ImageURL
+
+		// Auto-compute Age from birth date if set
+		if animal.EstimatedBirthDate != nil {
+			animal.Age = animal.AgeYearsFromBirthDate()
+		}
 
 		if err := db.WithContext(ctx).Save(&animal).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal"})

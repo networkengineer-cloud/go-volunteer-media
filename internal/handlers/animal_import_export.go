@@ -45,13 +45,19 @@ func ExportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
 		defer writer.Flush()
 
 		// Write CSV header
-		if err := writer.Write([]string{"id", "group_id", "name", "species", "breed", "age", "description", "status", "image_url"}); err != nil {
+		if err := writer.Write([]string{"id", "group_id", "name", "species", "breed", "age", "estimated_birth_date", "description", "trainer_notes", "status", "image_url"}); err != nil {
 			logger.Error("Failed to write CSV header", err)
 			return
 		}
 
 		// Write animal data
 		for _, animal := range animals {
+			// Format estimated birth date as ISO date string
+			estimatedBirthDate := ""
+			if animal.EstimatedBirthDate != nil {
+				estimatedBirthDate = animal.EstimatedBirthDate.Format("2006-01-02")
+			}
+
 			record := []string{
 				strconv.FormatUint(uint64(animal.ID), 10),
 				strconv.FormatUint(uint64(animal.GroupID), 10),
@@ -59,7 +65,9 @@ func ExportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
 				animal.Species,
 				animal.Breed,
 				strconv.Itoa(animal.Age),
+				estimatedBirthDate,
 				animal.Description,
+				animal.TrainerNotes,
 				animal.Status,
 				animal.ImageURL,
 			}
@@ -199,6 +207,19 @@ func ImportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
 			}
 			if idx, ok := headerMap["image_url"]; ok && idx < len(record) {
 				animal.ImageURL = strings.TrimSpace(record[idx])
+			}
+			if idx, ok := headerMap["estimated_birth_date"]; ok && idx < len(record) {
+				dateStr := strings.TrimSpace(record[idx])
+				if dateStr != "" {
+					if parsedDate, parseErr := time.Parse("2006-01-02", dateStr); parseErr == nil {
+						animal.EstimatedBirthDate = &parsedDate
+						// Auto-compute Age from birth date
+						animal.Age = animal.AgeYearsFromBirthDate()
+					}
+				}
+			}
+			if idx, ok := headerMap["trainer_notes"]; ok && idx < len(record) {
+				animal.TrainerNotes = strings.TrimSpace(record[idx])
 			}
 
 			animals = append(animals, animal)

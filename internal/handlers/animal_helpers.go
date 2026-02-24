@@ -73,7 +73,9 @@ type AnimalRequest struct {
 	Species             string       `json:"species"`
 	Breed               string       `json:"breed"`
 	Age                 int          `json:"age"`
+	EstimatedBirthDate  NullableTime `json:"estimated_birth_date,omitempty"` // Estimated date of birth for real-time age
 	Description         string       `json:"description"`
+	TrainerNotes        string       `json:"trainer_notes"`
 	ImageURL            string       `json:"image_url,omitempty"`
 	Status              string       `json:"status"`
 	GroupID             uint         `json:"group_id,omitempty"`

@@ -705,8 +705,9 @@ func TestUpdateAnimal_Success(t *testing.T) {
 		t.Errorf("Expected breed 'Labrador', got '%s'", updatedAnimal.Breed)
 	}
 
-	if updatedAnimal.Age != 4 {
-		t.Errorf("Expected age 4, got %d", updatedAnimal.Age)
+	// Age is auto-computed from EstimatedBirthDate when set; the test animal is ~2 years old
+	if updatedAnimal.Age != 2 {
+		t.Errorf("Expected age 2 (auto-computed from birth date), got %d", updatedAnimal.Age)
 	}
 }
 

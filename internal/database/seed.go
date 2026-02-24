@@ -387,56 +387,74 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 	twentyDaysAgo := now.AddDate(0, 0, -20)
 	thirtyDaysAgo := now.AddDate(0, 0, -30)
 
+	// Estimated birth dates based on age (subtract years and some months for realism)
+	buddyBirth := now.AddDate(-4, -6, 0)   // 4 yrs 6 mo
+	lunaBirth := now.AddDate(-2, -3, 0)    // 2 yrs 3 mo
+	charlieBirth := now.AddDate(-5, -8, 0) // 5 yrs 8 mo
+	maxBirth := now.AddDate(-3, -2, 0)     // 3 yrs 2 mo
+	rockyBirth := now.AddDate(-4, -1, 0)   // 4 yrs 1 mo
+	daisyBirth := now.AddDate(-3, -10, 0)  // 3 yrs 10 mo
+	cooperBirth := now.AddDate(-2, -7, 0)  // 2 yrs 7 mo
+	bellaBirth := now.AddDate(-4, -4, 0)   // 4 yrs 4 mo
+	zeusBirth := now.AddDate(-5, -11, 0)   // 5 yrs 11 mo
+	rosieBirth := now.AddDate(-3, -5, 0)   // 3 yrs 5 mo
+
 	// ModSquad-focused dogs with Unsplash images
 	animals := []models.Animal{
 		{
-			GroupID:          modsquadGroupID,
-			Name:             "Buddy",
-			Species:          "Dog",
-			Breed:            "Golden Retriever",
-			Age:              4,
-			Description:      "Friendly and energetic golden retriever who loves to play fetch. Great with kids and other dogs. House trained and knows basic commands. Buddy is the perfect family companion!",
-			Status:           "available",
-			ImageURL:         "https://images.unsplash.com/photo-1633722715463-d30f4f325e24?w=800&q=80", // Golden Retriever
-			ArrivalDate:      &thirtyDaysAgo,
-			LastStatusChange: &thirtyDaysAgo,
+			GroupID:            modsquadGroupID,
+			Name:               "Buddy",
+			Species:            "Dog",
+			Breed:              "Golden Retriever",
+			Age:                4,
+			EstimatedBirthDate: &buddyBirth,
+			Description:        "Friendly and energetic golden retriever who loves to play fetch. Great with kids and other dogs. House trained and knows basic commands. Buddy is the perfect family companion!",
+			TrainerNotes:       "Buddy responds well to positive reinforcement. Focus on leash manners and impulse control during walks. Use high-value treats for recall training.",
+			Status:             "available",
+			ImageURL:           "https://images.unsplash.com/photo-1633722715463-d30f4f325e24?w=800&q=80", // Golden Retriever
+			ArrivalDate:        &thirtyDaysAgo,
+			LastStatusChange:   &thirtyDaysAgo,
 		},
 		{
-			GroupID:          modsquadGroupID,
-			Name:             "Luna",
-			Species:          "Dog",
-			Breed:            "German Shepherd Mix",
-			Age:              2,
-			Description:      "Smart and loyal companion. Luna is learning her manners and would benefit from an experienced dog owner. She's very food motivated and loves training sessions with our volunteers.",
-			Status:           "foster",
-			ImageURL:         "https://images.unsplash.com/photo-1568572933382-74d440642117?w=800&q=80", // German Shepherd
-			ArrivalDate:      &twentyDaysAgo,
-			FosterStartDate:  &fiveDaysAgo,
-			LastStatusChange: &fiveDaysAgo,
+			GroupID:            modsquadGroupID,
+			Name:               "Luna",
+			Species:            "Dog",
+			Breed:              "German Shepherd Mix",
+			Age:                2,
+			EstimatedBirthDate: &lunaBirth,
+			Description:        "Smart and loyal companion. Luna is learning her manners and would benefit from an experienced dog owner. She's very food motivated and loves training sessions with our volunteers.",
+			TrainerNotes:       "Luna is reactive to other dogs on leash. Use BAT 2.0 protocol. Keep 15ft distance from triggers. She's making great progress with counter-conditioning.",
+			Status:             "foster",
+			ImageURL:           "https://images.unsplash.com/photo-1568572933382-74d440642117?w=800&q=80", // German Shepherd
+			ArrivalDate:        &twentyDaysAgo,
+			FosterStartDate:    &fiveDaysAgo,
+			LastStatusChange:   &fiveDaysAgo,
 		},
 		{
-			GroupID:          modsquadGroupID,
-			Name:             "Charlie",
-			Species:          "Dog",
-			Breed:            "Beagle",
-			Age:              5,
-			Description:      "Sweet beagle with a curious nose and endless enthusiasm for life. Charlie is calm, affectionate, and gets along well with everyone. Perfect family dog who loves gentle walks and cuddles.",
-			Status:           "available",
-			ImageURL:         "https://images.unsplash.com/photo-1505628346881-b72b27e84530?w=800&q=80", // Beagle
-			ArrivalDate:      &fifteenDaysAgo,
-			LastStatusChange: &fifteenDaysAgo,
+			GroupID:            modsquadGroupID,
+			Name:               "Charlie",
+			Species:            "Dog",
+			Breed:              "Beagle",
+			Age:                5,
+			EstimatedBirthDate: &charlieBirth,
+			Description:        "Sweet beagle with a curious nose and endless enthusiasm for life. Charlie is calm, affectionate, and gets along well with everyone. Perfect family dog who loves gentle walks and cuddles.",
+			Status:             "available",
+			ImageURL:           "https://images.unsplash.com/photo-1505628346881-b72b27e84530?w=800&q=80", // Beagle
+			ArrivalDate:        &fifteenDaysAgo,
+			LastStatusChange:   &fifteenDaysAgo,
 		},
 		{
-			GroupID:          modsquadGroupID,
-			Name:             "Max",
-			Species:          "Dog",
-			Breed:            "Labrador Retriever",
-			Age:              3,
-			Description:      "High-energy chocolate lab who needs plenty of exercise and mental stimulation. Max loves water, fetching, and being part of family activities. He's a loyal friend who will bring joy to any active home.",
-			Status:           "available",
-			ImageURL:         "https://images.unsplash.com/photo-1579270183931-b2fd69f83db4?w=800&q=80", // Chocolate Lab
-			ArrivalDate:      &tenDaysAgo,
-			LastStatusChange: &tenDaysAgo,
+			GroupID:            modsquadGroupID,
+			Name:               "Max",
+			Species:            "Dog",
+			Breed:              "Labrador Retriever",
+			Age:                3,
+			EstimatedBirthDate: &maxBirth,
+			Description:        "High-energy chocolate lab who needs plenty of exercise and mental stimulation. Max loves water, fetching, and being part of family activities. He's a loyal friend who will bring joy to any active home.",
+			Status:             "available",
+			ImageURL:           "https://images.unsplash.com/photo-1579270183931-b2fd69f83db4?w=800&q=80", // Chocolate Lab
+			ArrivalDate:        &tenDaysAgo,
+			LastStatusChange:   &tenDaysAgo,
 		},
 		{
 			GroupID:             modsquadGroupID,
@@ -444,7 +462,9 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 			Species:             "Dog",
 			Breed:               "Pit Bull Terrier",
 			Age:                 4,
+			EstimatedBirthDate:  &rockyBirth,
 			Description:         "Currently in bite quarantine following an incident. Rocky is working with our behavior team and showing excellent progress with positive reinforcement training. Evaluation pending completion of quarantine period.",
+			TrainerNotes:        "Rocky has resource guarding tendencies around food. Use trade-up exercises only. Do NOT reach toward his bowl while eating. He responds well to structured training sessions with clear boundaries.",
 			Status:              "bite_quarantine",
 			ImageURL:            "https://images.unsplash.com/photo-1551717743-49959800b1f6?w=800&q=80", // Pit Bull
 			ArrivalDate:         &twentyDaysAgo,
@@ -452,65 +472,70 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 			LastStatusChange:    &twoDaysAgo,
 		},
 		{
-			GroupID:          modsquadGroupID,
-			Name:             "Daisy",
-			Species:          "Dog",
-			Breed:            "Border Collie Mix",
-			Age:              3,
-			Description:      "Incredibly intelligent and eager to please. Daisy excels at agility and loves learning new tricks. She needs an active family who can provide mental and physical stimulation daily.",
-			Status:           "available",
-			ImageURL:         "https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800&q=80", // Border Collie
-			ArrivalDate:      &tenDaysAgo,
-			LastStatusChange: &tenDaysAgo,
+			GroupID:            modsquadGroupID,
+			Name:               "Daisy",
+			Species:            "Dog",
+			Breed:              "Border Collie Mix",
+			Age:                3,
+			EstimatedBirthDate: &daisyBirth,
+			Description:        "Incredibly intelligent and eager to please. Daisy excels at agility and loves learning new tricks. She needs an active family who can provide mental and physical stimulation daily.",
+			Status:             "available",
+			ImageURL:           "https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800&q=80", // Border Collie
+			ArrivalDate:        &tenDaysAgo,
+			LastStatusChange:   &tenDaysAgo,
 		},
 		{
-			GroupID:          modsquadGroupID,
-			Name:             "Cooper",
-			Species:          "Dog",
-			Breed:            "Australian Shepherd",
-			Age:              2,
-			Description:      "Beautiful Australian Shepherd with stunning blue merle coat. Cooper is energetic, smart, and loves to work. He'd be perfect for hiking, running, or dog sports. Currently in foster care and thriving!",
-			Status:           "foster",
-			ImageURL:         "https://images.unsplash.com/photo-1568393691622-c7ba131d63b4?w=800&q=80", // Australian Shepherd
-			ArrivalDate:      &fifteenDaysAgo,
-			FosterStartDate:  &fiveDaysAgo,
-			LastStatusChange: &fiveDaysAgo,
+			GroupID:            modsquadGroupID,
+			Name:               "Cooper",
+			Species:            "Dog",
+			Breed:              "Australian Shepherd",
+			Age:                2,
+			EstimatedBirthDate: &cooperBirth,
+			Description:        "Beautiful Australian Shepherd with stunning blue merle coat. Cooper is energetic, smart, and loves to work. He'd be perfect for hiking, running, or dog sports. Currently in foster care and thriving!",
+			Status:             "foster",
+			ImageURL:           "https://images.unsplash.com/photo-1568393691622-c7ba131d63b4?w=800&q=80", // Australian Shepherd
+			ArrivalDate:        &fifteenDaysAgo,
+			FosterStartDate:    &fiveDaysAgo,
+			LastStatusChange:   &fiveDaysAgo,
 		},
 		{
-			GroupID:          modsquadGroupID,
-			Name:             "Bella",
-			Species:          "Dog",
-			Breed:            "Husky Mix",
-			Age:              4,
-			Description:      "Gorgeous husky mix with striking blue eyes. Bella loves cool weather, long runs, and howling along to music. She's independent but affectionate and needs an experienced owner who understands the breed.",
-			Status:           "available",
-			ImageURL:         "https://images.unsplash.com/photo-1605568427561-40dd23c2acea?w=800&q=80", // Husky
-			ArrivalDate:      &twentyDaysAgo,
-			LastStatusChange: &twentyDaysAgo,
+			GroupID:            modsquadGroupID,
+			Name:               "Bella",
+			Species:            "Dog",
+			Breed:              "Husky Mix",
+			Age:                4,
+			EstimatedBirthDate: &bellaBirth,
+			Description:        "Gorgeous husky mix with striking blue eyes. Bella loves cool weather, long runs, and howling along to music. She's independent but affectionate and needs an experienced owner who understands the breed.",
+			Status:             "available",
+			ImageURL:           "https://images.unsplash.com/photo-1605568427561-40dd23c2acea?w=800&q=80", // Husky
+			ArrivalDate:        &twentyDaysAgo,
+			LastStatusChange:   &twentyDaysAgo,
 		},
 		{
-			GroupID:          modsquadGroupID,
-			Name:             "Zeus",
-			Species:          "Dog",
-			Breed:            "Great Dane",
-			Age:              5,
-			Description:      "Gentle giant who thinks he's a lap dog! Zeus is calm, affectionate, and excellent with children. Despite his size, he has a moderate energy level and just wants to be near his people. House trained and crate trained.",
-			Status:           "available",
-			ImageURL:         "https://images.unsplash.com/photo-1534361960057-19889db9621e?w=800&q=80", // Great Dane
-			ArrivalDate:      &fiveDaysAgo,
-			LastStatusChange: &fiveDaysAgo,
+			GroupID:            modsquadGroupID,
+			Name:               "Zeus",
+			Species:            "Dog",
+			Breed:              "Great Dane",
+			Age:                5,
+			EstimatedBirthDate: &zeusBirth,
+			Description:        "Gentle giant who thinks he's a lap dog! Zeus is calm, affectionate, and excellent with children. Despite his size, he has a moderate energy level and just wants to be near his people. House trained and crate trained.",
+			Status:             "available",
+			ImageURL:           "https://images.unsplash.com/photo-1534361960057-19889db9621e?w=800&q=80", // Great Dane
+			ArrivalDate:        &fiveDaysAgo,
+			LastStatusChange:   &fiveDaysAgo,
 		},
 		{
-			GroupID:          modsquadGroupID,
-			Name:             "Rosie",
-			Species:          "Dog",
-			Breed:            "Corgi Mix",
-			Age:              3,
-			Description:      "Adorable corgi mix with short legs and a big personality! Rosie is playful, smart, and loves being the center of attention. She's great with kids and gets along well with other dogs.",
-			Status:           "available",
-			ImageURL:         "https://images.unsplash.com/photo-1612536409413-0e95d00c7ab5?w=800&q=80", // Corgi
-			ArrivalDate:      &tenDaysAgo,
-			LastStatusChange: &tenDaysAgo,
+			GroupID:            modsquadGroupID,
+			Name:               "Rosie",
+			Species:            "Dog",
+			Breed:              "Corgi Mix",
+			Age:                3,
+			EstimatedBirthDate: &rosieBirth,
+			Description:        "Adorable corgi mix with short legs and a big personality! Rosie is playful, smart, and loves being the center of attention. She's great with kids and gets along well with other dogs.",
+			Status:             "available",
+			ImageURL:           "https://images.unsplash.com/photo-1612536409413-0e95d00c7ab5?w=800&q=80", // Corgi
+			ArrivalDate:        &tenDaysAgo,
+			LastStatusChange:   &tenDaysAgo,
 		},
 	}
 
