@@ -609,16 +609,22 @@ const AnimalForm: React.FC = () => {
                 There {duplicateInfo.count === 1 ? 'is' : 'are'} already <strong>{duplicateInfo.count}</strong> other animal{duplicateInfo.count > 1 ? 's' : ''} named "{formData.name}" in this group.
               </p>
               <div className="duplicate-animals-list">
-                {duplicateInfo.animals.slice(0, 3).map((animal: Animal) => (
-                  <div key={animal.id} className="duplicate-animal-item">
-                    <span className="duplicate-animal-name">
-                      {animal.name} (ID: {animal.id})
-                    </span>
-                    <span className="duplicate-animal-details">
-                      {animal.breed || 'Unknown breed'} • {animal.estimated_birth_date ? (() => { const { years: y, months: m } = calculateAge(animal.estimated_birth_date); return `${y} yr${y !== 1 ? 's' : ''} ${m} mo`; })() : `${animal.age} yrs`} • {animal.status}
-                    </span>
-                  </div>
-                ))}
+                {duplicateInfo.animals.slice(0, 3).map((animal: Animal) => {
+                  const { years: dupYears, months: dupMonths } = calculateAge(animal.estimated_birth_date, animal.age);
+                  const dupAgeLabel = animal.estimated_birth_date
+                    ? `${dupYears} yr${dupYears !== 1 ? 's' : ''} ${dupMonths} mo`
+                    : `${animal.age} yrs`;
+                  return (
+                    <div key={animal.id} className="duplicate-animal-item">
+                      <span className="duplicate-animal-name">
+                        {animal.name} (ID: {animal.id})
+                      </span>
+                      <span className="duplicate-animal-details">
+                        {animal.breed || 'Unknown breed'} • {dupAgeLabel} • {animal.status}
+                      </span>
+                    </div>
+                  );
+                })}
                 {duplicateInfo.count > 3 && (
                   <p className="duplicate-more">+ {duplicateInfo.count - 3} more</p>
                 )}
@@ -651,8 +657,7 @@ const AnimalForm: React.FC = () => {
             />
           </div>
 
-          <div className="form-row">
-            <AgePicker
+          <AgePicker
               years={birthYears}
               months={birthMonths}
               exactDate={formData.estimated_birth_date}
@@ -670,6 +675,7 @@ const AnimalForm: React.FC = () => {
               error={touched.age ? errors.age : ''}
             />
 
+          <div className="form-row">
             <div className="form-field">
               <label htmlFor="status" className="form-field__label">
                 Status
@@ -697,23 +703,23 @@ const AnimalForm: React.FC = () => {
               </select>
               <p className="form-field__helper">Current status of the animal</p>
             </div>
-          </div>
 
-          <div className="form-field">
-            <label htmlFor="arrival_date" className="form-field__label">
-              Date in Shelter
-            </label>
-            <input
-              id="arrival_date"
-              type="date"
-              value={formData.arrival_date}
-              onChange={(e) => setFormData({ ...formData, arrival_date: e.target.value })}
-              className="form-field__input"
-              max={new Date().toISOString().split('T')[0]}
-            />
-            <p className="form-field__helper">
-              Date the animal entered the shelter. Used to calculate length of stay. Leave empty to use today's date.
-            </p>
+            <div className="form-field">
+              <label htmlFor="arrival_date" className="form-field__label">
+                Date in Shelter
+              </label>
+              <input
+                id="arrival_date"
+                type="date"
+                value={formData.arrival_date}
+                onChange={(e) => setFormData({ ...formData, arrival_date: e.target.value })}
+                className="form-field__input"
+                max={new Date().toISOString().split('T')[0]}
+              />
+              <p className="form-field__helper">
+                Date the animal entered the shelter. Used to calculate length of stay. Leave empty to use today's date.
+              </p>
+            </div>
           </div>
 
           <div className="form-field">

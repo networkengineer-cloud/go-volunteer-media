@@ -1,7 +1,3 @@
-.age-picker {
-  margin-bottom: 1.75rem;
-}
-
 .age-picker__inputs {
   display: grid;
   grid-template-columns: 1fr 1fr;
