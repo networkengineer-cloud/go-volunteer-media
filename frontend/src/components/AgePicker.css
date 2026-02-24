@@ -21,12 +21,6 @@
   font-size: 0.8125rem;
 }
 
-.age-picker__number {
-  text-align: center;
-  font-size: 1.125rem;
-  font-weight: 600;
-}
-
 .age-picker__toggle {
   display: inline-block;
   margin-top: 0.5rem;
