@@ -59,7 +59,11 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
     return func(c *gin.Context) {
         ctx := c.Request.Context()
         groupID := c.Param("id")
-        userID, _ := c.Get("user_id")
+        userID, exists := c.Get("user_id")
+        if !exists {
+            respondUnauthorized(c)
+            return
+        }
         isAdmin, _ := c.Get("is_admin")
         isAdminBool, _ := isAdmin.(bool)
 
@@ -117,14 +121,16 @@ export interface Foo {
   updated_at: string;
 }
 
+export type FooInput = Pick<Foo, 'name' | 'description'>;
+
 export const fooApi = {
   getAll: (groupId: number) =>
     api.get<Foo[]>(`/groups/${groupId}/foos`),
   getById: (groupId: number, id: number) =>
     api.get<Foo>(`/groups/${groupId}/foos/${id}`),
-  create: (groupId: number, data: Partial<Foo>) =>
+  create: (groupId: number, data: FooInput) =>
     api.post<Foo>(`/groups/${groupId}/foos`, data),
-  update: (groupId: number, id: number, data: Partial<Foo>) =>
+  update: (groupId: number, id: number, data: Partial<FooInput>) =>
     api.put<Foo>(`/groups/${groupId}/foos/${id}`, data),
   delete: (groupId: number, id: number) =>
     api.delete(`/groups/${groupId}/foos/${id}`),
@@ -143,6 +149,8 @@ See [client-template.ts](./client-template.ts) for a complete typed example.
 **Backend** — create `internal/handlers/foo_test.go`. Follow the pattern in any existing `*_test.go` in that directory. Use `test_helpers.go` shared utilities.
 
 **Frontend E2E** — if the feature has a user-facing UI, add a Playwright spec in `frontend/tests/foo.spec.ts`. See the `playwright-e2e-test` skill for the test authoring workflow.
+
+Also update `API.md` with the new endpoint(s) — this is required before the PR can merge.
 
 ## Checklist
 

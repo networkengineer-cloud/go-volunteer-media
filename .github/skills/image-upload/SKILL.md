@@ -149,6 +149,6 @@ Read these existing handlers before writing a new one — they show the exact pa
 ## Key Files
 
 - `internal/storage/` — `Provider` interface + local/Azure implementations
-- `internal/upload/` — `ValidateImage`, `ValidateDocument` helpers
+- `internal/upload/` — `ValidateImageUpload`, `ValidateDocumentUpload` helpers
 - `internal/models/models.go` — `AnimalImage`, `AnimalDocument` model structs
 - `cmd/api/main.go` — where `storageProvider` is initialized and injected

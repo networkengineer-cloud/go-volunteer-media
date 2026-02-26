@@ -103,7 +103,11 @@ if !exists {
     respondUnauthorized(c)
     return
 }
-uid := userID.(uint)
+uid, ok := userID.(uint)
+if !ok {
+    respondUnauthorized(c)
+    return
+}
 ```
 
 ## Auth Flow Summary
