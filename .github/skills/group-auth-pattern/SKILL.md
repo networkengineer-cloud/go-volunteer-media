@@ -97,12 +97,16 @@ Always validate group access before running any GORM query on group-scoped data.
 
 ### ✅ Type-assert context values safely
 
+`checkGroupAccess()` and `checkGroupAdminAccess()` accept `interface{}` for `userID` and `isAdmin`, so you can pass them directly from `c.Get()`. However, if you need to pass `userID` to a model-layer function that requires a typed `uint` (e.g., `models.IsGroupAdmin`), assert it explicitly:
+
 ```go
 userID, exists := c.Get("user_id")
 if !exists {
     respondUnauthorized(c)
     return
 }
+// Pass directly to checkGroupAccess — it accepts interface{}.
+// For model functions requiring uint, assert with the two-value form:
 uid, ok := userID.(uint)
 if !ok {
     respondUnauthorized(c)

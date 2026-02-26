@@ -3,6 +3,7 @@
 package handlers
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -67,7 +68,11 @@ func GetFooByID(db *gorm.DB) gin.HandlerFunc {
 
 		var foo models.Foo
 		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", parsedFooID, groupID).First(&foo).Error; err != nil {
-			respondNotFound(c, "not found")
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				respondNotFound(c, "not found")
+			} else {
+				respondInternalError(c, err.Error())
+			}
 			return
 		}
 		respondOK(c, foo)
@@ -149,7 +154,11 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 
 		var foo models.Foo
 		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", parsedFooID, groupID).First(&foo).Error; err != nil {
-			respondNotFound(c, "not found")
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				respondNotFound(c, "not found")
+			} else {
+				respondInternalError(c, err.Error())
+			}
 			return
 		}
 
@@ -162,14 +171,15 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		updates := map[string]interface{}{}
 		if input.Name != "" {
-			foo.Name = input.Name
+			updates["name"] = input.Name
 		}
 		if input.Description != "" {
-			foo.Description = input.Description
+			updates["description"] = input.Description
 		}
 
-		if err := db.WithContext(ctx).Save(&foo).Error; err != nil {
+		if err := db.WithContext(ctx).Model(&foo).Updates(updates).Error; err != nil {
 			respondInternalError(c, err.Error())
 			return
 		}
@@ -205,7 +215,11 @@ func DeleteFoo(db *gorm.DB) gin.HandlerFunc {
 
 		var foo models.Foo
 		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", parsedFooID, groupID).First(&foo).Error; err != nil {
-			respondNotFound(c, "not found")
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				respondNotFound(c, "not found")
+			} else {
+				respondInternalError(c, err.Error())
+			}
 			return
 		}
 

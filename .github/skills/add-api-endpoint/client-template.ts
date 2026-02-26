@@ -11,7 +11,7 @@ export interface Foo {
   description: string;
   created_at: string;   // ISO 8601 timestamp
   updated_at: string;
-  deleted_at?: string | null;
+  // deleted_at is a GORM soft-delete field filtered server-side; omit from the frontend interface.
 }
 
 // Input type for create/update operations (all fields optional).

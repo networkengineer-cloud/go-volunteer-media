@@ -104,6 +104,10 @@ In the frontend, always reference images via `/api/images/<uuid>`, not with `/up
 ```go
 // Retrieve the record first, then delete from storage, then delete the DB row.
 // Always scope the lookup to the authorized group to prevent cross-group deletes.
+// Trade-off: if DeleteImage succeeds but db.Delete fails, the blob is gone but the
+// DB row remains pointing to a missing file. This is acceptable because the next
+// delete attempt will simply return a storage 404. For strict atomicity, soft-delete
+// the DB row first, then clean up storage asynchronously.
 var img models.AnimalImage
 if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", id, groupID).First(&img).Error; err != nil {
     respondNotFound(c, "not found")

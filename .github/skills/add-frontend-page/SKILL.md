@@ -31,7 +31,8 @@ import './FooPage.css';
 
 const FooPage: React.FC = () => {
   const { groupId } = useParams<{ groupId: string }>();
-  const parsedGroupId = Number(groupId);
+  const parsedGroupId = parseInt(groupId ?? '', 10);
+  if (isNaN(parsedGroupId)) return null; // route guard — should not happen with correct route config
   const [items, setItems] = useState<Foo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
