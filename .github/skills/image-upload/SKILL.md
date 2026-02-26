@@ -19,55 +19,61 @@ The active provider is injected into handlers at startup. Handlers receive it as
 ## Handler Pattern — Image Upload
 
 ```go
-func UploadAnimalImage(db *gorm.DB, sp storage.Provider) gin.HandlerFunc {
+func UploadFooImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
     return func(c *gin.Context) {
         ctx := c.Request.Context()
         groupID := c.Param("id")
-        animalID := c.Param("animalId")
         userID, _ := c.Get("user_id")
         isAdmin, _ := c.Get("is_admin")
 
         // 1. Auth check
         if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
-            respondForbidden(c)
+            respondForbidden(c, "forbidden")
             return
         }
 
-        // 2. Parse the multipart file
-        file, header, err := c.Request.FormFile("image")
+        // 2. Parse the multipart file header
+        file, err := c.FormFile("image")
         if err != nil {
-            respondBadRequest(c, "image field is required")
+            respondBadRequest(c, "no file uploaded")
             return
         }
-        defer file.Close()
 
         // 3. Validate MIME type and size
-        if err := upload.ValidateImage(header); err != nil {
+        if err := upload.ValidateImageUpload(file, upload.MaxImageSize); err != nil {
             respondBadRequest(c, err.Error())
             return
         }
 
-        // 4. Read file bytes
-        data, err := io.ReadAll(file)
+        // 4. Open and read file bytes
+        src, err := file.Open()
         if err != nil {
-            respondInternalError(c, err)
+            respondInternalError(c, err.Error())
+            return
+        }
+        defer src.Close()
+        data, err := io.ReadAll(src)
+        if err != nil {
+            respondInternalError(c, err.Error())
             return
         }
 
-        // 5. Store via the provider (returns a uuid or path)
-        uuid, err := sp.Store(ctx, data, header.Filename, header.Header.Get("Content-Type"))
+        // 5. Upload via the provider
+        // UploadImage returns (publicURL, identifier, extension, error)
+        imageURL, identifier, _, err := storageProvider.UploadImage(ctx, data, file.Header.Get("Content-Type"), map[string]string{})
         if err != nil {
-            respondInternalError(c, err)
+            respondInternalError(c, err.Error())
             return
         }
 
         // 6. Persist the reference in the DB
         img := models.AnimalImage{
-            AnimalID:   parsedAnimalID,
-            StorageKey: uuid,
+            AnimalID:       parsedAnimalID,
+            ImageURL:       imageURL,
+            BlobIdentifier: identifier,
         }
         if err := db.WithContext(ctx).Create(&img).Error; err != nil {
-            respondInternalError(c, err)
+            respondInternalError(c, err.Error())
             return
         }
         respondCreated(c, img)
@@ -91,11 +97,11 @@ In the frontend, always reference images via `/api/images/<uuid>`, not with `/up
 // Retrieve the record first, then delete from storage, then delete the DB row.
 var img models.AnimalImage
 if err := db.WithContext(ctx).First(&img, id).Error; err != nil {
-    respondNotFound(c)
+    respondNotFound(c, "not found")
     return
 }
-if err := sp.Delete(ctx, img.StorageKey); err != nil {
-    respondInternalError(c, err)
+if err := storageProvider.DeleteImage(ctx, img.BlobIdentifier); err != nil {
+    respondInternalError(c, err.Error())
     return
 }
 db.WithContext(ctx).Delete(&img)
@@ -108,14 +114,14 @@ The `upload` package provides shared validation:
 ```go
 import "github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 
-// Images: validates MIME (image/jpeg, image/png, image/gif) and size (max 5MB)
-if err := upload.ValidateImage(header); err != nil { ... }
+// Images: validates MIME (image/jpeg, image/png, image/gif) and size (max 10MB)
+if err := upload.ValidateImageUpload(file, upload.MaxImageSize); err != nil { ... }
 
-// Documents: validates MIME (application/pdf) and size (max 10MB)
-if err := upload.ValidateDocument(header); err != nil { ... }
+// Documents: validates MIME (application/pdf) and size (max 20MB)
+if err := upload.ValidateDocumentUpload(file, upload.MaxDocumentSize); err != nil { ... }
 ```
 
-Never write your own MIME or size validation — always use `upload.Validate*`.
+Never write your own MIME or size validation — always use `upload.ValidateImageUpload` / `upload.ValidateDocumentUpload`.
 
 ## Existing Upload Handlers (Reference)
 

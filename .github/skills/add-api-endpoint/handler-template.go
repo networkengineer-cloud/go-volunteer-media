@@ -21,13 +21,13 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 		isAdmin, _ := c.Get("is_admin")
 
 		if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
-			respondForbidden(c)
+			respondForbidden(c, "forbidden")
 			return
 		}
 
 		var foos []models.Foo
 		if err := db.WithContext(ctx).Where("group_id = ?", groupID).Find(&foos).Error; err != nil {
-			respondInternalError(c, err)
+			respondInternalError(c, err.Error())
 			return
 		}
 		respondOK(c, foos)
@@ -43,7 +43,7 @@ func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 		isAdmin, _ := c.Get("is_admin")
 
 		if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
-			respondForbidden(c)
+			respondForbidden(c, "forbidden")
 			return
 		}
 
@@ -68,7 +68,7 @@ func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 			Description: input.Description,
 		}
 		if err := db.WithContext(ctx).Create(&foo).Error; err != nil {
-			respondInternalError(c, err)
+			respondInternalError(c, err.Error())
 			return
 		}
 		c.JSON(http.StatusCreated, foo)
@@ -85,13 +85,13 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 		isAdmin, _ := c.Get("is_admin")
 
 		if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
-			respondForbidden(c)
+			respondForbidden(c, "forbidden")
 			return
 		}
 
 		var foo models.Foo
 		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", fooID, groupID).First(&foo).Error; err != nil {
-			respondNotFound(c)
+			respondNotFound(c, "not found")
 			return
 		}
 
@@ -110,7 +110,7 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 		foo.Description = input.Description
 
 		if err := db.WithContext(ctx).Save(&foo).Error; err != nil {
-			respondInternalError(c, err)
+			respondInternalError(c, err.Error())
 			return
 		}
 		respondOK(c, foo)
@@ -127,20 +127,20 @@ func DeleteFoo(db *gorm.DB) gin.HandlerFunc {
 		isAdmin, _ := c.Get("is_admin")
 
 		if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
-			respondForbidden(c)
+			respondForbidden(c, "forbidden")
 			return
 		}
 
 		var foo models.Foo
 		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", fooID, groupID).First(&foo).Error; err != nil {
-			respondNotFound(c)
+			respondNotFound(c, "not found")
 			return
 		}
 
 		if err := db.WithContext(ctx).Delete(&foo).Error; err != nil {
-			respondInternalError(c, err)
+			respondInternalError(c, err.Error())
 			return
 		}
-		c.JSON(http.StatusNoContent, nil)
+		respondNoContent(c)
 	}
 }

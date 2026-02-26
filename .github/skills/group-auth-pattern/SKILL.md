@@ -6,7 +6,7 @@ user-invokable: false
 
 # Group Authorization Pattern
 
-This app has three authorization tiers. Choose the right one for every handler.
+This app has four authorization tiers. Choose the right one for every handler.
 
 ## Tier 1 — Public (no auth required)
 
@@ -52,13 +52,12 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 
 ## Tier 3 — Group Admin or Site Admin
 
-For write operations that only group admins should perform (create/update/delete animals, manage group members, etc.), check the group admin role inside the handler — there is **no separate middleware** for this tier:
+For write operations that only group admins should perform (create/update/delete animals, manage group members, etc.), use `checkGroupAdminAccess()` from `animal_helpers.go` — there is **no separate middleware** for this tier:
 
 ```go
-// Check if user is a group admin for this specific group
-isGroupAdmin, err := checkIsGroupAdmin(db, userID.(uint), groupID)
-if err != nil || (!isGroupAdmin && !isAdmin.(bool)) {
-    respondForbidden(c)
+// checkGroupAdminAccess returns true for site admins OR group admins of the specific group
+if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+    respondForbidden(c, "forbidden")
     return
 }
 ```
@@ -123,6 +122,6 @@ Request
 ## Key Files
 
 - `internal/middleware/middleware.go` — `AuthRequired()`, `AdminRequired()`
-- `internal/handlers/animal_helpers.go` — `checkGroupAccess()`, `checkIsGroupAdmin()`
+- `internal/handlers/animal_helpers.go` — `checkGroupAccess()`, `checkGroupAdminAccess()`
 - `internal/models/models.go` — `UserGroup` struct (has `IsGroupAdmin bool`)
 - `cmd/api/main.go` — route groups showing which middleware applies to which routes

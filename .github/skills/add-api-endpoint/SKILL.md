@@ -65,13 +65,13 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
         isAdmin, _ := c.Get("is_admin")
 
         if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
-            respondForbidden(c)
+            respondForbidden(c, "forbidden")
             return
         }
 
         var foos []models.Foo
         if err := db.WithContext(ctx).Where("group_id = ?", groupID).Find(&foos).Error; err != nil {
-            respondInternalError(c, err)
+            respondInternalError(c, err.Error())
             return
         }
         respondOK(c, foos)
@@ -84,7 +84,7 @@ Key rules for handlers:
 - Read identity from `c.Get("user_id")` and `c.Get("is_admin")` — never from the request body
 - Call `checkGroupAccess()` (in `animal_helpers.go`) before any group-scoped query
 - Admin-only operations go in a separate handler or file (e.g., `foo_admin.go`)
-- Use the response helpers: `respondOK`, `respondCreated`, `respondForbidden`, `respondNotFound`, `respondBadRequest`, `respondInternalError` (all in `respond.go`)
+- Use the response helpers: `respondOK`, `respondCreated`, `respondForbidden(c, msg)`, `respondNotFound(c, msg)`, `respondBadRequest`, `respondInternalError(c, msg)`, `respondNoContent` (all in `respond.go`)
 - Return early on every error path
 
 See [handler-template.go](./handler-template.go) for a complete CRUD example.

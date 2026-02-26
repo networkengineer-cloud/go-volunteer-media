@@ -116,7 +116,7 @@ npx playwright show-report
 ## Looking at Existing Tests for Patterns
 
 Before writing a new spec, read a similar existing one:
-- `frontend/tests/auth.spec.ts` — login/logout flow
+- `frontend/tests/authentication.spec.ts` — login/logout flow
 - `frontend/tests/activity-feed.spec.ts` — group-scoped page with data
 - `frontend/tests/add-user-form-ux.spec.ts` — admin form with validation
 - `frontend/tests/activity-feed-animal-links.spec.ts` — navigation between pages
