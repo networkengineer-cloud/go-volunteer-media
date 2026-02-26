@@ -27,7 +27,7 @@ userID, _ := c.Get("user_id")    // type: uint
 isAdmin, _ := c.Get("is_admin")  // type: bool
 ```
 
-For group-scoped resources, **always** call `checkGroupAccess()` from `animal_helpers.go` before operating on data:
+For group-scoped resources, **always** call `checkGroupAccess()` from `animal_helpers.go` before operating on data. Despite the filename, these helpers are used by all group-scoped handlers across the codebase — not just animal endpoints.
 
 ```go
 func GetFoos(db *gorm.DB) gin.HandlerFunc {

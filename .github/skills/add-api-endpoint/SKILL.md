@@ -85,7 +85,7 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 Key rules for handlers:
 - Always use `db.WithContext(ctx)` — pass the request context to GORM
 - Read identity from `c.Get("user_id")` and `c.Get("is_admin")` — never from the request body
-- Call `checkGroupAccess()` (in `animal_helpers.go`) before any group-scoped query
+- Call `checkGroupAccess()` (in `animal_helpers.go`) before any group-scoped query — despite the filename, these helpers are used by all group-scoped handlers, not just animal handlers
 - Admin-only operations go in a separate handler or file (e.g., `foo_admin.go`)
 - Use the response helpers: `respondOK`, `respondCreated`, `respondForbidden(c, msg)`, `respondNotFound(c, msg)`, `respondBadRequest`, `respondInternalError(c, msg)`, `respondNoContent` (all in `respond.go`)
 - Return early on every error path
@@ -99,6 +99,7 @@ Find the appropriate router group and add the route. Protected routes go inside 
 ```go
 // Under the authRequired group, inside a group-scoped block:
 groupRoutes.GET("/foos", handlers.GetFoos(db))
+groupRoutes.GET("/foos/:fooId", handlers.GetFooByID(db))
 groupRoutes.POST("/foos", handlers.CreateFoo(db))
 groupRoutes.PUT("/foos/:fooId", handlers.UpdateFoo(db))
 groupRoutes.DELETE("/foos/:fooId", handlers.DeleteFoo(db))

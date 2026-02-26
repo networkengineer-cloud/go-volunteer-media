@@ -21,6 +21,7 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 			respondUnauthorized(c)
 			return
 		}
+		// is_admin is always set by AuthRequired alongside user_id; false default is safe (conservatively denies access).
 		isAdmin, _ := c.Get("is_admin")
 		isAdminBool, _ := isAdmin.(bool)
 
@@ -38,6 +39,41 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// GetFooByID returns a single Foo by ID.
+func GetFooByID(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		groupID := c.Param("id")
+		fooID := c.Param("fooId")
+		userID, exists := c.Get("user_id")
+		if !exists {
+			respondUnauthorized(c)
+			return
+		}
+		// is_admin is always set by AuthRequired alongside user_id; false default is safe (conservatively denies access).
+		isAdmin, _ := c.Get("is_admin")
+		isAdminBool, _ := isAdmin.(bool)
+
+		if !checkGroupAccess(db, userID, isAdminBool, groupID) {
+			respondForbidden(c, "forbidden")
+			return
+		}
+
+		parsedFooID, err := strconv.ParseUint(fooID, 10, 64)
+		if err != nil {
+			respondBadRequest(c, "invalid foo id")
+			return
+		}
+
+		var foo models.Foo
+		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", parsedFooID, groupID).First(&foo).Error; err != nil {
+			respondNotFound(c, "not found")
+			return
+		}
+		respondOK(c, foo)
+	}
+}
+
 // CreateFoo creates a new Foo in the given group.
 func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -48,6 +84,7 @@ func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 			respondUnauthorized(c)
 			return
 		}
+		// is_admin is always set by AuthRequired alongside user_id; false default is safe (conservatively denies access).
 		isAdmin, _ := c.Get("is_admin")
 		isAdminBool, _ := isAdmin.(bool)
 
@@ -95,6 +132,7 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 			respondUnauthorized(c)
 			return
 		}
+		// is_admin is always set by AuthRequired alongside user_id; false default is safe (conservatively denies access).
 		isAdmin, _ := c.Get("is_admin")
 		isAdminBool, _ := isAdmin.(bool)
 
@@ -103,8 +141,14 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		parsedFooID, err := strconv.ParseUint(fooID, 10, 64)
+		if err != nil {
+			respondBadRequest(c, "invalid foo id")
+			return
+		}
+
 		var foo models.Foo
-		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", fooID, groupID).First(&foo).Error; err != nil {
+		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", parsedFooID, groupID).First(&foo).Error; err != nil {
 			respondNotFound(c, "not found")
 			return
 		}
@@ -121,7 +165,9 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 		if input.Name != "" {
 			foo.Name = input.Name
 		}
-		foo.Description = input.Description
+		if input.Description != "" {
+			foo.Description = input.Description
+		}
 
 		if err := db.WithContext(ctx).Save(&foo).Error; err != nil {
 			respondInternalError(c, err.Error())
@@ -142,6 +188,7 @@ func DeleteFoo(db *gorm.DB) gin.HandlerFunc {
 			respondUnauthorized(c)
 			return
 		}
+		// is_admin is always set by AuthRequired alongside user_id; false default is safe (conservatively denies access).
 		isAdmin, _ := c.Get("is_admin")
 		isAdminBool, _ := isAdmin.(bool)
 
@@ -150,8 +197,14 @@ func DeleteFoo(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		parsedFooID, err := strconv.ParseUint(fooID, 10, 64)
+		if err != nil {
+			respondBadRequest(c, "invalid foo id")
+			return
+		}
+
 		var foo models.Foo
-		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", fooID, groupID).First(&foo).Error; err != nil {
+		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", parsedFooID, groupID).First(&foo).Error; err != nil {
 			respondNotFound(c, "not found")
 			return
 		}

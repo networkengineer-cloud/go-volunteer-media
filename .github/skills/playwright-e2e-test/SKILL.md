@@ -33,13 +33,13 @@ test.describe('Foo Feature', () => {
   });
 
   test('displays list of foos', async ({ page }) => {
-    await page.goto('/groups/1/foos');
+    await page.goto('/groups/1/foos'); // 1 = ModSquad group (seeded by cmd/seed/main.go)
     await expect(page.getByRole('heading', { name: 'Foo' })).toBeVisible();
     await expect(page.getByRole('list')).toBeVisible();
   });
 
   test('can create a new foo', async ({ page }) => {
-    await page.goto('/groups/1/foos');
+    await page.goto('/groups/1/foos'); // 1 = ModSquad group (seeded by cmd/seed/main.go)
     await page.getByRole('button', { name: 'Add Foo' }).click();
     await page.getByLabel('Name').fill('Test Foo');
     await page.getByRole('button', { name: 'Save' }).click();
@@ -48,7 +48,7 @@ test.describe('Foo Feature', () => {
 
   test('shows error when API fails', async ({ page }) => {
     await page.route('**/api/groups/*/foos', route => route.fulfill({ status: 500 }));
-    await page.goto('/groups/1/foos');
+    await page.goto('/groups/1/foos'); // 1 = ModSquad group (seeded by cmd/seed/main.go)
     await expect(page.getByRole('alert')).toBeVisible();
   });
 });

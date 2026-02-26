@@ -103,8 +103,9 @@ In the frontend, always reference images via `/api/images/<uuid>`, not with `/up
 
 ```go
 // Retrieve the record first, then delete from storage, then delete the DB row.
+// Always scope the lookup to the authorized group to prevent cross-group deletes.
 var img models.AnimalImage
-if err := db.WithContext(ctx).First(&img, id).Error; err != nil {
+if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", id, groupID).First(&img).Error; err != nil {
     respondNotFound(c, "not found")
     return
 }
