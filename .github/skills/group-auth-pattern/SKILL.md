@@ -38,7 +38,7 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 
         // This returns true for: site admins OR members of the group OR group admins
         if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
-            respondForbidden(c)  // 403, not 404 — do not leak resource existence
+            respondForbidden(c, "forbidden")  // 403, not 404 — do not leak resource existence
             return
         }
         // ... safe to query group data
@@ -88,7 +88,7 @@ c.ShouldBindJSON(&body)
 
 ### ✅ Return 403 for authorization failures
 
-Use `respondForbidden(c)` — not 404. Do not reveal whether the resource exists.
+Use `respondForbidden(c, "forbidden")` — not 404. Do not reveal whether the resource exists.
 
 ### ✅ Check group membership before querying
 
@@ -116,7 +116,7 @@ Request
   │
   ├─ checkGroupAccess(db, userID, isAdmin, groupID)  →  403 if not a member
   │
-  └─ (write ops) checkIsGroupAdmin(db, uid, groupID) || isAdmin  →  403 if not admin
+  └─ (write ops) checkGroupAdminAccess(db, uid, isAdmin, groupID)  →  403 if not admin
 ```
 
 ## Key Files

@@ -104,7 +104,10 @@ if err := storageProvider.DeleteImage(ctx, img.BlobIdentifier); err != nil {
     respondInternalError(c, err.Error())
     return
 }
-db.WithContext(ctx).Delete(&img)
+if err := db.WithContext(ctx).Delete(&img).Error; err != nil {
+    respondInternalError(c, err.Error())
+    return
+}
 ```
 
 ## File Validation (use `internal/upload/`)

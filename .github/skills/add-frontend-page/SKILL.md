@@ -25,20 +25,23 @@ Minimal scaffold:
 
 ```tsx
 import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { fooApi, Foo } from '../api/client';
 import './FooPage.css';
 
 const FooPage: React.FC = () => {
+  const { groupId } = useParams<{ groupId: string }>();
+  const parsedGroupId = Number(groupId);
   const [items, setItems] = useState<Foo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fooApi.getAll(groupId)
+    fooApi.getAll(parsedGroupId)
       .then(res => setItems(res.data))
       .catch(() => setError('Failed to load items'))
       .finally(() => setLoading(false));
-  }, [groupId]);
+  }, [parsedGroupId]);
 
   if (loading) return <div className="loading">Loading...</div>;
   if (error) return <div className="error" role="alert">{error}</div>;

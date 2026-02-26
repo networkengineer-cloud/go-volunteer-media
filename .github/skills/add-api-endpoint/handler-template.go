@@ -3,7 +3,6 @@
 package handlers
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -17,10 +16,15 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
+		userID, exists := c.Get("user_id")
+		if !exists {
+			respondUnauthorized(c)
+			return
+		}
 		isAdmin, _ := c.Get("is_admin")
+		isAdminBool, _ := isAdmin.(bool)
 
-		if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
+		if !checkGroupAccess(db, userID, isAdminBool, groupID) {
 			respondForbidden(c, "forbidden")
 			return
 		}
@@ -39,10 +43,15 @@ func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
+		userID, exists := c.Get("user_id")
+		if !exists {
+			respondUnauthorized(c)
+			return
+		}
 		isAdmin, _ := c.Get("is_admin")
+		isAdminBool, _ := isAdmin.(bool)
 
-		if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
+		if !checkGroupAdminAccess(db, userID, isAdminBool, groupID) {
 			respondForbidden(c, "forbidden")
 			return
 		}
@@ -71,7 +80,7 @@ func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 			respondInternalError(c, err.Error())
 			return
 		}
-		c.JSON(http.StatusCreated, foo)
+		respondCreated(c, foo)
 	}
 }
 
@@ -81,10 +90,15 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		groupID := c.Param("id")
 		fooID := c.Param("fooId")
-		userID, _ := c.Get("user_id")
+		userID, exists := c.Get("user_id")
+		if !exists {
+			respondUnauthorized(c)
+			return
+		}
 		isAdmin, _ := c.Get("is_admin")
+		isAdminBool, _ := isAdmin.(bool)
 
-		if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
+		if !checkGroupAdminAccess(db, userID, isAdminBool, groupID) {
 			respondForbidden(c, "forbidden")
 			return
 		}
@@ -123,10 +137,15 @@ func DeleteFoo(db *gorm.DB) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		groupID := c.Param("id")
 		fooID := c.Param("fooId")
-		userID, _ := c.Get("user_id")
+		userID, exists := c.Get("user_id")
+		if !exists {
+			respondUnauthorized(c)
+			return
+		}
 		isAdmin, _ := c.Get("is_admin")
+		isAdminBool, _ := isAdmin.(bool)
 
-		if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
+		if !checkGroupAdminAccess(db, userID, isAdminBool, groupID) {
 			respondForbidden(c, "forbidden")
 			return
 		}
