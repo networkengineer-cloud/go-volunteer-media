@@ -35,9 +35,10 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
         groupID := c.Param("id")
         userID, _ := c.Get("user_id")
         isAdmin, _ := c.Get("is_admin")
+        isAdminBool, _ := isAdmin.(bool)
 
         // This returns true for: site admins OR members of the group OR group admins
-        if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
+        if !checkGroupAccess(db, userID, isAdminBool, groupID) {
             respondForbidden(c, "forbidden")  // 403, not 404 — do not leak resource existence
             return
         }

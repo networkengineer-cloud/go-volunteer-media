@@ -48,8 +48,6 @@ Create a new file `internal/handlers/foo.go`. Each handler is a closure that rec
 package handlers
 
 import (
-    "net/http"
-
     "github.com/gin-gonic/gin"
     "gorm.io/gorm"
 
@@ -63,8 +61,9 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
         groupID := c.Param("id")
         userID, _ := c.Get("user_id")
         isAdmin, _ := c.Get("is_admin")
+        isAdminBool, _ := isAdmin.(bool)
 
-        if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
+        if !checkGroupAccess(db, userID, isAdminBool, groupID) {
             respondForbidden(c, "forbidden")
             return
         }
@@ -121,6 +120,8 @@ export interface Foo {
 export const fooApi = {
   getAll: (groupId: number) =>
     api.get<Foo[]>(`/groups/${groupId}/foos`),
+  getById: (groupId: number, id: number) =>
+    api.get<Foo>(`/groups/${groupId}/foos/${id}`),
   create: (groupId: number, data: Partial<Foo>) =>
     api.post<Foo>(`/groups/${groupId}/foos`, data),
   update: (groupId: number, id: number, data: Partial<Foo>) =>

@@ -25,10 +25,18 @@ func UploadFooImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFu
         groupID := c.Param("id")
         userID, _ := c.Get("user_id")
         isAdmin, _ := c.Get("is_admin")
+        isAdminBool, _ := isAdmin.(bool)
 
         // 1. Auth check
-        if !checkGroupAccess(db, userID, isAdmin.(bool), groupID) {
+        if !checkGroupAccess(db, userID, isAdminBool, groupID) {
             respondForbidden(c, "forbidden")
+            return
+        }
+
+        // 1b. Parse the entity ID
+        parsedAnimalID, err := strconv.ParseUint(c.Param("animalId"), 10, 64)
+        if err != nil {
+            respondBadRequest(c, "invalid animal id")
             return
         }
 
@@ -68,7 +76,7 @@ func UploadFooImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFu
 
         // 6. Persist the reference in the DB
         img := models.AnimalImage{
-            AnimalID:       parsedAnimalID,
+            AnimalID:       uint(parsedAnimalID),
             ImageURL:       imageURL,
             BlobIdentifier: identifier,
         }
