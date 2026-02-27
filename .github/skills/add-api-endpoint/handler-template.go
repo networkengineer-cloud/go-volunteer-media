@@ -21,7 +21,7 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 		groupID := c.Param("id")
 		userID, exists := c.Get("user_id")
 		if !exists {
-			respondUnauthorized(c)
+			respondUnauthorized(c, "unauthorized")
 			return
 		}
 		// is_admin is always set by AuthRequired alongside user_id; false default is safe (conservatively denies access).
@@ -35,7 +35,7 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 
 		var foos []models.Foo
 		if err := db.WithContext(ctx).Where("group_id = ?", groupID).Find(&foos).Error; err != nil {
-			respondInternalError(c, err)
+			respondInternalError(c, err.Error())
 			return
 		}
 		respondOK(c, foos)
@@ -50,7 +50,7 @@ func GetFooByID(db *gorm.DB) gin.HandlerFunc {
 		fooID := c.Param("fooId")
 		userID, exists := c.Get("user_id")
 		if !exists {
-			respondUnauthorized(c)
+			respondUnauthorized(c, "unauthorized")
 			return
 		}
 		// is_admin is always set by AuthRequired alongside user_id; false default is safe (conservatively denies access).
@@ -73,7 +73,7 @@ func GetFooByID(db *gorm.DB) gin.HandlerFunc {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				respondNotFound(c, "not found")
 			} else {
-				respondInternalError(c, err)
+				respondInternalError(c, err.Error())
 			}
 			return
 		}
@@ -88,7 +88,7 @@ func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 		groupID := c.Param("id")
 		userID, exists := c.Get("user_id")
 		if !exists {
-			respondUnauthorized(c)
+			respondUnauthorized(c, "unauthorized")
 			return
 		}
 		// is_admin is always set by AuthRequired alongside user_id; false default is safe (conservatively denies access).
@@ -121,7 +121,7 @@ func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 			Description: input.Description,
 		}
 		if err := db.WithContext(ctx).Create(&foo).Error; err != nil {
-			respondInternalError(c, err)
+			respondInternalError(c, err.Error())
 			return
 		}
 		respondCreated(c, foo)
@@ -136,7 +136,7 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 		fooID := c.Param("fooId")
 		userID, exists := c.Get("user_id")
 		if !exists {
-			respondUnauthorized(c)
+			respondUnauthorized(c, "unauthorized")
 			return
 		}
 		// is_admin is always set by AuthRequired alongside user_id; false default is safe (conservatively denies access).
@@ -159,7 +159,7 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				respondNotFound(c, "not found")
 			} else {
-				respondInternalError(c, err)
+				respondInternalError(c, err.Error())
 			}
 			return
 		}
@@ -182,12 +182,12 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		if err := db.WithContext(ctx).Model(&foo).Updates(updates).Error; err != nil {
-			respondInternalError(c, err)
+			respondInternalError(c, err.Error())
 			return
 		}
 		// Reload to return DB-generated values (e.g. updated_at) that map-based Updates may not back-fill.
 		if err := db.WithContext(ctx).First(&foo, foo.ID).Error; err != nil {
-			respondInternalError(c, err)
+			respondInternalError(c, err.Error())
 			return
 		}
 		respondOK(c, foo)
@@ -202,7 +202,7 @@ func DeleteFoo(db *gorm.DB) gin.HandlerFunc {
 		fooID := c.Param("fooId")
 		userID, exists := c.Get("user_id")
 		if !exists {
-			respondUnauthorized(c)
+			respondUnauthorized(c, "unauthorized")
 			return
 		}
 		// is_admin is always set by AuthRequired alongside user_id; false default is safe (conservatively denies access).
@@ -225,13 +225,13 @@ func DeleteFoo(db *gorm.DB) gin.HandlerFunc {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				respondNotFound(c, "not found")
 			} else {
-				respondInternalError(c, err)
+				respondInternalError(c, err.Error())
 			}
 			return
 		}
 
 		if err := db.WithContext(ctx).Delete(&foo).Error; err != nil {
-			respondInternalError(c, err)
+			respondInternalError(c, err.Error())
 			return
 		}
 		respondNoContent(c)
