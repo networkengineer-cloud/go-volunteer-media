@@ -671,7 +671,7 @@ export const protocolsApi = {
 export const updatesApi = {
   getAll: (groupId: number) => api.get<Update[]>('/groups/' + groupId + '/updates'),
   create: (groupId: number, title: string, content: string, send_groupme: boolean, image_url?: string) =>
-    api.post<Update>('/groups/' + groupId + '/updates', { title, content, image_url, send_email: true, send_groupme }),
+    api.post<Update>('/groups/' + groupId + '/updates', { title, content, image_url, send_groupme }),
 };
 
 // Announcements API
@@ -679,6 +679,8 @@ export const announcementsApi = {
   getAll: () => api.get<Announcement[]>('/announcements'),
   create: (title: string, content: string, send_email: boolean, send_groupme: boolean) =>
     api.post<Announcement>('/admin/announcements', { title, content, send_email, send_groupme }),
+  createGroupAnnouncement: (groupId: number, title: string, content: string, send_email: boolean, send_groupme: boolean) =>
+    api.post<Announcement>('/groups/' + groupId + '/announcements', { title, content, send_email, send_groupme }),
   delete: (id: number) => api.delete('/admin/announcements/' + id),
 };
 

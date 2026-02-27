@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { updatesApi, groupsApi, type Group } from '../api/client';
+import React, { useState, useEffect } from 'react';
+import { announcementsApi, groupsApi, type Group } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import './AnnouncementForm.css';
 
@@ -12,12 +12,9 @@ interface AnnouncementFormProps {
 const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess, onCancel }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
   const [sendGroupMe, setSendGroupMe] = useState(false);
   const [group, setGroup] = useState<Group | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
   useEffect(() => {
@@ -31,37 +28,6 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
     };
     loadGroup();
   }, [groupId]);
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.showError('Please select an image file (JPG, PNG, or GIF)');
-      return;
-    }
-
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.showError(`Image size must be under 10MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const res = await groupsApi.uploadImage(file);
-      setImageUrl(res.data.url);
-      toast.showSuccess('Image uploaded successfully!');
-    } catch (error) {
-      console.error('Upload error:', error);
-      const err = error as { response?: { data?: { error?: string } } };
-      const errorMsg = err.response?.data?.error || 'Failed to upload image. Please try again.';
-      toast.showError(errorMsg);
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,13 +44,13 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
 
     setSubmitting(true);
     try {
-      await updatesApi.create(groupId, title.trim(), content.trim(), sendGroupMe, imageUrl || undefined);
+      // Always send email to opted-in group members
+      await announcementsApi.createGroupAnnouncement(groupId, title.trim(), content.trim(), true, sendGroupMe);
       toast.showSuccess('Announcement posted successfully!');
       
       // Reset form
       setTitle('');
       setContent('');
-      setImageUrl('');
       setSendGroupMe(false);
       
       if (onSuccess) {
@@ -93,6 +59,12 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
     } catch (error) {
       console.error('Failed to post announcement:', error);
       const err = error as { response?: { data?: { error?: string } } };
+      const errorMsg = err.response?.data?.error || 'Failed to post announcement. Please try again.';
+      toast.showError(errorMsg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
       const errorMsg = err.response?.data?.error || 'Failed to post announcement. Please try again.';
       toast.showError(errorMsg);
     } finally {
@@ -157,66 +129,6 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
           />
         </div>
 
-        {/* Image upload */}
-        <div className="announcement-form__field">
-          <label className="announcement-form__label">
-            Image (optional)
-          </label>
-          
-          {!imageUrl && (
-            <div className="announcement-form__upload-section">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                disabled={uploading || submitting}
-                className="announcement-form__file-input"
-                id="announcement-image"
-                aria-label="Upload announcement image"
-              />
-              <label htmlFor="announcement-image" className="announcement-form__upload-button">
-                {uploading ? (
-                  <>
-                    <div className="announcement-form__spinner" aria-hidden="true" />
-                    <span>Uploading...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                      <circle cx="8.5" cy="8.5" r="1.5" />
-                      <path d="M21 15l-5-5L5 21" />
-                    </svg>
-                    <span>Upload Image</span>
-                  </>
-                )}
-              </label>
-              <p className="announcement-form__upload-hint">
-                JPG, PNG or GIF. Max 10MB.
-              </p>
-            </div>
-          )}
-
-          {imageUrl && (
-            <div className="announcement-form__image-preview">
-              <img src={imageUrl} alt="Announcement preview" />
-              <button
-                type="button"
-                className="announcement-form__remove-image"
-                onClick={handleRemoveImage}
-                disabled={submitting}
-                aria-label="Remove image"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-          )}
-        </div>
-
         {/* GroupMe integration */}
         {group && group.groupme_enabled && group.groupme_bot_id && (
           <div className="announcement-form__field">
@@ -253,7 +165,7 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
         <button
           type="submit"
           className="announcement-form__button announcement-form__button--primary"
-          disabled={submitting || uploading || !title.trim() || !content.trim()}
+          disabled={submitting || !title.trim() || !content.trim()}
           aria-busy={submitting}
         >
           {submitting ? (
