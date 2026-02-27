@@ -32,10 +32,14 @@ import './FooPage.css';
 const FooPage: React.FC = () => {
   const { groupId } = useParams<{ groupId: string }>();
   const parsedGroupId = parseInt(groupId ?? '', 10);
-  if (isNaN(parsedGroupId)) return null; // route guard — should not happen with correct route config
+
+  // All hooks declared unconditionally first
   const [items, setItems] = useState<Foo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Guard after hooks — safe here
+  if (isNaN(parsedGroupId)) return null;
 
   useEffect(() => {
     fooApi.getAll(parsedGroupId)
