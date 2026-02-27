@@ -44,8 +44,7 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
 
     setSubmitting(true);
     try {
-      // Always send email to opted-in group members
-      await announcementsApi.createGroupAnnouncement(groupId, title.trim(), content.trim(), true, sendGroupMe);
+      await announcementsApi.createGroupAnnouncement(groupId, title.trim(), content.trim(), sendGroupMe);
       toast.showSuccess('Announcement posted successfully!');
       
       // Reset form
@@ -63,19 +62,6 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
       toast.showError(errorMsg);
     } finally {
       setSubmitting(false);
-    }
-  };
-      const errorMsg = err.response?.data?.error || 'Failed to post announcement. Please try again.';
-      toast.showError(errorMsg);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleRemoveImage = () => {
-    setImageUrl('');
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
     }
   };
 
@@ -152,6 +138,9 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
 
       {/* Form actions */}
       <div className="announcement-form__actions">
+        <p className="announcement-form__description">
+          Opted-in group members will receive an email notification.
+        </p>
         {onCancel && (
           <button
             type="button"
