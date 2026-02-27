@@ -1,3 +1,5 @@
+//go:build ignore
+
 // handler-template.go — Copy this file as internal/handlers/<feature>.go
 // Replace "Foo"/"foo" with your entity name throughout.
 package handlers
@@ -180,6 +182,11 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		if err := db.WithContext(ctx).Model(&foo).Updates(updates).Error; err != nil {
+			respondInternalError(c, err)
+			return
+		}
+		// Reload to return DB-generated values (e.g. updated_at) that map-based Updates may not back-fill.
+		if err := db.WithContext(ctx).First(&foo, foo.ID).Error; err != nil {
 			respondInternalError(c, err)
 			return
 		}

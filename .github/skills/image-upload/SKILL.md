@@ -56,13 +56,13 @@ func UploadFooImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFu
         // 4. Open and read file bytes
         src, err := file.Open()
         if err != nil {
-            respondInternalError(c, err.Error())
+            respondInternalError(c, err)
             return
         }
         defer src.Close()
         data, err := io.ReadAll(src)
         if err != nil {
-            respondInternalError(c, err.Error())
+            respondInternalError(c, err)
             return
         }
 
@@ -70,7 +70,7 @@ func UploadFooImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFu
         // UploadImage returns (publicURL, identifier, extension, error)
         imageURL, identifier, _, err := storageProvider.UploadImage(ctx, data, file.Header.Get("Content-Type"), map[string]string{})
         if err != nil {
-            respondInternalError(c, err.Error())
+            respondInternalError(c, err)
             return
         }
 
@@ -81,7 +81,7 @@ func UploadFooImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFu
             BlobIdentifier: identifier,
         }
         if err := db.WithContext(ctx).Create(&img).Error; err != nil {
-            respondInternalError(c, err.Error())
+            respondInternalError(c, err)
             return
         }
         respondCreated(c, img)
@@ -114,11 +114,11 @@ if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", id, groupID).Firs
     return
 }
 if err := storageProvider.DeleteImage(ctx, img.BlobIdentifier); err != nil {
-    respondInternalError(c, err.Error())
+    respondInternalError(c, err)
     return
 }
 if err := db.WithContext(ctx).Delete(&img).Error; err != nil {
-    respondInternalError(c, err.Error())
+    respondInternalError(c, err)
     return
 }
 ```

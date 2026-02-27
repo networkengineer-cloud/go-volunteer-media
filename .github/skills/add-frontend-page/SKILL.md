@@ -38,15 +38,16 @@ const FooPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Guard after hooks — safe here
-  if (isNaN(parsedGroupId)) return null;
-
   useEffect(() => {
+    if (isNaN(parsedGroupId)) return;
     fooApi.getAll(parsedGroupId)
       .then(res => setItems(res.data))
       .catch(() => setError('Failed to load items'))
       .finally(() => setLoading(false));
   }, [parsedGroupId]);
+
+  // Guard after all hooks — safe here
+  if (isNaN(parsedGroupId)) return null;
 
   if (loading) return <div className="loading">Loading...</div>;
   if (error) return <div className="error" role="alert">{error}</div>;
