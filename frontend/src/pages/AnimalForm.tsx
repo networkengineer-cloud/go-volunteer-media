@@ -542,8 +542,8 @@ const AnimalForm: React.FC = () => {
         `#behavior`;
 
       // Create group update (shows in activity feed) with GroupMe notification
-      // Parameters: (groupId, title, content, send_groupme, image_url?)
-      await updatesApi.create(parseInt(groupId), updateTitle, updateContent, true);
+      // Parameters: (groupId, title, content, send_email, send_groupme, image_url?)
+      await updatesApi.create(parseInt(groupId), updateTitle, updateContent, false, true);
 
       toast.showSuccess('Animal updated, comment added, and announcement posted successfully!');
       setShowQuarantineModal(false);
