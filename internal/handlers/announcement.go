@@ -72,7 +72,7 @@ func CreateAnnouncement(db *gorm.DB, emailService *email.Service, groupMeService
 		}
 
 		// Send emails if requested and email service is configured
-		if req.SendEmail && emailService.IsConfigured() {
+		if req.SendEmail && emailService != nil && emailService.IsConfigured() {
 			// Use background context for async email sending
 			go func() {
 				bgCtx := context.Background()
@@ -234,7 +234,7 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 
 		// Send emails if requested and email service is configured
 		// Only send to group members who have opted in
-		if req.SendEmail && emailService.IsConfigured() {
+		if req.SendEmail && emailService != nil && emailService.IsConfigured() {
 			go func() {
 				bgCtx := context.Background()
 				if err := sendGroupAnnouncementEmails(bgCtx, db, emailService, group.ID, announcement.Title, announcement.Content); err != nil {

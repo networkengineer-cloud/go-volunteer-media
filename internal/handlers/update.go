@@ -15,8 +15,8 @@ import (
 )
 
 type UpdateRequest struct {
-	Title       string `json:"title" binding:"required"`
-	Content     string `json:"content" binding:"required"`
+	Title       string `json:"title" binding:"required,min=2,max=200"`
+	Content     string `json:"content" binding:"required,min=10"`
 	ImageURL    string `json:"image_url"`
 	SendEmail   bool   `json:"send_email"`
 	SendGroupMe bool   `json:"send_groupme"`
