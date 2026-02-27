@@ -671,7 +671,7 @@ export const protocolsApi = {
 export const updatesApi = {
   getAll: (groupId: number) => api.get<Update[]>('/groups/' + groupId + '/updates'),
   create: (groupId: number, title: string, content: string, send_groupme: boolean, image_url?: string) =>
-    api.post<Update>('/groups/' + groupId + '/updates', { title, content, image_url, send_groupme }),
+    api.post<Update>('/groups/' + groupId + '/updates', { title, content, image_url, send_email: true, send_groupme }),
 };
 
 // Announcements API
