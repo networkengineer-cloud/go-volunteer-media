@@ -33,7 +33,7 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 
 		var foos []models.Foo
 		if err := db.WithContext(ctx).Where("group_id = ?", groupID).Find(&foos).Error; err != nil {
-			respondInternalError(c, err.Error())
+			respondInternalError(c, err)
 			return
 		}
 		respondOK(c, foos)
@@ -71,7 +71,7 @@ func GetFooByID(db *gorm.DB) gin.HandlerFunc {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				respondNotFound(c, "not found")
 			} else {
-				respondInternalError(c, err.Error())
+				respondInternalError(c, err)
 			}
 			return
 		}
@@ -119,7 +119,7 @@ func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 			Description: input.Description,
 		}
 		if err := db.WithContext(ctx).Create(&foo).Error; err != nil {
-			respondInternalError(c, err.Error())
+			respondInternalError(c, err)
 			return
 		}
 		respondCreated(c, foo)
@@ -157,7 +157,7 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				respondNotFound(c, "not found")
 			} else {
-				respondInternalError(c, err.Error())
+				respondInternalError(c, err)
 			}
 			return
 		}
@@ -180,7 +180,7 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		if err := db.WithContext(ctx).Model(&foo).Updates(updates).Error; err != nil {
-			respondInternalError(c, err.Error())
+			respondInternalError(c, err)
 			return
 		}
 		respondOK(c, foo)
@@ -218,13 +218,13 @@ func DeleteFoo(db *gorm.DB) gin.HandlerFunc {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				respondNotFound(c, "not found")
 			} else {
-				respondInternalError(c, err.Error())
+				respondInternalError(c, err)
 			}
 			return
 		}
 
 		if err := db.WithContext(ctx).Delete(&foo).Error; err != nil {
-			respondInternalError(c, err.Error())
+			respondInternalError(c, err)
 			return
 		}
 		respondNoContent(c)
