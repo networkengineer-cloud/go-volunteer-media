@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -160,7 +161,11 @@ func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
 		// Verify the update belongs to this group
 		var update models.Update
 		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", uint(updateID), uint(gid)).First(&update).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Update not found"})
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Update not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch update"})
+			}
 			return
 		}
 
