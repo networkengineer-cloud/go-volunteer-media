@@ -71,6 +71,10 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 			return
 		}
 
+		if req.SendEmail && !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			req.SendEmail = false
+		}
+
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
