@@ -942,9 +942,6 @@
 }
 
 .btn-delete-announcement {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
   background: none;
   border: none;
   cursor: pointer;
@@ -954,6 +951,7 @@
   opacity: 0;
   transition: opacity var(--transition-base), background var(--transition-base);
   line-height: 1;
+  color: var(--text-secondary);
 }
 
 .activity-card:hover .btn-delete-announcement {
@@ -969,6 +967,13 @@
   opacity: 1;
   outline: 2px solid var(--brand);
   outline-offset: 2px;
+}
+
+/* Touch devices have no hover state — keep button visible for admins */
+@media (hover: none) {
+  .btn-delete-announcement {
+    opacity: 0.6;
+  }
 }
 
 .activity-header {
