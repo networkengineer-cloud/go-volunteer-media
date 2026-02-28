@@ -130,11 +130,16 @@ func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
+
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
 		isAdmin, _ := c.Get("is_admin")
 
 		// Only group admins or site admins can delete updates
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !checkGroupAdminAccess(db, userIDUint, isAdmin, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can delete group announcements"})
 			return
 		}

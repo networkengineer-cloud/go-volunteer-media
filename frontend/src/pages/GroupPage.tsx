@@ -1046,9 +1046,9 @@ const GroupPage: React.FC = () => {
         confirmLabel="Delete"
         cancelLabel="Cancel"
         variant="danger"
-        onConfirm={() => {
+        onConfirm={async () => {
           if (deleteConfirm.updateId !== null) {
-            handleDeleteAnnouncement(deleteConfirm.updateId);
+            await handleDeleteAnnouncement(deleteConfirm.updateId);
           }
         }}
         onCancel={() => setDeleteConfirm({ show: false, updateId: null, title: '' })}

@@ -438,6 +438,19 @@ func TestDeleteUpdate(t *testing.T) {
 			expectedStatus: http.StatusNotFound,
 			expectedBody:   "Update not found",
 		},
+		{
+			name: "bad request for invalid groupId",
+			setupContext: func(c *gin.Context, siteAdmin models.User, _ models.User, _ models.User, _ models.Group, _ models.Update) {
+				c.Set("user_id", siteAdmin.ID)
+				c.Set("is_admin", true)
+				c.Params = gin.Params{
+					{Key: "id", Value: "not-a-number"},
+					{Key: "updateId", Value: "1"},
+				}
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Invalid group ID",
+		},
 	}
 
 	for _, tt := range tests {
