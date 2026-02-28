@@ -125,6 +125,42 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 	}
 }
 
+// DeleteUpdate deletes a group update (group admin or site admin only)
+func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		groupID := c.Param("id")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		// Only group admins or site admins can delete updates
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can delete announcements"})
+			return
+		}
+
+		updateID, err := strconv.ParseUint(c.Param("updateId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid update ID"})
+			return
+		}
+
+		// Verify the update belongs to this group
+		var update models.Update
+		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", uint(updateID), groupID).First(&update).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Update not found"})
+			return
+		}
+
+		if err := db.WithContext(ctx).Delete(&update).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete update"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Announcement deleted successfully"})
+	}
+}
+
 // sendUpdateToGroupMe sends an update to a group's GroupMe chat
 func sendUpdateToGroupMe(ctx context.Context, db *gorm.DB, groupMeService *groupme.Service, groupID uint, title, content string) error {
 	logger := logging.WithContext(ctx)

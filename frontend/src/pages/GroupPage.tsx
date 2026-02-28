@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { groupsApi, animalsApi, authApi } from '../api/client';
+import { groupsApi, animalsApi, authApi, updatesApi } from '../api/client';
 import type { Group, Animal, GroupMembership, ActivityItem, GroupMember } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -158,6 +158,19 @@ const GroupPage: React.FC = () => {
     // Refresh activity feed
     if (id) {
       loadActivityFeed(Number(id), true);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (updateId: number) => {
+    if (!id) return;
+    if (!window.confirm('Are you sure you want to delete this announcement?')) return;
+    try {
+      await updatesApi.delete(Number(id), updateId);
+      setActivities((prev) => prev.filter((a) => !(a.type === 'announcement' && a.id === updateId)));
+      setActivityTotal((prev) => prev - 1);
+      toast.success('Announcement deleted');
+    } catch {
+      toast.error('Failed to delete announcement');
     }
   };
 
@@ -685,6 +698,17 @@ const GroupPage: React.FC = () => {
                         </span>
                       )}
                     </div>
+                  )}
+
+                  {activity.type === 'announcement' && (membership?.is_group_admin || membership?.is_site_admin) && (
+                    <button
+                      className="btn-delete-announcement"
+                      onClick={() => handleDeleteAnnouncement(activity.id)}
+                      title="Delete announcement"
+                      aria-label="Delete announcement"
+                    >
+                      🗑️
+                    </button>
                   )}
 
                   <div className="activity-content">
