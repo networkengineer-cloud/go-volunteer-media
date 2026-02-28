@@ -78,7 +78,7 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
 
     setSubmitting(true);
     try {
-      await updatesApi.create(groupId, title.trim(), content.trim(), sendGroupMe, imageUrl || undefined);
+      await updatesApi.create(groupId, title.trim(), content.trim(), true, sendGroupMe, imageUrl || undefined);
       toast.showSuccess('Announcement posted successfully!');
       
       // Reset form
@@ -240,6 +240,9 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
 
       {/* Form actions */}
       <div className="announcement-form__actions">
+        <p className="announcement-form__description">
+          Opted-in group members will receive an email notification.
+        </p>
         {onCancel && (
           <button
             type="button"

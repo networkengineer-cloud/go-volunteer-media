@@ -177,6 +177,7 @@ type Update struct {
 	Title       string         `gorm:"not null" json:"title"`
 	Content     string         `gorm:"not null" json:"content"`
 	ImageURL    string         `json:"image_url"`
+	SendEmail   bool           `gorm:"default:false" json:"send_email"` // Records whether email dispatch was requested at creation time
 	SendGroupMe bool           `gorm:"default:false" json:"send_groupme"`
 	User        User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }

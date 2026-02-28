@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
@@ -14,9 +15,10 @@ import (
 )
 
 type UpdateRequest struct {
-	Title       string `json:"title" binding:"required"`
-	Content     string `json:"content" binding:"required"`
+	Title       string `json:"title" binding:"required,min=2,max=200"`
+	Content     string `json:"content" binding:"required,min=10"`
 	ImageURL    string `json:"image_url"`
+	SendEmail   bool   `json:"send_email"`
 	SendGroupMe bool   `json:"send_groupme"`
 }
 
@@ -44,7 +46,7 @@ func GetUpdates(db *gorm.DB) gin.HandlerFunc {
 }
 
 // CreateUpdate creates a new update/post in a group
-func CreateUpdate(db *gorm.DB, groupMeService *groupme.Service) gin.HandlerFunc {
+func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		groupID := c.Param("id")
@@ -69,6 +71,10 @@ func CreateUpdate(db *gorm.DB, groupMeService *groupme.Service) gin.HandlerFunc 
 			return
 		}
 
+		if req.SendEmail && !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+			req.SendEmail = false
+		}
+
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -80,6 +86,7 @@ func CreateUpdate(db *gorm.DB, groupMeService *groupme.Service) gin.HandlerFunc 
 			Title:       req.Title,
 			Content:     req.Content,
 			ImageURL:    req.ImageURL,
+			SendEmail:   req.SendEmail,
 			SendGroupMe: req.SendGroupMe,
 		}
 
@@ -92,6 +99,15 @@ func CreateUpdate(db *gorm.DB, groupMeService *groupme.Service) gin.HandlerFunc 
 		if err := db.WithContext(ctx).Preload("User").First(&update, update.ID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load update"})
 			return
+		}
+
+		if req.SendEmail && emailService != nil && emailService.IsConfigured() {
+			go func() {
+				bgCtx := context.Background()
+				if err := sendGroupAnnouncementEmails(bgCtx, db, emailService, uint(gid), update.Title, update.Content); err != nil {
+					logging.WithContext(bgCtx).Error("Error sending group update emails", err)
+				}
+			}()
 		}
 
 		// Send to GroupMe if requested and service is available

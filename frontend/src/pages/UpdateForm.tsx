@@ -121,6 +121,7 @@ const UpdateForm: React.FC = () => {
           formData.title,
           formData.content,
           false,
+          false,
           formData.image_url
         );
         toast.showSuccess('Announcement created successfully!');

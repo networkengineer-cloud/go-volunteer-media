@@ -8,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -200,7 +202,7 @@ func TestCreateUpdate(t *testing.T) {
 			tt.setupContext(c)
 
 			// Execute
-			handler := CreateUpdate(db, groupme.NewService())
+			handler := CreateUpdate(db, email.NewService(db), groupme.NewService())
 			handler(c)
 
 			// Assert
@@ -210,4 +212,78 @@ func TestCreateUpdate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCreateUpdateWithSendEmailFlagForNonAdminIsForcedFalse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := setupUpdateTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	reqBody := UpdateRequest{
+		Title:       "Email Enabled Update",
+		Content:     "This update should persist send_email flag",
+		SendEmail:   true,
+		SendGroupMe: false,
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	c.Request = httptest.NewRequest("POST", "/groups/1/updates", bytes.NewBuffer(bodyBytes))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("user_id", uint(1))
+	c.Set("is_admin", false)
+	c.Params = gin.Params{{Key: "id", Value: "1"}}
+
+	handler := CreateUpdate(db, email.NewService(db), groupme.NewService())
+	handler(c)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var created models.Update
+	err := json.Unmarshal(w.Body.Bytes(), &created)
+	require.NoError(t, err)
+	assert.Equal(t, "Email Enabled Update", created.Title)
+	assert.False(t, created.SendEmail)
+}
+
+func TestCreateUpdateWithSendEmailFlagForSiteAdminIsAllowed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := setupUpdateTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	reqBody := UpdateRequest{
+		Title:       "Admin Email Enabled Update",
+		Content:     "This update should keep send_email true for admins",
+		SendEmail:   true,
+		SendGroupMe: false,
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	c.Request = httptest.NewRequest("POST", "/groups/1/updates", bytes.NewBuffer(bodyBytes))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("user_id", uint(1))
+	c.Set("is_admin", true)
+	c.Params = gin.Params{{Key: "id", Value: "1"}}
+
+	handler := CreateUpdate(db, email.NewService(db), groupme.NewService())
+	handler(c)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var created models.Update
+	err := json.Unmarshal(w.Body.Bytes(), &created)
+	require.NoError(t, err)
+	assert.Equal(t, "Admin Email Enabled Update", created.Title)
+	assert.True(t, created.SendEmail)
 }
