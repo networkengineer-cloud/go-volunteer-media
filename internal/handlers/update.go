@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -122,6 +123,58 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 		}
 
 		c.JSON(http.StatusCreated, update)
+	}
+}
+
+// DeleteUpdate deletes a group update (group admin or site admin only)
+func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		groupID := c.Param("id")
+
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+		isAdmin, _ := c.Get("is_admin")
+
+		// Parse and validate path parameters before authorization
+		updateID, err := strconv.ParseUint(c.Param("updateId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid update ID"})
+			return
+		}
+
+		gid, err := strconv.ParseUint(groupID, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
+		// Only group admins or site admins can delete updates
+		if !checkGroupAdminAccess(db, userIDUint, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can delete group announcements"})
+			return
+		}
+
+		// Verify the update belongs to this group
+		var update models.Update
+		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", uint(updateID), uint(gid)).First(&update).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Update not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch update"})
+			}
+			return
+		}
+
+		if err := db.WithContext(ctx).Delete(&update).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete update"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Group announcement deleted successfully"})
 	}
 }
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { groupsApi, animalsApi, authApi } from '../api/client';
+import { groupsApi, animalsApi, authApi, updatesApi } from '../api/client';
+import ConfirmDialog from '../components/ConfirmDialog';
 import type { Group, Animal, GroupMembership, ActivityItem, GroupMember } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -40,6 +41,9 @@ const GroupPage: React.FC = () => {
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showProtocolForm, setShowProtocolForm] = useState(false);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; updateId: number | null; title: string }>({
+    show: false, updateId: null, title: '',
+  });
   
   // Activity Feed state (integrated from ActivityFeedPage)
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -158,6 +162,18 @@ const GroupPage: React.FC = () => {
     // Refresh activity feed
     if (id) {
       loadActivityFeed(Number(id), true);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (updateId: number) => {
+    if (!id) return;
+    try {
+      await updatesApi.delete(Number(id), updateId);
+      setActivities((prev) => prev.filter((a) => !(a.type === 'announcement' && a.id === updateId)));
+      setActivityTotal((prev) => Math.max(0, prev - 1));
+      toast.success('Announcement deleted');
+    } catch {
+      toast.error('Failed to delete announcement');
     }
   };
 
@@ -687,6 +703,19 @@ const GroupPage: React.FC = () => {
                     </div>
                   )}
 
+                  {activity.type === 'announcement' && (membership?.is_group_admin || membership?.is_site_admin) && (
+                    <button
+                      className="btn-delete-announcement"
+                      onClick={() => setDeleteConfirm({ show: true, updateId: activity.id, title: activity.title || 'Untitled' })}
+                      title="Delete announcement"
+                      aria-label={`Delete announcement: ${activity.title || 'Untitled'}`}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  )}
+
                   <div className="activity-content">
                     {activity.type === 'announcement' && activity.title && (
                       <h3 className="activity-title">{activity.title}</h3>
@@ -1010,6 +1039,22 @@ const GroupPage: React.FC = () => {
           onCancel={() => setShowAnnouncementForm(false)}
         />
       </Modal>
+
+      {/* Delete Announcement Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.show}
+        title="Delete Announcement?"
+        message={`Are you sure you want to delete "${deleteConfirm.title}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={async () => {
+          if (deleteConfirm.updateId !== null) {
+            await handleDeleteAnnouncement(deleteConfirm.updateId);
+          }
+        }}
+        onCancel={() => setDeleteConfirm({ show: false, updateId: null, title: '' })}
+      />
     </div>
   );
 };

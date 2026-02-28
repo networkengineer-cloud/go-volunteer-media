@@ -933,11 +933,42 @@
   border: 1px solid var(--neutral-200);
   box-shadow: var(--shadow-sm);
   transition: all var(--transition-base);
+  position: relative;
 }
 
 .activity-card:hover {
   box-shadow: var(--shadow-md);
   border-color: var(--brand);
+}
+
+.btn-delete-announcement {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity var(--transition-base), background var(--transition-base);
+  line-height: 1;
+}
+
+.activity-card:hover .btn-delete-announcement {
+  opacity: 0.6;
+}
+
+.activity-card:hover .btn-delete-announcement:hover {
+  opacity: 1;
+  background: var(--neutral-200);
+}
+
+.btn-delete-announcement:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 
 .activity-header {
