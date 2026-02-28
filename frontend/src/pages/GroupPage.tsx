@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { groupsApi, animalsApi, authApi, updatesApi } from '../api/client';
+import ConfirmDialog from '../components/ConfirmDialog';
 import type { Group, Animal, GroupMembership, ActivityItem, GroupMember } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -40,6 +41,9 @@ const GroupPage: React.FC = () => {
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showProtocolForm, setShowProtocolForm] = useState(false);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; updateId: number | null; title: string }>({
+    show: false, updateId: null, title: '',
+  });
   
   // Activity Feed state (integrated from ActivityFeedPage)
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -163,7 +167,6 @@ const GroupPage: React.FC = () => {
 
   const handleDeleteAnnouncement = async (updateId: number) => {
     if (!id) return;
-    if (!window.confirm('Are you sure you want to delete this announcement?')) return;
     try {
       await updatesApi.delete(Number(id), updateId);
       setActivities((prev) => prev.filter((a) => !(a.type === 'announcement' && a.id === updateId)));
@@ -703,9 +706,9 @@ const GroupPage: React.FC = () => {
                   {activity.type === 'announcement' && (membership?.is_group_admin || membership?.is_site_admin) && (
                     <button
                       className="btn-delete-announcement"
-                      onClick={() => handleDeleteAnnouncement(activity.id)}
+                      onClick={() => setDeleteConfirm({ show: true, updateId: activity.id, title: activity.title || 'Untitled' })}
                       title="Delete announcement"
-                      aria-label="Delete announcement"
+                      aria-label={`Delete announcement: ${activity.title || 'Untitled'}`}
                     >
                       🗑️
                     </button>
@@ -1034,6 +1037,22 @@ const GroupPage: React.FC = () => {
           onCancel={() => setShowAnnouncementForm(false)}
         />
       </Modal>
+
+      {/* Delete Announcement Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.show}
+        title="Delete Announcement?"
+        message={`Are you sure you want to delete "${deleteConfirm.title}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteConfirm.updateId !== null) {
+            handleDeleteAnnouncement(deleteConfirm.updateId);
+          }
+        }}
+        onCancel={() => setDeleteConfirm({ show: false, updateId: null, title: '' })}
+      />
     </div>
   );
 };

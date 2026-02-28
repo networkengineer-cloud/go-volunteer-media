@@ -960,8 +960,8 @@
   opacity: 0.6;
 }
 
-.btn-delete-announcement:hover {
-  opacity: 1 !important;
+.activity-card:hover .btn-delete-announcement:hover {
+  opacity: 1;
   background: var(--neutral-200);
 }
 
