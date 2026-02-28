@@ -138,12 +138,7 @@ func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
 		}
 		isAdmin, _ := c.Get("is_admin")
 
-		// Only group admins or site admins can delete updates
-		if !checkGroupAdminAccess(db, userIDUint, isAdmin, groupID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can delete group announcements"})
-			return
-		}
-
+		// Parse and validate path parameters before authorization
 		updateID, err := strconv.ParseUint(c.Param("updateId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid update ID"})
@@ -153,6 +148,12 @@ func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
 		gid, err := strconv.ParseUint(groupID, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
+		// Only group admins or site admins can delete updates
+		if !checkGroupAdminAccess(db, userIDUint, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can delete group announcements"})
 			return
 		}
 

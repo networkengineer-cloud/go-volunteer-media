@@ -309,7 +309,7 @@ func setupDeleteUpdateTestDB(t *testing.T) (*gorm.DB, models.User, models.User, 
 		Password: "hashedpassword",
 		IsAdmin:  true,
 	}
-	db.Create(&siteAdmin)
+	require.NoError(t, db.Create(&siteAdmin).Error)
 
 	// Group admin user
 	groupAdmin := models.User{
@@ -318,7 +318,7 @@ func setupDeleteUpdateTestDB(t *testing.T) (*gorm.DB, models.User, models.User, 
 		Password: "hashedpassword",
 		IsAdmin:  false,
 	}
-	db.Create(&groupAdmin)
+	require.NoError(t, db.Create(&groupAdmin).Error)
 
 	// Regular member
 	member := models.User{
@@ -327,18 +327,18 @@ func setupDeleteUpdateTestDB(t *testing.T) (*gorm.DB, models.User, models.User, 
 		Password: "hashedpassword",
 		IsAdmin:  false,
 	}
-	db.Create(&member)
+	require.NoError(t, db.Create(&member).Error)
 
 	group := models.Group{
 		Name:        "Test Group",
 		Description: "Test group description",
 	}
-	db.Create(&group)
+	require.NoError(t, db.Create(&group).Error)
 
 	// Add group admin to group as admin
-	db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true})
+	require.NoError(t, db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true}).Error)
 	// Add regular member to group
-	db.Create(&models.UserGroup{UserID: member.ID, GroupID: group.ID, IsGroupAdmin: false})
+	require.NoError(t, db.Create(&models.UserGroup{UserID: member.ID, GroupID: group.ID, IsGroupAdmin: false}).Error)
 
 	update := models.Update{
 		GroupID: group.ID,
@@ -346,7 +346,7 @@ func setupDeleteUpdateTestDB(t *testing.T) (*gorm.DB, models.User, models.User, 
 		Title:   "Test Announcement",
 		Content: "Test announcement content",
 	}
-	db.Create(&update)
+	require.NoError(t, db.Create(&update).Error)
 
 	return db, siteAdmin, groupAdmin, member, group, update
 }
@@ -439,10 +439,23 @@ func TestDeleteUpdate(t *testing.T) {
 			expectedBody:   "Update not found",
 		},
 		{
-			name: "bad request for invalid groupId",
+			name: "bad request for invalid groupId as site admin",
 			setupContext: func(c *gin.Context, siteAdmin models.User, _ models.User, _ models.User, _ models.Group, _ models.Update) {
 				c.Set("user_id", siteAdmin.ID)
 				c.Set("is_admin", true)
+				c.Params = gin.Params{
+					{Key: "id", Value: "not-a-number"},
+					{Key: "updateId", Value: "1"},
+				}
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Invalid group ID",
+		},
+		{
+			name: "bad request for invalid groupId as group admin",
+			setupContext: func(c *gin.Context, _ models.User, groupAdmin models.User, _ models.User, _ models.Group, _ models.Update) {
+				c.Set("user_id", groupAdmin.ID)
+				c.Set("is_admin", false)
 				c.Params = gin.Params{
 					{Key: "id", Value: "not-a-number"},
 					{Key: "updateId", Value: "1"},
