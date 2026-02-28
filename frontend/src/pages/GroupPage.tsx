@@ -655,7 +655,11 @@ const GroupPage: React.FC = () => {
             </div>
           ) : (
             <div className="activity-list">
-              {activities.map((activity) => (
+              {activities.map((activity) => {
+                const canDeleteAnnouncement =
+                  activity.type === 'announcement' &&
+                  (membership?.is_group_admin || membership?.is_site_admin);
+                return (
                 <div key={`${activity.type}-${activity.id}`} className="activity-card">
                   <div className="activity-header">
                     {activity.animal && (
@@ -719,14 +723,14 @@ const GroupPage: React.FC = () => {
                     )}
                   </div>
 
-                  {(activity.animal || (activity.type === 'announcement' && (membership?.is_group_admin || membership?.is_site_admin))) && (
+                  {(activity.animal || canDeleteAnnouncement) && (
                     <div className="activity-footer">
                       {activity.animal && (
                         <Link to={`/groups/${id}/animals/${activity.animal.id}/view`} className="btn-view-profile">
                           View {activity.animal.name}'s Profile →
                         </Link>
                       )}
-                      {activity.type === 'announcement' && (membership?.is_group_admin || membership?.is_site_admin) && (
+                      {canDeleteAnnouncement && (
                         <button
                           className="btn-delete-announcement"
                           onClick={() => setDeleteConfirm({ show: true, updateId: activity.id, title: activity.title || 'Untitled' })}
@@ -741,7 +745,8 @@ const GroupPage: React.FC = () => {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               {activityHasMore && (
                 <div className="load-more-container">
