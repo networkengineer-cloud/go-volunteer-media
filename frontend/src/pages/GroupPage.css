@@ -942,9 +942,6 @@
 }
 
 .btn-delete-announcement {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
   background: none;
   border: none;
   cursor: pointer;
@@ -954,6 +951,8 @@
   opacity: 0;
   transition: opacity var(--transition-base), background var(--transition-base);
   line-height: 1;
+  color: var(--text-secondary);
+  margin-left: auto;
 }
 
 .activity-card:hover .btn-delete-announcement {
