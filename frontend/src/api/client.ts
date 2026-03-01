@@ -121,6 +121,15 @@ export interface GroupMember {
   phone_number?: string;
   is_group_admin: boolean;
   is_site_admin: boolean;
+  skill_tags: UserSkillTag[];
+}
+
+export interface UserSkillTag {
+  id: number;
+  group_id: number;
+  name: string;
+  color: string;
+  created_at: string;
 }
 
 export interface Group {
@@ -495,6 +504,15 @@ export const groupsApi = {
     api.put<Group>('/admin/groups/' + id, { name, description, image_url, hero_image_url, has_protocols, groupme_bot_id, groupme_enabled }),
   // Requires group membership (not admin). Server filters contact info based on privacy settings.
   getMembers: (groupId: number) => api.get<GroupMember[]>(`/groups/${groupId}/members`),
+  getUserSkillTags: (groupId: number) => api.get<UserSkillTag[]>(`/groups/${groupId}/user-skill-tags`),
+  createUserSkillTag: (groupId: number, name: string, color: string) =>
+    api.post<UserSkillTag>(`/groups/${groupId}/user-skill-tags`, { name, color }),
+  updateUserSkillTag: (groupId: number, tagId: number, name: string, color: string) =>
+    api.put<UserSkillTag>(`/groups/${groupId}/user-skill-tags/${tagId}`, { name, color }),
+  deleteUserSkillTag: (groupId: number, tagId: number) =>
+    api.delete(`/groups/${groupId}/user-skill-tags/${tagId}`),
+  assignUserSkillTags: (groupId: number, userId: number, tagIds: number[]) =>
+    api.put(`/groups/${groupId}/members/${userId}/skill-tags`, { tag_ids: tagIds }),
   delete: (id: number) => api.delete('/admin/groups/' + id),
   uploadImage: (file: File) => {
     const formData = new FormData();

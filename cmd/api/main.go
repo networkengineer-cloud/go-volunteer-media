@@ -327,6 +327,14 @@ func main() {
 			group.POST("/comment-tags", handlers.CreateCommentTag(db))
 			group.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
 
+			// User skill-level tag routes - viewing accessible to all group members
+			// Tag management requires group admin or site admin
+			group.GET("/user-skill-tags", handlers.GetUserSkillTags(db))
+			group.POST("/user-skill-tags", handlers.CreateUserSkillTag(db))
+			group.PUT("/user-skill-tags/:tagId", handlers.UpdateUserSkillTag(db))
+			group.DELETE("/user-skill-tags/:tagId", handlers.DeleteUserSkillTag(db))
+			group.PUT("/members/:userId/skill-tags", handlers.AssignUserSkillTags(db))
+
 			// Group settings - group admin or site admin can update
 			group.PUT("/settings", handlers.UpdateGroupSettings(db))
 

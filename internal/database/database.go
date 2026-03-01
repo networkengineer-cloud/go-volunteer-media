@@ -160,6 +160,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.SiteSetting{},
 		&models.Protocol{},
 		&models.AnimalTag{},
+		&models.UserSkillTag{},
 		&models.AnimalImage{},
 		&models.AnimalNameHistory{},
 	)

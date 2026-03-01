@@ -32,6 +32,7 @@ type User struct {
 	HidePhoneNumber           bool           `gorm:"default:false" json:"hide_phone_number"` // User can hide phone from non-admins
 	DefaultGroupID            *uint          `gorm:"index" json:"default_group_id"`
 	Groups                    []Group        `gorm:"many2many:user_groups;" json:"groups,omitempty"`
+	SkillTags                 []UserSkillTag `gorm:"many2many:user_skill_tag_assignments;" json:"skill_tags,omitempty"`
 	FailedLoginAttempts       int            `gorm:"default:0" json:"-"`
 	LockedUntil               *time.Time     `json:"-"`
 	LastLogin                 *time.Time     `json:"-"`
@@ -301,6 +302,18 @@ type AnimalTag struct {
 	GroupID   uint           `gorm:"index;uniqueIndex:idx_animal_tag_group_name" json:"group_id"` // Group this tag belongs to - NOT NULL enforced via raw SQL after migration
 	Name      string         `gorm:"not null;uniqueIndex:idx_animal_tag_group_name" json:"name"`
 	Category  string         `gorm:"not null" json:"category"`       // "behavior" or "walker_status"
+	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
+}
+
+// UserSkillTag represents a skill-level tag that can be assigned to group members
+// Tags are group-specific - each group defines its own skill levels
+type UserSkillTag struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	GroupID   uint           `gorm:"index;uniqueIndex:idx_user_skill_tag_group_name" json:"group_id"` // Group this tag belongs to
+	Name      string         `gorm:"not null;uniqueIndex:idx_user_skill_tag_group_name" json:"name"`
 	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
 }
 
