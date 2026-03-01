@@ -145,10 +145,14 @@ const UsersPage: React.FC = () => {
                 allUsers.add({
                   id: member.user_id,
                   username: member.username,
+                  first_name: member.first_name,
+                  last_name: member.last_name,
                   email: member.email,
                   phone_number: member.phone_number,
                   is_admin: member.is_site_admin,
                   groups: [group],
+                  last_login: member.last_login,
+                  requires_password_setup: member.requires_password_setup,
                 });
               });
             } catch (err) {

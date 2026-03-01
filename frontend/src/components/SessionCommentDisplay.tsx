@@ -21,8 +21,9 @@ const calculateDuration = (start: string, end: string): string => {
   const [endH, endM] = end.split(':').map(Number);
   const startTotal = startH * 60 + startM;
   const endTotal = endH * 60 + endM;
-  const diff = endTotal - startTotal;
-  if (diff <= 0) return '';
+  let diff = endTotal - startTotal;
+  if (diff < 0) diff += 24 * 60; // handle midnight crossing
+  if (diff === 0) return '';
   const hours = Math.floor(diff / 60);
   const minutes = diff % 60;
   if (hours > 0 && minutes > 0) return `${hours}h ${minutes}min`;

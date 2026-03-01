@@ -122,6 +122,8 @@ export interface GroupMember {
   is_group_admin: boolean;
   is_site_admin: boolean;
   skill_tags: UserSkillTag[];
+  last_login?: string;
+  requires_password_setup?: boolean;
 }
 
 export interface UserSkillTag {
@@ -403,6 +405,14 @@ export interface AnimalInteraction {
   last_comment_at: string;
 }
 
+export interface ProfileSkillTag {
+  group_id: number;
+  group_name: string;
+  id: number;
+  name: string;
+  color: string;
+}
+
 export interface UserProfile {
   id: number;
   username: string;
@@ -418,6 +428,7 @@ export interface UserProfile {
   recent_comments?: UserCommentActivity[];  // Optional for limited/group admin profiles
   recent_announcements?: UserAnnouncementActivity[];  // Optional for limited/group admin profiles
   animals_interacted_with?: AnimalInteraction[];  // Optional for limited/group admin profiles
+  skill_tags?: ProfileSkillTag[];
 }
 
 

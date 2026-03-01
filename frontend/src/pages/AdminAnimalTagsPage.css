@@ -655,7 +655,7 @@
 @media (min-width: 1024px) {
   .tags-layout {
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: 1fr auto 1fr auto 1fr;
     gap: 0;
     align-items: start;
   }
@@ -676,10 +676,98 @@
   .tag-section {
     align-self: start;
   }
-  
-  /* Ensure both sections start at the same vertical position */
+
+  /* Ensure all sections start at the same vertical position */
   .animal-tags-section,
-  .comment-tags-section {
+  .comment-tags-section,
+  .member-tags-section {
     margin-top: 0;
   }
+}
+
+/* Member Tags — edit button and inline edit form */
+.btn-edit {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.btn-edit:hover {
+  color: var(--brand);
+  background: var(--surface-2, rgba(0,0,0,0.05));
+}
+
+.btn-secondary.btn-sm {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.skill-tag-inline-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.skill-tag-edit-input {
+  flex: 1;
+  min-width: 100px;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.color-input--sm {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  padding: 0;
+  cursor: pointer;
+}
+
+.comment-tag-form {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+}
+
+.inline-form {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.inline-form input[type="text"] {
+  flex: 1;
+  min-width: 160px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.tag-preview-inline {
+  display: flex;
+  align-items: center;
 }

@@ -169,6 +169,12 @@ func GroupAdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Nobody can delete themselves
+		if requesterID == target.ID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete your own account"})
+			return
+		}
+
 		// Site admins can delete anyone
 		if !isAdmin {
 			// Group admin: check that target is not a site admin and is in one of requester's groups

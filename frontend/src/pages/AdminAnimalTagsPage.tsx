@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { commentTagsApi, animalTagsApi, groupsApi, type CommentTag, type Group, type AnimalTag as ApiAnimalTag } from '../api/client';
+import { commentTagsApi, animalTagsApi, groupsApi, type CommentTag, type Group, type AnimalTag as ApiAnimalTag, type UserSkillTag } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
@@ -257,8 +257,16 @@ const AdminAnimalTagsPage: React.FC = () => {
   const [commentTagError, setCommentTagError] = useState<string | null>(null);
   const [isCommentTagModalOpen, setIsCommentTagModalOpen] = useState(false);
 
+  // Member (Skill) Tags state
+  const [skillTags, setSkillTags] = useState<UserSkillTag[]>([]);
+  const [loadingSkillTags, setLoadingSkillTags] = useState(false);
+  const [skillTagError, setSkillTagError] = useState<string | null>(null);
+  const [newSkillTagName, setNewSkillTagName] = useState('');
+  const [newSkillTagColor, setNewSkillTagColor] = useState('#6b7280');
+  const [editingSkillTag, setEditingSkillTag] = useState<UserSkillTag | null>(null);
+
   // Active section for mobile
-  const [activeSection, setActiveSection] = useState<'animal' | 'comment'>('animal');
+  const [activeSection, setActiveSection] = useState<'animal' | 'comment' | 'member'>('animal');
   const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
 
   // Fetch Groups
@@ -310,6 +318,22 @@ const AdminAnimalTagsPage: React.FC = () => {
     }
   }, [selectedGroupId]);
 
+  // Fetch Member Skill Tags for selected group
+  const fetchSkillTags = useCallback(async () => {
+    if (!selectedGroupId) return;
+    try {
+      setLoadingSkillTags(true);
+      const res = await groupsApi.getUserSkillTags(selectedGroupId);
+      setSkillTags(res.data);
+      setSkillTagError(null);
+    } catch (err) {
+      setSkillTagError('Failed to load member tags');
+      console.error('Error fetching skill tags:', err);
+    } finally {
+      setLoadingSkillTags(false);
+    }
+  }, [selectedGroupId]);
+
   useEffect(() => {
     fetchGroups();
   }, [fetchGroups]);
@@ -318,8 +342,9 @@ const AdminAnimalTagsPage: React.FC = () => {
     if (selectedGroupId) {
       fetchAnimalTags();
       fetchCommentTags();
+      fetchSkillTags();
     }
-  }, [selectedGroupId, fetchAnimalTags, fetchCommentTags]);
+  }, [selectedGroupId, fetchAnimalTags, fetchCommentTags, fetchSkillTags]);
 
   // Animal Tag handlers
   const handleCreateAnimalTag = useCallback(() => {
@@ -399,10 +424,55 @@ const AdminAnimalTagsPage: React.FC = () => {
     );
   }, [selectedGroupId, fetchCommentTags, openConfirmDialog]);
 
+  // Skill Tag handlers
+  const handleCreateSkillTag = useCallback(async () => {
+    if (!selectedGroupId || !newSkillTagName.trim()) return;
+    try {
+      await groupsApi.createUserSkillTag(selectedGroupId, newSkillTagName.trim(), newSkillTagColor);
+      setNewSkillTagName('');
+      setNewSkillTagColor('#6b7280');
+      await fetchSkillTags();
+    } catch (err) {
+      console.error('Error creating skill tag:', err);
+      setSkillTagError('Failed to create member tag');
+    }
+  }, [selectedGroupId, newSkillTagName, newSkillTagColor, fetchSkillTags]);
+
+  const handleUpdateSkillTag = useCallback(async () => {
+    if (!selectedGroupId || !editingSkillTag || !newSkillTagName.trim()) return;
+    try {
+      await groupsApi.updateUserSkillTag(selectedGroupId, editingSkillTag.id, newSkillTagName.trim(), newSkillTagColor);
+      setEditingSkillTag(null);
+      setNewSkillTagName('');
+      setNewSkillTagColor('#6b7280');
+      await fetchSkillTags();
+    } catch (err) {
+      console.error('Error updating skill tag:', err);
+      setSkillTagError('Failed to update member tag');
+    }
+  }, [selectedGroupId, editingSkillTag, newSkillTagName, newSkillTagColor, fetchSkillTags]);
+
+  const handleDeleteSkillTag = useCallback((tagId: number, tagName: string) => {
+    if (!selectedGroupId) return;
+    openConfirmDialog(
+      'Delete Member Tag',
+      `Are you sure you want to delete the "${tagName}" tag? It will be removed from all members.`,
+      async () => {
+        try {
+          await groupsApi.deleteUserSkillTag(selectedGroupId, tagId);
+          await fetchSkillTags();
+        } catch (err) {
+          console.error('Error deleting skill tag:', err);
+          setSkillTagError('Failed to delete member tag');
+        }
+      },
+    );
+  }, [selectedGroupId, fetchSkillTags, openConfirmDialog]);
+
   const behaviorTags = animalTags.filter(tag => tag.category === 'behavior');
   const walkerStatusTags = animalTags.filter(tag => tag.category === 'walker_status');
 
-  const isLoading = loadingGroups || loadingAnimalTags || loadingCommentTags;
+  const isLoading = loadingGroups || loadingAnimalTags || loadingCommentTags || loadingSkillTags;
 
   if (loadingGroups) {
     return (
@@ -485,6 +555,14 @@ const AdminAnimalTagsPage: React.FC = () => {
           onClick={() => setActiveSection('comment')}
         >
           💬 Comment Tags
+        </button>
+        <button
+          role="tab"
+          aria-selected={activeSection === 'member'}
+          className={`section-tab ${activeSection === 'member' ? 'active' : ''}`}
+          onClick={() => setActiveSection('member')}
+        >
+          👥 Member Tags
         </button>
       </div>
 
@@ -585,7 +663,7 @@ const AdminAnimalTagsPage: React.FC = () => {
         </div>
 
         {/* Comment Tags Section */}
-        <section 
+        <section
           className={`tag-section comment-tags-section ${activeSection === 'comment' ? 'active' : ''}`}
           aria-label="Comment Tags"
         >
@@ -629,6 +707,142 @@ const AdminAnimalTagsPage: React.FC = () => {
               ))
             )}
           </div>
+        </section>
+
+        {/* Divider */}
+        <div className="section-divider" aria-hidden="true">
+          <div className="divider-line"></div>
+        </div>
+
+        {/* Member Tags Section */}
+        <section
+          className={`tag-section member-tags-section ${activeSection === 'member' ? 'active' : ''}`}
+          aria-label="Member Tags"
+        >
+          <div className="section-header">
+            <div className="section-title">
+              <h2>👥 Member Tags</h2>
+              <p className="section-description">
+                Tags assigned to volunteers to indicate experience level or role. Create tags here, then assign them to members on the group page.
+              </p>
+            </div>
+          </div>
+
+          {skillTagError && <div className="error-message">{skillTagError}</div>}
+
+          <div className="comment-tags-grid">
+            {skillTags.length === 0 ? (
+              <div className="empty-state">
+                <p className="no-tags">No member tags yet.</p>
+                <p className="empty-hint">Create tags like "Beginner", "Experienced", "Dog Walker" to categorize volunteers.</p>
+              </div>
+            ) : (
+              skillTags.map((tag) => (
+                <div key={tag.id} className="comment-tag-card">
+                  <div className="tag-header">
+                    {editingSkillTag?.id === tag.id ? (
+                      <form
+                        className="skill-tag-inline-edit"
+                        onSubmit={(e) => { e.preventDefault(); handleUpdateSkillTag(); }}
+                      >
+                        <input
+                          type="text"
+                          value={newSkillTagName}
+                          onChange={(e) => setNewSkillTagName(e.target.value)}
+                          className="skill-tag-edit-input"
+                          autoFocus
+                          required
+                          maxLength={50}
+                        />
+                        <input
+                          type="color"
+                          value={newSkillTagColor}
+                          onChange={(e) => setNewSkillTagColor(e.target.value)}
+                          className="color-input color-input--sm"
+                          title="Tag color"
+                        />
+                        <button type="submit" className="btn-primary btn-sm">Save</button>
+                        <button type="button" className="btn-secondary btn-sm" onClick={() => { setEditingSkillTag(null); setNewSkillTagName(''); setNewSkillTagColor('#6b7280'); }}>Cancel</button>
+                      </form>
+                    ) : (
+                      <>
+                        <div className="tag-preview" style={{ backgroundColor: tag.color }}>
+                          {tag.name}
+                        </div>
+                        <button
+                          onClick={() => { setEditingSkillTag(tag); setNewSkillTagName(tag.name); setNewSkillTagColor(tag.color); }}
+                          className="btn-edit"
+                          aria-label={`Edit ${tag.name} tag`}
+                          title="Edit tag"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSkillTag(tag.id, tag.name)}
+                          className="btn-delete"
+                          aria-label={`Delete ${tag.name} tag`}
+                          title="Delete tag"
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Add new skill tag form */}
+          {!editingSkillTag && (
+            <form
+              className="comment-tag-form"
+              onSubmit={(e) => { e.preventDefault(); handleCreateSkillTag(); }}
+            >
+              <div className="form-group">
+                <label htmlFor="skillTagName">New Member Tag</label>
+                <div className="inline-form">
+                  <input
+                    id="skillTagName"
+                    type="text"
+                    value={newSkillTagName}
+                    onChange={(e) => setNewSkillTagName(e.target.value)}
+                    placeholder="e.g. Beginner, Experienced"
+                    maxLength={50}
+                    required
+                    autoComplete="off"
+                  />
+                  <input
+                    type="color"
+                    value={newSkillTagColor}
+                    onChange={(e) => setNewSkillTagColor(e.target.value)}
+                    className="color-input"
+                    title="Tag color"
+                  />
+                  <div className="color-presets">
+                    {colorPresets.map((presetColor) => (
+                      <button
+                        key={presetColor}
+                        type="button"
+                        className={`color-preset ${newSkillTagColor === presetColor ? 'selected' : ''}`}
+                        style={{ backgroundColor: presetColor }}
+                        onClick={() => setNewSkillTagColor(presetColor)}
+                        aria-label={`Select color ${presetColor}`}
+                      />
+                    ))}
+                  </div>
+                  <div className="tag-preview-inline">
+                    <span className="tag-badge" style={{ backgroundColor: newSkillTagColor }}>
+                      {newSkillTagName || 'preview'}
+                    </span>
+                  </div>
+                  <button type="submit" className="btn-primary btn-sm" disabled={!newSkillTagName.trim()}>
+                    + Add Tag
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
         </section>
       </div>
 
