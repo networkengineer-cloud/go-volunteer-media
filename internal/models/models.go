@@ -207,6 +207,7 @@ type AnimalComment struct {
 	UserID    uint             `gorm:"not null;index" json:"user_id"`
 	Content   string           `gorm:"not null" json:"content"`
 	ImageURL  string           `json:"image_url"`
+	IsEdited  bool             `gorm:"default:false" json:"is_edited"`
 	Metadata  *SessionMetadata `gorm:"type:jsonb" json:"metadata,omitempty"`
 	Tags      []CommentTag     `gorm:"many2many:animal_comment_tags;" json:"tags,omitempty"`
 	User      User             `gorm:"foreignKey:UserID" json:"user,omitempty"`
@@ -233,6 +234,7 @@ type SessionMetadata struct {
 	MedicalNotes     string `json:"medical_notes,omitempty"`
 	SessionRating    int    `json:"session_rating,omitempty"` // 1-5 (Poor, Fair, Okay, Good, Great)
 	OtherNotes       string `json:"other_notes,omitempty"`
+	SessionDate      string `json:"session_date,omitempty"`       // "YYYY-MM-DD" format
 	SessionStartTime string `json:"session_start_time,omitempty"` // "HH:MM" 24-hour format
 	SessionEndTime   string `json:"session_end_time,omitempty"`   // "HH:MM" 24-hour format
 }

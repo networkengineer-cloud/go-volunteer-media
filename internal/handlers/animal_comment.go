@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"html"
 	"log"
 	"net/http"
 	"regexp"
@@ -16,8 +15,10 @@ import (
 )
 
 // sessionTimePattern matches HH:MM in 24-hour format (00:00–23:59).
+// sessionDatePattern matches YYYY-MM-DD.
 // Compiled once at package init to avoid repeated allocation on every request.
 var sessionTimePattern = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
+var sessionDatePattern = regexp.MustCompile(`^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$`)
 
 type AnimalCommentRequest struct {
 	Content  string                  `json:"content" binding:"required"`
@@ -51,6 +52,9 @@ func validateSessionMetadata(metadata *models.SessionMetadata) error {
 		return errors.New("session rating must be between 1 and 5 (or 0 for not set)")
 	}
 
+	if metadata.SessionDate != "" && !sessionDatePattern.MatchString(metadata.SessionDate) {
+		return errors.New("session_date must be in YYYY-MM-DD format")
+	}
 	if metadata.SessionStartTime != "" && !sessionTimePattern.MatchString(metadata.SessionStartTime) {
 		return errors.New("session_start_time must be in HH:MM 24-hour format")
 	}
@@ -61,19 +65,11 @@ func validateSessionMetadata(metadata *models.SessionMetadata) error {
 	return nil
 }
 
-// sanitizeSessionMetadata sanitizes all text fields in metadata to prevent XSS attacks
-func sanitizeSessionMetadata(metadata *models.SessionMetadata) {
-	if metadata == nil {
-		return
-	}
-
-	// HTML escape all text fields to prevent XSS
-	metadata.SessionGoal = html.EscapeString(metadata.SessionGoal)
-	metadata.SessionOutcome = html.EscapeString(metadata.SessionOutcome)
-	metadata.BehaviorNotes = html.EscapeString(metadata.BehaviorNotes)
-	metadata.MedicalNotes = html.EscapeString(metadata.MedicalNotes)
-	metadata.OtherNotes = html.EscapeString(metadata.OtherNotes)
-}
+// sanitizeSessionMetadata is intentionally a no-op.
+// Metadata text fields are rendered as plain text nodes in React (via JSX interpolation,
+// never via dangerouslySetInnerHTML), so HTML-escaping on the server is both unnecessary
+// and harmful — it causes entities like &#39; to display literally instead of as characters.
+func sanitizeSessionMetadata(_ *models.SessionMetadata) {}
 
 // GetAnimalComments returns comments for an animal with pagination support
 func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
@@ -330,6 +326,7 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		// Update comment fields
 		comment.Content = req.Content
 		comment.ImageURL = req.ImageURL
+		comment.IsEdited = true
 		comment.Metadata = req.Metadata
 
 		if err := db.Save(&comment).Error; err != nil {

@@ -822,7 +822,7 @@ const AnimalDetailPage: React.FC = () => {
                                 hour: '2-digit',
                                 minute: '2-digit',
                               })}
-                              {new Date(comment.created_at).getTime() !== new Date(comment.updated_at).getTime() && (
+                              {comment.is_edited && (
                                 <span className="edited-badge" title={`Last edited: ${new Date(comment.updated_at).toLocaleString()}`}>
                                   (edited)
                                 </span>

@@ -21,6 +21,16 @@ const FIELD_LIMITS = {
   other_notes: 1000,
 } as const;
 
+const getTodayDate = (): string => {
+  const d = new Date();
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+};
+
+const getCurrentTime = (): string => {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+};
+
 const SessionReportForm: React.FC<SessionReportFormProps> = ({
   animalId,
   availableTags,
@@ -42,6 +52,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   const [medicalNotes, setMedicalNotes] = useState('');
   const [sessionRating, setSessionRating] = useState<number>(0);
   const [otherNotes, setOtherNotes] = useState('');
+  const [sessionDate, setSessionDate] = useState<string>(getTodayDate);
   const [sessionStartTime, setSessionStartTime] = useState('');
   const [sessionEndTime, setSessionEndTime] = useState('');
   const [draftSaved, setDraftSaved] = useState(false);
@@ -62,6 +73,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     medicalNotes,
     sessionRating,
     otherNotes,
+    sessionDate,
     sessionStartTime,
     sessionEndTime,
   });
@@ -76,10 +88,11 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       medicalNotes,
       sessionRating,
       otherNotes,
+      sessionDate,
       sessionStartTime,
       sessionEndTime,
     };
-  }, [mode, sessionGoal, sessionOutcome, behaviorNotes, medicalNotes, sessionRating, otherNotes, sessionStartTime, sessionEndTime]);
+  }, [mode, sessionGoal, sessionOutcome, behaviorNotes, medicalNotes, sessionRating, otherNotes, sessionDate, sessionStartTime, sessionEndTime]);
 
   // Draft management helper functions
   const getDraftKey = () => `session_draft_${animalId}`;
@@ -95,6 +108,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       medicalNotes: state.medicalNotes,
       sessionRating: state.sessionRating,
       otherNotes: state.otherNotes,
+      sessionDate: state.sessionDate,
       sessionStartTime: state.sessionStartTime,
       sessionEndTime: state.sessionEndTime,
       savedAt: new Date().toISOString(),
@@ -156,6 +170,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setMedicalNotes(editingComment.metadata.medical_notes || '');
       setSessionRating(editingComment.metadata.session_rating || 0);
       setOtherNotes(editingComment.metadata.other_notes || '');
+      setSessionDate(editingComment.metadata.session_date || '');
       setSessionStartTime(editingComment.metadata.session_start_time || '');
       setSessionEndTime(editingComment.metadata.session_end_time || '');
       setCommentText('');
@@ -193,6 +208,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setMedicalNotes(draft.medicalNotes || '');
       setSessionRating(draft.sessionRating || 0);
       setOtherNotes(draft.otherNotes || '');
+      setSessionDate(draft.sessionDate || getTodayDate());
       setSessionStartTime(draft.sessionStartTime || '');
       setSessionEndTime(draft.sessionEndTime || '');
       setShowRestoreDraft(false);
@@ -304,7 +320,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       content = parts.join('\n\n');
       
       // Only include metadata if at least one field has content
-      if (sessionGoal || sessionOutcome || behaviorNotes || medicalNotes || sessionRating > 0 || otherNotes || sessionStartTime || sessionEndTime) {
+      if (sessionGoal || sessionOutcome || behaviorNotes || medicalNotes || sessionRating > 0 || otherNotes || sessionDate || sessionStartTime || sessionEndTime) {
         metadata = {
           session_goal: sessionGoal.trim() || undefined,
           session_outcome: sessionOutcome.trim() || undefined,
@@ -312,6 +328,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
           medical_notes: medicalNotes.trim() || undefined,
           session_rating: sessionRating > 0 ? sessionRating : undefined,
           other_notes: otherNotes.trim() || undefined,
+          session_date: sessionDate || undefined,
           session_start_time: sessionStartTime || undefined,
           session_end_time: sessionEndTime || undefined,
         };
@@ -340,6 +357,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setMedicalNotes('');
       setSessionRating(0);
       setOtherNotes('');
+      setSessionDate(getTodayDate());
       setSessionStartTime('');
       setSessionEndTime('');
     }
@@ -472,32 +490,67 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
               </button>
               {expandedSection === 'timing' && (
                 <div className="accordion-content" data-testid="section-timing">
+                  <div className="form-field">
+                    <label htmlFor="session-date-mobile">
+                      📅 Date <span className="optional-label">(optional)</span>
+                    </label>
+                    <input
+                      id="session-date-mobile"
+                      type="date"
+                      value={sessionDate}
+                      onChange={(e) => setSessionDate(e.target.value)}
+                      disabled={submitting}
+                      aria-label="Session date"
+                    />
+                  </div>
                   <div className="session-time-row">
                     <div className="form-field">
                       <label htmlFor="session-start-time-mobile">
                         Start Time <span className="optional-label">(optional)</span>
                       </label>
-                      <input
-                        id="session-start-time-mobile"
-                        type="time"
-                        value={sessionStartTime}
-                        onChange={(e) => setSessionStartTime(e.target.value)}
-                        disabled={submitting}
-                        aria-label="Session start time"
-                      />
+                      <div className="time-input-row">
+                        <input
+                          id="session-start-time-mobile"
+                          type="time"
+                          value={sessionStartTime}
+                          onChange={(e) => setSessionStartTime(e.target.value)}
+                          disabled={submitting}
+                          aria-label="Session start time"
+                        />
+                        <button
+                          type="button"
+                          className="btn-now"
+                          onClick={() => setSessionStartTime(getCurrentTime())}
+                          disabled={submitting}
+                          title="Set to current time"
+                        >
+                          Now
+                        </button>
+                      </div>
                     </div>
                     <div className="form-field">
                       <label htmlFor="session-end-time-mobile">
                         End Time <span className="optional-label">(optional)</span>
                       </label>
-                      <input
-                        id="session-end-time-mobile"
-                        type="time"
-                        value={sessionEndTime}
-                        onChange={(e) => setSessionEndTime(e.target.value)}
-                        disabled={submitting}
-                        aria-label="Session end time"
-                      />
+                      <div className="time-input-row">
+                        <input
+                          id="session-end-time-mobile"
+                          type="time"
+                          value={sessionEndTime}
+                          onChange={(e) => setSessionEndTime(e.target.value)}
+                          disabled={submitting}
+                          aria-label="Session end time"
+                        />
+                        <button
+                          type="button"
+                          className="btn-now"
+                          onClick={() => setSessionEndTime(getCurrentTime())}
+                          disabled={submitting}
+                          title="Set to current time"
+                        >
+                          Now
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -693,33 +746,68 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
 
           {/* Desktop Non-Accordion Layout */}
           <div className="desktop-only">
-            {/* Session Time */}
+            {/* Session Date + Time */}
+            <div className="form-field">
+              <label htmlFor="session-date">
+                📅 Session Date <span className="optional-label">(optional)</span>
+              </label>
+              <input
+                id="session-date"
+                type="date"
+                value={sessionDate}
+                onChange={(e) => setSessionDate(e.target.value)}
+                disabled={submitting}
+                aria-label="Session date"
+              />
+            </div>
             <div className="session-time-row">
               <div className="form-field">
                 <label htmlFor="session-start-time">
                   ⏱ Start Time <span className="optional-label">(optional)</span>
                 </label>
-                <input
-                  id="session-start-time"
-                  type="time"
-                  value={sessionStartTime}
-                  onChange={(e) => setSessionStartTime(e.target.value)}
-                  disabled={submitting}
-                  aria-label="Session start time"
-                />
+                <div className="time-input-row">
+                  <input
+                    id="session-start-time"
+                    type="time"
+                    value={sessionStartTime}
+                    onChange={(e) => setSessionStartTime(e.target.value)}
+                    disabled={submitting}
+                    aria-label="Session start time"
+                  />
+                  <button
+                    type="button"
+                    className="btn-now"
+                    onClick={() => setSessionStartTime(getCurrentTime())}
+                    disabled={submitting}
+                    title="Set to current time"
+                  >
+                    Now
+                  </button>
+                </div>
               </div>
               <div className="form-field">
                 <label htmlFor="session-end-time">
                   ⏱ End Time <span className="optional-label">(optional)</span>
                 </label>
-                <input
-                  id="session-end-time"
-                  type="time"
-                  value={sessionEndTime}
-                  onChange={(e) => setSessionEndTime(e.target.value)}
-                  disabled={submitting}
-                  aria-label="Session end time"
-                />
+                <div className="time-input-row">
+                  <input
+                    id="session-end-time"
+                    type="time"
+                    value={sessionEndTime}
+                    onChange={(e) => setSessionEndTime(e.target.value)}
+                    disabled={submitting}
+                    aria-label="Session end time"
+                  />
+                  <button
+                    type="button"
+                    className="btn-now"
+                    onClick={() => setSessionEndTime(getCurrentTime())}
+                    disabled={submitting}
+                    title="Set to current time"
+                  >
+                    Now
+                  </button>
+                </div>
               </div>
             </div>
             {/* Session Goal */}

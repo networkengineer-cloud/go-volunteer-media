@@ -246,6 +246,7 @@ export interface AnimalComment {
   user_id: number;
   content: string;
   image_url: string;
+  is_edited: boolean;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -261,6 +262,7 @@ export interface SessionMetadata {
   medical_notes?: string;
   session_rating?: number; // 1-5 (Poor, Fair, Okay, Good, Great)
   other_notes?: string;
+  session_date?: string;       // "YYYY-MM-DD" format
   session_start_time?: string; // "HH:MM" 24-hour format
   session_end_time?: string;   // "HH:MM" 24-hour format
 }

@@ -16,6 +16,22 @@ const getRatingLabel = (rating: number): string => {
   return labels[rating] || '';
 };
 
+const formatTime12h = (timeStr: string): string => {
+  const [h, m] = timeStr.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 || 12;
+  return `${hour12}:${m.toString().padStart(2, '0')} ${period}`;
+};
+
+const formatSessionDate = (dateStr: string): string => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
 const calculateDuration = (start: string, end: string): string => {
   const [startH, startM] = start.split(':').map(Number);
   const [endH, endM] = end.split(':').map(Number);
@@ -58,24 +74,30 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
   // Render structured session report
   return (
     <div className="session-report-display">
-      {/* Session Time */}
-      {(metadata.session_start_time || metadata.session_end_time) && (
+      {/* Session Date + Time */}
+      {(metadata.session_date || metadata.session_start_time || metadata.session_end_time) && (
         <div className="session-field session-time-display">
-          <span className="session-field-label">⏱</span>
+          <span className="session-field-label">📅</span>
           <span className="session-field-content">
+            {metadata.session_date && (
+              <span className="session-date-text">{formatSessionDate(metadata.session_date)}</span>
+            )}
+            {metadata.session_date && (metadata.session_start_time || metadata.session_end_time) && (
+              <span className="session-time-sep"> · </span>
+            )}
             {metadata.session_start_time && metadata.session_end_time ? (
               <>
-                {metadata.session_start_time} – {metadata.session_end_time}
+                {formatTime12h(metadata.session_start_time)} – {formatTime12h(metadata.session_end_time)}
                 {(() => {
                   const duration = calculateDuration(metadata.session_start_time!, metadata.session_end_time!);
                   return duration ? <span className="session-duration"> ({duration})</span> : null;
                 })()}
               </>
             ) : metadata.session_start_time ? (
-              <>Started: {metadata.session_start_time}</>
-            ) : (
-              <>Ended: {metadata.session_end_time}</>
-            )}
+              <>Started: {formatTime12h(metadata.session_start_time)}</>
+            ) : metadata.session_end_time ? (
+              <>Ended: {formatTime12h(metadata.session_end_time)}</>
+            ) : null}
           </span>
         </div>
       )}
@@ -84,7 +106,6 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
       {metadata.session_goal && (
         <div className="session-field">
           <span className="session-field-label">🎯 Session Goal:</span>
-          {/* Safe to render - content is HTML-escaped on server before storage */}
           <p className="session-field-content">{metadata.session_goal}</p>
         </div>
       )}
@@ -93,7 +114,6 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
       {metadata.session_outcome && (
         <div className="session-field">
           <span className="session-field-label">📝 Session Outcome:</span>
-          {/* Safe to render - content is HTML-escaped on server before storage */}
           <p className="session-field-content">{metadata.session_outcome}</p>
         </div>
       )}
@@ -108,7 +128,6 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
                 <span className="concern-icon">⚠️</span>
                 <span className="concern-title">Behavior</span>
               </div>
-              {/* Safe to render - content is HTML-escaped on server before storage */}
               <p className="concern-content">{metadata.behavior_notes}</p>
             </div>
           )}
@@ -120,7 +139,6 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
                 <span className="concern-icon">🏥</span>
                 <span className="concern-title">Medical</span>
               </div>
-              {/* Safe to render - content is HTML-escaped on server before storage */}
               <p className="concern-content">{metadata.medical_notes}</p>
             </div>
           )}
@@ -141,7 +159,6 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
       {metadata.other_notes && (
         <div className="session-field">
           <span className="session-field-label">💭 Other Notes:</span>
-          {/* Safe to render - content is HTML-escaped on server before storage */}
           <p className="session-field-content">{metadata.other_notes}</p>
         </div>
       )}

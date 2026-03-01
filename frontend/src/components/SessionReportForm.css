@@ -197,6 +197,8 @@
 }
 
 .form-field input[type="text"],
+.form-field input[type="date"],
+.form-field input[type="time"],
 .form-field textarea {
   width: 100%;
   padding: 0.75rem;
@@ -210,10 +212,57 @@
 }
 
 .form-field input[type="text"]:focus,
+.form-field input[type="date"]:focus,
+.form-field input[type="time"]:focus,
 .form-field textarea:focus {
   outline: 2px solid var(--brand);
   outline-offset: -1px;
   border-color: var(--brand);
+}
+
+/* Session time row (start + end side by side) */
+.session-time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+/* Time input with "Now" button */
+.time-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.time-input-row input[type="time"] {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.btn-now {
+  padding: 0.5rem 0.875rem;
+  background: var(--input-bg, #f9fafb);
+  border: 1px solid var(--input-border, #d1d5db);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-color, #374151);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-now:hover:not(:disabled) {
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand);
+}
+
+.btn-now:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .form-field textarea {
