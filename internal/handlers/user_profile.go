@@ -9,6 +9,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// SkillTagEntry represents a skill tag assigned to a user with group context
+type SkillTagEntry struct {
+	GroupID   uint   `json:"group_id"`
+	GroupName string `json:"group_name"`
+	ID        uint   `json:"id"`
+	Name      string `json:"name"`
+	Color     string `json:"color"`
+}
+
 // UserProfileResponse represents user profile information with activity data
 type UserProfileResponse struct {
 	ID                    uint                       `json:"id"`
@@ -25,6 +34,7 @@ type UserProfileResponse struct {
 	RecentComments        []UserCommentActivity      `json:"recent_comments"`
 	RecentAnnouncements   []UserAnnouncementActivity `json:"recent_announcements"`
 	AnimalsInteractedWith []AnimalInteraction        `json:"animals_interacted_with"`
+	SkillTags             []SkillTagEntry            `json:"skill_tags"`
 }
 
 // UserProfileStatistics represents statistics for a user profile
@@ -73,6 +83,46 @@ type AnimalInteraction struct {
 	ImageURL      string `json:"image_url"`
 	CommentCount  int64  `json:"comment_count"`
 	LastCommentAt string `json:"last_comment_at"`
+}
+
+// fetchSkillTagsForUser returns all skill tags assigned to targetUserID, optionally
+// restricted to groups where currentUserID is a group admin.
+func fetchSkillTagsForUser(db *gorm.DB, targetUserID uint, restrictToGroupAdminOf uint) []SkillTagEntry {
+	type row struct {
+		GroupID   uint
+		GroupName string
+		TagID     uint
+		Name      string
+		Color     string
+	}
+	var rows []row
+
+	q := db.Table("user_skill_tag_assignments a").
+		Select("g.id as group_id, g.name as group_name, t.id as tag_id, t.name, t.color").
+		Joins("JOIN user_skill_tags t ON t.id = a.user_skill_tag_id AND t.deleted_at IS NULL").
+		Joins("JOIN groups g ON g.id = t.group_id AND g.deleted_at IS NULL").
+		Where("a.user_id = ?", targetUserID)
+
+	if restrictToGroupAdminOf != 0 {
+		// Restrict to groups where the caller is a group admin
+		q = q.Joins("JOIN user_groups ug ON ug.group_id = t.group_id AND ug.user_id = ? AND ug.is_group_admin = ? AND ug.deleted_at IS NULL", restrictToGroupAdminOf, true)
+	}
+
+	if err := q.Scan(&rows).Error; err != nil {
+		return []SkillTagEntry{}
+	}
+
+	entries := make([]SkillTagEntry, len(rows))
+	for i, r := range rows {
+		entries[i] = SkillTagEntry{
+			GroupID:   r.GroupID,
+			GroupName: r.GroupName,
+			ID:        r.TagID,
+			Name:      r.Name,
+			Color:     r.Color,
+		}
+	}
+	return entries
 }
 
 // GetUserProfile returns detailed profile information for a user
@@ -178,14 +228,15 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			// Actually, based on PERMISSIONS.md: "Group admins can always see contact info"
 			// So group admins bypass privacy settings for their group members
 			type GroupAdminProfileResponse struct {
-				ID          uint           `json:"id"`
-				Username    string         `json:"username"`
-				FirstName   string         `json:"first_name"`
-				LastName    string         `json:"last_name"`
-				Email       string         `json:"email"`
-				PhoneNumber string         `json:"phone_number"`
-				CreatedAt   string         `json:"created_at"`
-				Groups      []models.Group `json:"groups"`
+				ID          uint            `json:"id"`
+				Username    string          `json:"username"`
+				FirstName   string          `json:"first_name"`
+				LastName    string          `json:"last_name"`
+				Email       string          `json:"email"`
+				PhoneNumber string          `json:"phone_number"`
+				CreatedAt   string          `json:"created_at"`
+				Groups      []models.Group  `json:"groups"`
+				SkillTags   []SkillTagEntry `json:"skill_tags"`
 			}
 			c.JSON(http.StatusOK, GroupAdminProfileResponse{
 				ID:          user.ID,
@@ -196,6 +247,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 				PhoneNumber: user.PhoneNumber,
 				CreatedAt:   user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 				Groups:      user.Groups,
+				SkillTags:   fetchSkillTagsForUser(db, user.ID, currentUserIDUint),
 			})
 			return
 		} // Build full profile response for own profile or admin viewing
@@ -210,6 +262,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			CreatedAt:      user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			DefaultGroupID: user.DefaultGroupID,
 			Groups:         user.Groups,
+			SkillTags:      fetchSkillTagsForUser(db, user.ID, 0),
 		}
 
 		// Calculate statistics

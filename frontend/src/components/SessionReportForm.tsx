@@ -21,6 +21,16 @@ const FIELD_LIMITS = {
   other_notes: 1000,
 } as const;
 
+const getTodayDate = (): string => {
+  const d = new Date();
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+};
+
+const getCurrentTime = (): string => {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+};
+
 const SessionReportForm: React.FC<SessionReportFormProps> = ({
   animalId,
   availableTags,
@@ -30,7 +40,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   onCancelEdit,
 }) => {
   const isEditMode = !!editingComment;
-  const [mode, setMode] = useState<FormMode>('quick');
+  const [mode, setMode] = useState<FormMode>('structured');
   const [commentText, setCommentText] = useState('');
   const [commentImage, setCommentImage] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
@@ -42,6 +52,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   const [medicalNotes, setMedicalNotes] = useState('');
   const [sessionRating, setSessionRating] = useState<number>(0);
   const [otherNotes, setOtherNotes] = useState('');
+  const [sessionDate, setSessionDate] = useState<string>(getTodayDate);
+  const [sessionStartTime, setSessionStartTime] = useState('');
+  const [sessionEndTime, setSessionEndTime] = useState('');
   const [draftSaved, setDraftSaved] = useState(false);
   const [showRestoreDraft, setShowRestoreDraft] = useState(false);
   
@@ -49,7 +62,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   const [autoAppliedTags, setAutoAppliedTags] = useState<number[]>([]);
   
   // Mobile accordion state
-  const [expandedSection, setExpandedSection] = useState<'goals' | 'concerns' | 'rating' | null>('goals');
+  const [expandedSection, setExpandedSection] = useState<'timing' | 'goals' | 'concerns' | 'rating' | null>('goals');
 
   // Use refs to access current state in interval callback
   const stateRef = useRef({
@@ -59,7 +72,10 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     behaviorNotes,
     medicalNotes,
     sessionRating,
-    otherNotes
+    otherNotes,
+    sessionDate,
+    sessionStartTime,
+    sessionEndTime,
   });
 
   // Update ref whenever state changes
@@ -71,9 +87,12 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       behaviorNotes,
       medicalNotes,
       sessionRating,
-      otherNotes
+      otherNotes,
+      sessionDate,
+      sessionStartTime,
+      sessionEndTime,
     };
-  }, [mode, sessionGoal, sessionOutcome, behaviorNotes, medicalNotes, sessionRating, otherNotes]);
+  }, [mode, sessionGoal, sessionOutcome, behaviorNotes, medicalNotes, sessionRating, otherNotes, sessionDate, sessionStartTime, sessionEndTime]);
 
   // Draft management helper functions
   const getDraftKey = () => `session_draft_${animalId}`;
@@ -89,12 +108,16 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       medicalNotes: state.medicalNotes,
       sessionRating: state.sessionRating,
       otherNotes: state.otherNotes,
+      sessionDate: state.sessionDate,
+      sessionStartTime: state.sessionStartTime,
+      sessionEndTime: state.sessionEndTime,
       savedAt: new Date().toISOString(),
     };
     
     // Only save if there's actual content
     const hasContent = state.sessionGoal || state.sessionOutcome || state.behaviorNotes || 
-                       state.medicalNotes || state.sessionRating > 0 || state.otherNotes;
+                       state.medicalNotes || state.sessionRating > 0 || state.otherNotes ||
+                       state.sessionStartTime || state.sessionEndTime;
     if (hasContent) {
       localStorage.setItem(getDraftKey(), JSON.stringify(draft));
       setDraftSaved(true);
@@ -147,6 +170,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setMedicalNotes(editingComment.metadata.medical_notes || '');
       setSessionRating(editingComment.metadata.session_rating || 0);
       setOtherNotes(editingComment.metadata.other_notes || '');
+      setSessionDate(editingComment.metadata.session_date || '');
+      setSessionStartTime(editingComment.metadata.session_start_time || '');
+      setSessionEndTime(editingComment.metadata.session_end_time || '');
       setCommentText('');
     } else {
       // Quick comment
@@ -182,6 +208,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setMedicalNotes(draft.medicalNotes || '');
       setSessionRating(draft.sessionRating || 0);
       setOtherNotes(draft.otherNotes || '');
+      setSessionDate(draft.sessionDate || getTodayDate());
+      setSessionStartTime(draft.sessionStartTime || '');
+      setSessionEndTime(draft.sessionEndTime || '');
       setShowRestoreDraft(false);
     }
   };
@@ -291,7 +320,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       content = parts.join('\n\n');
       
       // Only include metadata if at least one field has content
-      if (sessionGoal || sessionOutcome || behaviorNotes || medicalNotes || sessionRating > 0 || otherNotes) {
+      if (sessionGoal || sessionOutcome || behaviorNotes || medicalNotes || sessionRating > 0 || otherNotes || sessionStartTime || sessionEndTime) {
         metadata = {
           session_goal: sessionGoal.trim() || undefined,
           session_outcome: sessionOutcome.trim() || undefined,
@@ -299,6 +328,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
           medical_notes: medicalNotes.trim() || undefined,
           session_rating: sessionRating > 0 ? sessionRating : undefined,
           other_notes: otherNotes.trim() || undefined,
+          session_date: sessionDate || undefined,
+          session_start_time: sessionStartTime || undefined,
+          session_end_time: sessionEndTime || undefined,
         };
       }
     }
@@ -325,6 +357,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setMedicalNotes('');
       setSessionRating(0);
       setOtherNotes('');
+      setSessionDate(getTodayDate());
+      setSessionStartTime('');
+      setSessionEndTime('');
     }
   };
 
@@ -353,7 +388,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     }
   };
 
-  const toggleSection = (section: 'goals' | 'concerns' | 'rating') => {
+  const toggleSection = (section: 'timing' | 'goals' | 'concerns' | 'rating') => {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
@@ -441,6 +476,87 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
         <div className="structured-mode">
           {/* Mobile Accordion Sections */}
           <div className="accordion-sections mobile-only">
+            {/* Session Timing Section */}
+            <div className="accordion-section">
+              <button
+                type="button"
+                className={`accordion-header ${expandedSection === 'timing' ? 'expanded' : ''}`}
+                onClick={() => toggleSection('timing')}
+                aria-expanded={expandedSection === 'timing'}
+                data-testid="accordion-timing"
+              >
+                <span className="accordion-icon">{expandedSection === 'timing' ? '▼' : '▶'}</span>
+                <span className="accordion-title">⏱ Session Timing</span>
+              </button>
+              {expandedSection === 'timing' && (
+                <div className="accordion-content" data-testid="section-timing">
+                  <div className="form-field">
+                    <label htmlFor="session-date-mobile">
+                      📅 Date
+                    </label>
+                    <input
+                      id="session-date-mobile"
+                      type="date"
+                      value={sessionDate}
+                      onChange={(e) => setSessionDate(e.target.value)}
+                      disabled={submitting}
+                      aria-label="Session date"
+                    />
+                  </div>
+                  <div className="session-time-row">
+                    <div className="form-field">
+                      <label htmlFor="session-start-time-mobile">
+                        Start Time
+                      </label>
+                      <div className="time-input-row">
+                        <input
+                          id="session-start-time-mobile"
+                          type="time"
+                          value={sessionStartTime}
+                          onChange={(e) => setSessionStartTime(e.target.value)}
+                          disabled={submitting}
+                          aria-label="Session start time"
+                        />
+                        <button
+                          type="button"
+                          className="btn-now"
+                          onClick={() => setSessionStartTime(getCurrentTime())}
+                          disabled={submitting}
+                          title="Set to current time"
+                        >
+                          Now
+                        </button>
+                      </div>
+                    </div>
+                    <div className="form-field">
+                      <label htmlFor="session-end-time-mobile">
+                        End Time
+                      </label>
+                      <div className="time-input-row">
+                        <input
+                          id="session-end-time-mobile"
+                          type="time"
+                          value={sessionEndTime}
+                          onChange={(e) => setSessionEndTime(e.target.value)}
+                          disabled={submitting}
+                          aria-label="Session end time"
+                        />
+                        <button
+                          type="button"
+                          className="btn-now"
+                          onClick={() => setSessionEndTime(getCurrentTime())}
+                          disabled={submitting}
+                          title="Set to current time"
+                        >
+                          Now
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Goals & Outcome Section */}
             <div className="accordion-section">
               <button
@@ -458,7 +574,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   {/* Session Goal */}
                   <div className="form-field">
                     <label htmlFor="session-goal-mobile">
-                      Session Goal <span className="optional-label">(optional)</span>
+                      Session Goal
                     </label>
                     <input
                       id="session-goal-mobile"
@@ -478,7 +594,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   {/* Session Outcome */}
                   <div className="form-field">
                     <label htmlFor="session-outcome-mobile">
-                      Session Outcome <span className="optional-label">(optional)</span>
+                      Session Outcome
                     </label>
                     <textarea
                       id="session-outcome-mobile"
@@ -515,7 +631,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   {/* Behavior Concerns */}
                   <div className="form-field concern-field">
                     <label htmlFor="behavior-notes-mobile">
-                      🐕 Behavior <span className="optional-label">(optional)</span>
+                      🐕 Behavior
                     </label>
                     <textarea
                       id="behavior-notes-mobile"
@@ -541,7 +657,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   {/* Medical Concerns */}
                   <div className="form-field concern-field">
                     <label htmlFor="medical-notes-mobile">
-                      🏥 Medical <span className="optional-label">(optional)</span>
+                      🏥 Medical
                     </label>
                     <textarea
                       id="medical-notes-mobile"
@@ -581,7 +697,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                 <div className="accordion-content">
                   {/* Session Rating */}
                   <div className="form-field">
-                    <label>Session Success <span className="optional-label">(optional)</span></label>
+                    <label>Session Success</label>
                     <div className="rating-selector" role="radiogroup" aria-label="Session rating">
                       {[1, 2, 3, 4, 5].map((rating) => (
                         <label
@@ -607,7 +723,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   {/* Other Notes */}
                   <div className="form-field">
                     <label htmlFor="other-notes-mobile">
-                      Other Comments <span className="optional-label">(optional)</span>
+                      Other Comments
                     </label>
                     <textarea
                       id="other-notes-mobile"
@@ -630,10 +746,74 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
 
           {/* Desktop Non-Accordion Layout */}
           <div className="desktop-only">
+            {/* Session Date + Time */}
+            <div className="form-field">
+              <label htmlFor="session-date">
+                📅 Session Date
+              </label>
+              <input
+                id="session-date"
+                type="date"
+                value={sessionDate}
+                onChange={(e) => setSessionDate(e.target.value)}
+                disabled={submitting}
+                aria-label="Session date"
+              />
+            </div>
+            <div className="session-time-row">
+              <div className="form-field">
+                <label htmlFor="session-start-time">
+                  ⏱ Start Time
+                </label>
+                <div className="time-input-row">
+                  <input
+                    id="session-start-time"
+                    type="time"
+                    value={sessionStartTime}
+                    onChange={(e) => setSessionStartTime(e.target.value)}
+                    disabled={submitting}
+                    aria-label="Session start time"
+                  />
+                  <button
+                    type="button"
+                    className="btn-now"
+                    onClick={() => setSessionStartTime(getCurrentTime())}
+                    disabled={submitting}
+                    title="Set to current time"
+                  >
+                    Now
+                  </button>
+                </div>
+              </div>
+              <div className="form-field">
+                <label htmlFor="session-end-time">
+                  ⏱ End Time
+                </label>
+                <div className="time-input-row">
+                  <input
+                    id="session-end-time"
+                    type="time"
+                    value={sessionEndTime}
+                    onChange={(e) => setSessionEndTime(e.target.value)}
+                    disabled={submitting}
+                    aria-label="Session end time"
+                  />
+                  <button
+                    type="button"
+                    className="btn-now"
+                    onClick={() => setSessionEndTime(getCurrentTime())}
+                    disabled={submitting}
+                    title="Set to current time"
+                  >
+                    Now
+                  </button>
+                </div>
+              </div>
+            </div>
             {/* Session Goal */}
             <div className="form-field">
               <label htmlFor="session-goal">
-                🎯 Session Goal <span className="optional-label">(optional)</span>
+                🎯 Session Goal
               </label>
               <input
                 id="session-goal"
@@ -653,7 +833,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
           {/* Session Outcome */}
           <div className="form-field">
             <label htmlFor="session-outcome">
-              📝 Session Outcome <span className="optional-label">(optional)</span>
+              📝 Session Outcome
             </label>
             <textarea
               id="session-outcome"
@@ -675,7 +855,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             {/* Behavior Concerns */}
             <div className="form-field concern-field">
               <label htmlFor="behavior-notes">
-                ⚠️ Behavior Concerns <span className="optional-label">(optional)</span>
+                ⚠️ Behavior Concerns
               </label>
               <textarea
                 id="behavior-notes"
@@ -701,7 +881,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             {/* Medical Concerns */}
             <div className="form-field concern-field">
               <label htmlFor="medical-notes">
-                🏥 Medical Concerns <span className="optional-label">(optional)</span>
+                🏥 Medical Concerns
               </label>
               <textarea
                 id="medical-notes"
@@ -726,7 +906,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
 
           {/* Session Rating */}
           <div className="form-field">
-            <label>⭐ Session Success <span className="optional-label">(optional)</span></label>
+            <label>⭐ Session Success</label>
             <div className="rating-selector" role="radiogroup" aria-label="Session rating">
               {[1, 2, 3, 4, 5].map((rating) => (
                 <label
@@ -752,7 +932,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
           {/* Other Notes */}
           <div className="form-field">
             <label htmlFor="other-notes">
-              💭 Other Comments <span className="optional-label">(optional)</span>
+              💭 Other Comments
             </label>
             <textarea
               id="other-notes"

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { announcementsApi, groupsApi, type Announcement, type Group } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
+import { formatDisplayName } from '../../utils/formatName';
 import './AnnouncementsTab.css';
 
 const AnnouncementsTab: React.FC = () => {
@@ -290,7 +291,7 @@ const AnnouncementsTab: React.FC = () => {
                   </div>
                 </div>
                 {announcement.user && (
-                  <span className="announcement-author">by {announcement.user.username}</span>
+                  <span className="announcement-author">by {formatDisplayName(announcement.user)}</span>
                 )}
               </div>
             ))}

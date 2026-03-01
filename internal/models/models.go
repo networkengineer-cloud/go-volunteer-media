@@ -32,6 +32,7 @@ type User struct {
 	HidePhoneNumber           bool           `gorm:"default:false" json:"hide_phone_number"` // User can hide phone from non-admins
 	DefaultGroupID            *uint          `gorm:"index" json:"default_group_id"`
 	Groups                    []Group        `gorm:"many2many:user_groups;" json:"groups,omitempty"`
+	SkillTags                 []UserSkillTag `gorm:"many2many:user_skill_tag_assignments;" json:"skill_tags,omitempty"`
 	FailedLoginAttempts       int            `gorm:"default:0" json:"-"`
 	LockedUntil               *time.Time     `json:"-"`
 	LastLogin                 *time.Time     `json:"-"`
@@ -206,6 +207,7 @@ type AnimalComment struct {
 	UserID    uint             `gorm:"not null;index" json:"user_id"`
 	Content   string           `gorm:"not null" json:"content"`
 	ImageURL  string           `json:"image_url"`
+	IsEdited  bool             `gorm:"default:false" json:"is_edited"`
 	Metadata  *SessionMetadata `gorm:"type:jsonb" json:"metadata,omitempty"`
 	Tags      []CommentTag     `gorm:"many2many:animal_comment_tags;" json:"tags,omitempty"`
 	User      User             `gorm:"foreignKey:UserID" json:"user,omitempty"`
@@ -226,12 +228,15 @@ type CommentHistory struct {
 
 // SessionMetadata stores structured session report data
 type SessionMetadata struct {
-	SessionGoal    string `json:"session_goal,omitempty"`
-	SessionOutcome string `json:"session_outcome,omitempty"`
-	BehaviorNotes  string `json:"behavior_notes,omitempty"`
-	MedicalNotes   string `json:"medical_notes,omitempty"`
-	SessionRating  int    `json:"session_rating,omitempty"` // 1-5 (Poor, Fair, Okay, Good, Great)
-	OtherNotes     string `json:"other_notes,omitempty"`
+	SessionGoal      string `json:"session_goal,omitempty"`
+	SessionOutcome   string `json:"session_outcome,omitempty"`
+	BehaviorNotes    string `json:"behavior_notes,omitempty"`
+	MedicalNotes     string `json:"medical_notes,omitempty"`
+	SessionRating    int    `json:"session_rating,omitempty"` // 1-5 (Poor, Fair, Okay, Good, Great)
+	OtherNotes       string `json:"other_notes,omitempty"`
+	SessionDate      string `json:"session_date,omitempty"`       // "YYYY-MM-DD" format
+	SessionStartTime string `json:"session_start_time,omitempty"` // "HH:MM" 24-hour format
+	SessionEndTime   string `json:"session_end_time,omitempty"`   // "HH:MM" 24-hour format
 }
 
 // Scan implements sql.Scanner interface to convert database value to SessionMetadata
@@ -299,6 +304,18 @@ type AnimalTag struct {
 	GroupID   uint           `gorm:"index;uniqueIndex:idx_animal_tag_group_name" json:"group_id"` // Group this tag belongs to - NOT NULL enforced via raw SQL after migration
 	Name      string         `gorm:"not null;uniqueIndex:idx_animal_tag_group_name" json:"name"`
 	Category  string         `gorm:"not null" json:"category"`       // "behavior" or "walker_status"
+	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
+}
+
+// UserSkillTag represents a skill-level tag that can be assigned to group members
+// Tags are group-specific - each group defines its own skill levels
+type UserSkillTag struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	GroupID   uint           `gorm:"index" json:"group_id"` // Group this tag belongs to; uniqueness enforced by partial index idx_user_skill_tag_group_name_active
+	Name      string         `gorm:"not null" json:"name"`
 	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
 }
 

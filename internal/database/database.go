@@ -160,6 +160,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.SiteSetting{},
 		&models.Protocol{},
 		&models.AnimalTag{},
+		&models.UserSkillTag{},
 		&models.AnimalImage{},
 		&models.AnimalNameHistory{},
 	)
@@ -203,6 +204,11 @@ func RunMigrations(db *gorm.DB) error {
 	// Backfill EstimatedBirthDate for existing animals that only have an integer Age
 	if err := backfillEstimatedBirthDates(db); err != nil {
 		logging.WithField("error", err.Error()).Warn("Failed to backfill estimated birth dates")
+	}
+
+	// Backfill is_edited for comments that were edited before the is_edited column was added
+	if err := backfillIsEdited(db); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to backfill is_edited flag")
 	}
 
 	return nil
@@ -328,6 +334,8 @@ func dropLegacyIndexes(db *gorm.DB) error {
 		"idx_animal_tags_name",
 		// Old index on comment_tags.name (should be replaced by idx_comment_tag_group_name)
 		"idx_comment_tags_name",
+		// Old non-partial unique index on user_skill_tags (replaced by idx_user_skill_tag_group_name_active)
+		"idx_user_skill_tag_group_name",
 	}
 
 	for _, indexName := range legacyIndexNames {
@@ -385,14 +393,38 @@ func createCustomIndexes(db *gorm.DB) error {
 	// Partial index for profile pictures
 	// This optimizes queries looking for profile pictures by only indexing rows where is_profile_picture = true
 	partialIndexQuery := `
-		CREATE INDEX IF NOT EXISTS idx_animal_images_profile_partial 
-		ON animal_images(animal_id, is_profile_picture) 
+		CREATE INDEX IF NOT EXISTS idx_animal_images_profile_partial
+		ON animal_images(animal_id, is_profile_picture)
 		WHERE is_profile_picture = true
 	`
 	if err := db.Exec(partialIndexQuery).Error; err != nil {
 		logging.WithField("error", err.Error()).Warn("Failed to create partial index on animal_images")
 	} else {
 		logging.Info("Created partial index idx_animal_images_profile_partial")
+	}
+
+	// Unique constraint on skill tag assignments to prevent duplicate assignments
+	skillTagAssignmentIndexQuery := `
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_tag_assignments_unique
+		ON user_skill_tag_assignments (user_id, user_skill_tag_id)
+	`
+	if err := db.Exec(skillTagAssignmentIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create unique index on user_skill_tag_assignments")
+	} else {
+		logging.Info("Created unique index idx_skill_tag_assignments_unique")
+	}
+
+	// Partial unique index on user_skill_tags so soft-deleted tags don't block re-creation
+	// with the same name in the same group.
+	skillTagNameIndexQuery := `
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_user_skill_tag_group_name_active
+		ON user_skill_tags (group_id, LOWER(name))
+		WHERE deleted_at IS NULL
+	`
+	if err := db.Exec(skillTagNameIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create partial unique index on user_skill_tags")
+	} else {
+		logging.Info("Created partial unique index idx_user_skill_tag_group_name_active")
 	}
 
 	logging.Info("Custom indexes creation completed")
@@ -552,6 +584,25 @@ func createDefaultSiteSettings(db *gorm.DB) error {
 		}
 	}
 
+	return nil
+}
+
+// backfillIsEdited sets is_edited = true for comments whose updated_at differs from created_at,
+// covering edits made before the is_edited column was introduced.
+func backfillIsEdited(db *gorm.DB) error {
+	result := db.Exec(`
+		UPDATE animal_comments
+		SET is_edited = true
+		WHERE is_edited = false
+		  AND created_at != updated_at
+		  AND deleted_at IS NULL
+	`)
+	if result.Error != nil {
+		return fmt.Errorf("failed to backfill is_edited: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		logging.WithField("count", result.RowsAffected).Info("Backfilled is_edited flag for previously edited comments")
+	}
 	return nil
 }
 

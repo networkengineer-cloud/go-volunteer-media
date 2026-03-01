@@ -158,8 +158,10 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			HidePhoneNumber:           false,
 		},
 		{
-			Username:                  "merry",
-			Email:                     "merry@demo.local",
+			Username:                  "mjaeger",
+			FirstName:                 "Merry",
+			LastName:                  "Jaeger",
+			Email:                     "mjaeger@demo.local",
 			Password:                  string(adminPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: false,
@@ -168,8 +170,10 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			HidePhoneNumber:           true, // Merry has hidden phone number
 		},
 		{
-			Username:                  "sophia",
-			Email:                     "sophia@demo.local",
+			Username:                  "snijem",
+			FirstName:                 "Sophia",
+			LastName:                  "Nijem",
+			Email:                     "snijem@demo.local",
 			Password:                  string(adminPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: false,
@@ -178,8 +182,10 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 			HidePhoneNumber:           false,
 		},
 		{
-			Username:                  "terry",
-			Email:                     "terry@demo.local",
+			Username:                  "twallace",
+			FirstName:                 "Terry",
+			LastName:                  "Wallace",
+			Email:                     "twallace@demo.local",
 			Password:                  string(volunteerPassword),
 			IsAdmin:                   false,
 			EmailNotificationsEnabled: false,
@@ -189,6 +195,8 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		},
 		{
 			Username:                  "alex",
+			FirstName:                 "Alex",
+			LastName:                  "Rivera",
 			Email:                     "alex@demo.local",
 			Password:                  string(volunteerPassword),
 			IsAdmin:                   false,
@@ -199,6 +207,8 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		},
 		{
 			Username:                  "jordan",
+			FirstName:                 "Jordan",
+			LastName:                  "Chen",
 			Email:                     "jordan@demo.local",
 			Password:                  string(volunteerPassword),
 			IsAdmin:                   false,
@@ -209,6 +219,8 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		},
 		{
 			Username:                  "casey",
+			FirstName:                 "Casey",
+			LastName:                  "Morgan",
 			Email:                     "casey@demo.local",
 			Password:                  string(volunteerPassword),
 			IsAdmin:                   false,
@@ -219,6 +231,8 @@ func seedUsers(db *gorm.DB) ([]models.User, error) {
 		},
 		{
 			Username:                  "taylor",
+			FirstName:                 "Taylor",
+			LastName:                  "Brooks",
 			Email:                     "taylor@demo.local",
 			Password:                  string(volunteerPassword),
 			IsAdmin:                   false,
@@ -267,7 +281,7 @@ func updateGroupImages(db *gorm.DB, groups []models.Group) error {
 }
 
 // assignUsersToGroups assigns demo users to ModSquad group (primary focus)
-// It also sets group admin status for merry and sophia, and enrolls all users
+// It also sets group admin status for mjaeger and snijem, and enrolls all users
 // into the activity-sandbox group (kept empty for automated tests).
 func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group) error {
 	// Find ModSquad group (primary group for demo)
@@ -284,7 +298,7 @@ func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group
 	}
 
 	// All users get access to ModSquad (primary group for first few months)
-	// merry and sophia are group admins
+	// mjaeger and snijem are group admins
 	for i := range users {
 		if err := db.Model(&users[i]).Association("Groups").Append(&modsquadGroup); err != nil {
 			return err
@@ -297,8 +311,8 @@ func assignUsersToGroups(db *gorm.DB, users []models.User, groups []models.Group
 			}
 		}
 
-		// Set group admin status for merry and sophia
-		if users[i].Username == "merry" || users[i].Username == "sophia" {
+		// Set group admin status for mjaeger and snijem
+		if users[i].Username == "mjaeger" || users[i].Username == "snijem" {
 			// Update the UserGroup record to set IsGroupAdmin = true
 			if err := db.Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id = ?", users[i].ID, modsquadGroup.ID).
@@ -350,7 +364,7 @@ func ensureSandboxMembership(db *gorm.DB) error {
 		return fmt.Errorf("failed to fetch activity-sandbox group after creation: %w", err)
 	}
 
-	usernames := []string{"admin", "merry", "sophia", "terry", "alex", "jordan", "casey", "taylor"}
+	usernames := []string{"admin", "mjaeger", "snijem", "twallace", "alex", "jordan", "casey", "taylor"}
 	for _, username := range usernames {
 		var user models.User
 		if err := db.Where("username = ?", username).First(&user).Error; err != nil {
@@ -605,7 +619,7 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 	// Buddy - Long-term resident with 35+ comments over 6 months
 	for i := 0; i < 35; i++ {
 		daysAgo := 180 - (i * 5) // Spread over 6 months
-		userIdx := (i % 3) + 1   // Rotate between merry, sophia, terry
+		userIdx := (i % 3) + 1   // Rotate between mjaeger, snijem, twallace
 		commentDate := now.AddDate(0, 0, -daysAgo)
 
 		commentTexts := []string{
@@ -700,7 +714,7 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 		},
 		{
 			AnimalID:  animals[3].ID, // Max
-			UserID:    users[3].ID,   // terry
+			UserID:    users[3].ID,   // twallace
 			Content:   "Took Max to the lake today for some swimming practice! He's a natural in the water.",
 			CreatedAt: threeDaysAgo,
 			Metadata: &models.SessionMetadata{
@@ -751,7 +765,7 @@ func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) err
 		},
 		{
 			AnimalID:  animals[8].ID, // Zeus (additional comment)
-			UserID:    users[1].ID,   // merry
+			UserID:    users[1].ID,   // mjaeger
 			Content:   "Had another great session with Zeus today! He's making excellent progress with his manners.",
 			CreatedAt: twoDaysAgo,
 			Metadata: &models.SessionMetadata{
@@ -813,42 +827,42 @@ func seedUpdates(db *gorm.DB, users []models.User, groups []models.Group) error 
 	updates := []models.Update{
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[1].ID, // merry
+			UserID:    users[1].ID, // mjaeger
 			Title:     "Amazing Adoption Weekend!",
 			Content:   "What an incredible weekend for ModSquad! We had THREE successful adoptions - Ranger, Scout, and Pepper all found their forever homes! 🎉 Thank you to everyone who helped with meet and greets, applications, and home checks. Our teamwork made this possible. Let's keep this momentum going!",
 			CreatedAt: threeDaysAgo,
 		},
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[2].ID, // sophia
+			UserID:    users[2].ID, // snijem
 			Title:     "Training Workshop This Saturday",
 			Content:   "Don't forget about our ModSquad training workshop this Saturday at 10am! We'll be working on loose-leash walking, recall commands, and proper greeting behaviors. All dogs welcome, regardless of skill level. Bring treats and water for your pup! See you there!",
 			CreatedAt: yesterday,
 		},
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[3].ID, // terry
+			UserID:    users[3].ID, // twallace
 			Title:     "New Foster Homes Needed!",
 			Content:   "ModSquad is looking for experienced foster volunteers! We have several dogs coming in next month who need temporary homes while they await adoption. If you've fostered before or are interested in learning, please reach out. Training and supplies provided. Foster families save lives!",
 			CreatedAt: fiveDaysAgo,
 		},
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[1].ID, // merry
+			UserID:    users[1].ID, // mjaeger
 			Title:     "Fundraiser Success - Thank You!",
 			Content:   "Our recent fundraising event was a huge success! We raised $3,500 for ModSquad medical expenses and supplies. Special thanks to everyone who donated, volunteered, and spread the word. This money will directly help dogs like Rocky get the behavioral support they need and provide medical care for incoming rescues. You all are amazing! ❤️",
 			CreatedAt: oneWeekAgo,
 		},
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[2].ID, // sophia
+			UserID:    users[2].ID, // snijem
 			Title:     "Volunteer Orientation Next Month",
 			Content:   "Are you interested in joining the ModSquad team? We're hosting a volunteer orientation session on the first Saturday of next month! Learn about our mission, meet current volunteers, and discover how you can help. No experience necessary - just a love for dogs and willingness to learn. Email us to RSVP!",
 			CreatedAt: now,
 		},
 		{
 			GroupID:   modsquadGroupID,
-			UserID:    users[3].ID, // terry
+			UserID:    users[3].ID, // twallace
 			Title:     "Dog Park Playdate Success!",
 			Content:   "Yesterday's ModSquad playdate at the park was wonderful! Six of our dogs got to socialize and play together. Buddy, Max, and Daisy especially loved showing off their fetch skills. Thanks to everyone who came out - socialization is so important for our pups! Let's plan another one soon.",
 			CreatedAt: yesterday,

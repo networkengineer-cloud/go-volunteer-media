@@ -62,6 +62,7 @@ const UsersPage: React.FC = () => {
   // Edit user modal state
   const [editUser, setEditUser] = React.useState<User | null>(null);
   const [editData, setEditData] = React.useState({
+    username: '',
     first_name: '',
     last_name: '',
     email: '',
@@ -144,10 +145,14 @@ const UsersPage: React.FC = () => {
                 allUsers.add({
                   id: member.user_id,
                   username: member.username,
+                  first_name: member.first_name,
+                  last_name: member.last_name,
                   email: member.email,
                   phone_number: member.phone_number,
                   is_admin: member.is_site_admin,
                   groups: [group],
+                  last_login: member.last_login,
+                  requires_password_setup: member.requires_password_setup,
                 });
               });
             } catch (err) {
@@ -273,19 +278,24 @@ const UsersPage: React.FC = () => {
     return member?.is_group_admin || false;
   };
 
-  // Check if target user holds any admin role (site admin or group admin)
-  const isUserAdmin = (user: User): boolean => {
-    return user.is_admin || !!user.is_group_admin;
-  };
-
-  // Check if current user can edit or reset password for a given user
+  // Check if current user can edit or reset password for a given user.
+  // Per ROADMAP: group admins can do everything except "Make Admin", so they
+  // can edit other group admins — only site admins are excluded.
   const canEditUser = (user: User): boolean => {
     if (isAdmin) return true;
     if (currentUser && user.id === currentUser.id) return true;
     if (!isGroupAdmin || !user.groups) return false;
-    // Group admins can only edit regular volunteers
-    if (isUserAdmin(user)) return false;
+    if (user.is_admin) return false; // Can't edit site admins
     return user.groups.some(g => isCurrentUserGroupAdminOf(g.id));
+  };
+
+  // Check if current user can delete a given user
+  const canDeleteUser = (user: User): boolean => {
+    if (isAdmin) return true;
+    if (!isGroupAdmin) return false;
+    if (user.is_admin) return false; // Can't delete site admins
+    if (!currentUser?.groups) return false;
+    return currentUser.groups.some(g => isCurrentUserGroupAdminOf(g.id) && user.groups?.some(ug => ug.id === g.id));
   };
 
   // Filter and sort users
@@ -383,10 +393,14 @@ const UsersPage: React.FC = () => {
   const handleDelete = (user: User) => {
     openConfirmDialog(
       'Delete User',
-      `Delete user ${user.username}? This cannot be undone.`,
+      `Deactivate ${user.username}? Their account will be disabled but can be restored later by a site admin.`,
       async () => {
         try {
-          await usersApi.delete(user.id);
+          if (isAdmin) {
+            await usersApi.delete(user.id);
+          } else {
+            await groupAdminApi.deleteUser(user.id);
+          }
           fetchUsers();
         } catch (err: unknown) {
           setError(isAxiosError(err) ? err.response?.data?.error ?? 'Failed to delete user' : 'Failed to delete user');
@@ -597,6 +611,7 @@ const UsersPage: React.FC = () => {
   const openEditModal = (user: User) => {
     setEditUser(user);
     setEditData({
+      username: user.username || '',
       first_name: user.first_name || '',
       last_name: user.last_name || '',
       email: user.email || '',
@@ -613,6 +628,7 @@ const UsersPage: React.FC = () => {
     }
     setEditUser(null);
     setEditData({
+      username: '',
       first_name: '',
       last_name: '',
       email: '',
@@ -1485,7 +1501,7 @@ const UsersPage: React.FC = () => {
                         </button>
                       ) : (
                         <>
-                          {isAdmin && (
+                          {(isAdmin || isGroupAdmin) && (
                             <button
                               className="action-btn secondary"
                               onClick={() => openGroupModal(user)}
@@ -1539,22 +1555,22 @@ const UsersPage: React.FC = () => {
                             </>
                           )}
                           {isAdmin && (
-                            <>
-                              <button
-                                className="action-btn secondary"
-                                onClick={() => handlePromoteDemote(user)}
-                                disabled={!!user.deleted_at}
-                              >
-                                {user.is_admin ? 'Demote Admin' : 'Make Admin'}
-                              </button>
-                              <button
-                                className="action-btn danger"
-                                onClick={() => handleDelete(user)}
-                                disabled={!!user.deleted_at}
-                              >
-                                Delete
-                              </button>
-                            </>
+                            <button
+                              className="action-btn secondary"
+                              onClick={() => handlePromoteDemote(user)}
+                              disabled={!!user.deleted_at}
+                            >
+                              {user.is_admin ? 'Demote Admin' : 'Make Admin'}
+                            </button>
+                          )}
+                          {canDeleteUser(user) && (
+                            <button
+                              className="action-btn danger"
+                              onClick={() => handleDelete(user)}
+                              disabled={!!user.deleted_at}
+                            >
+                              Delete
+                            </button>
                           )}
                           {stats && (
                             <button
@@ -1629,6 +1645,23 @@ const UsersPage: React.FC = () => {
             <form onSubmit={handleEditSubmit}>
               {editError && <div className="users-error">{editError}</div>}
               {editSuccess && <div className="users-success">{editSuccess}</div>}
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="edit-username">
+                  Username <span className="required">*</span>
+                </label>
+                <input
+                  id="edit-username"
+                  type="text"
+                  className="form-input"
+                  value={editData.username}
+                  onChange={(e) => setEditData({ ...editData, username: e.target.value.toLowerCase() })}
+                  placeholder="username"
+                  minLength={3}
+                  maxLength={50}
+                  required
+                />
+              </div>
 
               <div className="form-field">
                 <label className="form-label" htmlFor="edit-first-name">

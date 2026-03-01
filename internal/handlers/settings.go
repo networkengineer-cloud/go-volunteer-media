@@ -104,12 +104,15 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 }
 
 // UploadHeroImage handles hero image upload (admin only).
-// This handler only uploads the file to durable storage and returns its URL.
-// The caller must persist the URL separately via PUT /api/admin/settings/hero_image_url.
-func UploadHeroImage(storageProvider storage.Provider) gin.HandlerFunc {
+// The image is persisted to durable storage (postgres bytea or Azure Blob) via
+// an AnimalImage record so that ServeImage can resolve it on subsequent requests.
+// The caller must persist the returned URL separately via PUT /api/admin/settings/hero_image_url.
+func UploadHeroImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
+
+		userID := c.GetUint("user_id")
 
 		file, err := c.FormFile("image")
 		if err != nil {
@@ -151,15 +154,45 @@ func UploadHeroImage(storageProvider storage.Provider) gin.HandlerFunc {
 			}
 		}
 
-		// Upload to storage provider
-		imageURL, _, _, err := storageProvider.UploadImage(ctx, data, mimeType, nil)
+		// Upload to storage provider (generates URL and, for Azure, persists the blob)
+		storageURL, blobUUID, blobExt, err := storageProvider.UploadImage(ctx, data, mimeType, nil)
 		if err != nil {
 			logger.Error("Failed to upload image to storage", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
 			return
 		}
 
-		logger.WithField("url", imageURL).Info("Hero image uploaded successfully")
-		c.JSON(http.StatusOK, gin.H{"url": imageURL})
+		// Persist image data so ServeImage can resolve the /api/images/:uuid URL.
+		// For postgres the raw bytes are stored; for Azure only the blob identifier.
+		var imageDataForDB []byte
+		var storageProviderName string
+		var blobIdentifier string
+		if storageProvider.Name() == "azure" {
+			storageProviderName = "azure"
+			blobIdentifier = blobUUID + blobExt
+		} else {
+			storageProviderName = "postgres"
+			imageDataForDB = data
+		}
+
+		record := models.AnimalImage{
+			AnimalID:        nil, // Not linked to any animal — hero image
+			UserID:          userID,
+			ImageURL:        storageURL,
+			ImageData:       imageDataForDB,
+			MimeType:        mimeType,
+			FileSize:        len(data),
+			StorageProvider: storageProviderName,
+			BlobIdentifier:  blobIdentifier,
+			BlobExtension:   blobExt,
+		}
+		if err := db.WithContext(ctx).Create(&record).Error; err != nil {
+			logger.Error("Failed to persist hero image record", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+			return
+		}
+
+		logger.WithField("url", storageURL).Info("Hero image uploaded successfully")
+		c.JSON(http.StatusOK, gin.H{"url": storageURL})
 	}
 }

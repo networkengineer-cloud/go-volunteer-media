@@ -143,6 +143,65 @@ func AdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// isGroupAdminOfAnySharedGroup returns true if requesterID is a group admin in any group
+// that targetUserID also belongs to. A DB error is returned to the caller rather than
+// silently treated as a denied check.
+func isGroupAdminOfAnySharedGroup(ctx context.Context, db *gorm.DB, requesterID, targetUserID uint) (bool, error) {
+	var count int64
+	err := db.WithContext(ctx).Table("user_groups AS req").
+		Joins("JOIN user_groups AS tgt ON tgt.group_id = req.group_id AND tgt.user_id = ?", targetUserID).
+		Where("req.user_id = ? AND req.is_group_admin = true AND req.deleted_at IS NULL AND tgt.deleted_at IS NULL", requesterID).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// GroupAdminDeleteUser allows a group admin to soft-delete a user in their group.
+// Site admins can also use this endpoint.
+func GroupAdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		requesterID := c.GetUint("user_id")
+		isAdmin := c.GetBool("is_admin")
+		userId := c.Param("userId")
+
+		var target models.User
+		if err := db.WithContext(ctx).Preload("Groups").First(&target, userId).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// Nobody can delete themselves
+		if requesterID == target.ID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete your own account"})
+			return
+		}
+
+		// Site admins can delete anyone
+		if !isAdmin {
+			// Group admin: check that target is not a site admin and is in one of requester's groups
+			if target.IsAdmin {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete a site admin"})
+				return
+			}
+			ok, err := isGroupAdminOfAnySharedGroup(ctx, db, requesterID, target.ID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify group admin access"})
+				return
+			}
+			if !ok {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+				return
+			}
+		}
+
+		if err := db.WithContext(ctx).Delete(&target).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+	}
+}
+
 type AdminCreateUserRequest struct {
 	Username       string `json:"username" binding:"required,min=3,max=50,usernamechars"`
 	FirstName      string `json:"first_name" binding:"omitempty,min=1,max=100"`
@@ -597,9 +656,9 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		if !isSelf && !middleware.IsSiteAdmin(c) {
-			// Group admin path: cannot reset password of admin users
-			if isTargetUserAdmin(ctx, db, &user) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins can only reset passwords for regular volunteers"})
+			// Group admin path: cannot reset password of site admins
+			if isTargetSiteAdmin(&user) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins cannot reset passwords for site admins"})
 				return
 			}
 
@@ -652,13 +711,30 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 // UpdateUserRequest is the request body for updating user information.
 // Empty strings for FirstName/LastName are allowed to clear those fields.
 type UpdateUserRequest struct {
+	Username    string `json:"username" binding:"omitempty,min=3,max=50,usernamechars"`
 	FirstName   string `json:"first_name" binding:"omitempty,max=100"`
 	LastName    string `json:"last_name" binding:"omitempty,max=100"`
 	Email       string `json:"email" binding:"required,email"`
 	PhoneNumber string `json:"phone_number" binding:"omitempty,max=20"`
 }
 
-// applyUserUpdate validates email uniqueness, applies the update, reloads the
+// ErrUsernameInUse is returned when a username is already taken by another user.
+var ErrUsernameInUse = errors.New("username is already in use")
+
+// validateUsernameUniqueness checks if a username is already taken by another user
+func validateUsernameUniqueness(ctx context.Context, db *gorm.DB, username string, currentUserID uint) error {
+	var existingUser models.User
+	err := db.WithContext(ctx).Where("LOWER(username) = ? AND id != ?", strings.ToLower(username), currentUserID).First(&existingUser).Error
+	if err == nil {
+		return ErrUsernameInUse
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("database error checking username uniqueness: %w", err)
+	}
+	return nil
+}
+
+// applyUserUpdate validates email/username uniqueness, applies the update, reloads the
 // user with groups, and writes the JSON response to c. Callers should return
 // immediately after calling this function.
 func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *models.User, req UpdateUserRequest) {
@@ -678,6 +754,21 @@ func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *mod
 		"last_name":    strings.TrimSpace(req.LastName),
 		"phone_number": strings.TrimSpace(req.PhoneNumber),
 		"email":        req.Email,
+	}
+
+	if req.Username != "" {
+		newUsername := strings.ToLower(strings.TrimSpace(req.Username))
+		if newUsername != strings.ToLower(user.Username) {
+			if err := validateUsernameUniqueness(ctx, db, newUsername, user.ID); err != nil {
+				if errors.Is(err, ErrUsernameInUse) {
+					c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate username"})
+				}
+				return
+			}
+		}
+		updates["username"] = newUsername
 	}
 
 	if err := db.WithContext(ctx).Model(user).Updates(updates).Error; err != nil {
@@ -726,17 +817,12 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// isTargetUserAdmin checks if the target user holds any admin role (site admin
-// or group admin in any group). Group admins may only modify regular volunteers.
-func isTargetUserAdmin(ctx context.Context, db *gorm.DB, user *models.User) bool {
-	if user.IsAdmin {
-		return true
-	}
-	var count int64
-	db.WithContext(ctx).Model(&models.UserGroup{}).
-		Where("user_id = ? AND is_group_admin = ?", user.ID, true).
-		Count(&count)
-	return count > 0
+// isTargetSiteAdmin checks if the target user is a site admin.
+// Per ROADMAP: group admins can perform all operations on users in their groups
+// except "Make Admin" (promote/demote site admin). This intentionally allows
+// group admins to edit, reset passwords for, and unlock other group admins.
+func isTargetSiteAdmin(user *models.User) bool {
+	return user.IsAdmin
 }
 
 // GroupAdminUpdateUser allows a group admin to update a user's information for users in their groups
@@ -793,9 +879,9 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 				return
 			}
 
-			// Group admins cannot modify site admins or other group admins
-			if isTargetUserAdmin(ctx, db, &user) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins can only update regular volunteers"})
+			// Group admins cannot modify site admins
+			if isTargetSiteAdmin(&user) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins cannot modify site admins"})
 				return
 			}
 
@@ -1002,13 +1088,13 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 
 		// Authorization
 		if !middleware.IsSiteAdmin(c) {
-			// Group admins cannot unlock site admins or other group admins
-			if isTargetUserAdmin(ctx, db, &user) {
+			// Group admins cannot unlock site admins
+			if isTargetSiteAdmin(&user) {
 				logger.WithFields(map[string]interface{}{
 					"current_user_id": currentUserID,
 					"target_user_id":  userIDParam,
-				}).Warn("Group admin attempted to unlock admin/group-admin account")
-				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins can only unlock regular volunteers"})
+				}).Warn("Group admin attempted to unlock site admin account")
+				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins cannot unlock site admin accounts"})
 				return
 			}
 

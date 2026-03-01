@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { groupsApi, animalsApi, authApi, updatesApi } from '../api/client';
 import ConfirmDialog from '../components/ConfirmDialog';
-import type { Group, Animal, GroupMembership, ActivityItem, GroupMember } from '../api/client';
+import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSkillTag } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
@@ -13,6 +13,7 @@ import ErrorState from '../components/ErrorState';
 import Modal from '../components/Modal';
 import ProtocolsList from '../components/ProtocolsList';
 import { calculateAge, formatAge } from '../utils/dateUtils';
+import { formatDisplayName } from '../utils/formatName';
 import './GroupPage.css';
 
 type ViewMode = 'activity' | 'animals' | 'protocols' | 'members';
@@ -56,6 +57,19 @@ const GroupPage: React.FC = () => {
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersError, setMembersError] = useState('');
+
+  // Skill tag state
+  const [skillTags, setSkillTags] = useState<UserSkillTag[]>([]);
+  const [editingMemberTags, setEditingMemberTags] = useState<number | null>(null); // userId being edited
+  const [pendingTagIds, setPendingTagIds] = useState<number[]>([]);
+  const [savingTags, setSavingTags] = useState(false);
+  const [newSkillTagName, setNewSkillTagName] = useState('');
+  const [newSkillTagColor, setNewSkillTagColor] = useState('#6b7280');
+  const [creatingSkillTag, setCreatingSkillTag] = useState(false);
+  const [showSkillTagForm, setShowSkillTagForm] = useState(false);
+  const [deleteTagConfirm, setDeleteTagConfirm] = useState<{ show: boolean; tag: UserSkillTag | null }>({
+    show: false, tag: null,
+  });
 
   const [filterAnimal, setFilterAnimal] = useState<string>('');
   const [animalSearchQuery, setAnimalSearchQuery] = useState<string>('');
@@ -171,9 +185,9 @@ const GroupPage: React.FC = () => {
       await updatesApi.delete(Number(id), updateId);
       setActivities((prev) => prev.filter((a) => !(a.type === 'announcement' && a.id === updateId)));
       setActivityTotal((prev) => Math.max(0, prev - 1));
-      toast.success('Announcement deleted');
+      toast.showSuccess('Announcement deleted');
     } catch {
-      toast.error('Failed to delete announcement');
+      toast.showError('Failed to delete announcement');
     }
   };
 
@@ -269,8 +283,12 @@ const GroupPage: React.FC = () => {
     setMembersLoading(true);
     setMembersError('');
     try {
-      const res = await groupsApi.getMembers(groupId);
-      setMembers(res.data);
+      const [membersRes, tagsRes] = await Promise.all([
+        groupsApi.getMembers(groupId),
+        groupsApi.getUserSkillTags(groupId),
+      ]);
+      setMembers(membersRes.data);
+      setSkillTags(tagsRes.data);
     } catch (err: unknown) {
       console.error('Failed to load members:', err);
       const axiosError = err as { response?: { data?: { error?: string } } };
@@ -285,6 +303,23 @@ const GroupPage: React.FC = () => {
       loadMembers(Number(id));
     }
   }, [id, viewMode]);
+
+  const handleCreateSkillTag = useCallback(async () => {
+    if (!id || !newSkillTagName.trim() || creatingSkillTag) return;
+    setCreatingSkillTag(true);
+    try {
+      await groupsApi.createUserSkillTag(Number(id), newSkillTagName.trim(), newSkillTagColor);
+      const name = newSkillTagName.trim();
+      setNewSkillTagName('');
+      setNewSkillTagColor('#6b7280');
+      await loadMembers(Number(id));
+      toast.showSuccess(`Skill tag "${name}" created`);
+    } catch {
+      toast.showError('Failed to create skill tag');
+    } finally {
+      setCreatingSkillTag(false);
+    }
+  }, [id, newSkillTagName, newSkillTagColor, creatingSkillTag]);
 
   // Load activity feed when filters change or view mode switches to activity
   useEffect(() => {
@@ -687,7 +722,7 @@ const GroupPage: React.FC = () => {
                       </Link>
                     )}
                     <span className="activity-meta">
-                      by {activity.user?.username} • {new Date(activity.created_at).toLocaleDateString()} at{' '}
+                      by {activity.user ? formatDisplayName(activity.user) : 'Unknown'} • {new Date(activity.created_at).toLocaleDateString()} at{' '}
                       {new Date(activity.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
@@ -976,7 +1011,60 @@ const GroupPage: React.FC = () => {
           <div className="members-section">
             <div className="section-header">
               <h2>Members</h2>
+              {(membership?.is_group_admin || membership?.is_site_admin) && (
+                <button
+                  className="btn-secondary btn-manage-tags"
+                  onClick={() => setShowSkillTagForm(v => !v)}
+                >
+                  {showSkillTagForm ? 'Hide Skill Tags' : 'Manage Skill Tags'}
+                </button>
+              )}
             </div>
+
+            {/* Skill tag management panel (group admins only) */}
+            {showSkillTagForm && (membership?.is_group_admin || membership?.is_site_admin) && (
+              <div className="skill-tag-panel">
+                <h3 className="skill-tag-panel__title">Group Skill Tags</h3>
+                <div className="skill-tag-list">
+                  {skillTags.map(tag => (
+                    <span
+                      key={tag.id}
+                      className="skill-tag"
+                      style={{ backgroundColor: tag.color }}
+                    >
+                      {tag.name}
+                      <button
+                        className="skill-tag__delete"
+                        onClick={() => setDeleteTagConfirm({ show: true, tag })}
+                        aria-label={`Delete ${tag.name} tag`}
+                      >×</button>
+                    </span>
+                  ))}
+                </div>
+                <form
+                  onSubmit={(e) => { e.preventDefault(); void handleCreateSkillTag(); }}
+                  className="skill-tag-form"
+                >
+                  <input
+                    type="text"
+                    className="skill-tag-form__name"
+                    value={newSkillTagName}
+                    onChange={e => setNewSkillTagName(e.target.value)}
+                    placeholder="Tag name (e.g. Beginner)"
+                    maxLength={50}
+                    required
+                  />
+                  <input
+                    type="color"
+                    className="skill-tag-form__color"
+                    value={newSkillTagColor}
+                    onChange={e => setNewSkillTagColor(e.target.value)}
+                    title="Tag color"
+                  />
+                  <button type="submit" className="btn-primary btn-manage-tags" disabled={creatingSkillTag || !newSkillTagName.trim()}>Add Tag</button>
+                </form>
+              </div>
+            )}
 
             {membersLoading ? (
               <SkeletonLoader variant="card" count={4} />
@@ -1002,6 +1090,7 @@ const GroupPage: React.FC = () => {
                 {members.map((member) => {
                   const displayName = [member.first_name, member.last_name].filter(Boolean).join(' ');
                   const initial = (displayName || member.username).charAt(0).toUpperCase();
+                  const isEditingThisMember = editingMemberTags === member.user_id;
                   return (
                     <div key={member.user_id} className="member-card">
                       <div className="member-avatar">{initial}</div>
@@ -1014,6 +1103,65 @@ const GroupPage: React.FC = () => {
                           {member.is_site_admin && <span className="member-badge member-badge--site-admin">Site Admin</span>}
                           {member.is_group_admin && <span className="member-badge member-badge--group-admin">Group Admin</span>}
                         </div>
+                        {/* Skill tags */}
+                        {member.skill_tags && member.skill_tags.length > 0 && (
+                          <div className="member-skill-tags">
+                            {member.skill_tags.map(tag => (
+                              <span
+                                key={tag.id}
+                                className="skill-tag skill-tag--small"
+                                style={{ backgroundColor: tag.color }}
+                              >
+                                {tag.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {/* Inline skill-tag editor for group admins */}
+                        {isEditingThisMember && (membership?.is_group_admin || membership?.is_site_admin) && (
+                          <div className="skill-tag-editor">
+                            <div className="skill-tag-editor__options">
+                              {skillTags.map(tag => {
+                                const selected = pendingTagIds.includes(tag.id);
+                                return (
+                                  <button
+                                    key={tag.id}
+                                    type="button"
+                                    className={`skill-tag-option ${selected ? 'skill-tag-option--selected' : ''}`}
+                                    onClick={() => setPendingTagIds(ids => selected ? ids.filter(i => i !== tag.id) : [...ids, tag.id])}
+                                    style={{
+                                      backgroundColor: selected ? tag.color : undefined,
+                                      borderColor: tag.color,
+                                    }}
+                                  >
+                                    {tag.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="skill-tag-editor__actions">
+                              <button
+                                className="btn-primary btn-tag-action"
+                                disabled={savingTags}
+                                onClick={async () => {
+                                  if (!id) return;
+                                  setSavingTags(true);
+                                  try {
+                                    await groupsApi.assignUserSkillTags(Number(id), member.user_id, pendingTagIds);
+                                    await loadMembers(Number(id));
+                                    setEditingMemberTags(null);
+                                  } catch {
+                                    toast.showError('Failed to save skill tags');
+                                  } finally {
+                                    setSavingTags(false);
+                                  }
+                                }}
+                              >
+                                {savingTags ? 'Saving…' : 'Save'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
                         {(member.email || member.phone_number) && (
                           <div className="member-contact">
                             {member.email && <span>{member.email}</span>}
@@ -1021,9 +1169,30 @@ const GroupPage: React.FC = () => {
                           </div>
                         )}
                       </div>
-                      <Link to={`/users/${member.user_id}/profile`} className="btn-view-profile">
-                        View Profile
-                      </Link>
+                      <div className="member-card__actions">
+                        <Link to={`/users/${member.user_id}/profile`} className="btn-view-profile">
+                          View Profile
+                        </Link>
+                        {(membership?.is_group_admin || membership?.is_site_admin) && (
+                          skillTags.length > 0 ? (
+                            <button
+                              className="btn-secondary btn-edit-tags"
+                              onClick={() => {
+                                if (isEditingThisMember) {
+                                  setEditingMemberTags(null);
+                                } else {
+                                  setEditingMemberTags(member.user_id);
+                                  setPendingTagIds((member.skill_tags || []).map(t => t.id));
+                                }
+                              }}
+                            >
+                              {isEditingThisMember ? 'Cancel' : 'Edit Tags'}
+                            </button>
+                          ) : (
+                            <span className="no-tags-hint">Use "Manage Skill Tags" to create tags</span>
+                          )
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -1060,6 +1229,29 @@ const GroupPage: React.FC = () => {
           }
         }}
         onCancel={() => setDeleteConfirm({ show: false, updateId: null, title: '' })}
+      />
+
+      {/* Delete Skill Tag Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteTagConfirm.show}
+        title="Delete Skill Tag?"
+        message={`Delete the "${deleteTagConfirm.tag?.name}" tag? It will be removed from all members in this group.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={async () => {
+          const tag = deleteTagConfirm.tag;
+          setDeleteTagConfirm({ show: false, tag: null });
+          if (!id || !tag) return;
+          try {
+            await groupsApi.deleteUserSkillTag(Number(id), tag.id);
+            await loadMembers(Number(id));
+            toast.showSuccess(`Skill tag "${tag.name}" deleted`);
+          } catch {
+            toast.showError('Failed to delete skill tag');
+          }
+        }}
+        onCancel={() => setDeleteTagConfirm({ show: false, tag: null })}
       />
     </div>
   );

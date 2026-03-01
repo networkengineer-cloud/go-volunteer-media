@@ -215,7 +215,8 @@ func main() {
 		// User management (accessible by site admins and group admins for users in their groups)
 		// Authorization is checked within the handlers
 		protected.POST("/users", handlers.GroupAdminCreateUser(db, emailService))
-		protected.PUT("/users/:userId", handlers.GroupAdminUpdateUser(db)) // Handles both site admins and group admins
+		protected.PUT("/users/:userId", handlers.GroupAdminUpdateUser(db))    // Handles both site admins and group admins
+		protected.DELETE("/users/:userId", handlers.GroupAdminDeleteUser(db)) // Handles both site admins and group admins
 		protected.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
 		protected.POST("/users/:userId/resend-invitation", handlers.ResendInvitation(db, emailService))
 		protected.POST("/users/:userId/unlock", handlers.UnlockUserAccount(db)) // Site admins and group admins
@@ -247,7 +248,7 @@ func main() {
 
 			// Site settings management (admin only)
 			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))
-			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage(storageProvider))
+			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage(db, storageProvider))
 
 			// Bulk animal management (admin only)
 			admin.GET("/animals", handlers.GetAllAnimals(db))
@@ -325,6 +326,14 @@ func main() {
 			group.GET("/comment-tags", handlers.GetCommentTags(db))
 			group.POST("/comment-tags", handlers.CreateCommentTag(db))
 			group.DELETE("/comment-tags/:tagId", handlers.DeleteCommentTag(db))
+
+			// User skill-level tag routes - viewing accessible to all group members
+			// Tag management requires group admin or site admin
+			group.GET("/user-skill-tags", handlers.GetUserSkillTags(db))
+			group.POST("/user-skill-tags", handlers.CreateUserSkillTag(db))
+			group.PUT("/user-skill-tags/:tagId", handlers.UpdateUserSkillTag(db))
+			group.DELETE("/user-skill-tags/:tagId", handlers.DeleteUserSkillTag(db))
+			group.PUT("/members/:userId/skill-tags", handlers.AssignUserSkillTags(db))
 
 			// Group settings - group admin or site admin can update
 			group.PUT("/settings", handlers.UpdateGroupSettings(db))

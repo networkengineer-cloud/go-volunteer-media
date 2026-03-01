@@ -181,6 +181,7 @@ func GetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 }
 
 type UpdateProfileRequest struct {
+	Username        string `json:"username" binding:"omitempty,min=3,max=50,usernamechars"`
 	FirstName       string `json:"first_name" binding:"omitempty,max=100"`
 	LastName        string `json:"last_name" binding:"omitempty,max=100"`
 	Email           string `json:"email" binding:"required,email"`
@@ -224,6 +225,21 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
+		// Validate username uniqueness if the user wants to change it
+		if req.Username != "" {
+			newUsername := strings.ToLower(strings.TrimSpace(req.Username))
+			if newUsername != strings.ToLower(user.Username) {
+				if err := validateUsernameUniqueness(ctx, db, newUsername, userIDUint); err != nil {
+					if errors.Is(err, ErrUsernameInUse) {
+						c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+					} else {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate username"})
+					}
+					return
+				}
+			}
+		}
+
 		// Update user profile (first name, last name, email, phone, and privacy settings)
 		updates := map[string]interface{}{
 			"first_name":        strings.TrimSpace(req.FirstName),
@@ -232,6 +248,9 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 			"phone_number":      strings.TrimSpace(req.PhoneNumber),
 			"hide_email":        req.HideEmail,
 			"hide_phone_number": req.HidePhoneNumber,
+		}
+		if req.Username != "" {
+			updates["username"] = strings.ToLower(strings.TrimSpace(req.Username))
 		}
 		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})

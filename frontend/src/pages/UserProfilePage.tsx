@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { userProfileApi } from '../api/client';
-import type { UserProfile } from '../api/client';
+import type { UserProfile, ProfileSkillTag } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import { formatDateLong, formatRelativeTime } from '../utils/dateUtils';
 import SkeletonLoader from '../components/SkeletonLoader';
@@ -191,6 +191,39 @@ const UserProfilePage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Skill Tags */}
+        {profile.skill_tags && profile.skill_tags.length > 0 && (() => {
+          // Group tags by group_id
+          const byGroup = profile.skill_tags!.reduce<Record<number, { name: string; tags: ProfileSkillTag[] }>>((acc, tag) => {
+            if (!acc[tag.group_id]) acc[tag.group_id] = { name: tag.group_name, tags: [] };
+            acc[tag.group_id].tags.push(tag);
+            return acc;
+          }, {});
+          return (
+            <div className="profile-section">
+              <h2>Volunteer Tags</h2>
+              <div className="skill-tags-by-group">
+                {Object.entries(byGroup).map(([groupId, { name, tags }]) => (
+                  <div key={groupId} className="skill-tags-group">
+                    <span className="skill-tags-group-name">{name}</span>
+                    <div className="skill-tags-list">
+                      {tags.map(tag => (
+                        <span
+                          key={tag.id}
+                          className="skill-tag skill-tag--profile"
+                          style={{ backgroundColor: tag.color }}
+                        >
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Most Active Group */}
         {profile.statistics?.most_active_group && (

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
@@ -571,16 +572,42 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Preload skill tags for all members scoped to this group
+		userIDs := make([]uint, 0, len(userGroups))
+		for _, ug := range userGroups {
+			userIDs = append(userIDs, ug.UserID)
+		}
+		type userTagRow struct {
+			UserID uint
+			models.UserSkillTag
+		}
+		var rawTags []userTagRow
+		if err := db.WithContext(ctx).Table("user_skill_tag_assignments AS a").
+			Select("a.user_id, t.*").
+			Joins("JOIN user_skill_tags t ON t.id = a.user_skill_tag_id").
+			Where("a.user_id IN ? AND t.group_id = ? AND t.deleted_at IS NULL", userIDs, groupID).
+			Scan(&rawTags).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch skill tags"})
+			return
+		}
+		skillTagsByUser := make(map[uint][]models.UserSkillTag)
+		for _, row := range rawTags {
+			skillTagsByUser[row.UserID] = append(skillTagsByUser[row.UserID], row.UserSkillTag)
+		}
+
 		// Build response with user info and group admin status
 		type MemberInfo struct {
-			UserID       uint   `json:"user_id"`
-			Username     string `json:"username"`
-			FirstName    string `json:"first_name"`
-			LastName     string `json:"last_name"`
-			Email        string `json:"email"`
-			PhoneNumber  string `json:"phone_number"`
-			IsGroupAdmin bool   `json:"is_group_admin"`
-			IsSiteAdmin  bool   `json:"is_site_admin"`
+			UserID                uint                  `json:"user_id"`
+			Username              string                `json:"username"`
+			FirstName             string                `json:"first_name"`
+			LastName              string                `json:"last_name"`
+			Email                 string                `json:"email"`
+			PhoneNumber           string                `json:"phone_number"`
+			IsGroupAdmin          bool                  `json:"is_group_admin"`
+			IsSiteAdmin           bool                  `json:"is_site_admin"`
+			SkillTags             []models.UserSkillTag `json:"skill_tags"`
+			LastLogin             *time.Time            `json:"last_login,omitempty"`
+			RequiresPasswordSetup bool                  `json:"requires_password_setup,omitempty"`
 		}
 
 		var members []MemberInfo
@@ -608,7 +635,12 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 				}
 			}
 
-			members = append(members, MemberInfo{
+			tags := skillTagsByUser[ug.UserID]
+			if tags == nil {
+				tags = []models.UserSkillTag{}
+			}
+
+			member := MemberInfo{
 				UserID:       ug.UserID,
 				Username:     ug.User.Username,
 				FirstName:    ug.User.FirstName,
@@ -617,7 +649,16 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 				PhoneNumber:  phoneNumber,
 				IsGroupAdmin: ug.IsGroupAdmin,
 				IsSiteAdmin:  ug.User.IsAdmin,
-			})
+				SkillTags:    tags,
+			}
+
+			// Expose admin-only fields to site admins and group admins
+			if isSiteAdmin || currentUserGroupAdmin {
+				member.LastLogin = ug.User.LastLogin
+				member.RequiresPasswordSetup = ug.User.RequiresPasswordSetup
+			}
+
+			members = append(members, member)
 		}
 
 		c.JSON(http.StatusOK, members)

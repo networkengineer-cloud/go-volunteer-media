@@ -4,7 +4,7 @@ export const usersApi = {
   getAll: () => api.get<PaginatedResponse<User>>('/admin/users?limit=100'),
   create: (data: { username: string; first_name?: string; last_name?: string; email: string; password?: string; is_admin?: boolean; group_ids?: number[]; send_setup_email?: boolean }) =>
     api.post<CreateUserResponse>('/admin/users', data),
-  update: (userId: number, data: { first_name?: string; last_name?: string; email: string; phone_number?: string }) =>
+  update: (userId: number, data: { username?: string; first_name?: string; last_name?: string; email: string; phone_number?: string }) =>
     api.put<User>(`/admin/users/${userId}`, data),
   promote: (userId: number) => api.post(`/admin/users/${userId}/promote`),
   demote: (userId: number) => api.post(`/admin/users/${userId}/demote`),
@@ -32,8 +32,10 @@ export const groupAdminApi = {
   createUser: (data: { username: string; first_name?: string; last_name?: string; email: string; password?: string; send_setup_email?: boolean; group_ids: number[] }) =>
     api.post<CreateUserResponse>('/users', data),
   // Update a user (group admins can update users in groups they admin)
-  updateUser: (userId: number, data: { first_name?: string; last_name?: string; email: string; phone_number?: string }) =>
+  updateUser: (userId: number, data: { username?: string; first_name?: string; last_name?: string; email: string; phone_number?: string }) =>
     api.put<User>(`/users/${userId}`, data),
+  // Delete a user (group admins can delete non-admin users in groups they admin)
+  deleteUser: (userId: number) => api.delete(`/users/${userId}`),
 };
 import axios from 'axios';
 
@@ -119,6 +121,17 @@ export interface GroupMember {
   phone_number?: string;
   is_group_admin: boolean;
   is_site_admin: boolean;
+  skill_tags: UserSkillTag[];
+  last_login?: string;
+  requires_password_setup?: boolean;
+}
+
+export interface UserSkillTag {
+  id: number;
+  group_id: number;
+  name: string;
+  color: string;
+  created_at: string;
 }
 
 export interface Group {
@@ -233,6 +246,7 @@ export interface AnimalComment {
   user_id: number;
   content: string;
   image_url: string;
+  is_edited: boolean;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -248,6 +262,9 @@ export interface SessionMetadata {
   medical_notes?: string;
   session_rating?: number; // 1-5 (Poor, Fair, Okay, Good, Great)
   other_notes?: string;
+  session_date?: string;       // "YYYY-MM-DD" format
+  session_start_time?: string; // "HH:MM" 24-hour format
+  session_end_time?: string;   // "HH:MM" 24-hour format
 }
 
 export interface CommentHistory {
@@ -390,6 +407,14 @@ export interface AnimalInteraction {
   last_comment_at: string;
 }
 
+export interface ProfileSkillTag {
+  group_id: number;
+  group_name: string;
+  id: number;
+  name: string;
+  color: string;
+}
+
 export interface UserProfile {
   id: number;
   username: string;
@@ -405,6 +430,7 @@ export interface UserProfile {
   recent_comments?: UserCommentActivity[];  // Optional for limited/group admin profiles
   recent_announcements?: UserAnnouncementActivity[];  // Optional for limited/group admin profiles
   animals_interacted_with?: AnimalInteraction[];  // Optional for limited/group admin profiles
+  skill_tags?: ProfileSkillTag[];
 }
 
 
@@ -419,6 +445,7 @@ export const authApi = {
   getCurrentUser: () => api.get<User>('/me'),
   
   updateCurrentUserProfile: (profile: {
+    username?: string;
     first_name?: string;
     last_name?: string;
     email: string;
@@ -491,6 +518,15 @@ export const groupsApi = {
     api.put<Group>('/admin/groups/' + id, { name, description, image_url, hero_image_url, has_protocols, groupme_bot_id, groupme_enabled }),
   // Requires group membership (not admin). Server filters contact info based on privacy settings.
   getMembers: (groupId: number) => api.get<GroupMember[]>(`/groups/${groupId}/members`),
+  getUserSkillTags: (groupId: number) => api.get<UserSkillTag[]>(`/groups/${groupId}/user-skill-tags`),
+  createUserSkillTag: (groupId: number, name: string, color: string) =>
+    api.post<UserSkillTag>(`/groups/${groupId}/user-skill-tags`, { name, color }),
+  updateUserSkillTag: (groupId: number, tagId: number, name: string, color: string) =>
+    api.put<UserSkillTag>(`/groups/${groupId}/user-skill-tags/${tagId}`, { name, color }),
+  deleteUserSkillTag: (groupId: number, tagId: number) =>
+    api.delete(`/groups/${groupId}/user-skill-tags/${tagId}`),
+  assignUserSkillTags: (groupId: number, userId: number, tagIds: number[]) =>
+    api.put(`/groups/${groupId}/members/${userId}/skill-tags`, { tag_ids: tagIds }),
   delete: (id: number) => api.delete('/admin/groups/' + id),
   uploadImage: (file: File) => {
     const formData = new FormData();

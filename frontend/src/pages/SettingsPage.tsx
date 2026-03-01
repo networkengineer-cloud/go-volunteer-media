@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { settingsApi } from '../api/client';
 import { useToast } from '../hooks/useToast';
+import { useSiteSettings } from '../hooks/useSiteSettings';
 import Button from '../components/Button';
 import SkeletonLoader from '../components/SkeletonLoader';
 import './SettingsPage.css';
@@ -8,6 +9,7 @@ import '../pages/Home.css'; // Import Home.css to reuse hero styles
 
 const SettingsPage: React.FC = () => {
   const toast = useToast();
+  const { refetch: refetchSiteSettings } = useSiteSettings();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,10 @@ const SettingsPage: React.FC = () => {
 
       // Update the setting with the new URL
       await settingsApi.update('hero_image_url', imageUrl);
-      
+
+      // Refresh site settings context so all components see the new hero image
+      await refetchSiteSettings();
+
       setPreviewUrl(imageUrl);
       setSelectedFile(null);
       toast.showSuccess('Hero image updated successfully!');

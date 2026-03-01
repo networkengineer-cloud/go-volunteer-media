@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"errors"
-	"html"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -13,6 +13,12 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
+
+// sessionTimePattern matches HH:MM in 24-hour format (00:00–23:59).
+// sessionDatePattern matches YYYY-MM-DD.
+// Compiled once at package init to avoid repeated allocation on every request.
+var sessionTimePattern = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
+var sessionDatePattern = regexp.MustCompile(`^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$`)
 
 type AnimalCommentRequest struct {
 	Content  string                  `json:"content" binding:"required"`
@@ -46,21 +52,35 @@ func validateSessionMetadata(metadata *models.SessionMetadata) error {
 		return errors.New("session rating must be between 1 and 5 (or 0 for not set)")
 	}
 
+	if metadata.SessionDate != "" && !sessionDatePattern.MatchString(metadata.SessionDate) {
+		return errors.New("session_date must be in YYYY-MM-DD format")
+	}
+	if metadata.SessionStartTime != "" && !sessionTimePattern.MatchString(metadata.SessionStartTime) {
+		return errors.New("session_start_time must be in HH:MM 24-hour format")
+	}
+	if metadata.SessionEndTime != "" && !sessionTimePattern.MatchString(metadata.SessionEndTime) {
+		return errors.New("session_end_time must be in HH:MM 24-hour format")
+	}
+
 	return nil
 }
 
-// sanitizeSessionMetadata sanitizes all text fields in metadata to prevent XSS attacks
-func sanitizeSessionMetadata(metadata *models.SessionMetadata) {
-	if metadata == nil {
+// htmlTagPattern matches any HTML/XML tag for stripping purposes.
+var htmlTagPattern = regexp.MustCompile(`<[^>]*>`)
+
+// sanitizeSessionMetadata strips HTML tags from free-text metadata fields.
+// React JSX interpolation prevents XSS for the current client, but storing raw HTML
+// in the database would expose any future non-React consumer (email digests, webhooks, etc.)
+// to unescaped markup. Stripping rather than escaping avoids double-encoding entities.
+func sanitizeSessionMetadata(m *models.SessionMetadata) {
+	if m == nil {
 		return
 	}
-
-	// HTML escape all text fields to prevent XSS
-	metadata.SessionGoal = html.EscapeString(metadata.SessionGoal)
-	metadata.SessionOutcome = html.EscapeString(metadata.SessionOutcome)
-	metadata.BehaviorNotes = html.EscapeString(metadata.BehaviorNotes)
-	metadata.MedicalNotes = html.EscapeString(metadata.MedicalNotes)
-	metadata.OtherNotes = html.EscapeString(metadata.OtherNotes)
+	m.SessionGoal = htmlTagPattern.ReplaceAllString(m.SessionGoal, "")
+	m.SessionOutcome = htmlTagPattern.ReplaceAllString(m.SessionOutcome, "")
+	m.BehaviorNotes = htmlTagPattern.ReplaceAllString(m.BehaviorNotes, "")
+	m.MedicalNotes = htmlTagPattern.ReplaceAllString(m.MedicalNotes, "")
+	m.OtherNotes = htmlTagPattern.ReplaceAllString(m.OtherNotes, "")
 }
 
 // GetAnimalComments returns comments for an animal with pagination support
@@ -195,7 +215,8 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Sanitize metadata to prevent XSS
+		// No server-side escaping needed: metadata is rendered as React text nodes (JSX),
+		// never via dangerouslySetInnerHTML, so the frontend handles XSS prevention.
 		sanitizeSessionMetadata(req.Metadata)
 
 		aid, err := strconv.ParseUint(animalID, 10, 32)
@@ -296,7 +317,8 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Sanitize metadata to prevent XSS
+		// No server-side escaping needed: metadata is rendered as React text nodes (JSX),
+		// never via dangerouslySetInnerHTML, so the frontend handles XSS prevention.
 		sanitizeSessionMetadata(req.Metadata)
 
 		// Save current version to history before updating
@@ -318,6 +340,7 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		// Update comment fields
 		comment.Content = req.Content
 		comment.ImageURL = req.ImageURL
+		comment.IsEdited = true
 		comment.Metadata = req.Metadata
 
 		if err := db.Save(&comment).Error; err != nil {

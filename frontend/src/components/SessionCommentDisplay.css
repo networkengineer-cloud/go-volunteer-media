@@ -98,6 +98,32 @@
   word-wrap: break-word;
 }
 
+/* Session Time Display — single horizontal row */
+.session-time-display {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.session-time-display .session-field-content {
+  padding-left: 0;
+  white-space: normal;
+}
+
+.session-date-text {
+  font-weight: 500;
+}
+
+.session-time-sep {
+  color: var(--neutral-400, #9ca3af);
+  margin: 0 0.125rem;
+}
+
+.session-duration {
+  color: var(--neutral-500, #6b7280);
+  font-size: 0.9em;
+}
+
 /* Session Rating Display */
 .session-rating-display {
   display: flex;
