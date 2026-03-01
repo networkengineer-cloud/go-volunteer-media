@@ -4,7 +4,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/driver/sqlite"
@@ -71,7 +70,7 @@ func TestInitialize_InvalidSSLMode(t *testing.T) {
 	}
 }
 
-func TestCreateDefaultAnimalTags_RestoresSoftDeletedTag(t *testing.T) {
+func TestCreateDefaultAnimalTags_RespectsDeletedTag(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to open sqlite db: %v", err)
@@ -94,9 +93,8 @@ func TestCreateDefaultAnimalTags_RestoresSoftDeletedTag(t *testing.T) {
 	if err := db.Where("group_id = ? AND name = ?", group.ID, "iso").First(&iso).Error; err != nil {
 		t.Fatalf("failed to find iso tag: %v", err)
 	}
-
 	if iso.DeletedAt.Valid {
-		t.Fatalf("expected iso tag to be not deleted")
+		t.Fatalf("expected iso tag to not be deleted after initial creation")
 	}
 
 	if err := db.Delete(&iso).Error; err != nil {
@@ -112,22 +110,21 @@ func TestCreateDefaultAnimalTags_RestoresSoftDeletedTag(t *testing.T) {
 		t.Fatalf("expected iso tag to be soft-deleted")
 	}
 
-	// Guard against any clock precision edge cases.
-	if softDeleted.DeletedAt.Time.After(time.Now().Add(5 * time.Second)) {
-		t.Fatalf("unexpected deleted_at in the future: %v", softDeleted.DeletedAt.Time)
-	}
-
-	// Re-running default creation should restore (undelete) the tag instead of failing on uniqueness.
+	// Re-running default creation must NOT restore a tag that an admin deleted.
 	if err := createDefaultAnimalTags(db); err != nil {
 		t.Fatalf("createDefaultAnimalTags (second run) failed: %v", err)
 	}
 
-	var restored models.AnimalTag
-	if err := db.Unscoped().Where("group_id = ? AND name = ?", group.ID, "iso").First(&restored).Error; err != nil {
-		t.Fatalf("failed to find restored iso tag: %v", err)
+	// Exactly one row must exist (the original soft-deleted one), still deleted.
+	var rows []models.AnimalTag
+	if err := db.Unscoped().Where("group_id = ? AND name = ?", group.ID, "iso").Find(&rows).Error; err != nil {
+		t.Fatalf("failed to query iso rows after rerun: %v", err)
 	}
-	if restored.DeletedAt.Valid {
-		t.Fatalf("expected iso tag to be restored (deleted_at cleared)")
+	if len(rows) != 1 {
+		t.Fatalf("expected exactly 1 iso row after rerun, got %d", len(rows))
+	}
+	if !rows[0].DeletedAt.Valid {
+		t.Fatalf("expected iso tag to remain soft-deleted after rerun, but deleted_at was cleared")
 	}
 }
 
