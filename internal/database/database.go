@@ -482,11 +482,10 @@ func createDefaultCommentTags(db *gorm.DB) error {
 				Color:    template.Color,
 				IsSystem: template.IsSystem,
 			}
-			// Use upsert to avoid duplicate-key errors under concurrent migrations and
-			// to restore soft-deleted tags (unique index does not include deleted_at).
+			// Use insert-if-not-exists to avoid restoring tags that an admin has intentionally deleted.
 			if err := db.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "group_id"}, {Name: "name"}},
-				DoUpdates: clause.Assignments(map[string]interface{}{"deleted_at": gorm.Expr("NULL")}),
+				DoNothing: true,
 			}).Create(&tag).Error; err != nil {
 				return fmt.Errorf("failed to ensure default comment tag %s for group %s: %w", template.Name, group.Name, err)
 			}
@@ -533,11 +532,10 @@ func createDefaultAnimalTags(db *gorm.DB) error {
 				Category: template.Category,
 				Color:    template.Color,
 			}
-			// Use upsert to avoid duplicate-key errors under concurrent migrations and
-			// to restore soft-deleted tags (unique index does not include deleted_at).
+			// Use insert-if-not-exists to avoid restoring tags that an admin has intentionally deleted.
 			if err := db.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "group_id"}, {Name: "name"}},
-				DoUpdates: clause.Assignments(map[string]interface{}{"deleted_at": gorm.Expr("NULL")}),
+				DoNothing: true,
 			}).Create(&tag).Error; err != nil {
 				return fmt.Errorf("failed to ensure default animal tag %s for group %s: %w", template.Name, group.Name, err)
 			}

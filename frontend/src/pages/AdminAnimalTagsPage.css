@@ -657,7 +657,7 @@
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 769px) {
   .tags-layout {
     display: grid;
     grid-template-columns: 1fr auto 1fr auto 1fr;
