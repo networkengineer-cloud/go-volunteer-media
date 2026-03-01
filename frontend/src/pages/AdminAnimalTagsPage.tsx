@@ -264,6 +264,8 @@ const AdminAnimalTagsPage: React.FC = () => {
   const [newSkillTagName, setNewSkillTagName] = useState('');
   const [newSkillTagColor, setNewSkillTagColor] = useState('#6b7280');
   const [editingSkillTag, setEditingSkillTag] = useState<UserSkillTag | null>(null);
+  const [editSkillTagName, setEditSkillTagName] = useState('');
+  const [editSkillTagColor, setEditSkillTagColor] = useState('#6b7280');
 
   // Active section for mobile
   const [activeSection, setActiveSection] = useState<'animal' | 'comment' | 'member'>('animal');
@@ -439,18 +441,18 @@ const AdminAnimalTagsPage: React.FC = () => {
   }, [selectedGroupId, newSkillTagName, newSkillTagColor, fetchSkillTags]);
 
   const handleUpdateSkillTag = useCallback(async () => {
-    if (!selectedGroupId || !editingSkillTag || !newSkillTagName.trim()) return;
+    if (!selectedGroupId || !editingSkillTag || !editSkillTagName.trim()) return;
     try {
-      await groupsApi.updateUserSkillTag(selectedGroupId, editingSkillTag.id, newSkillTagName.trim(), newSkillTagColor);
+      await groupsApi.updateUserSkillTag(selectedGroupId, editingSkillTag.id, editSkillTagName.trim(), editSkillTagColor);
       setEditingSkillTag(null);
-      setNewSkillTagName('');
-      setNewSkillTagColor('#6b7280');
+      setEditSkillTagName('');
+      setEditSkillTagColor('#6b7280');
       await fetchSkillTags();
     } catch (err) {
       console.error('Error updating skill tag:', err);
       setSkillTagError('Failed to update member tag');
     }
-  }, [selectedGroupId, editingSkillTag, newSkillTagName, newSkillTagColor, fetchSkillTags]);
+  }, [selectedGroupId, editingSkillTag, editSkillTagName, editSkillTagColor, fetchSkillTags]);
 
   const handleDeleteSkillTag = useCallback((tagId: number, tagName: string) => {
     if (!selectedGroupId) return;
@@ -747,8 +749,8 @@ const AdminAnimalTagsPage: React.FC = () => {
                       >
                         <input
                           type="text"
-                          value={newSkillTagName}
-                          onChange={(e) => setNewSkillTagName(e.target.value)}
+                          value={editSkillTagName}
+                          onChange={(e) => setEditSkillTagName(e.target.value)}
                           className="skill-tag-edit-input"
                           autoFocus
                           required
@@ -756,13 +758,13 @@ const AdminAnimalTagsPage: React.FC = () => {
                         />
                         <input
                           type="color"
-                          value={newSkillTagColor}
-                          onChange={(e) => setNewSkillTagColor(e.target.value)}
+                          value={editSkillTagColor}
+                          onChange={(e) => setEditSkillTagColor(e.target.value)}
                           className="color-input color-input--sm"
                           title="Tag color"
                         />
                         <button type="submit" className="btn-primary btn-sm">Save</button>
-                        <button type="button" className="btn-secondary btn-sm" onClick={() => { setEditingSkillTag(null); setNewSkillTagName(''); setNewSkillTagColor('#6b7280'); }}>Cancel</button>
+                        <button type="button" className="btn-secondary btn-sm" onClick={() => { setEditingSkillTag(null); setEditSkillTagName(''); setEditSkillTagColor('#6b7280'); }}>Cancel</button>
                       </form>
                     ) : (
                       <>
@@ -770,7 +772,7 @@ const AdminAnimalTagsPage: React.FC = () => {
                           {tag.name}
                         </div>
                         <button
-                          onClick={() => { setEditingSkillTag(tag); setNewSkillTagName(tag.name); setNewSkillTagColor(tag.color); }}
+                          onClick={() => { setEditingSkillTag(tag); setEditSkillTagName(tag.name); setEditSkillTagColor(tag.color); }}
                           className="btn-edit"
                           aria-label={`Edit ${tag.name} tag`}
                           title="Edit tag"

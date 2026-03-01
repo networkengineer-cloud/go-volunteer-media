@@ -65,6 +65,7 @@ const GroupPage: React.FC = () => {
   const [savingTags, setSavingTags] = useState(false);
   const [newSkillTagName, setNewSkillTagName] = useState('');
   const [newSkillTagColor, setNewSkillTagColor] = useState('#6b7280');
+  const [creatingSkillTag, setCreatingSkillTag] = useState(false);
   const [showSkillTagForm, setShowSkillTagForm] = useState(false);
   const [deleteTagConfirm, setDeleteTagConfirm] = useState<{ show: boolean; tag: UserSkillTag | null }>({
     show: false, tag: null,
@@ -302,6 +303,23 @@ const GroupPage: React.FC = () => {
       loadMembers(Number(id));
     }
   }, [id, viewMode]);
+
+  const handleCreateSkillTag = useCallback(async () => {
+    if (!id || !newSkillTagName.trim() || creatingSkillTag) return;
+    setCreatingSkillTag(true);
+    try {
+      await groupsApi.createUserSkillTag(Number(id), newSkillTagName.trim(), newSkillTagColor);
+      const name = newSkillTagName.trim();
+      setNewSkillTagName('');
+      setNewSkillTagColor('#6b7280');
+      await loadMembers(Number(id));
+      toast.showSuccess(`Skill tag "${name}" created`);
+    } catch {
+      toast.showError('Failed to create skill tag');
+    } finally {
+      setCreatingSkillTag(false);
+    }
+  }, [id, newSkillTagName, newSkillTagColor, creatingSkillTag]);
 
   // Load activity feed when filters change or view mode switches to activity
   useEffect(() => {
@@ -1024,19 +1042,7 @@ const GroupPage: React.FC = () => {
                   ))}
                 </div>
                 <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!id || !newSkillTagName.trim()) return;
-                    try {
-                      await groupsApi.createUserSkillTag(Number(id), newSkillTagName.trim(), newSkillTagColor);
-                      setNewSkillTagName('');
-                      setNewSkillTagColor('#6b7280');
-                      await loadMembers(Number(id));
-                      toast.showSuccess(`Skill tag "${newSkillTagName.trim()}" created`);
-                    } catch {
-                      toast.showError('Failed to create skill tag');
-                    }
-                  }}
+                  onSubmit={(e) => { e.preventDefault(); void handleCreateSkillTag(); }}
                   className="skill-tag-form"
                 >
                   <input
@@ -1055,7 +1061,7 @@ const GroupPage: React.FC = () => {
                     onChange={e => setNewSkillTagColor(e.target.value)}
                     title="Tag color"
                   />
-                  <button type="submit" className="btn-primary btn-manage-tags">Add Tag</button>
+                  <button type="submit" className="btn-primary btn-manage-tags" disabled={creatingSkillTag || !newSkillTagName.trim()}>Add Tag</button>
                 </form>
               </div>
             )}

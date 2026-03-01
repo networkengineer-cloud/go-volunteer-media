@@ -65,11 +65,23 @@ func validateSessionMetadata(metadata *models.SessionMetadata) error {
 	return nil
 }
 
-// sanitizeSessionMetadata is intentionally a no-op.
-// Metadata text fields are rendered as plain text nodes in React (via JSX interpolation,
-// never via dangerouslySetInnerHTML), so HTML-escaping on the server is both unnecessary
-// and harmful — it causes entities like &#39; to display literally instead of as characters.
-func sanitizeSessionMetadata(_ *models.SessionMetadata) {}
+// htmlTagPattern matches any HTML/XML tag for stripping purposes.
+var htmlTagPattern = regexp.MustCompile(`<[^>]*>`)
+
+// sanitizeSessionMetadata strips HTML tags from free-text metadata fields.
+// React JSX interpolation prevents XSS for the current client, but storing raw HTML
+// in the database would expose any future non-React consumer (email digests, webhooks, etc.)
+// to unescaped markup. Stripping rather than escaping avoids double-encoding entities.
+func sanitizeSessionMetadata(m *models.SessionMetadata) {
+	if m == nil {
+		return
+	}
+	m.SessionGoal = htmlTagPattern.ReplaceAllString(m.SessionGoal, "")
+	m.SessionOutcome = htmlTagPattern.ReplaceAllString(m.SessionOutcome, "")
+	m.BehaviorNotes = htmlTagPattern.ReplaceAllString(m.BehaviorNotes, "")
+	m.MedicalNotes = htmlTagPattern.ReplaceAllString(m.MedicalNotes, "")
+	m.OtherNotes = htmlTagPattern.ReplaceAllString(m.OtherNotes, "")
+}
 
 // GetAnimalComments returns comments for an animal with pagination support
 func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {

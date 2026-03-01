@@ -314,8 +314,8 @@ type UserSkillTag struct {
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	GroupID   uint           `gorm:"index;uniqueIndex:idx_user_skill_tag_group_name" json:"group_id"` // Group this tag belongs to
-	Name      string         `gorm:"not null;uniqueIndex:idx_user_skill_tag_group_name" json:"name"`
+	GroupID   uint           `gorm:"index" json:"group_id"` // Group this tag belongs to; uniqueness enforced by partial index idx_user_skill_tag_group_name_active
+	Name      string         `gorm:"not null" json:"name"`
 	Color     string         `gorm:"default:'#6b7280'" json:"color"` // Hex color for UI display
 }
 
