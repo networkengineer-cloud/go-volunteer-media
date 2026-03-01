@@ -644,9 +644,9 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		if !isSelf && !middleware.IsSiteAdmin(c) {
-			// Group admin path: cannot reset password of admin users
-			if isTargetUserAdmin(ctx, db, &user) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins can only reset passwords for regular volunteers"})
+			// Group admin path: cannot reset password of site admins
+			if isTargetSiteAdmin(&user) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins cannot reset passwords for site admins"})
 				return
 			}
 
@@ -805,17 +805,12 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// isTargetUserAdmin checks if the target user holds any admin role (site admin
-// or group admin in any group). Group admins may only modify regular volunteers.
-func isTargetUserAdmin(ctx context.Context, db *gorm.DB, user *models.User) bool {
-	if user.IsAdmin {
-		return true
-	}
-	var count int64
-	db.WithContext(ctx).Model(&models.UserGroup{}).
-		Where("user_id = ? AND is_group_admin = ?", user.ID, true).
-		Count(&count)
-	return count > 0
+// isTargetSiteAdmin checks if the target user is a site admin.
+// Per ROADMAP: group admins can perform all operations on users in their groups
+// except "Make Admin" (promote/demote site admin). This intentionally allows
+// group admins to edit, reset passwords for, and unlock other group admins.
+func isTargetSiteAdmin(user *models.User) bool {
+	return user.IsAdmin
 }
 
 // GroupAdminUpdateUser allows a group admin to update a user's information for users in their groups
@@ -872,9 +867,9 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 				return
 			}
 
-			// Group admins cannot modify site admins or other group admins
-			if isTargetUserAdmin(ctx, db, &user) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins can only update regular volunteers"})
+			// Group admins cannot modify site admins
+			if isTargetSiteAdmin(&user) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins cannot modify site admins"})
 				return
 			}
 
@@ -1081,13 +1076,13 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 
 		// Authorization
 		if !middleware.IsSiteAdmin(c) {
-			// Group admins cannot unlock site admins or other group admins
-			if isTargetUserAdmin(ctx, db, &user) {
+			// Group admins cannot unlock site admins
+			if isTargetSiteAdmin(&user) {
 				logger.WithFields(map[string]interface{}{
 					"current_user_id": currentUserID,
 					"target_user_id":  userIDParam,
-				}).Warn("Group admin attempted to unlock admin/group-admin account")
-				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins can only unlock regular volunteers"})
+				}).Warn("Group admin attempted to unlock site admin account")
+				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins cannot unlock site admin accounts"})
 				return
 			}
 

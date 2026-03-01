@@ -274,18 +274,14 @@ const UsersPage: React.FC = () => {
     return member?.is_group_admin || false;
   };
 
-  // Check if target user holds any admin role (site admin or group admin)
-  const isUserAdmin = (user: User): boolean => {
-    return user.is_admin || !!user.is_group_admin;
-  };
-
-  // Check if current user can edit or reset password for a given user
+  // Check if current user can edit or reset password for a given user.
+  // Per ROADMAP: group admins can do everything except "Make Admin", so they
+  // can edit other group admins — only site admins are excluded.
   const canEditUser = (user: User): boolean => {
     if (isAdmin) return true;
     if (currentUser && user.id === currentUser.id) return true;
     if (!isGroupAdmin || !user.groups) return false;
-    // Group admins can only edit regular volunteers
-    if (isUserAdmin(user)) return false;
+    if (user.is_admin) return false; // Can't edit site admins
     return user.groups.some(g => isCurrentUserGroupAdminOf(g.id));
   };
 

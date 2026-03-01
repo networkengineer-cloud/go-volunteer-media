@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -452,11 +453,16 @@ func TestUploadHeroImage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			db := setupSettingsTestDB(t)
+			// Migrate AnimalImage so the handler can persist the hero image record
+			require.NoError(t, db.AutoMigrate(&models.AnimalImage{}))
+
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
 			c.Request = tt.request(t)
+			c.Set("user_id", uint(1))
 
-			handler := UploadHeroImage(tt.provider)
+			handler := UploadHeroImage(db, tt.provider)
 			handler(c)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)

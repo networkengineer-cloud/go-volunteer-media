@@ -1053,8 +1053,8 @@ func TestGroupAdminUpdateUser_RejectsAdminTarget(t *testing.T) {
 	}
 }
 
-func TestGroupAdminUpdateUser_RejectsGroupAdminTarget(t *testing.T) {
-	// #4: group admin cannot update another group admin
+func TestGroupAdminUpdateUser_AllowsGroupAdminTarget(t *testing.T) {
+	// #4: group admin CAN update another group admin (per roadmap: only site admins are protected)
 	db := setupUserAdminTestDB(t)
 	groupAdmin1 := createUserAdminTestUser(t, db, "gadmin1", "gadmin1@example.com", false)
 	groupAdmin2 := createUserAdminTestUser(t, db, "gadmin2", "gadmin2@example.com", false)
@@ -1062,7 +1062,7 @@ func TestGroupAdminUpdateUser_RejectsGroupAdminTarget(t *testing.T) {
 	assignUserToGroup(t, db, groupAdmin1.ID, group.ID, true)
 	assignUserToGroup(t, db, groupAdmin2.ID, group.ID, true)
 
-	body, _ := json.Marshal(UpdateUserRequest{Email: "gadmin2@example.com", FirstName: "Hacked"})
+	body, _ := json.Marshal(UpdateUserRequest{Email: "gadmin2@example.com", FirstName: "Updated"})
 	c, w := setupUserAdminTestContext(groupAdmin1.ID, false)
 	c.Request = httptest.NewRequest(http.MethodPut, "/api/users/"+fmt.Sprintf("%d", groupAdmin2.ID), bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -1071,8 +1071,14 @@ func TestGroupAdminUpdateUser_RejectsGroupAdminTarget(t *testing.T) {
 	handler := GroupAdminUpdateUser(db)
 	handler(c)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("Expected 403, got %d. Body: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var updated models.User
+	db.First(&updated, groupAdmin2.ID)
+	if updated.FirstName != "Updated" {
+		t.Errorf("Expected FirstName 'Updated', got %q", updated.FirstName)
 	}
 }
 

@@ -992,9 +992,8 @@ const GroupPage: React.FC = () => {
               <h2>Members</h2>
               {(membership?.is_group_admin || membership?.is_site_admin) && (
                 <button
-                  className="btn-secondary"
+                  className="btn-secondary btn-manage-tags"
                   onClick={() => setShowSkillTagForm(v => !v)}
-                  style={{ fontSize: '0.85rem' }}
                 >
                   {showSkillTagForm ? 'Hide Skill Tags' : 'Manage Skill Tags'}
                 </button>
@@ -1004,22 +1003,22 @@ const GroupPage: React.FC = () => {
             {/* Skill tag management panel (group admins only) */}
             {showSkillTagForm && (membership?.is_group_admin || membership?.is_site_admin) && (
               <div className="skill-tag-panel">
-                <h3 style={{ marginBottom: '0.5rem', fontSize: '0.95rem' }}>Group Skill Tags</h3>
-                <div className="skill-tag-list" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                <h3 className="skill-tag-panel__title">Group Skill Tags</h3>
+                <div className="skill-tag-list">
                   {skillTags.map(tag => (
                     <span
                       key={tag.id}
                       className="skill-tag"
-                      style={{ backgroundColor: tag.color, color: '#fff', padding: '0.2rem 0.6rem', borderRadius: '1rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                      style={{ backgroundColor: tag.color }}
                     >
                       {tag.name}
                       <button
+                        className="skill-tag__delete"
                         onClick={async () => {
                           if (!id) return;
                           await groupsApi.deleteUserSkillTag(Number(id), tag.id);
                           loadMembers(Number(id));
                         }}
-                        style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, lineHeight: 1, fontWeight: 'bold' }}
                         aria-label={`Delete ${tag.name} tag`}
                       >×</button>
                     </span>
@@ -1034,25 +1033,25 @@ const GroupPage: React.FC = () => {
                     setNewSkillTagColor('#6b7280');
                     loadMembers(Number(id));
                   }}
-                  style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
+                  className="skill-tag-form"
                 >
                   <input
                     type="text"
+                    className="skill-tag-form__name"
                     value={newSkillTagName}
                     onChange={e => setNewSkillTagName(e.target.value)}
                     placeholder="Tag name (e.g. Beginner)"
                     maxLength={50}
                     required
-                    style={{ flex: '1', minWidth: '140px', padding: '0.4rem 0.6rem', borderRadius: '4px', border: '1px solid #ccc' }}
                   />
                   <input
                     type="color"
+                    className="skill-tag-form__color"
                     value={newSkillTagColor}
                     onChange={e => setNewSkillTagColor(e.target.value)}
                     title="Tag color"
-                    style={{ width: '2.5rem', height: '2.1rem', padding: '0', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}
                   />
-                  <button type="submit" className="btn-primary" style={{ fontSize: '0.85rem' }}>Add Tag</button>
+                  <button type="submit" className="btn-primary btn-manage-tags">Add Tag</button>
                 </form>
               </div>
             )}
@@ -1096,12 +1095,12 @@ const GroupPage: React.FC = () => {
                         </div>
                         {/* Skill tags */}
                         {member.skill_tags && member.skill_tags.length > 0 && (
-                          <div className="member-skill-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.35rem' }}>
+                          <div className="member-skill-tags">
                             {member.skill_tags.map(tag => (
                               <span
                                 key={tag.id}
-                                className="skill-tag"
-                                style={{ backgroundColor: tag.color, color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem' }}
+                                className="skill-tag skill-tag--small"
+                                style={{ backgroundColor: tag.color }}
                               >
                                 {tag.name}
                               </span>
@@ -1110,23 +1109,19 @@ const GroupPage: React.FC = () => {
                         )}
                         {/* Inline skill-tag editor for group admins */}
                         {isEditingThisMember && (membership?.is_group_admin || membership?.is_site_admin) && (
-                          <div className="skill-tag-editor" style={{ marginTop: '0.5rem' }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginBottom: '0.4rem' }}>
+                          <div className="skill-tag-editor">
+                            <div className="skill-tag-editor__options">
                               {skillTags.map(tag => {
                                 const selected = pendingTagIds.includes(tag.id);
                                 return (
                                   <button
                                     key={tag.id}
                                     type="button"
+                                    className={`skill-tag-option ${selected ? 'skill-tag-option--selected' : ''}`}
                                     onClick={() => setPendingTagIds(ids => selected ? ids.filter(i => i !== tag.id) : [...ids, tag.id])}
                                     style={{
-                                      backgroundColor: selected ? tag.color : '#f3f4f6',
-                                      color: selected ? '#fff' : '#374151',
-                                      border: `2px solid ${tag.color}`,
-                                      padding: '0.15rem 0.5rem',
-                                      borderRadius: '1rem',
-                                      fontSize: '0.75rem',
-                                      cursor: 'pointer',
+                                      backgroundColor: selected ? tag.color : undefined,
+                                      borderColor: tag.color,
                                     }}
                                   >
                                     {tag.name}
@@ -1134,10 +1129,9 @@ const GroupPage: React.FC = () => {
                                 );
                               })}
                             </div>
-                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <div className="skill-tag-editor__actions">
                               <button
-                                className="btn-primary"
-                                style={{ fontSize: '0.8rem', padding: '0.25rem 0.75rem' }}
+                                className="btn-primary btn-tag-action"
                                 disabled={savingTags}
                                 onClick={async () => {
                                   if (!id) return;
@@ -1154,8 +1148,7 @@ const GroupPage: React.FC = () => {
                                 {savingTags ? 'Saving…' : 'Save'}
                               </button>
                               <button
-                                className="btn-secondary"
-                                style={{ fontSize: '0.8rem', padding: '0.25rem 0.75rem' }}
+                                className="btn-secondary btn-tag-action"
                                 onClick={() => setEditingMemberTags(null)}
                               >
                                 Cancel
@@ -1170,14 +1163,13 @@ const GroupPage: React.FC = () => {
                           </div>
                         )}
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'flex-end' }}>
+                      <div className="member-card__actions">
                         <Link to={`/users/${member.user_id}/profile`} className="btn-view-profile">
                           View Profile
                         </Link>
                         {(membership?.is_group_admin || membership?.is_site_admin) && skillTags.length > 0 && (
                           <button
-                            className="btn-secondary"
-                            style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', whiteSpace: 'nowrap' }}
+                            className="btn-secondary btn-edit-tags"
                             onClick={() => {
                               if (isEditingThisMember) {
                                 setEditingMemberTags(null);

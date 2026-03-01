@@ -248,7 +248,7 @@ func main() {
 
 			// Site settings management (admin only)
 			admin.PUT("/settings/:key", handlers.UpdateSiteSetting(db))
-			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage(storageProvider))
+			admin.POST("/settings/upload-hero-image", handlers.UploadHeroImage(db, storageProvider))
 
 			// Bulk animal management (admin only)
 			admin.GET("/animals", handlers.GetAllAnimals(db))
