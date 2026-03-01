@@ -1410,6 +1410,13 @@
   white-space: nowrap;
 }
 
+.no-tags-hint {
+  font-size: 0.7rem;
+  color: var(--text-secondary, #6b7280);
+  white-space: nowrap;
+  text-align: right;
+}
+
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
   .animal-card:hover,

@@ -66,6 +66,9 @@ const GroupPage: React.FC = () => {
   const [newSkillTagName, setNewSkillTagName] = useState('');
   const [newSkillTagColor, setNewSkillTagColor] = useState('#6b7280');
   const [showSkillTagForm, setShowSkillTagForm] = useState(false);
+  const [deleteTagConfirm, setDeleteTagConfirm] = useState<{ show: boolean; tag: UserSkillTag | null }>({
+    show: false, tag: null,
+  });
 
   const [filterAnimal, setFilterAnimal] = useState<string>('');
   const [animalSearchQuery, setAnimalSearchQuery] = useState<string>('');
@@ -1014,15 +1017,7 @@ const GroupPage: React.FC = () => {
                       {tag.name}
                       <button
                         className="skill-tag__delete"
-                        onClick={async () => {
-                          if (!id) return;
-                          try {
-                            await groupsApi.deleteUserSkillTag(Number(id), tag.id);
-                            loadMembers(Number(id));
-                          } catch {
-                            toast.showError('Failed to delete skill tag');
-                          }
-                        }}
+                        onClick={() => setDeleteTagConfirm({ show: true, tag })}
                         aria-label={`Delete ${tag.name} tag`}
                       >×</button>
                     </span>
@@ -1037,6 +1032,7 @@ const GroupPage: React.FC = () => {
                       setNewSkillTagName('');
                       setNewSkillTagColor('#6b7280');
                       loadMembers(Number(id));
+                      toast.showSuccess(`Skill tag "${newSkillTagName.trim()}" created`);
                     } catch {
                       toast.showError('Failed to create skill tag');
                     }
@@ -1148,18 +1144,14 @@ const GroupPage: React.FC = () => {
                                     await groupsApi.assignUserSkillTags(Number(id), member.user_id, pendingTagIds);
                                     await loadMembers(Number(id));
                                     setEditingMemberTags(null);
+                                  } catch {
+                                    toast.showError('Failed to save skill tags');
                                   } finally {
                                     setSavingTags(false);
                                   }
                                 }}
                               >
                                 {savingTags ? 'Saving…' : 'Save'}
-                              </button>
-                              <button
-                                className="btn-secondary btn-tag-action"
-                                onClick={() => setEditingMemberTags(null)}
-                              >
-                                Cancel
                               </button>
                             </div>
                           </div>
@@ -1175,20 +1167,24 @@ const GroupPage: React.FC = () => {
                         <Link to={`/users/${member.user_id}/profile`} className="btn-view-profile">
                           View Profile
                         </Link>
-                        {(membership?.is_group_admin || membership?.is_site_admin) && skillTags.length > 0 && (
-                          <button
-                            className="btn-secondary btn-edit-tags"
-                            onClick={() => {
-                              if (isEditingThisMember) {
-                                setEditingMemberTags(null);
-                              } else {
-                                setEditingMemberTags(member.user_id);
-                                setPendingTagIds((member.skill_tags || []).map(t => t.id));
-                              }
-                            }}
-                          >
-                            {isEditingThisMember ? 'Cancel' : 'Edit Tags'}
-                          </button>
+                        {(membership?.is_group_admin || membership?.is_site_admin) && (
+                          skillTags.length > 0 ? (
+                            <button
+                              className="btn-secondary btn-edit-tags"
+                              onClick={() => {
+                                if (isEditingThisMember) {
+                                  setEditingMemberTags(null);
+                                } else {
+                                  setEditingMemberTags(member.user_id);
+                                  setPendingTagIds((member.skill_tags || []).map(t => t.id));
+                                }
+                              }}
+                            >
+                              {isEditingThisMember ? 'Cancel' : 'Edit Tags'}
+                            </button>
+                          ) : (
+                            <span className="no-tags-hint">Use "Manage Skill Tags" to create tags</span>
+                          )
                         )}
                       </div>
                     </div>
@@ -1227,6 +1223,29 @@ const GroupPage: React.FC = () => {
           }
         }}
         onCancel={() => setDeleteConfirm({ show: false, updateId: null, title: '' })}
+      />
+
+      {/* Delete Skill Tag Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteTagConfirm.show}
+        title="Delete Skill Tag?"
+        message={`Delete the "${deleteTagConfirm.tag?.name}" tag? It will be removed from all members in this group.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={async () => {
+          const tag = deleteTagConfirm.tag;
+          setDeleteTagConfirm({ show: false, tag: null });
+          if (!id || !tag) return;
+          try {
+            await groupsApi.deleteUserSkillTag(Number(id), tag.id);
+            loadMembers(Number(id));
+            toast.showSuccess(`Skill tag "${tag.name}" deleted`);
+          } catch {
+            toast.showError('Failed to delete skill tag');
+          }
+        }}
+        onCancel={() => setDeleteTagConfirm({ show: false, tag: null })}
       />
     </div>
   );

@@ -51,7 +51,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   const [autoAppliedTags, setAutoAppliedTags] = useState<number[]>([]);
   
   // Mobile accordion state
-  const [expandedSection, setExpandedSection] = useState<'goals' | 'concerns' | 'rating' | null>('goals');
+  const [expandedSection, setExpandedSection] = useState<'timing' | 'goals' | 'concerns' | 'rating' | null>('goals');
 
   // Use refs to access current state in interval callback
   const stateRef = useRef({
@@ -370,7 +370,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     }
   };
 
-  const toggleSection = (section: 'goals' | 'concerns' | 'rating') => {
+  const toggleSection = (section: 'timing' | 'goals' | 'concerns' | 'rating') => {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
@@ -458,6 +458,52 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
         <div className="structured-mode">
           {/* Mobile Accordion Sections */}
           <div className="accordion-sections mobile-only">
+            {/* Session Timing Section */}
+            <div className="accordion-section">
+              <button
+                type="button"
+                className={`accordion-header ${expandedSection === 'timing' ? 'expanded' : ''}`}
+                onClick={() => toggleSection('timing')}
+                aria-expanded={expandedSection === 'timing'}
+                data-testid="accordion-timing"
+              >
+                <span className="accordion-icon">{expandedSection === 'timing' ? '▼' : '▶'}</span>
+                <span className="accordion-title">⏱ Session Timing</span>
+              </button>
+              {expandedSection === 'timing' && (
+                <div className="accordion-content" data-testid="section-timing">
+                  <div className="session-time-row">
+                    <div className="form-field">
+                      <label htmlFor="session-start-time-mobile">
+                        Start Time <span className="optional-label">(optional)</span>
+                      </label>
+                      <input
+                        id="session-start-time-mobile"
+                        type="time"
+                        value={sessionStartTime}
+                        onChange={(e) => setSessionStartTime(e.target.value)}
+                        disabled={submitting}
+                        aria-label="Session start time"
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label htmlFor="session-end-time-mobile">
+                        End Time <span className="optional-label">(optional)</span>
+                      </label>
+                      <input
+                        id="session-end-time-mobile"
+                        type="time"
+                        value={sessionEndTime}
+                        onChange={(e) => setSessionEndTime(e.target.value)}
+                        disabled={submitting}
+                        aria-label="Session end time"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Goals & Outcome Section */}
             <div className="accordion-section">
               <button
@@ -472,35 +518,6 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
               </button>
               {expandedSection === 'goals' && (
                 <div className="accordion-content" data-testid="section-goals">
-                  {/* Session Time */}
-                  <div className="session-time-row">
-                    <div className="form-field">
-                      <label htmlFor="session-start-time-mobile">
-                        ⏱ Start Time <span className="optional-label">(optional)</span>
-                      </label>
-                      <input
-                        id="session-start-time-mobile"
-                        type="time"
-                        value={sessionStartTime}
-                        onChange={(e) => setSessionStartTime(e.target.value)}
-                        disabled={submitting}
-                        aria-label="Session start time"
-                      />
-                    </div>
-                    <div className="form-field">
-                      <label htmlFor="session-end-time-mobile">
-                        ⏱ End Time <span className="optional-label">(optional)</span>
-                      </label>
-                      <input
-                        id="session-end-time-mobile"
-                        type="time"
-                        value={sessionEndTime}
-                        onChange={(e) => setSessionEndTime(e.target.value)}
-                        disabled={submitting}
-                        aria-label="Session end time"
-                      />
-                    </div>
-                  </div>
                   {/* Session Goal */}
                   <div className="form-field">
                     <label htmlFor="session-goal-mobile">

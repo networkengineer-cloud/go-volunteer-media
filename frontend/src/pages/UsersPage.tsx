@@ -389,7 +389,7 @@ const UsersPage: React.FC = () => {
   const handleDelete = (user: User) => {
     openConfirmDialog(
       'Delete User',
-      `Delete user ${user.username}? This cannot be undone.`,
+      `Deactivate ${user.username}? Their account will be disabled but can be restored later by a site admin.`,
       async () => {
         try {
           if (isAdmin) {
