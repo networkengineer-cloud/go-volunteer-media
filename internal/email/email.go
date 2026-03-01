@@ -243,6 +243,7 @@ func (s *Service) SendPasswordSetupEmail(to, username, setupToken string) error 
         </div>
         <div class="content">
             <p class="welcome">Hello %s,</p>
+            <p>Your username for signing in is: <strong>%s</strong></p>
             <p>Your account has been created for %s. We're excited to have you join our team!</p>
             <p>To get started, please click the button below to set your password:</p>
             <p style="text-align: center;">
@@ -260,7 +261,7 @@ func (s *Service) SendPasswordSetupEmail(to, username, setupToken string) error 
     </div>
 </body>
 </html>
-`, siteName, username, siteName, setupLink, setupLink, siteName)
+`, siteName, username, username, siteName, setupLink, setupLink, siteName)
 
 	return s.SendEmail(to, subject, body)
 }

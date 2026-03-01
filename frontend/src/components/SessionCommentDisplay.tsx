@@ -16,6 +16,20 @@ const getRatingLabel = (rating: number): string => {
   return labels[rating] || '';
 };
 
+const calculateDuration = (start: string, end: string): string => {
+  const [startH, startM] = start.split(':').map(Number);
+  const [endH, endM] = end.split(':').map(Number);
+  const startTotal = startH * 60 + startM;
+  const endTotal = endH * 60 + endM;
+  const diff = endTotal - startTotal;
+  if (diff <= 0) return '';
+  const hours = Math.floor(diff / 60);
+  const minutes = diff % 60;
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}min`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}min`;
+};
+
 const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }) => {
   const { metadata } = comment;
 
@@ -31,7 +45,9 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
     metadata.behavior_notes ||
     metadata.medical_notes ||
     metadata.session_rating ||
-    metadata.other_notes;
+    metadata.other_notes ||
+    metadata.session_start_time ||
+    metadata.session_end_time;
 
   // If metadata exists but all fields are empty, render as regular comment
   if (!hasStructuredContent) {
@@ -41,6 +57,27 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
   // Render structured session report
   return (
     <div className="session-report-display">
+      {/* Session Time */}
+      {(metadata.session_start_time || metadata.session_end_time) && (
+        <div className="session-field session-time-display">
+          <span className="session-field-label">⏱</span>
+          <span className="session-field-content">
+            {metadata.session_start_time && metadata.session_end_time ? (
+              <>
+                {metadata.session_start_time} – {metadata.session_end_time}
+                {calculateDuration(metadata.session_start_time, metadata.session_end_time) && (
+                  <span className="session-duration"> ({calculateDuration(metadata.session_start_time, metadata.session_end_time)})</span>
+                )}
+              </>
+            ) : metadata.session_start_time ? (
+              <>Started: {metadata.session_start_time}</>
+            ) : (
+              <>Ended: {metadata.session_end_time}</>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* Session Goal */}
       {metadata.session_goal && (
         <div className="session-field">

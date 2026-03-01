@@ -5,6 +5,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -44,6 +45,14 @@ func validateSessionMetadata(metadata *models.SessionMetadata) error {
 	}
 	if metadata.SessionRating < 0 || metadata.SessionRating > 5 {
 		return errors.New("session rating must be between 1 and 5 (or 0 for not set)")
+	}
+
+	timePattern := regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
+	if metadata.SessionStartTime != "" && !timePattern.MatchString(metadata.SessionStartTime) {
+		return errors.New("session_start_time must be in HH:MM 24-hour format")
+	}
+	if metadata.SessionEndTime != "" && !timePattern.MatchString(metadata.SessionEndTime) {
+		return errors.New("session_end_time must be in HH:MM 24-hour format")
 	}
 
 	return nil

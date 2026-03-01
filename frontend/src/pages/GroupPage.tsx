@@ -13,6 +13,7 @@ import ErrorState from '../components/ErrorState';
 import Modal from '../components/Modal';
 import ProtocolsList from '../components/ProtocolsList';
 import { calculateAge, formatAge } from '../utils/dateUtils';
+import { formatDisplayName } from '../utils/formatName';
 import './GroupPage.css';
 
 type ViewMode = 'activity' | 'animals' | 'protocols' | 'members';
@@ -687,7 +688,7 @@ const GroupPage: React.FC = () => {
                       </Link>
                     )}
                     <span className="activity-meta">
-                      by {activity.user?.username} • {new Date(activity.created_at).toLocaleDateString()} at{' '}
+                      by {activity.user ? formatDisplayName(activity.user) : 'Unknown'} • {new Date(activity.created_at).toLocaleDateString()} at{' '}
                       {new Date(activity.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>

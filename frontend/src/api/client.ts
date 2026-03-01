@@ -34,6 +34,8 @@ export const groupAdminApi = {
   // Update a user (group admins can update users in groups they admin)
   updateUser: (userId: number, data: { first_name?: string; last_name?: string; email: string; phone_number?: string }) =>
     api.put<User>(`/users/${userId}`, data),
+  // Delete a user (group admins can delete non-admin users in groups they admin)
+  deleteUser: (userId: number) => api.delete(`/users/${userId}`),
 };
 import axios from 'axios';
 
@@ -248,6 +250,8 @@ export interface SessionMetadata {
   medical_notes?: string;
   session_rating?: number; // 1-5 (Poor, Fair, Okay, Good, Great)
   other_notes?: string;
+  session_start_time?: string; // "HH:MM" 24-hour format
+  session_end_time?: string;   // "HH:MM" 24-hour format
 }
 
 export interface CommentHistory {

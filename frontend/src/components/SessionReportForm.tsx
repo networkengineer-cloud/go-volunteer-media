@@ -30,7 +30,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   onCancelEdit,
 }) => {
   const isEditMode = !!editingComment;
-  const [mode, setMode] = useState<FormMode>('quick');
+  const [mode, setMode] = useState<FormMode>('structured');
   const [commentText, setCommentText] = useState('');
   const [commentImage, setCommentImage] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
@@ -42,6 +42,8 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   const [medicalNotes, setMedicalNotes] = useState('');
   const [sessionRating, setSessionRating] = useState<number>(0);
   const [otherNotes, setOtherNotes] = useState('');
+  const [sessionStartTime, setSessionStartTime] = useState('');
+  const [sessionEndTime, setSessionEndTime] = useState('');
   const [draftSaved, setDraftSaved] = useState(false);
   const [showRestoreDraft, setShowRestoreDraft] = useState(false);
   
@@ -59,7 +61,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     behaviorNotes,
     medicalNotes,
     sessionRating,
-    otherNotes
+    otherNotes,
+    sessionStartTime,
+    sessionEndTime,
   });
 
   // Update ref whenever state changes
@@ -71,9 +75,11 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       behaviorNotes,
       medicalNotes,
       sessionRating,
-      otherNotes
+      otherNotes,
+      sessionStartTime,
+      sessionEndTime,
     };
-  }, [mode, sessionGoal, sessionOutcome, behaviorNotes, medicalNotes, sessionRating, otherNotes]);
+  }, [mode, sessionGoal, sessionOutcome, behaviorNotes, medicalNotes, sessionRating, otherNotes, sessionStartTime, sessionEndTime]);
 
   // Draft management helper functions
   const getDraftKey = () => `session_draft_${animalId}`;
@@ -89,12 +95,15 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       medicalNotes: state.medicalNotes,
       sessionRating: state.sessionRating,
       otherNotes: state.otherNotes,
+      sessionStartTime: state.sessionStartTime,
+      sessionEndTime: state.sessionEndTime,
       savedAt: new Date().toISOString(),
     };
     
     // Only save if there's actual content
     const hasContent = state.sessionGoal || state.sessionOutcome || state.behaviorNotes || 
-                       state.medicalNotes || state.sessionRating > 0 || state.otherNotes;
+                       state.medicalNotes || state.sessionRating > 0 || state.otherNotes ||
+                       state.sessionStartTime || state.sessionEndTime;
     if (hasContent) {
       localStorage.setItem(getDraftKey(), JSON.stringify(draft));
       setDraftSaved(true);
@@ -147,6 +156,8 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setMedicalNotes(editingComment.metadata.medical_notes || '');
       setSessionRating(editingComment.metadata.session_rating || 0);
       setOtherNotes(editingComment.metadata.other_notes || '');
+      setSessionStartTime(editingComment.metadata.session_start_time || '');
+      setSessionEndTime(editingComment.metadata.session_end_time || '');
       setCommentText('');
     } else {
       // Quick comment
@@ -182,6 +193,8 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setMedicalNotes(draft.medicalNotes || '');
       setSessionRating(draft.sessionRating || 0);
       setOtherNotes(draft.otherNotes || '');
+      setSessionStartTime(draft.sessionStartTime || '');
+      setSessionEndTime(draft.sessionEndTime || '');
       setShowRestoreDraft(false);
     }
   };
@@ -291,7 +304,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       content = parts.join('\n\n');
       
       // Only include metadata if at least one field has content
-      if (sessionGoal || sessionOutcome || behaviorNotes || medicalNotes || sessionRating > 0 || otherNotes) {
+      if (sessionGoal || sessionOutcome || behaviorNotes || medicalNotes || sessionRating > 0 || otherNotes || sessionStartTime || sessionEndTime) {
         metadata = {
           session_goal: sessionGoal.trim() || undefined,
           session_outcome: sessionOutcome.trim() || undefined,
@@ -299,6 +312,8 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
           medical_notes: medicalNotes.trim() || undefined,
           session_rating: sessionRating > 0 ? sessionRating : undefined,
           other_notes: otherNotes.trim() || undefined,
+          session_start_time: sessionStartTime || undefined,
+          session_end_time: sessionEndTime || undefined,
         };
       }
     }
@@ -325,6 +340,8 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setMedicalNotes('');
       setSessionRating(0);
       setOtherNotes('');
+      setSessionStartTime('');
+      setSessionEndTime('');
     }
   };
 
@@ -455,6 +472,35 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
               </button>
               {expandedSection === 'goals' && (
                 <div className="accordion-content" data-testid="section-goals">
+                  {/* Session Time */}
+                  <div className="session-time-row">
+                    <div className="form-field">
+                      <label htmlFor="session-start-time-mobile">
+                        ⏱ Start Time <span className="optional-label">(optional)</span>
+                      </label>
+                      <input
+                        id="session-start-time-mobile"
+                        type="time"
+                        value={sessionStartTime}
+                        onChange={(e) => setSessionStartTime(e.target.value)}
+                        disabled={submitting}
+                        aria-label="Session start time"
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label htmlFor="session-end-time-mobile">
+                        ⏱ End Time <span className="optional-label">(optional)</span>
+                      </label>
+                      <input
+                        id="session-end-time-mobile"
+                        type="time"
+                        value={sessionEndTime}
+                        onChange={(e) => setSessionEndTime(e.target.value)}
+                        disabled={submitting}
+                        aria-label="Session end time"
+                      />
+                    </div>
+                  </div>
                   {/* Session Goal */}
                   <div className="form-field">
                     <label htmlFor="session-goal-mobile">
@@ -630,6 +676,35 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
 
           {/* Desktop Non-Accordion Layout */}
           <div className="desktop-only">
+            {/* Session Time */}
+            <div className="session-time-row">
+              <div className="form-field">
+                <label htmlFor="session-start-time">
+                  ⏱ Start Time <span className="optional-label">(optional)</span>
+                </label>
+                <input
+                  id="session-start-time"
+                  type="time"
+                  value={sessionStartTime}
+                  onChange={(e) => setSessionStartTime(e.target.value)}
+                  disabled={submitting}
+                  aria-label="Session start time"
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="session-end-time">
+                  ⏱ End Time <span className="optional-label">(optional)</span>
+                </label>
+                <input
+                  id="session-end-time"
+                  type="time"
+                  value={sessionEndTime}
+                  onChange={(e) => setSessionEndTime(e.target.value)}
+                  disabled={submitting}
+                  aria-label="Session end time"
+                />
+              </div>
+            </div>
             {/* Session Goal */}
             <div className="form-field">
               <label htmlFor="session-goal">

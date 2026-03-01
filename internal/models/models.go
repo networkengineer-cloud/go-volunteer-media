@@ -226,12 +226,14 @@ type CommentHistory struct {
 
 // SessionMetadata stores structured session report data
 type SessionMetadata struct {
-	SessionGoal    string `json:"session_goal,omitempty"`
-	SessionOutcome string `json:"session_outcome,omitempty"`
-	BehaviorNotes  string `json:"behavior_notes,omitempty"`
-	MedicalNotes   string `json:"medical_notes,omitempty"`
-	SessionRating  int    `json:"session_rating,omitempty"` // 1-5 (Poor, Fair, Okay, Good, Great)
-	OtherNotes     string `json:"other_notes,omitempty"`
+	SessionGoal      string `json:"session_goal,omitempty"`
+	SessionOutcome   string `json:"session_outcome,omitempty"`
+	BehaviorNotes    string `json:"behavior_notes,omitempty"`
+	MedicalNotes     string `json:"medical_notes,omitempty"`
+	SessionRating    int    `json:"session_rating,omitempty"` // 1-5 (Poor, Fair, Okay, Good, Great)
+	OtherNotes       string `json:"other_notes,omitempty"`
+	SessionStartTime string `json:"session_start_time,omitempty"` // "HH:MM" 24-hour format
+	SessionEndTime   string `json:"session_end_time,omitempty"`   // "HH:MM" 24-hour format
 }
 
 // Scan implements sql.Scanner interface to convert database value to SessionMetadata

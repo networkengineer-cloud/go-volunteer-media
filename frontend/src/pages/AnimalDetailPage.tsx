@@ -5,6 +5,7 @@ import type { Animal, AnimalComment, CommentTag, CommentHistory, Group, GroupMem
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { calculateQuarantineEndDate, calculateAge, formatAge } from '../utils/dateUtils';
+import { formatDisplayName } from '../utils/formatName';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
@@ -667,10 +668,10 @@ const AnimalDetailPage: React.FC = () => {
                   <div className="comment-header">
                     {comment.user?.id ? (
                       <Link to={`/users/${comment.user.id}/profile`} className="comment-author comment-author--link">
-                        {comment.user.username}
+                        {formatDisplayName(comment.user)}
                       </Link>
                     ) : (
-                      <span className="comment-author">{comment.user?.username}</span>
+                      <span className="comment-author">{comment.user ? formatDisplayName(comment.user) : ''}</span>
                     )}
                     <span className="comment-date">
                       {new Date(comment.created_at).toLocaleDateString()} at{' '}
@@ -810,10 +811,10 @@ const AnimalDetailPage: React.FC = () => {
                           <div className="comment-header">
                             {comment.user?.id ? (
                               <Link to={`/users/${comment.user.id}/profile`} className="comment-author comment-author--link">
-                                {comment.user.username}
+                                {formatDisplayName(comment.user)}
                               </Link>
                             ) : (
-                              <span className="comment-author">{comment.user?.username}</span>
+                              <span className="comment-author">{comment.user ? formatDisplayName(comment.user) : ''}</span>
                             )}
                             <span className="comment-date">
                               {new Date(comment.created_at).toLocaleDateString()} at{' '}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import type { ActivityItem as ActivityItemType } from '../api/client';
+import { formatDisplayName } from '../utils/formatName';
 import './ActivityItem.css';
 
 interface ActivityItemProps {
@@ -43,16 +44,16 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ item, groupId, onImageClick
               <Link 
                 to={`/users/${item.user.id}/profile`}
                 className="activity-item__username activity-item__username--link" 
-                title={`View ${item.user.username}'s profile`}
+                title={`View ${formatDisplayName(item.user)}'s profile`}
               >
-                {item.user.username}
+                {formatDisplayName(item.user)}
               </Link>
             ) : (
               <span 
                 className="activity-item__username" 
-                title={`Posted by ${item.user?.username || 'Unknown'}`}
+                title={`Posted by ${item.user ? formatDisplayName(item.user) : 'Unknown'}`}
               >
-                {item.user?.username || 'Unknown'}
+                {item.user ? formatDisplayName(item.user) : 'Unknown'}
               </span>
             )}
             <time className="activity-item__timestamp" dateTime={item.created_at}>

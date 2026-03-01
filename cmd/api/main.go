@@ -216,6 +216,7 @@ func main() {
 		// Authorization is checked within the handlers
 		protected.POST("/users", handlers.GroupAdminCreateUser(db, emailService))
 		protected.PUT("/users/:userId", handlers.GroupAdminUpdateUser(db)) // Handles both site admins and group admins
+		protected.DELETE("/users/:userId", handlers.GroupAdminDeleteUser(db)) // Handles both site admins and group admins
 		protected.POST("/users/:userId/reset-password", handlers.AdminResetUserPassword(db))
 		protected.POST("/users/:userId/resend-invitation", handlers.ResendInvitation(db, emailService))
 		protected.POST("/users/:userId/unlock", handlers.UnlockUserAccount(db)) // Site admins and group admins
