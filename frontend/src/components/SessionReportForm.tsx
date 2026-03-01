@@ -492,7 +492,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                 <div className="accordion-content" data-testid="section-timing">
                   <div className="form-field">
                     <label htmlFor="session-date-mobile">
-                      📅 Date <span className="optional-label">(optional)</span>
+                      📅 Date
                     </label>
                     <input
                       id="session-date-mobile"
@@ -506,7 +506,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   <div className="session-time-row">
                     <div className="form-field">
                       <label htmlFor="session-start-time-mobile">
-                        Start Time <span className="optional-label">(optional)</span>
+                        Start Time
                       </label>
                       <div className="time-input-row">
                         <input
@@ -530,7 +530,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                     </div>
                     <div className="form-field">
                       <label htmlFor="session-end-time-mobile">
-                        End Time <span className="optional-label">(optional)</span>
+                        End Time
                       </label>
                       <div className="time-input-row">
                         <input
@@ -574,7 +574,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   {/* Session Goal */}
                   <div className="form-field">
                     <label htmlFor="session-goal-mobile">
-                      Session Goal <span className="optional-label">(optional)</span>
+                      Session Goal
                     </label>
                     <input
                       id="session-goal-mobile"
@@ -594,7 +594,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   {/* Session Outcome */}
                   <div className="form-field">
                     <label htmlFor="session-outcome-mobile">
-                      Session Outcome <span className="optional-label">(optional)</span>
+                      Session Outcome
                     </label>
                     <textarea
                       id="session-outcome-mobile"
@@ -631,7 +631,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   {/* Behavior Concerns */}
                   <div className="form-field concern-field">
                     <label htmlFor="behavior-notes-mobile">
-                      🐕 Behavior <span className="optional-label">(optional)</span>
+                      🐕 Behavior
                     </label>
                     <textarea
                       id="behavior-notes-mobile"
@@ -657,7 +657,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   {/* Medical Concerns */}
                   <div className="form-field concern-field">
                     <label htmlFor="medical-notes-mobile">
-                      🏥 Medical <span className="optional-label">(optional)</span>
+                      🏥 Medical
                     </label>
                     <textarea
                       id="medical-notes-mobile"
@@ -697,7 +697,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                 <div className="accordion-content">
                   {/* Session Rating */}
                   <div className="form-field">
-                    <label>Session Success <span className="optional-label">(optional)</span></label>
+                    <label>Session Success</label>
                     <div className="rating-selector" role="radiogroup" aria-label="Session rating">
                       {[1, 2, 3, 4, 5].map((rating) => (
                         <label
@@ -723,7 +723,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                   {/* Other Notes */}
                   <div className="form-field">
                     <label htmlFor="other-notes-mobile">
-                      Other Comments <span className="optional-label">(optional)</span>
+                      Other Comments
                     </label>
                     <textarea
                       id="other-notes-mobile"
@@ -749,7 +749,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             {/* Session Date + Time */}
             <div className="form-field">
               <label htmlFor="session-date">
-                📅 Session Date <span className="optional-label">(optional)</span>
+                📅 Session Date
               </label>
               <input
                 id="session-date"
@@ -763,7 +763,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             <div className="session-time-row">
               <div className="form-field">
                 <label htmlFor="session-start-time">
-                  ⏱ Start Time <span className="optional-label">(optional)</span>
+                  ⏱ Start Time
                 </label>
                 <div className="time-input-row">
                   <input
@@ -787,7 +787,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
               </div>
               <div className="form-field">
                 <label htmlFor="session-end-time">
-                  ⏱ End Time <span className="optional-label">(optional)</span>
+                  ⏱ End Time
                 </label>
                 <div className="time-input-row">
                   <input
@@ -813,7 +813,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             {/* Session Goal */}
             <div className="form-field">
               <label htmlFor="session-goal">
-                🎯 Session Goal <span className="optional-label">(optional)</span>
+                🎯 Session Goal
               </label>
               <input
                 id="session-goal"
@@ -833,7 +833,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
           {/* Session Outcome */}
           <div className="form-field">
             <label htmlFor="session-outcome">
-              📝 Session Outcome <span className="optional-label">(optional)</span>
+              📝 Session Outcome
             </label>
             <textarea
               id="session-outcome"
@@ -855,7 +855,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             {/* Behavior Concerns */}
             <div className="form-field concern-field">
               <label htmlFor="behavior-notes">
-                ⚠️ Behavior Concerns <span className="optional-label">(optional)</span>
+                ⚠️ Behavior Concerns
               </label>
               <textarea
                 id="behavior-notes"
@@ -881,7 +881,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             {/* Medical Concerns */}
             <div className="form-field concern-field">
               <label htmlFor="medical-notes">
-                🏥 Medical Concerns <span className="optional-label">(optional)</span>
+                🏥 Medical Concerns
               </label>
               <textarea
                 id="medical-notes"
@@ -906,7 +906,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
 
           {/* Session Rating */}
           <div className="form-field">
-            <label>⭐ Session Success <span className="optional-label">(optional)</span></label>
+            <label>⭐ Session Success</label>
             <div className="rating-selector" role="radiogroup" aria-label="Session rating">
               {[1, 2, 3, 4, 5].map((rating) => (
                 <label
@@ -932,7 +932,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
           {/* Other Notes */}
           <div className="form-field">
             <label htmlFor="other-notes">
-              💭 Other Comments <span className="optional-label">(optional)</span>
+              💭 Other Comments
             </label>
             <textarea
               id="other-notes"
