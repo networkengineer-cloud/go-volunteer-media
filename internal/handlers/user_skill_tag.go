@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -10,10 +11,12 @@ import (
 	"gorm.io/gorm"
 )
 
+var colorHexPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{3,8}$`)
+
 // UserSkillTagRequest is the request body for creating or updating a user skill tag
 type UserSkillTagRequest struct {
 	Name  string `json:"name" binding:"required,min=1,max=50"`
-	Color string `json:"color" binding:"required"`
+	Color string `json:"color" binding:"required,max=20"`
 }
 
 // GetUserSkillTags returns all skill tags defined for a group
@@ -61,7 +64,16 @@ func CreateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		groupIDUint, _ := strconv.ParseUint(groupID, 10, 32)
+		if !colorHexPattern.MatchString(req.Color) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "color must be a valid hex color (e.g. #ff0000)"})
+			return
+		}
+
+		groupIDUint, err := strconv.ParseUint(groupID, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
 		tag := models.UserSkillTag{
 			GroupID: uint(groupIDUint),
 			Name:    req.Name,
@@ -102,6 +114,11 @@ func UpdateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 		var req UserSkillTagRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
+			return
+		}
+
+		if !colorHexPattern.MatchString(req.Color) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "color must be a valid hex color (e.g. #ff0000)"})
 			return
 		}
 
@@ -192,7 +209,7 @@ func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 
 		// Deduplicate tag IDs to avoid false count mismatch in the validation below
 		seen := make(map[uint]struct{}, len(req.TagIDs))
-		dedupedIDs := req.TagIDs[:0]
+		dedupedIDs := make([]uint, 0, len(req.TagIDs))
 		for _, id := range req.TagIDs {
 			if _, ok := seen[id]; !ok {
 				seen[id] = struct{}{}
@@ -230,7 +247,11 @@ func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		groupIDUint, _ := strconv.ParseUint(groupID, 10, 64)
+		groupIDUint, err := strconv.ParseUint(groupID, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
 
 		// Remove existing skill tags for this group, then add new ones — wrapped in a
 		// transaction so a partial failure never leaves the user with no tags at all.

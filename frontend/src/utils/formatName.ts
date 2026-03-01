@@ -8,11 +8,11 @@ import type { User } from '../api/client';
 export function formatDisplayName(user: Pick<User, 'username' | 'first_name' | 'last_name'>): string {
   const firstName = user.first_name?.trim();
   const lastName = user.last_name?.trim();
-  if (firstName && lastName) {
-    return `${firstName} ${lastName.charAt(0).toUpperCase()}.`;
-  }
   if (firstName) {
-    return firstName;
+    return lastName ? `${firstName} ${lastName.charAt(0).toUpperCase()}.` : firstName;
+  }
+  if (lastName) {
+    return lastName;
   }
   return user.username;
 }

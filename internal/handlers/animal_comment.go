@@ -203,7 +203,8 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Sanitize metadata to prevent XSS
+		// No server-side escaping needed: metadata is rendered as React text nodes (JSX),
+		// never via dangerouslySetInnerHTML, so the frontend handles XSS prevention.
 		sanitizeSessionMetadata(req.Metadata)
 
 		aid, err := strconv.ParseUint(animalID, 10, 32)
@@ -304,7 +305,8 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Sanitize metadata to prevent XSS
+		// No server-side escaping needed: metadata is rendered as React text nodes (JSX),
+		// never via dangerouslySetInnerHTML, so the frontend handles XSS prevention.
 		sanitizeSessionMetadata(req.Metadata)
 
 		// Save current version to history before updating

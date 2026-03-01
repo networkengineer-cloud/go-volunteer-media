@@ -105,7 +105,7 @@ func fetchSkillTagsForUser(db *gorm.DB, targetUserID uint, restrictToGroupAdminO
 
 	if restrictToGroupAdminOf != 0 {
 		// Restrict to groups where the caller is a group admin
-		q = q.Joins("JOIN user_groups ug ON ug.group_id = t.group_id AND ug.user_id = ? AND ug.is_group_admin = ?", restrictToGroupAdminOf, true)
+		q = q.Joins("JOIN user_groups ug ON ug.group_id = t.group_id AND ug.user_id = ? AND ug.is_group_admin = ? AND ug.deleted_at IS NULL", restrictToGroupAdminOf, true)
 	}
 
 	if err := q.Scan(&rows).Error; err != nil {
