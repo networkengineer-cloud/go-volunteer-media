@@ -1031,7 +1031,7 @@ const GroupPage: React.FC = () => {
                       await groupsApi.createUserSkillTag(Number(id), newSkillTagName.trim(), newSkillTagColor);
                       setNewSkillTagName('');
                       setNewSkillTagColor('#6b7280');
-                      loadMembers(Number(id));
+                      await loadMembers(Number(id));
                       toast.showSuccess(`Skill tag "${newSkillTagName.trim()}" created`);
                     } catch {
                       toast.showError('Failed to create skill tag');
@@ -1239,7 +1239,7 @@ const GroupPage: React.FC = () => {
           if (!id || !tag) return;
           try {
             await groupsApi.deleteUserSkillTag(Number(id), tag.id);
-            loadMembers(Number(id));
+            await loadMembers(Number(id));
             toast.showSuccess(`Skill tag "${tag.name}" deleted`);
           } catch {
             toast.showError('Failed to delete skill tag');

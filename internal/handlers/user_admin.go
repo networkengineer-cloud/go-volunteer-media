@@ -144,14 +144,15 @@ func AdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 }
 
 // isGroupAdminOfAnySharedGroup returns true if requesterID is a group admin in any group
-// that targetUserID also belongs to
-func isGroupAdminOfAnySharedGroup(db *gorm.DB, requesterID, targetUserID uint) bool {
+// that targetUserID also belongs to. A DB error is returned to the caller rather than
+// silently treated as a denied check.
+func isGroupAdminOfAnySharedGroup(ctx context.Context, db *gorm.DB, requesterID, targetUserID uint) (bool, error) {
 	var count int64
-	db.Table("user_groups AS req").
+	err := db.WithContext(ctx).Table("user_groups AS req").
 		Joins("JOIN user_groups AS tgt ON tgt.group_id = req.group_id AND tgt.user_id = ?", targetUserID).
 		Where("req.user_id = ? AND req.is_group_admin = true AND req.deleted_at IS NULL AND tgt.deleted_at IS NULL", requesterID).
-		Count(&count)
-	return count > 0
+		Count(&count).Error
+	return count > 0, err
 }
 
 // GroupAdminDeleteUser allows a group admin to soft-delete a user in their group.
@@ -182,7 +183,12 @@ func GroupAdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete a site admin"})
 				return
 			}
-			if !isGroupAdminOfAnySharedGroup(db, requesterID, target.ID) {
+			ok, err := isGroupAdminOfAnySharedGroup(ctx, db, requesterID, target.ID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify group admin access"})
+				return
+			}
+			if !ok {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 				return
 			}
