@@ -214,9 +214,10 @@
 
 /* Tag Categories (for Animal Tags) */
 .tag-categories {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  align-items: start;
 }
 
 .tag-category {
@@ -648,6 +649,10 @@
   }
 
   .comment-tags-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tag-categories {
     grid-template-columns: 1fr;
   }
 }
