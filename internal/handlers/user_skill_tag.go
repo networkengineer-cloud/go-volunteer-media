@@ -107,6 +107,12 @@ func UpdateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Re-fetch to return the current DB state (map-based Updates does not refresh the local struct).
+		if err := db.First(&tag, tag.ID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload skill tag"})
+			return
+		}
+
 		c.JSON(http.StatusOK, tag)
 	}
 }
@@ -131,13 +137,14 @@ func DeleteUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Remove all user assignments for this tag first
-		if err := db.Exec("DELETE FROM user_skill_tag_assignments WHERE user_skill_tag_id = ?", tag.ID).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove tag assignments"})
-			return
-		}
-
-		if err := db.Delete(&tag).Error; err != nil {
+		// Remove assignments and soft-delete the tag atomically so we never
+		// leave orphaned assignments behind if the tag delete fails.
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Exec("DELETE FROM user_skill_tag_assignments WHERE user_skill_tag_id = ?", tag.ID).Error; err != nil {
+				return err
+			}
+			return tx.Delete(&tag).Error
+		}); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete skill tag"})
 			return
 		}
@@ -181,7 +188,10 @@ func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 		// Validate that all tag IDs belong to this group
 		if len(req.TagIDs) > 0 {
 			var count int64
-			db.Model(&models.UserSkillTag{}).Where("id IN ? AND group_id = ?", req.TagIDs, groupID).Count(&count)
+			if err := db.Model(&models.UserSkillTag{}).Where("id IN ? AND group_id = ?", req.TagIDs, groupID).Count(&count).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate tag IDs"})
+				return
+			}
 			if int(count) != len(req.TagIDs) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "One or more tag IDs do not belong to this group"})
 				return

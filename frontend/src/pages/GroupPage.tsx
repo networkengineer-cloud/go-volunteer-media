@@ -181,9 +181,9 @@ const GroupPage: React.FC = () => {
       await updatesApi.delete(Number(id), updateId);
       setActivities((prev) => prev.filter((a) => !(a.type === 'announcement' && a.id === updateId)));
       setActivityTotal((prev) => Math.max(0, prev - 1));
-      toast.success('Announcement deleted');
+      toast.showSuccess('Announcement deleted');
     } catch {
-      toast.error('Failed to delete announcement');
+      toast.showError('Failed to delete announcement');
     }
   };
 
@@ -1016,8 +1016,12 @@ const GroupPage: React.FC = () => {
                         className="skill-tag__delete"
                         onClick={async () => {
                           if (!id) return;
-                          await groupsApi.deleteUserSkillTag(Number(id), tag.id);
-                          loadMembers(Number(id));
+                          try {
+                            await groupsApi.deleteUserSkillTag(Number(id), tag.id);
+                            loadMembers(Number(id));
+                          } catch {
+                            toast.showError('Failed to delete skill tag');
+                          }
                         }}
                         aria-label={`Delete ${tag.name} tag`}
                       >×</button>
@@ -1028,10 +1032,14 @@ const GroupPage: React.FC = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (!id || !newSkillTagName.trim()) return;
-                    await groupsApi.createUserSkillTag(Number(id), newSkillTagName.trim(), newSkillTagColor);
-                    setNewSkillTagName('');
-                    setNewSkillTagColor('#6b7280');
-                    loadMembers(Number(id));
+                    try {
+                      await groupsApi.createUserSkillTag(Number(id), newSkillTagName.trim(), newSkillTagColor);
+                      setNewSkillTagName('');
+                      setNewSkillTagColor('#6b7280');
+                      loadMembers(Number(id));
+                    } catch {
+                      toast.showError('Failed to create skill tag');
+                    }
                   }}
                   className="skill-tag-form"
                 >

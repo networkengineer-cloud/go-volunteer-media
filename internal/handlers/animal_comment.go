@@ -15,6 +15,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// sessionTimePattern matches HH:MM in 24-hour format (00:00–23:59).
+// Compiled once at package init to avoid repeated allocation on every request.
+var sessionTimePattern = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
+
 type AnimalCommentRequest struct {
 	Content  string                  `json:"content" binding:"required"`
 	ImageURL string                  `json:"image_url"`
@@ -47,11 +51,10 @@ func validateSessionMetadata(metadata *models.SessionMetadata) error {
 		return errors.New("session rating must be between 1 and 5 (or 0 for not set)")
 	}
 
-	timePattern := regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
-	if metadata.SessionStartTime != "" && !timePattern.MatchString(metadata.SessionStartTime) {
+	if metadata.SessionStartTime != "" && !sessionTimePattern.MatchString(metadata.SessionStartTime) {
 		return errors.New("session_start_time must be in HH:MM 24-hour format")
 	}
-	if metadata.SessionEndTime != "" && !timePattern.MatchString(metadata.SessionEndTime) {
+	if metadata.SessionEndTime != "" && !sessionTimePattern.MatchString(metadata.SessionEndTime) {
 		return errors.New("session_end_time must be in HH:MM 24-hour format")
 	}
 

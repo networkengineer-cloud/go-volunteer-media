@@ -65,9 +65,10 @@ const SessionCommentDisplay: React.FC<SessionCommentDisplayProps> = ({ comment }
             {metadata.session_start_time && metadata.session_end_time ? (
               <>
                 {metadata.session_start_time} – {metadata.session_end_time}
-                {calculateDuration(metadata.session_start_time, metadata.session_end_time) && (
-                  <span className="session-duration"> ({calculateDuration(metadata.session_start_time, metadata.session_end_time)})</span>
-                )}
+                {(() => {
+                  const duration = calculateDuration(metadata.session_start_time!, metadata.session_end_time!);
+                  return duration ? <span className="session-duration"> ({duration})</span> : null;
+                })()}
               </>
             ) : metadata.session_start_time ? (
               <>Started: {metadata.session_start_time}</>
