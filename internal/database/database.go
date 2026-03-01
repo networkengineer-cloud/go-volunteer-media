@@ -386,14 +386,25 @@ func createCustomIndexes(db *gorm.DB) error {
 	// Partial index for profile pictures
 	// This optimizes queries looking for profile pictures by only indexing rows where is_profile_picture = true
 	partialIndexQuery := `
-		CREATE INDEX IF NOT EXISTS idx_animal_images_profile_partial 
-		ON animal_images(animal_id, is_profile_picture) 
+		CREATE INDEX IF NOT EXISTS idx_animal_images_profile_partial
+		ON animal_images(animal_id, is_profile_picture)
 		WHERE is_profile_picture = true
 	`
 	if err := db.Exec(partialIndexQuery).Error; err != nil {
 		logging.WithField("error", err.Error()).Warn("Failed to create partial index on animal_images")
 	} else {
 		logging.Info("Created partial index idx_animal_images_profile_partial")
+	}
+
+	// Unique constraint on skill tag assignments to prevent duplicate assignments
+	skillTagAssignmentIndexQuery := `
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_tag_assignments_unique
+		ON user_skill_tag_assignments (user_id, user_skill_tag_id)
+	`
+	if err := db.Exec(skillTagAssignmentIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create unique index on user_skill_tag_assignments")
+	} else {
+		logging.Info("Created unique index idx_skill_tag_assignments_unique")
 	}
 
 	logging.Info("Custom indexes creation completed")

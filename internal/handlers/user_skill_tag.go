@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var colorHexPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{3,8}$`)
+var colorHexPattern = regexp.MustCompile(`^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$`)
 
 // UserSkillTagRequest is the request body for creating or updating a user skill tag
 type UserSkillTagRequest struct {
@@ -200,9 +200,9 @@ func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Verify the target user is a member of the group
+		// Verify the target user is a member of the group (exclude soft-deleted memberships)
 		var ug models.UserGroup
-		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&ug).Error; err != nil {
+		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND deleted_at IS NULL", targetUserID, groupID).First(&ug).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User is not a member of this group"})
 			return
 		}

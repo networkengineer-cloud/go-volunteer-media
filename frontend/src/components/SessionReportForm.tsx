@@ -320,7 +320,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       content = parts.join('\n\n');
       
       // Only include metadata if at least one field has content
-      if (sessionGoal || sessionOutcome || behaviorNotes || medicalNotes || sessionRating > 0 || otherNotes || sessionDate || sessionStartTime || sessionEndTime) {
+      if (sessionGoal || sessionOutcome || behaviorNotes || medicalNotes || sessionRating > 0 || otherNotes || sessionStartTime || sessionEndTime) {
         metadata = {
           session_goal: sessionGoal.trim() || undefined,
           session_outcome: sessionOutcome.trim() || undefined,
