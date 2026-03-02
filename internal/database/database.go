@@ -476,25 +476,33 @@ func createDefaultCommentTags(db *gorm.DB) error {
 
 	for _, group := range groups {
 		for _, template := range defaultTagTemplates {
+			// Skip if any record exists for this group+name, including soft-deleted ones.
+			// This ensures admin deletions are respected across server restarts.
+			var count int64
+			if err := db.Unscoped().Model(&models.CommentTag{}).
+				Where("group_id = ? AND name = ?", group.ID, template.Name).
+				Count(&count).Error; err != nil {
+				return fmt.Errorf("failed to check existing comment tag %s for group %s: %w", template.Name, group.Name, err)
+			}
+			if count > 0 {
+				continue
+			}
+
 			tag := models.CommentTag{
 				GroupID:  group.ID,
 				Name:     template.Name,
 				Color:    template.Color,
 				IsSystem: template.IsSystem,
 			}
-			// Use upsert to avoid duplicate-key errors under concurrent migrations and
-			// to restore soft-deleted tags (unique index does not include deleted_at).
-			if err := db.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "group_id"}, {Name: "name"}},
-				DoUpdates: clause.Assignments(map[string]interface{}{"deleted_at": gorm.Expr("NULL")}),
-			}).Create(&tag).Error; err != nil {
+			// ON CONFLICT DO NOTHING handles the rare concurrent-migration race condition.
+			if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&tag).Error; err != nil {
 				return fmt.Errorf("failed to ensure default comment tag %s for group %s: %w", template.Name, group.Name, err)
 			}
 
 			logging.WithFields(map[string]interface{}{
 				"tag_name":   template.Name,
 				"group_name": group.Name,
-			}).Debug("Ensured default comment tag exists for group")
+			}).Debug("Created default comment tag for group")
 		}
 	}
 
@@ -527,25 +535,33 @@ func createDefaultAnimalTags(db *gorm.DB) error {
 
 	for _, group := range groups {
 		for _, template := range defaultTagTemplates {
+			// Skip if any record exists for this group+name, including soft-deleted ones.
+			// This ensures admin deletions are respected across server restarts.
+			var count int64
+			if err := db.Unscoped().Model(&models.AnimalTag{}).
+				Where("group_id = ? AND name = ?", group.ID, template.Name).
+				Count(&count).Error; err != nil {
+				return fmt.Errorf("failed to check existing animal tag %s for group %s: %w", template.Name, group.Name, err)
+			}
+			if count > 0 {
+				continue
+			}
+
 			tag := models.AnimalTag{
 				GroupID:  group.ID,
 				Name:     template.Name,
 				Category: template.Category,
 				Color:    template.Color,
 			}
-			// Use upsert to avoid duplicate-key errors under concurrent migrations and
-			// to restore soft-deleted tags (unique index does not include deleted_at).
-			if err := db.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "group_id"}, {Name: "name"}},
-				DoUpdates: clause.Assignments(map[string]interface{}{"deleted_at": gorm.Expr("NULL")}),
-			}).Create(&tag).Error; err != nil {
+			// ON CONFLICT DO NOTHING handles the rare concurrent-migration race condition.
+			if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&tag).Error; err != nil {
 				return fmt.Errorf("failed to ensure default animal tag %s for group %s: %w", template.Name, group.Name, err)
 			}
 
 			logging.WithFields(map[string]interface{}{
 				"tag_name":   template.Name,
 				"group_name": group.Name,
-			}).Debug("Ensured default animal tag exists for group")
+			}).Debug("Created default animal tag for group")
 		}
 	}
 

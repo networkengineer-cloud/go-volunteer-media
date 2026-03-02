@@ -49,7 +49,7 @@ const AnimalTagFormModal: React.FC<AnimalTagFormModalProps> = ({ isOpen, editing
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    
+
     setIsSubmitting(true);
     try {
       await onSubmit({ name: name.trim().toLowerCase(), category, color });
@@ -90,7 +90,7 @@ const AnimalTagFormModal: React.FC<AnimalTagFormModalProps> = ({ isOpen, editing
             <option value="walker_status">Walker Level</option>
           </select>
           <p className="form-hint">
-            {category === 'behavior' 
+            {category === 'behavior'
               ? 'Behavior traits describe how an animal acts (e.g., jumpy, mouthy, reactive)'
               : 'Walker levels indicate required volunteer experience (e.g., green, yellow, red)'}
           </p>
@@ -162,7 +162,7 @@ const CommentTagFormModal: React.FC<CommentTagFormModalProps> = ({ isOpen, onClo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    
+
     setIsSubmitting(true);
     try {
       await onSubmit(name.trim(), color);
@@ -238,6 +238,109 @@ const CommentTagFormModal: React.FC<CommentTagFormModalProps> = ({ isOpen, onClo
   );
 };
 
+// Member (Skill) Tag Form Modal
+interface SkillTagFormModalProps {
+  isOpen: boolean;
+  editingTag: UserSkillTag | null;
+  onClose: () => void;
+  onSubmit: (data: { name: string; color: string }) => Promise<void>;
+}
+
+const SkillTagFormModal: React.FC<SkillTagFormModalProps> = ({ isOpen, editingTag, onClose, onSubmit }) => {
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('#6b7280');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (editingTag) {
+        setName(editingTag.name);
+        setColor(editingTag.color);
+      } else {
+        setName('');
+        setColor('#6b7280');
+      }
+    }
+  }, [isOpen, editingTag]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit({ name: name.trim().toLowerCase(), color });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={editingTag ? 'Edit Member Tag' : 'Create Member Tag'}
+    >
+      <form onSubmit={handleSubmit} className="tag-form">
+        <div className="form-group">
+          <label htmlFor="skillTagName">Tag Name</label>
+          <input
+            type="text"
+            id="skillTagName"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g., Beginner, Experienced, Dog Walker"
+            required
+            autoComplete="off"
+            autoFocus
+            maxLength={50}
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Color</label>
+          <div className="color-picker">
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="color-input"
+            />
+            <div className="color-presets">
+              {colorPresets.map((presetColor) => (
+                <button
+                  key={presetColor}
+                  type="button"
+                  className={`color-preset ${color === presetColor ? 'selected' : ''}`}
+                  style={{ backgroundColor: presetColor }}
+                  onClick={() => setColor(presetColor)}
+                  aria-label={`Select color ${presetColor}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="tag-preview">
+          <span>Preview:</span>
+          <span className="tag-badge" style={{ backgroundColor: color }}>
+            {name || 'tag name'}
+          </span>
+        </div>
+
+        <div className="form-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary" disabled={isSubmitting || !name.trim()}>
+            {isSubmitting ? 'Saving...' : editingTag ? 'Update Tag' : 'Create Tag'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
 const AdminAnimalTagsPage: React.FC = () => {
   // Groups state
   const [groups, setGroups] = useState<Group[]>([]);
@@ -261,13 +364,10 @@ const AdminAnimalTagsPage: React.FC = () => {
   const [skillTags, setSkillTags] = useState<UserSkillTag[]>([]);
   const [loadingSkillTags, setLoadingSkillTags] = useState(false);
   const [skillTagError, setSkillTagError] = useState<string | null>(null);
-  const [newSkillTagName, setNewSkillTagName] = useState('');
-  const [newSkillTagColor, setNewSkillTagColor] = useState('#6b7280');
+  const [isSkillTagModalOpen, setIsSkillTagModalOpen] = useState(false);
   const [editingSkillTag, setEditingSkillTag] = useState<UserSkillTag | null>(null);
-  const [editSkillTagName, setEditSkillTagName] = useState('');
-  const [editSkillTagColor, setEditSkillTagColor] = useState('#6b7280');
 
-  // Active section for mobile
+  // Active section tab
   const [activeSection, setActiveSection] = useState<'animal' | 'comment' | 'member'>('animal');
   const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
 
@@ -427,32 +527,27 @@ const AdminAnimalTagsPage: React.FC = () => {
   }, [selectedGroupId, fetchCommentTags, openConfirmDialog]);
 
   // Skill Tag handlers
-  const handleCreateSkillTag = useCallback(async () => {
-    if (!selectedGroupId || !newSkillTagName.trim()) return;
-    try {
-      await groupsApi.createUserSkillTag(selectedGroupId, newSkillTagName.trim(), newSkillTagColor);
-      setNewSkillTagName('');
-      setNewSkillTagColor('#6b7280');
-      await fetchSkillTags();
-    } catch (err) {
-      console.error('Error creating skill tag:', err);
-      setSkillTagError('Failed to create member tag');
-    }
-  }, [selectedGroupId, newSkillTagName, newSkillTagColor, fetchSkillTags]);
+  const handleCloseSkillTagModal = useCallback(() => {
+    setIsSkillTagModalOpen(false);
+    setEditingSkillTag(null);
+  }, []);
 
-  const handleUpdateSkillTag = useCallback(async () => {
-    if (!selectedGroupId || !editingSkillTag || !editSkillTagName.trim()) return;
+  const handleSubmitSkillTag = useCallback(async (data: { name: string; color: string }) => {
+    if (!selectedGroupId) return;
     try {
-      await groupsApi.updateUserSkillTag(selectedGroupId, editingSkillTag.id, editSkillTagName.trim(), editSkillTagColor);
-      setEditingSkillTag(null);
-      setEditSkillTagName('');
-      setEditSkillTagColor('#6b7280');
+      if (editingSkillTag) {
+        await groupsApi.updateUserSkillTag(selectedGroupId, editingSkillTag.id, data.name, data.color);
+      } else {
+        await groupsApi.createUserSkillTag(selectedGroupId, data.name, data.color);
+      }
       await fetchSkillTags();
+      handleCloseSkillTagModal();
     } catch (err) {
-      console.error('Error updating skill tag:', err);
-      setSkillTagError('Failed to update member tag');
+      console.error('Error saving skill tag:', err);
+      setSkillTagError(editingSkillTag ? 'Failed to update member tag' : 'Failed to create member tag');
+      throw err;
     }
-  }, [selectedGroupId, editingSkillTag, editSkillTagName, editSkillTagColor, fetchSkillTags]);
+  }, [selectedGroupId, editingSkillTag, fetchSkillTags, handleCloseSkillTagModal]);
 
   const handleDeleteSkillTag = useCallback((tagId: number, tagName: string) => {
     if (!selectedGroupId) return;
@@ -540,7 +635,7 @@ const AdminAnimalTagsPage: React.FC = () => {
 
       {isLoading && <div className="loading-indicator">Loading tags for selected group...</div>}
 
-      {/* Section Tabs for mobile */}
+      {/* Section Tabs */}
       <div className="section-tabs" role="tablist">
         <button
           role="tab"
@@ -570,7 +665,7 @@ const AdminAnimalTagsPage: React.FC = () => {
 
       <div className="tags-layout">
         {/* Animal Tags Section */}
-        <section 
+        <section
           className={`tag-section animal-tags-section ${activeSection === 'animal' ? 'active' : ''}`}
           aria-label="Animal Tags"
         >
@@ -630,7 +725,7 @@ const AdminAnimalTagsPage: React.FC = () => {
                 <span className="category-count">{walkerStatusTags.length} tags</span>
               </div>
               <p className="category-description">
-                Indicate required volunteer experience level. Examples: green (all volunteers), yellow (experienced), red (staff only)
+                Indicates required volunteer experience level. Regular members may independently work with dogs labeled Regular, and those marked Mentor may be worked with independently only by Mentor level members. Other designations (e.g. Bite Quarantine-ISO) are informational — appropriate protocols and walker experience levels are to be followed.
               </p>
               <div className="tags-grid">
                 {walkerStatusTags.length === 0 ? (
@@ -658,11 +753,6 @@ const AdminAnimalTagsPage: React.FC = () => {
             </div>
           </div>
         </section>
-
-        {/* Divider */}
-        <div className="section-divider" aria-hidden="true">
-          <div className="divider-line"></div>
-        </div>
 
         {/* Comment Tags Section */}
         <section
@@ -711,11 +801,6 @@ const AdminAnimalTagsPage: React.FC = () => {
           </div>
         </section>
 
-        {/* Divider */}
-        <div className="section-divider" aria-hidden="true">
-          <div className="divider-line"></div>
-        </div>
-
         {/* Member Tags Section */}
         <section
           className={`tag-section member-tags-section ${activeSection === 'member' ? 'active' : ''}`}
@@ -728,6 +813,12 @@ const AdminAnimalTagsPage: React.FC = () => {
                 Tags assigned to volunteers to indicate experience level or role. Create tags here, then assign them to members on the group page.
               </p>
             </div>
+            <button
+              className="btn-primary btn-sm"
+              onClick={() => { setEditingSkillTag(null); setIsSkillTagModalOpen(true); }}
+            >
+              + Add Member Tag
+            </button>
           </div>
 
           {skillTagError && <div className="error-message">{skillTagError}</div>}
@@ -742,109 +833,30 @@ const AdminAnimalTagsPage: React.FC = () => {
               skillTags.map((tag) => (
                 <div key={tag.id} className="comment-tag-card">
                   <div className="tag-header">
-                    {editingSkillTag?.id === tag.id ? (
-                      <form
-                        className="skill-tag-inline-edit"
-                        onSubmit={(e) => { e.preventDefault(); handleUpdateSkillTag(); }}
-                      >
-                        <input
-                          type="text"
-                          value={editSkillTagName}
-                          onChange={(e) => setEditSkillTagName(e.target.value)}
-                          className="skill-tag-edit-input"
-                          autoFocus
-                          required
-                          maxLength={50}
-                        />
-                        <input
-                          type="color"
-                          value={editSkillTagColor}
-                          onChange={(e) => setEditSkillTagColor(e.target.value)}
-                          className="color-input color-input--sm"
-                          title="Tag color"
-                        />
-                        <button type="submit" className="btn-primary btn-sm">Save</button>
-                        <button type="button" className="btn-secondary btn-sm" onClick={() => { setEditingSkillTag(null); setEditSkillTagName(''); setEditSkillTagColor('#6b7280'); }}>Cancel</button>
-                      </form>
-                    ) : (
-                      <>
-                        <div className="tag-preview" style={{ backgroundColor: tag.color }}>
-                          {tag.name}
-                        </div>
-                        <button
-                          onClick={() => { setEditingSkillTag(tag); setEditSkillTagName(tag.name); setEditSkillTagColor(tag.color); }}
-                          className="btn-edit"
-                          aria-label={`Edit ${tag.name} tag`}
-                          title="Edit tag"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          onClick={() => handleDeleteSkillTag(tag.id, tag.name)}
-                          className="btn-delete"
-                          aria-label={`Delete ${tag.name} tag`}
-                          title="Delete tag"
-                        >
-                          ✕
-                        </button>
-                      </>
-                    )}
+                    <div className="tag-preview" style={{ backgroundColor: tag.color }}>
+                      {tag.name}
+                    </div>
+                    <button
+                      onClick={() => { setEditingSkillTag(tag); setIsSkillTagModalOpen(true); }}
+                      className="btn-edit"
+                      aria-label={`Edit ${tag.name} tag`}
+                      title="Edit tag"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSkillTag(tag.id, tag.name)}
+                      className="btn-delete"
+                      aria-label={`Delete ${tag.name} tag`}
+                      title="Delete tag"
+                    >
+                      ✕
+                    </button>
                   </div>
                 </div>
               ))
             )}
           </div>
-
-          {/* Add new skill tag form */}
-          {!editingSkillTag && (
-            <form
-              className="comment-tag-form"
-              onSubmit={(e) => { e.preventDefault(); handleCreateSkillTag(); }}
-            >
-              <div className="form-group">
-                <label htmlFor="skillTagName">New Member Tag</label>
-                <div className="inline-form">
-                  <input
-                    id="skillTagName"
-                    type="text"
-                    value={newSkillTagName}
-                    onChange={(e) => setNewSkillTagName(e.target.value)}
-                    placeholder="e.g. Beginner, Experienced"
-                    maxLength={50}
-                    required
-                    autoComplete="off"
-                  />
-                  <input
-                    type="color"
-                    value={newSkillTagColor}
-                    onChange={(e) => setNewSkillTagColor(e.target.value)}
-                    className="color-input"
-                    title="Tag color"
-                  />
-                  <div className="color-presets">
-                    {colorPresets.map((presetColor) => (
-                      <button
-                        key={presetColor}
-                        type="button"
-                        className={`color-preset ${newSkillTagColor === presetColor ? 'selected' : ''}`}
-                        style={{ backgroundColor: presetColor }}
-                        onClick={() => setNewSkillTagColor(presetColor)}
-                        aria-label={`Select color ${presetColor}`}
-                      />
-                    ))}
-                  </div>
-                  <div className="tag-preview-inline">
-                    <span className="tag-badge" style={{ backgroundColor: newSkillTagColor }}>
-                      {newSkillTagName || 'preview'}
-                    </span>
-                  </div>
-                  <button type="submit" className="btn-primary btn-sm" disabled={!newSkillTagName.trim()}>
-                    + Add Tag
-                  </button>
-                </div>
-              </div>
-            </form>
-          )}
         </section>
       </div>
 
@@ -861,6 +873,14 @@ const AdminAnimalTagsPage: React.FC = () => {
         onClose={() => setIsCommentTagModalOpen(false)}
         onSubmit={handleCreateCommentTag}
       />
+
+      <SkillTagFormModal
+        isOpen={isSkillTagModalOpen}
+        editingTag={editingSkillTag}
+        onClose={handleCloseSkillTagModal}
+        onSubmit={handleSubmitSkillTag}
+      />
+
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}
