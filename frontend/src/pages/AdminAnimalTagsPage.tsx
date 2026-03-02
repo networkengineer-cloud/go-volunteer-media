@@ -269,7 +269,7 @@ const SkillTagFormModal: React.FC<SkillTagFormModalProps> = ({ isOpen, editingTa
 
     setIsSubmitting(true);
     try {
-      await onSubmit({ name: name.trim(), color });
+      await onSubmit({ name: name.trim().toLowerCase(), color });
     } finally {
       setIsSubmitting(false);
     }
