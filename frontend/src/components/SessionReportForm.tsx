@@ -70,7 +70,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   const tabOrder: Array<'session' | 'escalations'> = ['session', 'escalations'];
 
   const handleTabKeyDown = (e: React.KeyboardEvent, currentIndex: number) => {
-    let next = currentIndex;
+    let next: number;
     if (e.key === 'ArrowRight') next = (currentIndex + 1) % tabOrder.length;
     else if (e.key === 'ArrowLeft') next = (currentIndex - 1 + tabOrder.length) % tabOrder.length;
     else if (e.key === 'Home') next = 0;
