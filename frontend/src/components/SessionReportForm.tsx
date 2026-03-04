@@ -1028,7 +1028,8 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
         </div>
       )}
 
-      {/* Tags Selection (both modes) */}
+      {/* Tags Selection (both modes) - only shown when non-system tags exist */}
+      {availableTags.some(t => !t.is_system) && (
       <div className="tags-section">
         <details>
           <summary className="tags-toggle">🏷️ Additional Tags {selectedTags.length > 0 && `(${selectedTags.length})`}</summary>
@@ -1078,6 +1079,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Submit Button */}
       <div className="form-actions">
