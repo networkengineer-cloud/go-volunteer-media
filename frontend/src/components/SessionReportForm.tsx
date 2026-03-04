@@ -66,6 +66,20 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
 
   // Desktop tab state
   const [desktopTab, setDesktopTab] = useState<'session' | 'escalations'>('session');
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const tabOrder: Array<'session' | 'escalations'> = ['session', 'escalations'];
+
+  const handleTabKeyDown = (e: React.KeyboardEvent, currentIndex: number) => {
+    let next = currentIndex;
+    if (e.key === 'ArrowRight') next = (currentIndex + 1) % tabOrder.length;
+    else if (e.key === 'ArrowLeft') next = (currentIndex - 1 + tabOrder.length) % tabOrder.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabOrder.length - 1;
+    else return;
+    e.preventDefault();
+    setDesktopTab(tabOrder[next]);
+    tabRefs.current[next]?.focus();
+  };
 
   // Use refs to access current state in interval callback
   const stateRef = useRef({
@@ -757,24 +771,30 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             {/* Desktop Tabs */}
             <div className="session-form-tabs" role="tablist">
               <button
+                ref={(el) => { tabRefs.current[0] = el; }}
                 type="button"
                 role="tab"
                 id="tab-session"
                 aria-selected={desktopTab === 'session'}
                 aria-controls="tabpanel-session"
+                tabIndex={desktopTab === 'session' ? 0 : -1}
                 className={`session-form-tab ${desktopTab === 'session' ? 'session-form-tab--active' : ''}`}
                 onClick={() => setDesktopTab('session')}
+                onKeyDown={(e) => handleTabKeyDown(e, 0)}
               >
                 📝 Session
               </button>
               <button
+                ref={(el) => { tabRefs.current[1] = el; }}
                 type="button"
                 role="tab"
                 id="tab-escalations"
                 aria-selected={desktopTab === 'escalations'}
                 aria-controls="tabpanel-escalations"
+                tabIndex={desktopTab === 'escalations' ? 0 : -1}
                 className={`session-form-tab ${desktopTab === 'escalations' ? 'session-form-tab--active' : ''}`}
                 onClick={() => setDesktopTab('escalations')}
+                onKeyDown={(e) => handleTabKeyDown(e, 1)}
               >
                 ⚠️ Escalations{getConcernCount() > 0 ? <span aria-hidden="true"> ({getConcernCount()})</span> : ''}
               </button>
