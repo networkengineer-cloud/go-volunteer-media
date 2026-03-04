@@ -649,6 +649,7 @@
 
   .group-tab {
     white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .quick-actions-bar {

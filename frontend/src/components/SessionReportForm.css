@@ -190,6 +190,13 @@
   gap: 0.5rem;
 }
 
+.concern-field label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
 .optional-label {
   font-weight: 400;
   font-size: 0.875rem;
@@ -285,6 +292,62 @@
   gap: 0.25rem;
 }
 
+/* Desktop form tabs */
+.session-form-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--neutral-200);
+  margin-bottom: 1.25rem;
+}
+
+.session-form-tab {
+  padding: 0.5rem 1.25rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  position: relative;
+  bottom: -2px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.session-form-tab:hover {
+  color: var(--brand);
+}
+
+.session-form-tab:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.session-form-tab--active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .session-form-tabs {
+  border-bottom-color: var(--neutral-300);
+}
+
+.escalations-intro {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0 0 1rem;
+}
+
+.field-help-text {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: normal;
+}
+
 /* Concerns Row (side-by-side on desktop) */
 .concerns-row {
   display: grid;
@@ -304,12 +367,16 @@
 }
 
 .concern-field:has(#behavior-notes:focus),
-.concern-field:has(#behavior-notes:not(:placeholder-shown)) {
+.concern-field:has(#behavior-notes:not(:placeholder-shown)),
+.concern-field:has(#behavior-notes-mobile:focus),
+.concern-field:has(#behavior-notes-mobile:not(:placeholder-shown)) {
   border-left-color: var(--warning); /* Amber */
 }
 
 .concern-field:has(#medical-notes:focus),
-.concern-field:has(#medical-notes:not(:placeholder-shown)) {
+.concern-field:has(#medical-notes:not(:placeholder-shown)),
+.concern-field:has(#medical-notes-mobile:focus),
+.concern-field:has(#medical-notes-mobile:not(:placeholder-shown)) {
   border-left-color: var(--danger); /* Red */
 }
 
@@ -654,6 +721,10 @@ details[open] .tags-toggle::before {
 
   .tags-toggle::before {
     transition: none;
+  }
+
+  .accordion-content {
+    animation: none;
   }
 }
 

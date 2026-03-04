@@ -62,7 +62,10 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   const [autoAppliedTags, setAutoAppliedTags] = useState<number[]>([]);
   
   // Mobile accordion state
-  const [expandedSection, setExpandedSection] = useState<'timing' | 'goals' | 'concerns' | 'rating' | null>('goals');
+  const [expandedSection, setExpandedSection] = useState<'timing' | 'goals' | 'concerns' | 'rating' | null>('timing');
+
+  // Desktop tab state
+  const [desktopTab, setDesktopTab] = useState<'session' | 'escalations'>('session');
 
   // Use refs to access current state in interval callback
   const stateRef = useRef({
@@ -164,6 +167,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     if (editingComment.metadata) {
       // Structured session report
       setMode('structured');
+      setDesktopTab(editingComment.metadata.behavior_notes || editingComment.metadata.medical_notes ? 'escalations' : 'session');
       setSessionGoal(editingComment.metadata.session_goal || '');
       setSessionOutcome(editingComment.metadata.session_outcome || '');
       setBehaviorNotes(editingComment.metadata.behavior_notes || '');
@@ -360,6 +364,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setSessionDate(getTodayDate());
       setSessionStartTime('');
       setSessionEndTime('');
+      setDesktopTab('session');
     }
   };
 
@@ -614,74 +619,6 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
               )}
             </div>
 
-            {/* Concerns Section */}
-            <div className="accordion-section">
-              <button
-                type="button"
-                className={`accordion-header ${expandedSection === 'concerns' ? 'expanded' : ''}`}
-                onClick={() => toggleSection('concerns')}
-                aria-expanded={expandedSection === 'concerns'}
-                data-testid="accordion-concerns"
-              >
-                <span className="accordion-icon">{expandedSection === 'concerns' ? '▼' : '▶'}</span>
-                <span className="accordion-title">⚠️ Concerns ({getConcernCount()})</span>
-              </button>
-              {expandedSection === 'concerns' && (
-                <div className="accordion-content">
-                  {/* Behavior Concerns */}
-                  <div className="form-field concern-field">
-                    <label htmlFor="behavior-notes-mobile">
-                      🐕 Behavior
-                    </label>
-                    <textarea
-                      id="behavior-notes-mobile"
-                      data-testid="behavior-concerns"
-                      placeholder="Any behavior observations?"
-                      value={behaviorNotes}
-                      onChange={(e) => setBehaviorNotes(e.target.value)}
-                      rows={3}
-                      maxLength={FIELD_LIMITS.behavior_notes}
-                      disabled={submitting}
-                      aria-label="Behavior concerns"
-                    />
-                    <span className="char-count">
-                      {behaviorNotes.length} / {FIELD_LIMITS.behavior_notes}
-                    </span>
-                    {behaviorNotes.trim() && findTagByType(availableTags, 'behavior') && (
-                      <span className="auto-tag-indicator" role="status">
-                        Auto-tag: 🏷️ behavior
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Medical Concerns */}
-                  <div className="form-field concern-field">
-                    <label htmlFor="medical-notes-mobile">
-                      🏥 Medical
-                    </label>
-                    <textarea
-                      id="medical-notes-mobile"
-                      placeholder="Any medical observations?"
-                      value={medicalNotes}
-                      onChange={(e) => setMedicalNotes(e.target.value)}
-                      rows={3}
-                      maxLength={FIELD_LIMITS.medical_notes}
-                      disabled={submitting}
-                      aria-label="Medical concerns"
-                    />
-                    <span className="char-count">
-                      {medicalNotes.length} / {FIELD_LIMITS.medical_notes}
-                    </span>
-                    {medicalNotes.trim() && findTagByType(availableTags, 'medical') && (
-                      <span className="auto-tag-indicator" role="status">
-                        Auto-tag: 🏷️ medical
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* Rating & Notes Section */}
             <div className="accordion-section">
               <button
@@ -742,10 +679,108 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Concerns Section */}
+            <div className="accordion-section">
+              <button
+                type="button"
+                className={`accordion-header ${expandedSection === 'concerns' ? 'expanded' : ''}`}
+                onClick={() => toggleSection('concerns')}
+                aria-expanded={expandedSection === 'concerns'}
+                data-testid="accordion-concerns"
+              >
+                <span className="accordion-icon">{expandedSection === 'concerns' ? '▼' : '▶'}</span>
+                <span className="accordion-title">{getConcernCount() > 0 ? '⚠️' : '📋'} Escalations ({getConcernCount()})</span>
+              </button>
+              {expandedSection === 'concerns' && (
+                <div className="accordion-content">
+                  <p className="escalations-intro">Only fill these in if there's something worth flagging — leave both blank for routine sessions.</p>
+                  {/* Behavior Concerns */}
+                  <div className="form-field concern-field">
+                    <label htmlFor="behavior-notes-mobile">
+                      🐕 Behavior
+                      <small className="field-help-text">For notable behavior observations — these can be filtered and shared with the team. Leave blank if nothing to flag.</small>
+                    </label>
+                    <textarea
+                      id="behavior-notes-mobile"
+                      data-testid="behavior-concerns"
+                      placeholder="Worth flagging to the behavior team?"
+                      value={behaviorNotes}
+                      onChange={(e) => setBehaviorNotes(e.target.value)}
+                      rows={3}
+                      maxLength={FIELD_LIMITS.behavior_notes}
+                      disabled={submitting}
+                      aria-label="Behavior concerns"
+                    />
+                    <span className="char-count">
+                      {behaviorNotes.length} / {FIELD_LIMITS.behavior_notes}
+                    </span>
+                    {behaviorNotes.trim() && findTagByType(availableTags, 'behavior') && (
+                      <span className="auto-tag-indicator" role="status">
+                        Auto-tag: 🏷️ behavior
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Medical Concerns */}
+                  <div className="form-field concern-field">
+                    <label htmlFor="medical-notes-mobile">
+                      🏥 Medical
+                      <small className="field-help-text">For health concerns worth flagging — these can be filtered and shared with staff. Leave blank if nothing to flag.</small>
+                    </label>
+                    <textarea
+                      id="medical-notes-mobile"
+                      placeholder="Any health concerns worth noting for staff?"
+                      value={medicalNotes}
+                      onChange={(e) => setMedicalNotes(e.target.value)}
+                      rows={3}
+                      maxLength={FIELD_LIMITS.medical_notes}
+                      disabled={submitting}
+                      aria-label="Medical concerns"
+                    />
+                    <span className="char-count">
+                      {medicalNotes.length} / {FIELD_LIMITS.medical_notes}
+                    </span>
+                    {medicalNotes.trim() && findTagByType(availableTags, 'medical') && (
+                      <span className="auto-tag-indicator" role="status">
+                        Auto-tag: 🏷️ medical
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Desktop Non-Accordion Layout */}
           <div className="desktop-only">
+            {/* Desktop Tabs */}
+            <div className="session-form-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                id="tab-session"
+                aria-selected={desktopTab === 'session'}
+                aria-controls="tabpanel-session"
+                className={`session-form-tab ${desktopTab === 'session' ? 'session-form-tab--active' : ''}`}
+                onClick={() => setDesktopTab('session')}
+              >
+                📝 Session
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="tab-escalations"
+                aria-selected={desktopTab === 'escalations'}
+                aria-controls="tabpanel-escalations"
+                className={`session-form-tab ${desktopTab === 'escalations' ? 'session-form-tab--active' : ''}`}
+                onClick={() => setDesktopTab('escalations')}
+              >
+                ⚠️ Escalations{getConcernCount() > 0 ? <span aria-hidden="true"> ({getConcernCount()})</span> : ''}
+              </button>
+            </div>
+
+            {desktopTab === 'session' && <div role="tabpanel" id="tabpanel-session" aria-labelledby="tab-session">
             {/* Session Date + Time */}
             <div className="form-field">
               <label htmlFor="session-date">
@@ -850,60 +885,6 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             </span>
           </div>
 
-          {/* Concerns (side-by-side on desktop) */}
-          <div className="concerns-row">
-            {/* Behavior Concerns */}
-            <div className="form-field concern-field">
-              <label htmlFor="behavior-notes">
-                ⚠️ Behavior Concerns
-              </label>
-              <textarea
-                id="behavior-notes"
-                data-testid="behavior-concerns"
-                placeholder="Any behavior observations to note?"
-                value={behaviorNotes}
-                onChange={(e) => setBehaviorNotes(e.target.value)}
-                rows={3}
-                maxLength={FIELD_LIMITS.behavior_notes}
-                disabled={submitting}
-                aria-label="Behavior concerns"
-              />
-              <span className="char-count">
-                {behaviorNotes.length} / {FIELD_LIMITS.behavior_notes}
-              </span>
-              {behaviorNotes.trim() && findTagByType(availableTags, 'behavior') && (
-                <span className="auto-tag-indicator" role="status">
-                  Auto-tag: 🏷️ behavior
-                </span>
-              )}
-            </div>
-
-            {/* Medical Concerns */}
-            <div className="form-field concern-field">
-              <label htmlFor="medical-notes">
-                🏥 Medical Concerns
-              </label>
-              <textarea
-                id="medical-notes"
-                placeholder="Any health or medical observations?"
-                value={medicalNotes}
-                onChange={(e) => setMedicalNotes(e.target.value)}
-                rows={3}
-                maxLength={FIELD_LIMITS.medical_notes}
-                disabled={submitting}
-                aria-label="Medical concerns"
-              />
-              <span className="char-count">
-                {medicalNotes.length} / {FIELD_LIMITS.medical_notes}
-              </span>
-              {medicalNotes.trim() && findTagByType(availableTags, 'medical') && (
-                <span className="auto-tag-indicator" role="status">
-                  Auto-tag: 🏷️ medical
-                </span>
-              )}
-            </div>
-          </div>
-
           {/* Session Rating */}
           <div className="form-field">
             <label>⭐ Session Success</label>
@@ -948,6 +929,66 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
               {otherNotes.length} / {FIELD_LIMITS.other_notes}
             </span>
           </div>
+          </div>}
+
+          {desktopTab === 'escalations' && <div role="tabpanel" id="tabpanel-escalations" aria-labelledby="tab-escalations">
+            <p className="escalations-intro">Only fill these in if there's something worth flagging — leave both blank for routine sessions.</p>
+            {/* Concerns (side-by-side on desktop) */}
+            <div className="concerns-row">
+              {/* Behavior Concerns */}
+              <div className="form-field concern-field">
+                <label htmlFor="behavior-notes">
+                  🐕 Behavior Escalation
+                  <small className="field-help-text">For notable behavior observations — these can be filtered and shared with the team.</small>
+                </label>
+                <textarea
+                  id="behavior-notes"
+                  data-testid="behavior-concerns-desktop"
+                  placeholder="Worth flagging to the behavior team?"
+                  value={behaviorNotes}
+                  onChange={(e) => setBehaviorNotes(e.target.value)}
+                  rows={3}
+                  maxLength={FIELD_LIMITS.behavior_notes}
+                  disabled={submitting}
+                  aria-label="Behavior concerns"
+                />
+                <span className="char-count">
+                  {behaviorNotes.length} / {FIELD_LIMITS.behavior_notes}
+                </span>
+                {behaviorNotes.trim() && findTagByType(availableTags, 'behavior') && (
+                  <span className="auto-tag-indicator" role="status">
+                    Auto-tag: 🏷️ behavior
+                  </span>
+                )}
+              </div>
+
+              {/* Medical Concerns */}
+              <div className="form-field concern-field">
+                <label htmlFor="medical-notes">
+                  🏥 Medical Escalation
+                  <small className="field-help-text">For health concerns worth flagging — these can be filtered and shared with staff.</small>
+                </label>
+                <textarea
+                  id="medical-notes"
+                  placeholder="Any health concerns worth noting for staff?"
+                  value={medicalNotes}
+                  onChange={(e) => setMedicalNotes(e.target.value)}
+                  rows={3}
+                  maxLength={FIELD_LIMITS.medical_notes}
+                  disabled={submitting}
+                  aria-label="Medical concerns"
+                />
+                <span className="char-count">
+                  {medicalNotes.length} / {FIELD_LIMITS.medical_notes}
+                </span>
+                {medicalNotes.trim() && findTagByType(availableTags, 'medical') && (
+                  <span className="auto-tag-indicator" role="status">
+                    Auto-tag: 🏷️ medical
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>}
           </div>
         </div>
       )}
