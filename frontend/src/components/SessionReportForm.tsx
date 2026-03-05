@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { AnimalComment, CommentTag, SessionMetadata } from '../api/client';
 import './SessionReportForm.css';
 
@@ -60,7 +60,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   
   // Track which tags were auto-applied vs manually selected
   const [autoAppliedTags, setAutoAppliedTags] = useState<number[]>([]);
-  
+
+  const customTags = useMemo(() => availableTags.filter(t => !t.is_system), [availableTags]);
+
   // Mobile accordion state
   const [expandedSection, setExpandedSection] = useState<'timing' | 'goals' | 'concerns' | 'rating' | null>('timing');
 
@@ -289,6 +291,13 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       setAutoAppliedTags(newAutoAppliedTags);
     }
   }, [behaviorNotes, medicalNotes, availableTags]);
+
+  // Remove manually selected custom tags if they disappear from availableTags
+  useEffect(() => {
+    if (customTags.length === 0) {
+      setSelectedTags(prev => prev.filter(id => autoAppliedTags.includes(id)));
+    }
+  }, [customTags, autoAppliedTags]);
 
   const findTagByType = (tags: CommentTag[], type: 'behavior' | 'medical'): CommentTag | null => {
     // 1. First, try exact name match (case-insensitive)
@@ -1031,7 +1040,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       )}
 
       {/* Tags Selection (both modes) - only shown when non-system tags exist */}
-      {availableTags.some(t => !t.is_system) && (
+      {customTags.length > 0 && (
         <div className="tags-section">
           <details>
             <summary className="tags-toggle">
@@ -1039,7 +1048,7 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
             </summary>
             <div className="tags-content">
               <div className="tags-grid">
-                {availableTags.filter(t => !t.is_system).map((tag) => (
+                {customTags.map((tag) => (
                   <label key={tag.id} className="tag-checkbox-label">
                     <input
                       type="checkbox"
