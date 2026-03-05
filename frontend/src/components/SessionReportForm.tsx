@@ -425,6 +425,8 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     return count;
   };
 
+  const manuallySelectedTags = selectedTags.filter(id => !autoAppliedTags.includes(id));
+
   return (
     <form onSubmit={handleSubmit} className="session-report-form">
       {/* Draft Restore Prompt */}
@@ -1032,54 +1034,56 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
       {availableTags.some(t => !t.is_system) && (
         <div className="tags-section">
           <details>
-            <summary className="tags-toggle">🏷️ Additional Tags {selectedTags.filter(id => !autoAppliedTags.includes(id)).length > 0 && `(${selectedTags.filter(id => !autoAppliedTags.includes(id)).length})`}</summary>
+            <summary className="tags-toggle">
+              🏷️ Additional Tags {manuallySelectedTags.length > 0 && `(${manuallySelectedTags.length})`}
+            </summary>
             <div className="tags-content">
               <div className="tags-grid">
-                  {availableTags.filter(t => !t.is_system).map((tag) => (
-                    <label key={tag.id} className="tag-checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={selectedTags.includes(tag.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedTags([...selectedTags, tag.id]);
-                          } else {
-                            setSelectedTags(selectedTags.filter(id => id !== tag.id));
-                          }
-                        }}
-                        disabled={submitting}
-                      />
-                      <span className="tag-badge" style={{ backgroundColor: tag.color }}>
-                        {tag.name}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </details>
-
-            {selectedTags.filter(id => !autoAppliedTags.includes(id)).length > 0 && (
-              <div className="selected-tags-preview">
-                {selectedTags.filter(id => !autoAppliedTags.includes(id)).map(tagId => {
-                  const tag = availableTags.find(t => t.id === tagId);
-                  return tag ? (
-                    <span key={tagId} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                {availableTags.filter(t => !t.is_system).map((tag) => (
+                  <label key={tag.id} className="tag-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={selectedTags.includes(tag.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedTags([...selectedTags, tag.id]);
+                        } else {
+                          setSelectedTags(selectedTags.filter(id => id !== tag.id));
+                        }
+                      }}
+                      disabled={submitting}
+                    />
+                    <span className="tag-badge" style={{ backgroundColor: tag.color }}>
                       {tag.name}
-                      <button
-                        type="button"
-                        className="remove-tag"
-                        onClick={() => setSelectedTags(selectedTags.filter(t => t !== tagId))}
-                        aria-label={`Remove ${tag.name} tag`}
-                      >
-                        ×
-                      </button>
                     </span>
-                  ) : null;
-                })}
+                  </label>
+                ))}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          </details>
+
+          {manuallySelectedTags.length > 0 && (
+            <div className="selected-tags-preview">
+              {manuallySelectedTags.map(tagId => {
+                const tag = availableTags.find(t => t.id === tagId);
+                return tag ? (
+                  <span key={tagId} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                    {tag.name}
+                    <button
+                      type="button"
+                      className="remove-tag"
+                      onClick={() => setSelectedTags(selectedTags.filter(t => t !== tagId))}
+                      aria-label={`Remove ${tag.name} tag`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ) : null;
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Submit Button */}
       <div className="form-actions">
