@@ -292,12 +292,11 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     }
   }, [behaviorNotes, medicalNotes, availableTags]);
 
-  // Remove manually selected custom tags if they disappear from availableTags
+  // Drop any selected tag IDs that no longer exist in availableTags
   useEffect(() => {
-    if (customTags.length === 0) {
-      setSelectedTags(prev => prev.filter(id => autoAppliedTags.includes(id)));
-    }
-  }, [customTags, autoAppliedTags]);
+    const validIds = new Set(availableTags.map(t => t.id));
+    setSelectedTags(prev => prev.filter(id => validIds.has(id)));
+  }, [availableTags]);
 
   const findTagByType = (tags: CommentTag[], type: 'behavior' | 'medical'): CommentTag | null => {
     // 1. First, try exact name match (case-insensitive)
@@ -434,7 +433,10 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     return count;
   };
 
-  const manuallySelectedTags = selectedTags.filter(id => !autoAppliedTags.includes(id));
+  const manuallySelectedTags = useMemo(
+    () => selectedTags.filter(id => !autoAppliedTags.includes(id)),
+    [selectedTags, autoAppliedTags],
+  );
 
   return (
     <form onSubmit={handleSubmit} className="session-report-form">
