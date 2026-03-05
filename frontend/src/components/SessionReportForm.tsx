@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { AnimalComment, CommentTag, SessionMetadata } from '../api/client';
 import './SessionReportForm.css';
 
@@ -60,7 +60,9 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
   
   // Track which tags were auto-applied vs manually selected
   const [autoAppliedTags, setAutoAppliedTags] = useState<number[]>([]);
-  
+
+  const customTags = useMemo(() => availableTags.filter(t => !t.is_system), [availableTags]);
+
   // Mobile accordion state
   const [expandedSection, setExpandedSection] = useState<'timing' | 'goals' | 'concerns' | 'rating' | null>('timing');
 
@@ -290,6 +292,12 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     }
   }, [behaviorNotes, medicalNotes, availableTags]);
 
+  // Drop any selected tag IDs that no longer exist in availableTags
+  useEffect(() => {
+    const validIds = new Set(availableTags.map(t => t.id));
+    setSelectedTags(prev => prev.filter(id => validIds.has(id)));
+  }, [availableTags]);
+
   const findTagByType = (tags: CommentTag[], type: 'behavior' | 'medical'): CommentTag | null => {
     // 1. First, try exact name match (case-insensitive)
     const byName = tags.find(t => t.name.toLowerCase() === type.toLowerCase());
@@ -424,6 +432,11 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
     if (otherNotes.trim()) count++;
     return count;
   };
+
+  const manuallySelectedTags = useMemo(
+    () => selectedTags.filter(id => !autoAppliedTags.includes(id)),
+    [selectedTags, autoAppliedTags],
+  );
 
   return (
     <form onSubmit={handleSubmit} className="session-report-form">
@@ -1028,56 +1041,60 @@ const SessionReportForm: React.FC<SessionReportFormProps> = ({
         </div>
       )}
 
-      {/* Tags Selection (both modes) */}
-      <div className="tags-section">
-        <details>
-          <summary className="tags-toggle">🏷️ Additional Tags {selectedTags.length > 0 && `(${selectedTags.length})`}</summary>
-          <div className="tags-content">
-            <div className="tags-grid">
-              {availableTags.map((tag) => (
-                <label key={tag.id} className="tag-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={selectedTags.includes(tag.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedTags([...selectedTags, tag.id]);
-                      } else {
-                        setSelectedTags(selectedTags.filter(id => id !== tag.id));
-                      }
-                    }}
-                    disabled={submitting}
-                  />
-                  <span className="tag-badge" style={{ backgroundColor: tag.color }}>
-                    {tag.name}
-                  </span>
-                </label>
-              ))}
+      {/* Tags Selection (both modes) - only shown when non-system tags exist */}
+      {customTags.length > 0 && (
+        <div className="tags-section">
+          <details>
+            <summary className="tags-toggle">
+              🏷️ Additional Tags {manuallySelectedTags.length > 0 && `(${manuallySelectedTags.length})`}
+            </summary>
+            <div className="tags-content">
+              <div className="tags-grid">
+                {customTags.map((tag) => (
+                  <label key={tag.id} className="tag-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={selectedTags.includes(tag.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedTags([...selectedTags, tag.id]);
+                        } else {
+                          setSelectedTags(selectedTags.filter(id => id !== tag.id));
+                        }
+                      }}
+                      disabled={submitting}
+                    />
+                    <span className="tag-badge" style={{ backgroundColor: tag.color }}>
+                      {tag.name}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
-        </details>
-        
-        {selectedTags.length > 0 && (
-          <div className="selected-tags-preview">
-            {selectedTags.map(tagId => {
-              const tag = availableTags.find(t => t.id === tagId);
-              return tag ? (
-                <span key={tagId} className="tag-badge" style={{ backgroundColor: tag.color }}>
-                  {tag.name}
-                  <button
-                    type="button"
-                    className="remove-tag"
-                    onClick={() => setSelectedTags(selectedTags.filter(t => t !== tagId))}
-                    aria-label={`Remove ${tag.name} tag`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ) : null;
-            })}
-          </div>
-        )}
-      </div>
+          </details>
+
+          {manuallySelectedTags.length > 0 && (
+            <div className="selected-tags-preview">
+              {manuallySelectedTags.map(tagId => {
+                const tag = availableTags.find(t => t.id === tagId);
+                return tag ? (
+                  <span key={tagId} className="tag-badge" style={{ backgroundColor: tag.color }}>
+                    {tag.name}
+                    <button
+                      type="button"
+                      className="remove-tag"
+                      onClick={() => setSelectedTags(selectedTags.filter(t => t !== tagId))}
+                      aria-label={`Remove ${tag.name} tag`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ) : null;
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Submit Button */}
       <div className="form-actions">
