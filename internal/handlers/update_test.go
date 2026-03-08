@@ -252,6 +252,54 @@ func TestCreateUpdateWithSendEmailFlagForNonAdminIsForcedFalse(t *testing.T) {
 	assert.False(t, created.SendEmail)
 }
 
+// TestCreateUpdateWithSendEmailFlagForGroupAdminIsAllowed covers the bite quarantine
+// announcement path: the frontend sends send_email:true as a group admin, and the
+// backend must preserve that flag so opted-in users receive the notification.
+func TestCreateUpdateWithSendEmailFlagForGroupAdminIsAllowed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	require.NoError(t, db.AutoMigrate(&models.User{}, &models.Group{}, &models.Update{}, &models.UserGroup{}))
+
+	groupAdmin := models.User{Username: "gadmin", Email: "gadmin@example.com", Password: "hashed", IsAdmin: false}
+	require.NoError(t, db.Create(&groupAdmin).Error)
+
+	group := models.Group{Name: "Test Group", Description: "desc"}
+	require.NoError(t, db.Create(&group).Error)
+
+	require.NoError(t, db.Create(&models.UserGroup{UserID: groupAdmin.ID, GroupID: group.ID, IsGroupAdmin: true}).Error)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	reqBody := UpdateRequest{
+		Title:     "🚨 Bite Quarantine: Max",
+		Content:   "Max has been placed in bite quarantine.\n\n#behavior",
+		SendEmail: true,
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	c.Request = httptest.NewRequest("POST", "/groups/1/updates", bytes.NewBuffer(bodyBytes))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("user_id", groupAdmin.ID)
+	c.Set("is_admin", false)
+	c.Params = gin.Params{{Key: "id", Value: strconv.FormatUint(uint64(group.ID), 10)}}
+
+	handler := CreateUpdate(db, email.NewService(db), groupme.NewService())
+	handler(c)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var created models.Update
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	assert.True(t, created.SendEmail, "group admin bite quarantine announcement must have send_email=true")
+}
+
 func TestCreateUpdateWithSendEmailFlagForSiteAdminIsAllowed(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
