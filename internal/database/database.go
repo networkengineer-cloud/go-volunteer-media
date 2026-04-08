@@ -151,6 +151,9 @@ func RunMigrations(db *gorm.DB) error {
 		&models.User{},
 		&models.Group{},
 		&models.UserGroup{},
+		// Script must come before Animal so that the animal_scripts many2many
+		// join table can be created with a valid FK to the scripts table.
+		&models.Script{},
 		&models.Animal{},
 		&models.Update{},
 		&models.Announcement{},
@@ -159,7 +162,6 @@ func RunMigrations(db *gorm.DB) error {
 		&models.CommentHistory{},
 		&models.SiteSetting{},
 		&models.Protocol{},
-		&models.Script{},
 		&models.AnimalTag{},
 		&models.UserSkillTag{},
 		&models.AnimalImage{},
