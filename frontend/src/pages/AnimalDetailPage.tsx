@@ -16,6 +16,7 @@ import SessionReportForm from '../components/SessionReportForm';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
 import CommentHistoryModal from '../components/CommentHistoryModal';
 import './AnimalDetailPage.css';
+import '../components/ScriptsList.css';
 
 // Lazy load ProtocolViewer to reduce initial bundle size (~350KB savings)
 const ProtocolViewer = lazy(() => import('../components/ProtocolViewer'));
@@ -1283,13 +1284,8 @@ const AuthenticatedScriptViewer: React.FC<AuthenticatedScriptViewerProps> = ({ s
   if (viewState.status === 'docx' && viewState.htmlContent) {
     return (
       <div
-        style={{
-          padding: '1.5rem',
-          lineHeight: '1.7',
-          overflowY: 'auto',
-          maxHeight: '65vh',
-          color: 'var(--text-primary)',
-        }}
+        className="script-docx-body"
+        style={{ maxHeight: '65vh', margin: '1rem' }}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: viewState.htmlContent }}
       />

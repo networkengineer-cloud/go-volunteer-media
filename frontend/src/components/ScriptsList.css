@@ -208,6 +208,85 @@
   border-radius: 8px;
 }
 
+/* DOCX rendered HTML body */
+.script-docx-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem 2.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  max-height: 68vh;
+}
+
+.script-docx-body h1,
+.script-docx-body h2,
+.script-docx-body h3,
+.script-docx-body h4,
+.script-docx-body h5,
+.script-docx-body h6 {
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 1.25rem 0 0.5rem;
+  line-height: 1.3;
+}
+
+.script-docx-body h1 { font-size: 1.4rem; }
+.script-docx-body h2 { font-size: 1.2rem; }
+.script-docx-body h3 { font-size: 1.05rem; }
+
+.script-docx-body p {
+  margin: 0 0 0.6rem;
+}
+
+.script-docx-body ul,
+.script-docx-body ol {
+  margin: 0.25rem 0 0.75rem 1.4rem;
+  padding: 0;
+}
+
+.script-docx-body li {
+  margin-bottom: 0.25rem;
+}
+
+.script-docx-body strong,
+.script-docx-body b {
+  font-weight: 700;
+}
+
+.script-docx-body em,
+.script-docx-body i {
+  font-style: italic;
+}
+
+/* Tables from DOCX */
+.script-docx-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0 1.25rem;
+  font-size: 0.9rem;
+}
+
+.script-docx-body th,
+.script-docx-body td {
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+  text-align: left;
+}
+
+.script-docx-body th {
+  background: var(--surface-alt, rgba(0,0,0,0.04));
+  font-weight: 600;
+}
+
+.script-docx-body tr:nth-child(even) td {
+  background: var(--surface-alt, rgba(0,0,0,0.02));
+}
+
 .script-viewer-download {
   align-items: center;
   justify-content: center;

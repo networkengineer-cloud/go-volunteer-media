@@ -390,7 +390,7 @@ const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onEdit, on
     return (
       <div className="script-viewer">
         <div
-          style={{ padding: '1.5rem', lineHeight: '1.7', overflowY: 'auto', maxHeight: '65vh', color: 'var(--text-primary)' }}
+          className="script-docx-body"
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: viewState.htmlContent }}
         />
