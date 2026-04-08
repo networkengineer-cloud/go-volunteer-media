@@ -218,7 +218,7 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({ groupId, onSuccess,
         </div>
 
         {/* GroupMe integration */}
-        {group && group.groupme_enabled && group.groupme_bot_id && (
+        {group && group.groupme_enabled && (
           <div className="announcement-form__field">
             <label className="announcement-form__checkbox-label">
               <input

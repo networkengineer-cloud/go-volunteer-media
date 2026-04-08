@@ -141,7 +141,7 @@ export interface Group {
   image_url: string;
   hero_image_url: string;
   has_protocols: boolean;
-  groupme_bot_id: string;
+  groupme_bot_id?: string; // Only present in admin responses; hidden from regular group members
   groupme_enabled: boolean;
 }
 

@@ -27,6 +27,29 @@ type GroupRequest struct {
 	GroupMeEnabled bool   `json:"groupme_enabled"`
 }
 
+// adminGroupResponse wraps Group to expose GroupMeBotID which is hidden on the
+// base model (json:"-") to prevent regular group members from extracting the
+// bot token and posting to GroupMe without going through the application.
+type adminGroupResponse struct {
+	models.Group
+	GroupMeBotID string `json:"groupme_bot_id"`
+}
+
+func toAdminGroupResponse(g models.Group) adminGroupResponse {
+	return adminGroupResponse{
+		Group:        g,
+		GroupMeBotID: g.GroupMeBotID,
+	}
+}
+
+func toAdminGroupResponses(groups []models.Group) []adminGroupResponse {
+	out := make([]adminGroupResponse, len(groups))
+	for i, g := range groups {
+		out[i] = toAdminGroupResponse(g)
+	}
+	return out
+}
+
 // isValidGroupMeBotID validates the GroupMe bot ID format (26-char hex string)
 func isValidGroupMeBotID(id string) bool {
 	if id == "" {
@@ -126,20 +149,22 @@ func GetGroups(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		if adminFlag {
-			// Admins can see all groups
+			// Admins can see all groups (with bot ID included)
 			if err := db.WithContext(ctx).Find(&groups).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch groups"})
 				return
 			}
-		} else {
-			// Regular users see only their groups
-			var user models.User
-			if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user groups"})
-				return
-			}
-			groups = user.Groups
+			c.JSON(http.StatusOK, toAdminGroupResponses(groups))
+			return
 		}
+
+		// Regular users see only their groups (bot ID omitted)
+		var user models.User
+		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user groups"})
+			return
+		}
+		groups = user.Groups
 
 		c.JSON(http.StatusOK, groups)
 	}
@@ -173,9 +198,13 @@ func GetGroup(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 				return
 			}
+			// Regular group members do not see the bot ID
+			c.JSON(http.StatusOK, group)
+			return
 		}
 
-		c.JSON(http.StatusOK, group)
+		// Admins receive the full admin response including the bot ID
+		c.JSON(http.StatusOK, toAdminGroupResponse(group))
 	}
 }
 
@@ -216,7 +245,7 @@ func CreateGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusCreated, group)
+		c.JSON(http.StatusCreated, toAdminGroupResponse(group))
 	}
 }
 
@@ -255,7 +284,7 @@ func UpdateGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, group)
+		c.JSON(http.StatusOK, toAdminGroupResponse(group))
 	}
 }
 
@@ -976,6 +1005,7 @@ func UpdateGroupSettings(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, group)
+		// Group admins also need the bot ID to manage GroupMe settings
+		c.JSON(http.StatusOK, toAdminGroupResponse(group))
 	}
 }

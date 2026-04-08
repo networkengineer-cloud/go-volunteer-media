@@ -103,7 +103,7 @@ const AnnouncementsTab: React.FC = () => {
     });
   };
 
-  const groupMeEnabledGroups = groups.filter(g => g.groupme_enabled && g.groupme_bot_id);
+  const groupMeEnabledGroups = groups.filter(g => g.groupme_enabled);
 
   if (loading) {
     return (

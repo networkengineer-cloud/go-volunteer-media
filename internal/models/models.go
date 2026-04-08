@@ -58,7 +58,7 @@ type Group struct {
 	ImageURL       string         `json:"image_url"`
 	HeroImageURL   string         `json:"hero_image_url"`
 	HasProtocols   bool           `gorm:"column:has_protocols;default:false" json:"has_protocols"`     // Enable protocols feature for this group
-	GroupMeBotID   string         `gorm:"column:groupme_bot_id" json:"groupme_bot_id"`                 // GroupMe Bot ID for sending messages
+	GroupMeBotID   string         `gorm:"column:groupme_bot_id" json:"-"`                              // GroupMe Bot ID — omitted from API responses; exposed via adminGroupResponse only
 	GroupMeEnabled bool           `gorm:"column:groupme_enabled;default:false" json:"groupme_enabled"` // Enable GroupMe integration for this group
 	Users          []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
 	Animals        []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
@@ -299,24 +299,24 @@ type Protocol struct {
 // Script represents a reusable script/procedure file uploaded to a group.
 // Scripts are group-gated (requires HasProtocols) and can be linked to multiple animals.
 type Script struct {
-	ID                  uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt           time.Time      `json:"created_at"`
-	UpdatedAt           time.Time      `json:"updated_at"`
-	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`
-	GroupID             uint           `gorm:"not null;index:idx_scripts_group_order" json:"group_id"`
-	Title               string         `gorm:"not null" json:"title"`
-	Description         string         `gorm:"type:text" json:"description"`
-	OrderIndex          int            `gorm:"default:0;index:idx_scripts_group_order" json:"order_index"`
-	FileURL             string         `json:"file_url"`
-	FileName            string         `json:"file_name"`
-	FileType            string         `json:"file_type"`
-	FileSize            int            `json:"file_size"`
-	FileProvider        string         `gorm:"default:'postgres'" json:"-"` // Storage backend: "postgres" or "azure"
-	FileBlobIdentifier  string         `json:"-"`                           // Azure blob identifier (UUID without extension)
-	FileBlobExtension   string         `json:"-"`                           // File extension for blob storage
-	FileData            []byte         `gorm:"type:bytea" json:"-"`         // Binary data stored in DB (null when using Azure)
-	FileUploadedByUserID *uint         `json:"file_uploaded_by_user_id"`
-	Animals             []Animal       `gorm:"many2many:animal_scripts;" json:"animals,omitempty"`
+	ID                   uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+	DeletedAt            gorm.DeletedAt `gorm:"index" json:"-"`
+	GroupID              uint           `gorm:"not null;index:idx_scripts_group_order" json:"group_id"`
+	Title                string         `gorm:"not null" json:"title"`
+	Description          string         `gorm:"type:text" json:"description"`
+	OrderIndex           int            `gorm:"default:0;index:idx_scripts_group_order" json:"order_index"`
+	FileURL              string         `json:"file_url"`
+	FileName             string         `json:"file_name"`
+	FileType             string         `json:"file_type"`
+	FileSize             int            `json:"file_size"`
+	FileProvider         string         `gorm:"default:'postgres'" json:"-"` // Storage backend: "postgres" or "azure"
+	FileBlobIdentifier   string         `json:"-"`                           // Azure blob identifier (UUID without extension)
+	FileBlobExtension    string         `json:"-"`                           // File extension for blob storage
+	FileData             []byte         `gorm:"type:bytea" json:"-"`         // Binary data stored in DB (null when using Azure)
+	FileUploadedByUserID *uint          `json:"file_uploaded_by_user_id"`
+	Animals              []Animal       `gorm:"many2many:animal_scripts;" json:"animals,omitempty"`
 }
 
 // AnimalTag represents a tag that can be applied to animals
