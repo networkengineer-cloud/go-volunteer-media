@@ -175,7 +175,13 @@ func CreateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 			blobIdentifier = blobUUID + blobExt
 			fileURL = fmt.Sprintf("/api/script-files/%s", blobIdentifier)
 			fileProvider = storageProvider.Name()
-			fileDataForDB = nil
+			// Postgres provider generates a UUID but does not actually store file bytes;
+			// persist the data in the DB so ServeScriptFile can serve it.
+			if fileProvider == "postgres" {
+				fileDataForDB = fileData
+			} else {
+				fileDataForDB = nil
+			}
 		}
 
 		script := models.Script{
@@ -303,7 +309,13 @@ func UpdateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 				newBlobIdentifier = newBlobUUID + newBlobExt
 				newFileURL = fmt.Sprintf("/api/script-files/%s", newBlobIdentifier)
 				newFileProvider = storageProvider.Name()
-				newFileData = nil
+				// Postgres provider generates a UUID but does not actually store file bytes;
+				// persist the data in the DB so ServeScriptFile can serve it.
+				if newFileProvider == "postgres" {
+					newFileData = fileData
+				} else {
+					newFileData = nil
+				}
 			}
 
 			uploaderID := userID.(uint)
