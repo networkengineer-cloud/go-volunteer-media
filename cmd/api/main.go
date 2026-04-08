@@ -312,9 +312,11 @@ func main() {
 			group.POST("/updates", handlers.CreateUpdate(db, emailService, groupMeService))
 			group.DELETE("/updates/:updateId", handlers.DeleteUpdate(db))
 
-			// Protocol routes - all group members can view
+			// Protocol/Script routes - all group members can view
 			group.GET("/protocols", handlers.GetProtocols(db))
 			group.GET("/protocols/:protocolId", handlers.GetProtocol(db))
+			group.GET("/scripts", handlers.GetScripts(db))
+			group.GET("/scripts/:scriptId", handlers.GetScript(db))
 
 			// Group-specific tag routes - viewing accessible to all group members
 			// Tag management (create/update/delete) requires group admin or site admin
@@ -365,6 +367,8 @@ func main() {
 			// Protocol document management
 			groupAdminAnimals.POST("/:animalId/protocol-document", handlers.UploadAnimalProtocolDocument(db, storageProvider))
 			groupAdminAnimals.DELETE("/:animalId/protocol-document", handlers.DeleteAnimalProtocolDocument(db, storageProvider))
+			// Animal script link management
+			groupAdminAnimals.PUT("/:animalId/scripts", handlers.SetAnimalScripts(db))
 		}
 
 		// Group admin or site admin protocol management routes
@@ -376,6 +380,17 @@ func main() {
 			groupAdminProtocols.PUT("/:protocolId", handlers.UpdateProtocol(db))
 			groupAdminProtocols.DELETE("/:protocolId", handlers.DeleteProtocol(db))
 		}
+
+		// Group admin or site admin script management routes
+		groupAdminScripts := protected.Group("/groups/:id/scripts")
+		{
+			groupAdminScripts.POST("", handlers.CreateScript(db, storageProvider))
+			groupAdminScripts.PUT("/:scriptId", handlers.UpdateScript(db, storageProvider))
+			groupAdminScripts.DELETE("/:scriptId", handlers.DeleteScript(db, storageProvider))
+		}
+
+		// Script file serving (authenticated, group membership checked inside handler)
+		protected.GET("/script-files/:uuid", handlers.ServeScriptFile(db, storageProvider))
 
 		// Bulk animal management routes accessible to group admins and site admins
 		// Authorization is checked within the handlers

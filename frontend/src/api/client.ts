@@ -165,6 +165,21 @@ export interface Protocol {
   updated_at: string;
 }
 
+export interface Script {
+  id: number;
+  group_id: number;
+  title: string;
+  description: string;
+  order_index: number;
+  file_url: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  file_uploaded_by_user_id?: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AnimalNameHistory {
   id: number;
   created_at: string;
@@ -200,6 +215,7 @@ export interface Animal {
   protocol_document_user_id?: number;
   tags?: AnimalTag[];
   name_history?: AnimalNameHistory[];
+  scripts?: Script[];
 }
 
 export interface Update {
@@ -701,6 +717,19 @@ export const protocolsApi = {
     formData.append('image', file);
     return api.post<{ url: string }>('/groups/' + groupId + '/protocols/upload-image', formData);
   },
+};
+
+export const scriptsApi = {
+  getAll: (groupId: number) => api.get<Script[]>('/groups/' + groupId + '/scripts'),
+  getById: (groupId: number, scriptId: number) => api.get<Script>('/groups/' + groupId + '/scripts/' + scriptId),
+  create: (groupId: number, formData: FormData) =>
+    api.post<Script>('/groups/' + groupId + '/scripts', formData),
+  update: (groupId: number, scriptId: number, formData: FormData) =>
+    api.put<Script>('/groups/' + groupId + '/scripts/' + scriptId, formData),
+  delete: (groupId: number, scriptId: number) =>
+    api.delete('/groups/' + groupId + '/scripts/' + scriptId),
+  setAnimalScripts: (groupId: number, animalId: number, scriptIds: number[]) =>
+    api.put('/groups/' + groupId + '/animals/' + animalId + '/scripts', { script_ids: scriptIds }),
 };
 
 // Updates API
