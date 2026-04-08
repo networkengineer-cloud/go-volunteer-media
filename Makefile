@@ -14,7 +14,7 @@ setup: ## Install dependencies
 
 dev-backend: ## Run backend in development mode
 	@echo "Starting backend server..."
-	go run cmd/api/main.go
+	go run -tags dev cmd/api/main.go
 
 dev-frontend: ## Run frontend in development mode
 	@echo "Starting frontend development server..."

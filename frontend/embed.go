@@ -1,6 +1,14 @@
+//go:build !dev
+
 package frontend
 
-import "embed"
+import (
+	"embed"
+	"io/fs"
+)
 
 //go:embed dist
-var DistFS embed.FS
+var distFiles embed.FS
+
+// DistFS is the embedded frontend asset filesystem.
+var DistFS fs.FS = distFiles
