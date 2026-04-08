@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -359,6 +360,15 @@ func DeleteScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 			}
 		}
 
+		// For postgres-backed scripts, clear the binary data before soft-deleting
+		// to avoid retaining potentially large bytea blobs in soft-deleted rows.
+		if script.FileProvider == "postgres" && len(script.FileData) > 0 {
+			if err := db.Model(&script).Update("file_data", nil).Error; err != nil {
+				logger.WithFields(map[string]interface{}{"script_id": script.ID}).
+					Warn("Failed to clear file data before delete, proceeding anyway")
+			}
+		}
+
 		if err := db.Delete(&script).Error; err != nil {
 			logger.Error("Failed to delete script", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete script"})
@@ -385,20 +395,11 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 		isAdminValue, _ := c.Get("is_admin")
 		isAdmin, _ := isAdminValue.(bool)
 
-		// Try to look up script by blob identifier first (azure path), then by numeric ID
+		// Try to look up script by blob identifier (UUID string set at upload time)
 		var script models.Script
-		err := db.WithContext(ctx).Where("file_blob_identifier = ?", uuidOrID).First(&script).Error
-		if err != nil {
-			// Fall back to numeric ID lookup
-			scriptID, parseErr := strconv.ParseUint(uuidOrID, 10, 32)
-			if parseErr != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Script not found"})
-				return
-			}
-			if err := db.WithContext(ctx).First(&script, scriptID).Error; err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Script not found"})
-				return
-			}
+		if err := db.WithContext(ctx).Where("file_blob_identifier = ?", uuidOrID).First(&script).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Script not found"})
+			return
 		}
 
 		// Authorization: verify user is a member of the script's group or is a site admin
@@ -428,7 +429,7 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 				return
 			}
 			c.Header("Content-Type", mimeType)
-			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", script.FileName))
+			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeFilename(script.FileName)))
 			c.Header("Content-Length", strconv.Itoa(len(data)))
 			c.Header("Cache-Control", "private, max-age=3600")
 			c.Data(http.StatusOK, mimeType, data)
@@ -438,116 +439,11 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 				return
 			}
 			c.Header("Content-Type", script.FileType)
-			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", script.FileName))
+			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeFilename(script.FileName)))
 			c.Header("Content-Length", strconv.Itoa(len(script.FileData)))
 			c.Header("Cache-Control", "private, max-age=3600")
 			c.Data(http.StatusOK, script.FileType, script.FileData)
 		}
-	}
-}
-
-// LinkAnimalScripts links one or more scripts to an animal (group admin or site admin)
-// Body: { "script_ids": [1, 2, 3] }
-func LinkAnimalScripts(db *gorm.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		groupIDStr := c.Param("id")
-		animalIDStr := c.Param("animalId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDStr) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			return
-		}
-
-		groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
-			return
-		}
-		animalID, err := strconv.ParseUint(animalIDStr, 10, 32)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid animal ID"})
-			return
-		}
-
-		var req struct {
-			ScriptIDs []uint `json:"script_ids" binding:"required"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "script_ids is required"})
-			return
-		}
-
-		var animal models.Animal
-		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
-			return
-		}
-
-		// Validate that all script IDs belong to this group
-		var scripts []models.Script
-		if err := db.Where("id IN ? AND group_id = ?", req.ScriptIDs, groupID).Find(&scripts).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate scripts"})
-			return
-		}
-		if len(scripts) != len(req.ScriptIDs) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "One or more scripts not found in this group"})
-			return
-		}
-
-		if err := db.Model(&animal).Association("Scripts").Append(&scripts); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to link scripts to animal"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "Scripts linked successfully"})
-	}
-}
-
-// UnlinkAnimalScript removes a single script link from an animal (group admin or site admin)
-func UnlinkAnimalScript(db *gorm.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		groupIDStr := c.Param("id")
-		animalIDStr := c.Param("animalId")
-		scriptIDStr := c.Param("scriptId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDStr) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			return
-		}
-
-		groupID, err := strconv.ParseUint(groupIDStr, 10, 32)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
-			return
-		}
-		animalID, err := strconv.ParseUint(animalIDStr, 10, 32)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid animal ID"})
-			return
-		}
-
-		var animal models.Animal
-		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
-			return
-		}
-
-		var script models.Script
-		if err := db.Where("id = ? AND group_id = ?", scriptIDStr, groupID).First(&script).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Script not found"})
-			return
-		}
-
-		if err := db.Model(&animal).Association("Scripts").Delete(&script); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unlink script from animal"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "Script unlinked successfully"})
 	}
 }
 
@@ -622,4 +518,16 @@ func mimeTypeFromFilename(filename string) string {
 	default:
 		return "application/octet-stream"
 	}
+}
+
+// sanitizeFilename strips characters that could be used for HTTP header injection
+// (CR, LF, and double-quote). This prevents a malicious filename from breaking
+// the Content-Disposition header.
+func sanitizeFilename(name string) string {
+	r := strings.NewReplacer(
+		"\r", "",
+		"\n", "",
+		"\"", "'",
+	)
+	return r.Replace(name)
 }
