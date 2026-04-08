@@ -296,7 +296,8 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
 };
 
 // ─────────────────────────────────────────────
-// ScriptViewer: renders an iframe for inline viewing
+// ScriptViewer: fetches the file with the stored JWT, then renders inline.
+// DOCX/DOC → HTML via mammoth.js | PDF → iframe | other → download link
 // ─────────────────────────────────────────────
 
 interface ScriptViewerProps {
@@ -307,13 +308,107 @@ interface ScriptViewerProps {
 }
 
 const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onEdit, onDelete }) => {
-  const isPdf = script.file_type === 'application/pdf' || script.file_name.endsWith('.pdf');
+  const [viewState, setViewState] = useState<{
+    status: 'loading' | 'pdf' | 'docx' | 'other' | 'error';
+    blobUrl: string | null;
+    htmlContent: string | null;
+  }>({ status: 'loading', blobUrl: null, htmlContent: null });
 
-  if (isPdf) {
+  useEffect(() => {
+    let activeBlobUrl: string | null = null;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(script.file_url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok || cancelled) return;
+
+        const name = script.file_name.toLowerCase();
+        const type = (script.file_type || '').toLowerCase();
+        const isDocx =
+          name.endsWith('.docx') ||
+          name.endsWith('.doc') ||
+          type.includes('officedocument') ||
+          type.includes('msword');
+
+        if (isDocx) {
+          const arrayBuffer = await res.arrayBuffer();
+          if (cancelled) return;
+          const mammoth = (await import('mammoth')).default;
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          if (cancelled) return;
+          const DOMPurify = (await import('dompurify')).default;
+          const safe = DOMPurify.sanitize(result.value);
+          setViewState({ status: 'docx', blobUrl: null, htmlContent: safe });
+        } else {
+          const blob = await res.blob();
+          if (cancelled) return;
+          activeBlobUrl = URL.createObjectURL(blob);
+          const isPdf = type === 'application/pdf' || name.endsWith('.pdf');
+          setViewState({ status: isPdf ? 'pdf' : 'other', blobUrl: activeBlobUrl, htmlContent: null });
+        }
+      } catch {
+        if (!cancelled) setViewState({ status: 'error', blobUrl: null, htmlContent: null });
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+      if (activeBlobUrl) URL.revokeObjectURL(activeBlobUrl);
+    };
+  }, [script.file_url, script.file_name, script.file_type]);
+
+  if (viewState.status === 'loading') {
+    return (
+      <div className="script-viewer">
+        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading…</div>
+      </div>
+    );
+  }
+
+  if (viewState.status === 'error') {
+    return (
+      <div className="script-viewer script-viewer-download">
+        <div className="script-viewer-icon">{FILE_ICON}</div>
+        <p className="script-viewer-name">{script.file_name}</p>
+        <p style={{ color: 'var(--error, #e53e3e)', marginBottom: '1rem' }}>Unable to load file.</p>
+        {canEdit && (
+          <div className="script-viewer-actions">
+            <button className="btn-secondary" onClick={onEdit}>Edit</button>
+            <button className="btn-danger" onClick={onDelete}>Delete</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (viewState.status === 'docx' && viewState.htmlContent) {
+    return (
+      <div className="script-viewer">
+        <div
+          style={{ padding: '1.5rem', lineHeight: '1.7', overflowY: 'auto', maxHeight: '65vh', color: 'var(--text-primary)' }}
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: viewState.htmlContent }}
+        />
+        {canEdit && (
+          <div className="script-viewer-actions">
+            <button className="btn-secondary" onClick={onEdit}>Edit</button>
+            <button className="btn-danger" onClick={onDelete}>Delete</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (viewState.status === 'pdf') {
     return (
       <div className="script-viewer">
         <iframe
-          src={script.file_url}
+          src={viewState.blobUrl!}
           title={script.title}
           className="script-iframe"
           aria-label={`${script.title} PDF viewer`}
@@ -328,20 +423,22 @@ const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onEdit, on
     );
   }
 
-  // For non-PDF files, show a download link
+  // Other file types — offer blob-URL download (no forced browser download prompt)
   return (
     <div className="script-viewer script-viewer-download">
       <div className="script-viewer-icon">{FILE_ICON}</div>
       <p className="script-viewer-name">{script.file_name}</p>
       {script.description && <p className="script-viewer-desc">{script.description}</p>}
-      <a
-        href={script.file_url}
-        download={script.file_name}
-        className="btn-primary"
-        aria-label={`Download ${script.file_name}`}
-      >
-        Download File
-      </a>
+      {viewState.blobUrl && (
+        <a
+          href={viewState.blobUrl}
+          download={script.file_name}
+          className="btn-primary"
+          aria-label={`Download ${script.file_name}`}
+        >
+          Download File
+        </a>
+      )}
       {canEdit && (
         <div className="script-viewer-actions">
           <button className="btn-secondary" onClick={onEdit}>Edit</button>

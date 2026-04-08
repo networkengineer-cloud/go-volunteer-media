@@ -560,7 +560,7 @@ const AnimalDetailPage: React.FC = () => {
               {group?.has_protocols && (
                 <div className="protocol-document-section">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                    <h3 style={{ margin: 0 }}>📄 Protocol Scripts</h3>
+                    <h3 style={{ margin: 0 }}>📄 Scripts</h3>
                     {(isAdmin || membership?.is_group_admin || membership?.is_site_admin) && (
                       <button
                         className="btn-view-document"
@@ -574,7 +574,7 @@ const AnimalDetailPage: React.FC = () => {
                             toast.showError('Failed to load group scripts');
                           }
                         }}
-                        aria-label="Manage protocol scripts for this animal"
+                        aria-label="Manage scripts for this animal"
                       >
                         Manage Scripts
                       </button>
@@ -1068,26 +1068,8 @@ const AnimalDetailPage: React.FC = () => {
                   ×
                 </button>
               </div>
-              <div style={{ flex: 1, overflow: 'auto', padding: '1rem 1.5rem' }}>
-                {viewingScript.file_type === 'application/pdf' || viewingScript.file_name.endsWith('.pdf') ? (
-                  <iframe
-                    src={viewingScript.file_url}
-                    title={viewingScript.title}
-                    style={{ width: '100%', height: '65vh', border: 'none', borderRadius: '8px' }}
-                    aria-label={`${viewingScript.title} PDF viewer`}
-                  />
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '2rem' }}>
-                    <p style={{ marginBottom: '1rem' }}>{viewingScript.file_name}</p>
-                    <a
-                      href={viewingScript.file_url}
-                      download={viewingScript.file_name}
-                      className="btn-view-document"
-                    >
-                      Download File
-                    </a>
-                  </div>
-                )}
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                <AuthenticatedScriptViewer script={viewingScript} />
               </div>
             </div>
           </div>
@@ -1098,7 +1080,7 @@ const AnimalDetailPage: React.FC = () => {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Manage Protocol Scripts"
+            aria-label="Manage Scripts"
             style={{
               position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
               backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex',
@@ -1115,7 +1097,7 @@ const AnimalDetailPage: React.FC = () => {
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)',
               }}>
-                <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Manage Protocol Scripts</h2>
+                <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Manage Scripts</h2>
                 <button
                   onClick={() => setManageScriptsOpen(false)}
                   aria-label="Close"
@@ -1184,7 +1166,7 @@ const AnimalDetailPage: React.FC = () => {
                       setSavingScripts(true);
                       await scriptsApi.setAnimalScripts(Number(groupId), Number(id), Array.from(selectedScriptIds));
                       // Reload animal to get updated scripts
-                      const res = await animalsApi.getAnimal(Number(groupId), Number(id));
+                      const res = await animalsApi.getById(Number(groupId), Number(id));
                       setAnimal(res.data);
                       setManageScriptsOpen(false);
                       toast.showSuccess('Protocol scripts updated');
@@ -1214,6 +1196,131 @@ const AnimalDetailPage: React.FC = () => {
         onConfirm={confirmDialog.onConfirm}
         onCancel={closeConfirmDialog}
       />
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────
+// AuthenticatedScriptViewer — fetches the file with the stored JWT then
+// renders it inline: DOCX → HTML (via mammoth), PDF → iframe, other → download
+// ─────────────────────────────────────────────
+interface AuthenticatedScriptViewerProps {
+  script: Script;
+}
+
+const AuthenticatedScriptViewer: React.FC<AuthenticatedScriptViewerProps> = ({ script }) => {
+  const [viewState, setViewState] = useState<{
+    status: 'loading' | 'pdf' | 'docx' | 'other' | 'error';
+    blobUrl: string | null;
+    htmlContent: string | null;
+  }>({ status: 'loading', blobUrl: null, htmlContent: null });
+
+  useEffect(() => {
+    let activeBlobUrl: string | null = null;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(script.file_url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok || cancelled) return;
+
+        const name = script.file_name.toLowerCase();
+        const type = (script.file_type || '').toLowerCase();
+        const isDocx =
+          name.endsWith('.docx') ||
+          name.endsWith('.doc') ||
+          type.includes('officedocument') ||
+          type.includes('msword');
+
+        if (isDocx) {
+          const arrayBuffer = await res.arrayBuffer();
+          if (cancelled) return;
+          const mammoth = (await import('mammoth')).default;
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          if (cancelled) return;
+          const DOMPurify = (await import('dompurify')).default;
+          const safe = DOMPurify.sanitize(result.value);
+          setViewState({ status: 'docx', blobUrl: null, htmlContent: safe });
+        } else {
+          const blob = await res.blob();
+          if (cancelled) return;
+          activeBlobUrl = URL.createObjectURL(blob);
+          const isPdf =
+            type === 'application/pdf' || name.endsWith('.pdf');
+          setViewState({ status: isPdf ? 'pdf' : 'other', blobUrl: activeBlobUrl, htmlContent: null });
+        }
+      } catch {
+        if (!cancelled) setViewState({ status: 'error', blobUrl: null, htmlContent: null });
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+      if (activeBlobUrl) URL.revokeObjectURL(activeBlobUrl);
+    };
+  }, [script.file_url, script.file_name, script.file_type]);
+
+  if (viewState.status === 'loading') {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        Loading…
+      </div>
+    );
+  }
+
+  if (viewState.status === 'error') {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        Unable to load file.
+      </div>
+    );
+  }
+
+  if (viewState.status === 'docx' && viewState.htmlContent) {
+    return (
+      <div
+        style={{
+          padding: '1.5rem',
+          lineHeight: '1.7',
+          overflowY: 'auto',
+          maxHeight: '65vh',
+          color: 'var(--text-primary)',
+        }}
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: viewState.htmlContent }}
+      />
+    );
+  }
+
+  if (viewState.status === 'pdf' && viewState.blobUrl) {
+    return (
+      <iframe
+        src={viewState.blobUrl}
+        title={script.title}
+        style={{ width: '100%', height: '65vh', border: 'none', display: 'block' }}
+        aria-label={`${script.title} PDF viewer`}
+      />
+    );
+  }
+
+  // Other file types — offer blob-URL download (no forced download prompt)
+  return (
+    <div style={{ textAlign: 'center', padding: '2rem' }}>
+      <p style={{ marginBottom: '1rem' }}>{script.file_name}</p>
+      {viewState.blobUrl && (
+        <a
+          href={viewState.blobUrl}
+          download={script.file_name}
+          className="btn-view-document"
+          aria-label={`Download ${script.file_name}`}
+        >
+          Download File
+        </a>
+      )}
     </div>
   );
 };
