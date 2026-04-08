@@ -564,7 +564,7 @@ const AnimalDetailPage: React.FC = () => {
                     <h3 style={{ margin: 0 }}>📄 Scripts</h3>
                     {(isAdmin || membership?.is_group_admin || membership?.is_site_admin) && (
                       <button
-                        className="btn-view-document"
+                        className="btn-manage-scripts"
                         onClick={async () => {
                           try {
                             const res = await scriptsApi.getAll(Number(groupId));
@@ -577,31 +577,31 @@ const AnimalDetailPage: React.FC = () => {
                         }}
                         aria-label="Manage scripts for this animal"
                       >
-                        Manage Scripts
+                        ✎ Edit
                       </button>
                     )}
                   </div>
                   {(animal.scripts || []).length === 0 ? (
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No scripts assigned to this animal yet.</p>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {(animal.scripts || []).map((script) => (
-                        <div key={script.id} className="protocol-document-card">
-                          <span className="protocol-document-icon">📄</span>
-                          <div className="protocol-document-details">
-                            <span className="protocol-document-name">{script.title}</span>
+                    <div className="script-list">
+                      {(animal.scripts || []).map((script, idx) => (
+                        <button
+                          key={script.id}
+                          className="script-list-row"
+                          onClick={() => setViewingScript(script)}
+                          aria-label={`View ${script.title}`}
+                          style={idx === 0 ? { borderTop: 'none' } : undefined}
+                        >
+                          <span className="script-list-icon" aria-hidden="true">📄</span>
+                          <span className="script-list-info">
+                            <span className="script-list-title">{script.title}</span>
                             {script.description && (
-                              <span className="protocol-document-size">{script.description}</span>
+                              <span className="script-list-desc">{script.description}</span>
                             )}
-                          </div>
-                          <button
-                            className="btn-view-document"
-                            onClick={() => setViewingScript(script)}
-                            aria-label={`View ${script.title}`}
-                          >
-                            View →
-                          </button>
-                        </div>
+                          </span>
+                          <span className="script-list-chevron" aria-hidden="true">›</span>
+                        </button>
                       ))}
                     </div>
                   )}
