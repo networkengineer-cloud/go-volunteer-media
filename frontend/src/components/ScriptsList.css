@@ -212,6 +212,7 @@
 .script-docx-body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 2rem 2.5rem;
   background: var(--surface);
   border: 1px solid var(--border-color);
@@ -220,6 +221,9 @@
   font-size: 0.9375rem;
   line-height: 1.75;
   max-height: 68vh;
+  /* Ensure all content wraps within the container */
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .script-docx-body h1,
@@ -262,12 +266,22 @@
   font-style: italic;
 }
 
-/* Tables from DOCX */
+/* Tables from DOCX — override any absolute widths baked into the DOCX */
 .script-docx-body table {
   border-collapse: collapse;
-  width: 100%;
+  /* Force table to fit the container regardless of DOCX column widths */
+  width: 100% !important;
+  max-width: 100%;
+  table-layout: fixed;
   margin: 1rem 0 1.25rem;
   font-size: 0.9rem;
+  word-break: break-word;
+}
+
+/* Strip any inline width/style that mammoth copies from the DOCX */
+.script-docx-body table col,
+.script-docx-body table colgroup {
+  width: auto !important;
 }
 
 .script-docx-body th,
@@ -276,6 +290,11 @@
   padding: 0.5rem 0.75rem;
   vertical-align: top;
   text-align: left;
+  /* Override any inline width attributes copied from the DOCX */
+  width: auto !important;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .script-docx-body th {
