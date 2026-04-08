@@ -220,8 +220,8 @@
   color: var(--text-primary);
   font-size: 0.9375rem;
   line-height: 1.75;
-  max-height: 55vh;
-  /* Ensure all content wraps within the container */
+  /* Let flex handle height — only cap as a safety net */
+  max-height: 50vh;
   word-break: break-word;
   overflow-wrap: break-word;
 }

@@ -1285,7 +1285,7 @@ const AuthenticatedScriptViewer: React.FC<AuthenticatedScriptViewerProps> = ({ s
     return (
       <div
         className="script-docx-body"
-        style={{ maxHeight: '55vh', margin: '1rem' }}
+        style={{ maxHeight: '50vh', margin: '1rem' }}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: viewState.htmlContent }}
       />

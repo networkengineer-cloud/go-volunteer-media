@@ -68,6 +68,7 @@
 .modal--large {
   width: 100%;
   max-width: 900px;
+  max-height: min(80vh, 700px);
 }
 
 .modal__header {
