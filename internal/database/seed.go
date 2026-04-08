@@ -599,11 +599,11 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 
 // seedComments creates demo comments on ModSquad animals
 func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) error {
-	// Get comment tags
+	// Get comment tags (Find instead of First to avoid GORM not-found log noise)
 	var behaviorTag, medicalTag, generalTag models.CommentTag
-	db.Where("name = ?", "behavior").First(&behaviorTag)
-	db.Where("name = ?", "medical").First(&medicalTag)
-	db.Where("name = ?", "general").First(&generalTag)
+	db.Where("name = ?", "behavior").Limit(1).Find(&behaviorTag)
+	db.Where("name = ?", "medical").Limit(1).Find(&medicalTag)
+	db.Where("name = ?", "general").Limit(1).Find(&generalTag)
 
 	now := time.Now()
 	yesterday := now.AddDate(0, 0, -1)
