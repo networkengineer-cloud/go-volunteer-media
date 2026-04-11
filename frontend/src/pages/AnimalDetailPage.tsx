@@ -572,6 +572,7 @@ const AnimalDetailPage: React.FC = () => {
                             const res = await scriptsApi.getAll(Number(groupId));
                             setGroupScripts(res.data);
                             setSelectedScriptIds(new Set((animal.scripts || []).map((s) => s.id)));
+                            setScriptFilter('');
                             setManageScriptsOpen(true);
                           } catch {
                             toast.showError('Failed to load group scripts');
@@ -1177,7 +1178,6 @@ const AnimalDetailPage: React.FC = () => {
                                 return next;
                               });
                             }}
-                            aria-label={script.title}
                             style={{ marginTop: '2px', flexShrink: 0 }}
                           />
                           <div>
