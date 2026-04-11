@@ -12,6 +12,7 @@ import ErrorState from '../components/ErrorState';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import ProtocolViewerErrorBoundary from '../components/ProtocolViewerErrorBoundary';
+import { ScriptViewer } from '../components/ScriptsList';
 import SessionReportForm from '../components/SessionReportForm';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
 import CommentHistoryModal from '../components/CommentHistoryModal';
@@ -56,6 +57,7 @@ const AnimalDetailPage: React.FC = () => {
   const [savingScripts, setSavingScripts] = useState(false);
   const [selectedScriptIds, setSelectedScriptIds] = useState<Set<number>>(new Set());
   const [trainerNotesExpanded, setTrainerNotesExpanded] = useState(false);
+  const [scriptFilter, setScriptFilter] = useState('');
   const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
 
@@ -1070,7 +1072,7 @@ const AnimalDetailPage: React.FC = () => {
                 </button>
               </div>
               <div style={{ flex: 1, overflow: 'auto' }}>
-                <AuthenticatedScriptViewer script={viewingScript} />
+                <ScriptViewer script={viewingScript} />
               </div>
             </div>
           </div>
@@ -1088,6 +1090,7 @@ const AnimalDetailPage: React.FC = () => {
               alignItems: 'center', justifyContent: 'center', zIndex: 1000,
               padding: '1rem',
             }}
+            onClick={(e) => { if (e.target === e.currentTarget) { setManageScriptsOpen(false); setScriptFilter(''); } }}
           >
             <div style={{
               background: 'var(--surface)', borderRadius: '12px',
@@ -1098,9 +1101,16 @@ const AnimalDetailPage: React.FC = () => {
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)',
               }}>
-                <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Manage Scripts</h2>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.625rem' }}>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Manage Scripts</h2>
+                  {groupScripts.length > 0 && (
+                    <span className="manage-scripts-count">
+                      {selectedScriptIds.size} of {groupScripts.length} selected
+                    </span>
+                  )}
+                </div>
                 <button
-                  onClick={() => setManageScriptsOpen(false)}
+                  onClick={() => { setManageScriptsOpen(false); setScriptFilter(''); }}
                   aria-label="Close"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--text-secondary)' }}
                 >
@@ -1108,43 +1118,81 @@ const AnimalDetailPage: React.FC = () => {
                 </button>
               </div>
               <div style={{ flex: 1, overflow: 'auto', padding: '1.25rem 1.5rem' }}>
-                {groupScripts.length === 0 ? (
-                  <p style={{ color: 'var(--text-secondary)' }}>No scripts available in this group. Upload scripts from the Scripts tab first.</p>
-                ) : (
-                  <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-                    <legend style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: '0.9375rem' }}>Select scripts to assign:</legend>
-                    {groupScripts.map((script) => (
-                      <label
-                        key={script.id}
-                        style={{
-                          display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
-                          padding: '0.625rem 0', cursor: 'pointer',
-                          borderBottom: '1px solid var(--border-color)',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedScriptIds.has(script.id)}
-                          onChange={(e) => {
-                            setSelectedScriptIds((prev) => {
-                              const next = new Set(prev);
-                              if (e.target.checked) next.add(script.id); else next.delete(script.id);
-                              return next;
-                            });
-                          }}
-                          aria-label={script.title}
-                          style={{ marginTop: '2px', flexShrink: 0 }}
-                        />
-                        <div>
-                          <div style={{ fontWeight: 500 }}>{script.title}</div>
-                          {script.description && (
-                            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{script.description}</div>
-                          )}
-                        </div>
-                      </label>
-                    ))}
-                  </fieldset>
+                {groupScripts.length > 0 && (
+                  <div className="manage-scripts-search">
+                    <input
+                      type="search"
+                      className="manage-scripts-search-input"
+                      placeholder="Filter scripts…"
+                      value={scriptFilter}
+                      onChange={(e) => setScriptFilter(e.target.value)}
+                      aria-label="Filter scripts by name"
+                    />
+                  </div>
                 )}
+                {(() => {
+                  const filteredGroupScripts = scriptFilter.trim()
+                    ? groupScripts.filter(
+                        (s) =>
+                          s.title.toLowerCase().includes(scriptFilter.toLowerCase()) ||
+                          (s.description || '').toLowerCase().includes(scriptFilter.toLowerCase())
+                      )
+                    : groupScripts;
+
+                  if (groupScripts.length === 0) {
+                    return (
+                      <p style={{ color: 'var(--text-secondary)' }}>
+                        No scripts available in this group. Upload scripts from the Scripts tab first.
+                      </p>
+                    );
+                  }
+                  if (filteredGroupScripts.length === 0) {
+                    return (
+                      <p style={{ color: 'var(--text-secondary)', padding: '0.5rem 0' }}>
+                        No scripts match &ldquo;{scriptFilter}&rdquo;.
+                      </p>
+                    );
+                  }
+                  return (
+                    <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
+                      <legend style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: '0.9375rem' }}>
+                        Select scripts to assign:
+                      </legend>
+                      {filteredGroupScripts.map((script) => (
+                        <label
+                          key={script.id}
+                          style={{
+                            display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+                            padding: '0.625rem 0', cursor: 'pointer',
+                            borderBottom: '1px solid var(--border-color)',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedScriptIds.has(script.id)}
+                            onChange={(e) => {
+                              setSelectedScriptIds((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(script.id); else next.delete(script.id);
+                                return next;
+                              });
+                            }}
+                            aria-label={script.title}
+                            style={{ marginTop: '2px', flexShrink: 0 }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 500 }}>{script.title}</div>
+                            {script.description && (
+                              <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                                {script.description}
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </fieldset>
+                  );
+                })()}
               </div>
               <div style={{
                 display: 'flex', gap: '0.75rem', justifyContent: 'flex-end',
@@ -1152,7 +1200,7 @@ const AnimalDetailPage: React.FC = () => {
               }}>
                 <button
                   className="btn-secondary"
-                  onClick={() => setManageScriptsOpen(false)}
+                  onClick={() => { setManageScriptsOpen(false); setScriptFilter(''); }}
                   disabled={savingScripts}
                   style={{ padding: '0.5rem 1.25rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
                 >
@@ -1170,6 +1218,7 @@ const AnimalDetailPage: React.FC = () => {
                       const res = await animalsApi.getById(Number(groupId), Number(id));
                       setAnimal(res.data);
                       setManageScriptsOpen(false);
+                      setScriptFilter('');
                       toast.showSuccess('Protocol scripts updated');
                     } catch {
                       toast.showError('Failed to update scripts. Please try again.');
@@ -1197,126 +1246,6 @@ const AnimalDetailPage: React.FC = () => {
         onConfirm={confirmDialog.onConfirm}
         onCancel={closeConfirmDialog}
       />
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────
-// AuthenticatedScriptViewer — fetches the file with the stored JWT then
-// renders it inline: DOCX → HTML (via mammoth), PDF → iframe, other → download
-// ─────────────────────────────────────────────
-interface AuthenticatedScriptViewerProps {
-  script: Script;
-}
-
-const AuthenticatedScriptViewer: React.FC<AuthenticatedScriptViewerProps> = ({ script }) => {
-  const [viewState, setViewState] = useState<{
-    status: 'loading' | 'pdf' | 'docx' | 'other' | 'error';
-    blobUrl: string | null;
-    htmlContent: string | null;
-  }>({ status: 'loading', blobUrl: null, htmlContent: null });
-
-  useEffect(() => {
-    let activeBlobUrl: string | null = null;
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(script.file_url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok || cancelled) return;
-
-        const name = script.file_name.toLowerCase();
-        const type = (script.file_type || '').toLowerCase();
-        const isDocx =
-          name.endsWith('.docx') ||
-          name.endsWith('.doc') ||
-          type.includes('officedocument') ||
-          type.includes('msword');
-
-        if (isDocx) {
-          const arrayBuffer = await res.arrayBuffer();
-          if (cancelled) return;
-          const mammoth = (await import('mammoth')).default;
-          const result = await mammoth.convertToHtml({ arrayBuffer });
-          if (cancelled) return;
-          const DOMPurify = (await import('dompurify')).default;
-          const safe = DOMPurify.sanitize(result.value);
-          setViewState({ status: 'docx', blobUrl: null, htmlContent: safe });
-        } else {
-          const blob = await res.blob();
-          if (cancelled) return;
-          activeBlobUrl = URL.createObjectURL(blob);
-          const isPdf =
-            type === 'application/pdf' || name.endsWith('.pdf');
-          setViewState({ status: isPdf ? 'pdf' : 'other', blobUrl: activeBlobUrl, htmlContent: null });
-        }
-      } catch {
-        if (!cancelled) setViewState({ status: 'error', blobUrl: null, htmlContent: null });
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-      if (activeBlobUrl) URL.revokeObjectURL(activeBlobUrl);
-    };
-  }, [script.file_url, script.file_name, script.file_type]);
-
-  if (viewState.status === 'loading') {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-        Loading…
-      </div>
-    );
-  }
-
-  if (viewState.status === 'error') {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-        Unable to load file.
-      </div>
-    );
-  }
-
-  if (viewState.status === 'docx' && viewState.htmlContent) {
-    return (
-      <div
-        className="script-docx-body"
-        style={{ maxHeight: '50vh', margin: '1rem' }}
-        // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: viewState.htmlContent }}
-      />
-    );
-  }
-
-  if (viewState.status === 'pdf' && viewState.blobUrl) {
-    return (
-      <iframe
-        src={viewState.blobUrl}
-        title={script.title}
-        style={{ width: '100%', height: '65vh', border: 'none', display: 'block' }}
-        aria-label={`${script.title} PDF viewer`}
-      />
-    );
-  }
-
-  // Other file types — offer blob-URL download (no forced download prompt)
-  return (
-    <div style={{ textAlign: 'center', padding: '2rem' }}>
-      <p style={{ marginBottom: '1rem' }}>{script.file_name}</p>
-      {viewState.blobUrl && (
-        <a
-          href={viewState.blobUrl}
-          download={script.file_name}
-          className="btn-view-document"
-          aria-label={`Download ${script.file_name}`}
-        >
-          Download File
-        </a>
-      )}
     </div>
   );
 };
