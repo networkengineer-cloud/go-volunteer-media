@@ -1,7 +1,6 @@
 package database
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -364,16 +363,15 @@ func ensureSandboxMembership(db *gorm.DB) error {
 		return fmt.Errorf("failed to fetch activity-sandbox group after creation: %w", err)
 	}
 
+	// Fetch whichever demo usernames actually exist in one query to avoid
+	// GORM logging a "record not found" warning for every absent username.
 	usernames := []string{"admin", "mjaeger", "snijem", "twallace", "alex", "jordan", "casey", "taylor"}
-	for _, username := range usernames {
-		var user models.User
-		if err := db.Where("username = ?", username).First(&user).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				continue
-			}
-			return err
-		}
+	var existingUsers []models.User
+	if err := db.Where("username IN ?", usernames).Find(&existingUsers).Error; err != nil {
+		return err
+	}
 
+	for _, user := range existingUsers {
 		userGroup := models.UserGroup{UserID: user.ID, GroupID: sandboxGroup.ID}
 		if err := db.Where("user_id = ? AND group_id = ?", user.ID, sandboxGroup.ID).FirstOrCreate(&userGroup).Error; err != nil {
 			return err
@@ -601,11 +599,11 @@ func seedAnimals(db *gorm.DB, groups []models.Group) ([]models.Animal, error) {
 
 // seedComments creates demo comments on ModSquad animals
 func seedComments(db *gorm.DB, users []models.User, animals []models.Animal) error {
-	// Get comment tags
+	// Get comment tags (Find instead of First to avoid GORM not-found log noise)
 	var behaviorTag, medicalTag, generalTag models.CommentTag
-	db.Where("name = ?", "behavior").First(&behaviorTag)
-	db.Where("name = ?", "medical").First(&medicalTag)
-	db.Where("name = ?", "general").First(&generalTag)
+	db.Where("name = ?", "behavior").Limit(1).Find(&behaviorTag)
+	db.Where("name = ?", "medical").Limit(1).Find(&medicalTag)
+	db.Where("name = ?", "general").Limit(1).Find(&generalTag)
 
 	now := time.Now()
 	yesterday := now.AddDate(0, 0, -1)

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, Suspense, lazy } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi } from '../api/client';
-import type { Animal, AnimalComment, CommentTag, CommentHistory, Group, GroupMembership, SessionMetadata } from '../api/client';
+import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi, scriptsApi } from '../api/client';
+import type { Animal, AnimalComment, CommentTag, CommentHistory, Group, GroupMembership, SessionMetadata, Script } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { calculateQuarantineEndDate, calculateAge, formatAge } from '../utils/dateUtils';
@@ -12,10 +12,13 @@ import ErrorState from '../components/ErrorState';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import ProtocolViewerErrorBoundary from '../components/ProtocolViewerErrorBoundary';
+import { ScriptViewer } from '../components/ScriptsList';
 import SessionReportForm from '../components/SessionReportForm';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
 import CommentHistoryModal from '../components/CommentHistoryModal';
+import Modal from '../components/Modal';
 import './AnimalDetailPage.css';
+import '../components/ScriptsList.css';
 
 // Lazy load ProtocolViewer to reduce initial bundle size (~350KB savings)
 const ProtocolViewer = lazy(() => import('../components/ProtocolViewer'));
@@ -49,7 +52,13 @@ const AnimalDetailPage: React.FC = () => {
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
   const [showProtocolModal, setShowProtocolModal] = useState(false);
+  const [viewingScript, setViewingScript] = useState<Script | null>(null);
+  const [manageScriptsOpen, setManageScriptsOpen] = useState(false);
+  const [groupScripts, setGroupScripts] = useState<Script[]>([]);
+  const [savingScripts, setSavingScripts] = useState(false);
+  const [selectedScriptIds, setSelectedScriptIds] = useState<Set<number>>(new Set());
   const [trainerNotesExpanded, setTrainerNotesExpanded] = useState(false);
+  const [scriptFilter, setScriptFilter] = useState('');
   const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
 
@@ -526,10 +535,23 @@ const AnimalDetailPage: React.FC = () => {
               {/* Protocol Document Section */}
               {animal.protocol_document_url && animal.protocol_document_name && (
                 <div className="protocol-document-section">
-                  <h3>📋 Protocol Document</h3>
+                  <h3>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ marginRight: '0.4rem', verticalAlign: 'text-bottom' }}>
+                      <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                      <rect x="9" y="3" width="6" height="4" rx="1" ry="1" />
+                      <line x1="9" y1="12" x2="15" y2="12" />
+                      <line x1="9" y1="16" x2="13" y2="16" />
+                    </svg>
+                    Protocol Document
+                  </h3>
                   <div className="protocol-document-card">
-                    <span className="protocol-document-icon">
-                      {animal.protocol_document_name.endsWith('.pdf') ? '📄' : '📝'}
+                    <span className="protocol-document-icon" aria-hidden="true">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                      </svg>
                     </span>
                     <div className="protocol-document-details">
                       <span className="protocol-document-name">{animal.protocol_document_name}</span>
@@ -548,6 +570,73 @@ const AnimalDetailPage: React.FC = () => {
                       View Protocol →
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Protocol Scripts Section */}
+              {group?.has_protocols && (
+                <div className="protocol-document-section">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <h3 style={{ margin: 0 }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ marginRight: '0.4rem', verticalAlign: 'text-bottom' }}>
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      Scripts
+                    </h3>
+                    {(isAdmin || membership?.is_group_admin || membership?.is_site_admin) && (
+                      <button
+                        className="btn-manage-scripts"
+                        onClick={async () => {
+                          try {
+                            const res = await scriptsApi.getAll(Number(groupId));
+                            setGroupScripts(res.data);
+                            setSelectedScriptIds(new Set((animal.scripts || []).map((s) => s.id)));
+                            setScriptFilter('');
+                            setManageScriptsOpen(true);
+                          } catch {
+                            toast.showError('Failed to load group scripts');
+                          }
+                        }}
+                        aria-label="Manage scripts for this animal"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                  {(animal.scripts || []).length === 0 ? (
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No scripts assigned to this animal yet.</p>
+                  ) : (
+                    <div className="script-list">
+                      {(animal.scripts || []).map((script, idx) => (
+                        <button
+                          key={script.id}
+                          className="script-list-row"
+                          onClick={() => setViewingScript(script)}
+                          aria-label={`View ${script.title}`}
+                          style={idx === 0 ? { borderTop: 'none' } : undefined}
+                        >
+                          <span className="script-list-icon" aria-hidden="true">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                            </svg>
+                          </span>
+                          <span className="script-list-info">
+                            <span className="script-list-title">{script.title}</span>
+                            {script.description && (
+                              <span className="script-list-desc">{script.description}</span>
+                            )}
+                          </span>
+                          <span className="script-list-chevron" aria-hidden="true">›</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -979,6 +1068,136 @@ const AnimalDetailPage: React.FC = () => {
             </Suspense>
           </ProtocolViewerErrorBoundary>
         )}
+
+        {/* Script Viewer Modal */}
+        <Modal
+          isOpen={!!viewingScript}
+          onClose={() => setViewingScript(null)}
+          title={viewingScript?.title ?? ''}
+          size="large"
+        >
+          {viewingScript && <ScriptViewer script={viewingScript} />}
+        </Modal>
+
+        {/* Manage Scripts Modal */}
+        <Modal
+          isOpen={manageScriptsOpen}
+          onClose={() => { setManageScriptsOpen(false); setScriptFilter(''); }}
+          title="Manage Scripts"
+          size="medium"
+        >
+          {groupScripts.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <span className="manage-scripts-count">
+                {selectedScriptIds.size} of {groupScripts.length} selected
+              </span>
+            </div>
+          )}
+          {groupScripts.length > 0 && (
+            <div className="manage-scripts-search" style={{ marginBottom: '1rem' }}>
+              <input
+                type="search"
+                className="manage-scripts-search-input"
+                placeholder="Filter scripts…"
+                value={scriptFilter}
+                onChange={(e) => setScriptFilter(e.target.value)}
+                aria-label="Filter scripts by name"
+              />
+            </div>
+          )}
+          {(() => {
+            const filteredGroupScripts = scriptFilter.trim()
+              ? groupScripts.filter(
+                  (s) =>
+                    s.title.toLowerCase().includes(scriptFilter.toLowerCase()) ||
+                    (s.description || '').toLowerCase().includes(scriptFilter.toLowerCase())
+                )
+              : groupScripts;
+
+            if (groupScripts.length === 0) {
+              return (
+                <p style={{ color: 'var(--text-secondary)' }}>
+                  No scripts available in this group. Upload scripts from the Scripts tab first.
+                </p>
+              );
+            }
+            if (filteredGroupScripts.length === 0) {
+              return (
+                <p style={{ color: 'var(--text-secondary)', padding: '0.5rem 0' }}>
+                  No scripts match &ldquo;{scriptFilter}&rdquo;.
+                </p>
+              );
+            }
+            return (
+              <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
+                <legend style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: '0.9375rem' }}>
+                  Select scripts to assign:
+                </legend>
+                {filteredGroupScripts.map((script) => (
+                  <label
+                    key={script.id}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+                      padding: '0.625rem 0', cursor: 'pointer',
+                      borderBottom: '1px solid var(--border-color)',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedScriptIds.has(script.id)}
+                      onChange={(e) => {
+                        setSelectedScriptIds((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(script.id); else next.delete(script.id);
+                          return next;
+                        });
+                      }}
+                      style={{ marginTop: '2px', flexShrink: 0 }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 500 }}>{script.title}</div>
+                      {script.description && (
+                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                          {script.description}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </fieldset>
+            );
+          })()}
+          <div className="modal__actions">
+            <button
+              className="btn-secondary"
+              onClick={() => { setManageScriptsOpen(false); setScriptFilter(''); }}
+              disabled={savingScripts}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              disabled={savingScripts || groupScripts.length === 0}
+              onClick={async () => {
+                try {
+                  setSavingScripts(true);
+                  await scriptsApi.setAnimalScripts(Number(groupId), Number(id), Array.from(selectedScriptIds));
+                  const res = await animalsApi.getById(Number(groupId), Number(id));
+                  setAnimal(res.data);
+                  setManageScriptsOpen(false);
+                  setScriptFilter('');
+                  toast.showSuccess('Protocol scripts updated');
+                } catch {
+                  toast.showError('Failed to update scripts. Please try again.');
+                } finally {
+                  setSavingScripts(false);
+                }
+              }}
+            >
+              {savingScripts ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </Modal>
         {showHistoryModal && (
           <CommentHistoryModal history={commentHistory} onClose={() => setShowHistoryModal(false)} />
         )}

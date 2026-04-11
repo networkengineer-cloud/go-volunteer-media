@@ -151,6 +151,9 @@ func RunMigrations(db *gorm.DB) error {
 		&models.User{},
 		&models.Group{},
 		&models.UserGroup{},
+		// Script must come before Animal so that the animal_scripts many2many
+		// join table can be created with a valid FK to the scripts table.
+		&models.Script{},
 		&models.Animal{},
 		&models.Update{},
 		&models.Announcement{},
@@ -591,8 +594,8 @@ func createDefaultSiteSettings(db *gorm.DB) error {
 
 	for _, setting := range defaultSettings {
 		var existing models.SiteSetting
-		result := db.Where("key = ?", setting.Key).First(&existing)
-		if result.Error == gorm.ErrRecordNotFound {
+		result := db.Where("key = ?", setting.Key).Limit(1).Find(&existing)
+		if result.RowsAffected == 0 {
 			if err := db.Create(&setting).Error; err != nil {
 				return fmt.Errorf("failed to create default setting %s: %w", setting.Key, err)
 			}

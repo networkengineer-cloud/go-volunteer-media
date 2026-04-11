@@ -11,7 +11,7 @@ import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import Modal from '../components/Modal';
-import ProtocolsList from '../components/ProtocolsList';
+import ScriptsList from '../components/ScriptsList';
 import { calculateAge, formatAge } from '../utils/dateUtils';
 import { formatDisplayName } from '../utils/formatName';
 import './GroupPage.css';
@@ -457,7 +457,7 @@ const GroupPage: React.FC = () => {
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
             </svg>
-            <span>Protocols</span>
+            <span>Scripts</span>
           </button>
         )}
         {(membership?.is_member || membership?.is_site_admin) && (
@@ -523,7 +523,7 @@ const GroupPage: React.FC = () => {
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
               </svg>
-              <span>Add Protocol</span>
+              <span>Upload Script</span>
             </button>
           )}
         </div>
@@ -982,7 +982,7 @@ const GroupPage: React.FC = () => {
         </div>
       )}
 
-      {/* Protocols View */}
+      {/* Scripts View */}
       {viewMode === 'protocols' && group.has_protocols && (
         <div 
           role="tabpanel"
@@ -990,7 +990,7 @@ const GroupPage: React.FC = () => {
           aria-labelledby="protocols-tab"
           className="group-content"
         >
-          <ProtocolsList 
+          <ScriptsList 
             groupId={Number(id)} 
             isGroupAdmin={membership?.is_group_admin || membership?.is_site_admin}
             showFormExternal={showProtocolForm}
