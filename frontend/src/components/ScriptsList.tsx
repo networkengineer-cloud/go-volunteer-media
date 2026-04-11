@@ -45,6 +45,7 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
   const [scripts, setScripts] = useState<Script[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [searchText, setSearchText] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingScript, setEditingScript] = useState<Script | null>(null);
   const [viewingScript, setViewingScript] = useState<Script | null>(null);
@@ -102,6 +103,15 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
     setEditingScript(null);
     loadScripts();
   };
+
+  const filteredScripts = searchText.trim()
+    ? scripts.filter(
+        (s) =>
+          s.title.toLowerCase().includes(searchText.toLowerCase()) ||
+          (s.description || '').toLowerCase().includes(searchText.toLowerCase()) ||
+          s.file_name.toLowerCase().includes(searchText.toLowerCase())
+      )
+    : scripts;
 
   if (loading) {
     return (
@@ -164,8 +174,40 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
             )}
           </div>
 
+          {/* Search bar — only show when there are scripts to filter */}
+          {scripts.length > 0 && (
+            <div className="scripts-search-bar">
+              <svg
+                className="scripts-search-icon"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                className="scripts-search-input"
+                placeholder="Search scripts…"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                aria-label="Search scripts"
+              />
+              {searchText && (
+                <span className="scripts-search-count" aria-live="polite">
+                  {filteredScripts.length} of {scripts.length}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="scripts-grid">
-            {scripts.map((script) => (
+            {filteredScripts.map((script) => (
               <div key={script.id} className="script-card">
                 <div
                   className="script-card-clickable"
@@ -227,6 +269,12 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
               </div>
             ))}
           </div>
+
+          {searchText && filteredScripts.length === 0 && (
+            <p className="scripts-no-results">
+              No scripts match &ldquo;{searchText}&rdquo;.
+            </p>
+          )}
         </>
       )}
 
@@ -300,14 +348,14 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
 // DOCX/DOC → HTML via mammoth.js | PDF → iframe | other → download link
 // ─────────────────────────────────────────────
 
-interface ScriptViewerProps {
+export interface ScriptViewerProps {
   script: Script;
-  canEdit: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
+  canEdit?: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
-const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onEdit, onDelete }) => {
+export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onEdit, onDelete }) => {
   const [viewState, setViewState] = useState<{
     status: 'loading' | 'pdf' | 'docx' | 'other' | 'error';
     blobUrl: string | null;
@@ -330,7 +378,6 @@ const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onEdit, on
         const type = (script.file_type || '').toLowerCase();
         const isDocx =
           name.endsWith('.docx') ||
-          name.endsWith('.doc') ||
           type.includes('officedocument') ||
           type.includes('msword');
 
