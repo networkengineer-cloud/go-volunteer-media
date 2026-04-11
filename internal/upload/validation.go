@@ -49,6 +49,7 @@ var AllowedImageTypes = map[string][]string{
 var AllowedDocumentTypes = map[string][]string{
 	".pdf":  {"application/pdf"},
 	".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+	".xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
 }
 
 // ValidateImageUpload validates an uploaded image file
@@ -174,7 +175,7 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	allowedMimeTypes, ok := AllowedDocumentTypes[ext]
 	if !ok {
-		return fmt.Errorf("%w: extension %s is not allowed (only PDF and DOCX are supported)", ErrInvalidFileType, ext)
+		return fmt.Errorf("%w: extension %s is not allowed (only PDF, DOCX, and XLSX are supported)", ErrInvalidFileType, ext)
 	}
 
 	// Open file to check content type
@@ -211,6 +212,13 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 		}
 	}
 
+	// Special handling for XLSX files - they're also ZIP archives
+	if !validContentType && ext == ".xlsx" {
+		if bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x03, 0x04}) || bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x05, 0x06}) {
+			validContentType = true
+		}
+	}
+
 	// PDF files start with %PDF
 	if !validContentType && ext == ".pdf" {
 		if bytes.HasPrefix(buffer, []byte("%PDF")) {
@@ -224,4 +232,20 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 	}
 
 	return nil
+}
+
+// MimeTypeFromFilename returns the MIME type for a filename based on its extension.
+// Falls back to "application/octet-stream" for unknown extensions.
+func MimeTypeFromFilename(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".pdf":
+		return "application/pdf"
+	case ".docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	default:
+		return "application/octet-stream"
+	}
 }

@@ -65,6 +65,7 @@ type Group struct {
 	Updates        []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
 	Protocols      []Protocol     `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
 	Scripts        []Script       `gorm:"foreignKey:GroupID" json:"scripts,omitempty"`
+	Documents      []GroupDocument `gorm:"foreignKey:GroupID" json:"documents,omitempty"`
 }
 
 // Animal represents an animal in a group
@@ -317,6 +318,28 @@ type Script struct {
 	FileData             []byte         `gorm:"type:bytea" json:"-"`         // Binary data stored in DB (null when using Azure)
 	FileUploadedByUserID *uint          `json:"file_uploaded_by_user_id"`
 	Animals              []Animal       `gorm:"many2many:animal_scripts;" json:"animals,omitempty"`
+}
+
+// GroupDocument represents a document uploaded to a group for members to review/download.
+// Unlike Scripts, GroupDocuments are available to all groups regardless of has_protocols.
+type GroupDocument struct {
+	ID                   uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+	DeletedAt            gorm.DeletedAt `gorm:"index" json:"-"`
+	GroupID              uint           `gorm:"not null;index:idx_group_documents_group_order" json:"group_id"`
+	Title                string         `gorm:"not null" json:"title"`
+	Description          string         `gorm:"type:text" json:"description"`
+	OrderIndex           int            `gorm:"default:0;index:idx_group_documents_group_order" json:"order_index"`
+	FileURL              string         `json:"file_url"`
+	FileName             string         `json:"file_name"`
+	FileType             string         `json:"file_type"`
+	FileSize             int            `json:"file_size"`
+	FileProvider         string         `gorm:"default:'postgres'" json:"-"`
+	FileBlobIdentifier   string         `json:"-"`
+	FileBlobExtension    string         `json:"-"`
+	FileData             []byte         `gorm:"type:bytea" json:"-"`
+	FileUploadedByUserID *uint          `json:"file_uploaded_by_user_id"`
 }
 
 // AnimalTag represents a tag that can be applied to animals

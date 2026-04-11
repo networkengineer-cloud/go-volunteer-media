@@ -133,8 +133,10 @@ func main() {
 	// Structured logging middleware
 	router.Use(middleware.LoggingMiddleware())
 
-	// Max request body size middleware (10MB default, prevents DOS attacks)
-	router.Use(middleware.MaxRequestBodySize(10 * 1024 * 1024))
+	// Max request body size middleware — raised to 25 MB to accommodate the
+	// 20 MB document-upload limit (MaxDocumentSize) plus multipart overhead.
+	// Per-type limits are enforced by ValidateImageUpload / ValidateDocumentUpload.
+	router.Use(middleware.MaxRequestBodySize(25 * 1024 * 1024))
 
 	// CORS middleware
 	router.Use(middleware.CORS())
@@ -317,6 +319,7 @@ func main() {
 			group.GET("/protocols/:protocolId", handlers.GetProtocol(db))
 			group.GET("/scripts", handlers.GetScripts(db))
 			group.GET("/scripts/:scriptId", handlers.GetScript(db))
+			group.GET("/documents", handlers.GetGroupDocuments(db))
 
 			// Group-specific tag routes - viewing accessible to all group members
 			// Tag management (create/update/delete) requires group admin or site admin
@@ -388,6 +391,16 @@ func main() {
 			groupAdminScripts.PUT("/:scriptId", handlers.UpdateScript(db, storageProvider))
 			groupAdminScripts.DELETE("/:scriptId", handlers.DeleteScript(db, storageProvider))
 		}
+
+		// Group admin or site admin document management routes
+		groupAdminDocuments := protected.Group("/groups/:id/documents")
+		{
+			groupAdminDocuments.POST("", handlers.UploadGroupDocument(db, storageProvider))
+			groupAdminDocuments.DELETE("/:docId", handlers.DeleteGroupDocument(db, storageProvider))
+		}
+
+		// Group document file serving (authenticated, group membership checked inside handler)
+		protected.GET("/group-documents/:uuid", handlers.ServeGroupDocument(db, storageProvider))
 
 		// Script file serving (authenticated, group membership checked inside handler)
 		protected.GET("/script-files/:uuid", handlers.ServeScriptFile(db, storageProvider))

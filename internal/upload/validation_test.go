@@ -310,3 +310,56 @@ func TestConstants(t *testing.T) {
 		t.Errorf("Expected MaxHeroImageSize to be 5MB, got %d", MaxHeroImageSize)
 	}
 }
+
+func TestMimeTypeFromFilename(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		want     string
+	}{
+		{
+			name:     "PDF extension returns application/pdf",
+			filename: "document.pdf",
+			want:     "application/pdf",
+		},
+		{
+			name:     "DOCX extension returns word processing MIME",
+			filename: "report.docx",
+			want:     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		},
+		{
+			name:     "XLSX extension returns spreadsheet MIME",
+			filename: "spreadsheet.xlsx",
+			want:     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		},
+		{
+			name:     "unknown extension returns octet-stream",
+			filename: "archive.zip",
+			want:     "application/octet-stream",
+		},
+		{
+			name:     "uppercase PDF extension is handled case-insensitively",
+			filename: "PROTOCOL.PDF",
+			want:     "application/pdf",
+		},
+		{
+			name:     "no extension returns octet-stream",
+			filename: "README",
+			want:     "application/octet-stream",
+		},
+		{
+			name:     "txt extension returns octet-stream",
+			filename: "notes.txt",
+			want:     "application/octet-stream",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MimeTypeFromFilename(tt.filename)
+			if got != tt.want {
+				t.Errorf("MimeTypeFromFilename(%q) = %q, want %q", tt.filename, got, tt.want)
+			}
+		})
+	}
+}

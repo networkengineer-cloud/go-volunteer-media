@@ -830,4 +830,30 @@ export const adminDashboardApi = {
   getStats: () => api.get<AdminDashboardStats>('/admin/dashboard/stats'),
 };
 
+export interface GroupDocument {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  group_id: number;
+  title: string;
+  description: string;
+  order_index: number;
+  file_url: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  file_uploaded_by_user_id?: number;
+}
+
+export const groupDocumentsApi = {
+  getAll: (groupId: number) =>
+    api.get<GroupDocument[]>(`/groups/${groupId}/documents`),
+  upload: (groupId: number, formData: FormData) =>
+    api.post<GroupDocument>(`/groups/${groupId}/documents`, formData),
+  delete: (groupId: number, docId: number) =>
+    api.delete(`/groups/${groupId}/documents/${docId}`),
+  serve: (blobIdentifier: string) =>
+    api.get(`/group-documents/${blobIdentifier}`, { responseType: 'blob' }),
+};
+
 export default api;
