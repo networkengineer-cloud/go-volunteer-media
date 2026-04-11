@@ -213,6 +213,13 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 			return
 		}
 
+		// Guard: if the caller wants to post to GroupMe but no bot is configured,
+		// fail fast instead of silently skipping the send after saving.
+		if req.SendGroupMe && (!group.GroupMeEnabled || group.GroupMeBotID == "") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "GroupMe is not configured for this group"})
+			return
+		}
+
 		announcement := models.Announcement{
 			UserID:      userIDUint,
 			Title:       req.Title,

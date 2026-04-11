@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { scriptsApi } from '../api/client';
 import type { Script } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
 import EmptyState from './EmptyState';
 import SkeletonLoader from './SkeletonLoader';
 import ErrorState from './ErrorState';
@@ -41,6 +42,7 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
   hideAddButton = false,
 }) => {
   const { isAdmin } = useAuth();
+  const toast = useToast();
   const canEdit = isAdmin || isGroupAdmin;
   const [scripts, setScripts] = useState<Script[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +91,7 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
       await scriptsApi.delete(groupId, scriptId);
       await loadScripts();
     } catch {
-      alert('Failed to delete script. Please try again.');
+      toast.showError('Failed to delete script. Please try again.');
     }
   };
 
@@ -504,6 +506,7 @@ interface ScriptFormProps {
 }
 
 const ScriptForm: React.FC<ScriptFormProps> = ({ groupId, script, onSuccess, onCancel }) => {
+  const toast = useToast();
   const [title, setTitle] = useState(script?.title || '');
   const [description, setDescription] = useState(script?.description || '');
   const [orderIndex, setOrderIndex] = useState(script?.order_index ?? 0);
@@ -514,11 +517,11 @@ const ScriptForm: React.FC<ScriptFormProps> = ({ groupId, script, onSuccess, onC
     e.preventDefault();
 
     if (!title.trim()) {
-      alert('Title is required.');
+      toast.showError('Title is required.');
       return;
     }
     if (!script && !file) {
-      alert('A file is required when uploading a new script.');
+      toast.showError('A file is required when uploading a new script.');
       return;
     }
 
@@ -540,7 +543,7 @@ const ScriptForm: React.FC<ScriptFormProps> = ({ groupId, script, onSuccess, onC
       onSuccess();
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
-      alert(e.response?.data?.error || 'Failed to save script. Please try again.');
+      toast.showError(e.response?.data?.error || 'Failed to save script. Please try again.');
     } finally {
       setSubmitting(false);
     }

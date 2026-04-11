@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -45,6 +43,9 @@ func GetScripts(db *gorm.DB) gin.HandlerFunc {
 
 		var scripts []models.Script
 		if err := db.WithContext(ctx).
+			Select("id, created_at, updated_at, group_id, title, description, order_index, "+
+				"file_url, file_name, file_type, file_size, file_provider, "+
+				"file_blob_identifier, file_blob_extension, file_uploaded_by_user_id").
 			Where("group_id = ?", groupID).
 			Order("order_index ASC, created_at ASC").
 			Find(&scripts).Error; err != nil {
@@ -56,7 +57,7 @@ func GetScripts(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// GetScript returns a single script by ID (group members only)
+// GetScript returns a single script by ID (group members only, group must have has_protocols enabled)
 func GetScript(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupID := c.Param("id")
@@ -66,6 +67,16 @@ func GetScript(db *gorm.DB) gin.HandlerFunc {
 
 		if !checkGroupAccess(db, userID, isAdmin, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		var group models.Group
+		if err := db.First(&group, groupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+		if !group.HasProtocols {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Scripts not enabled for this group"})
 			return
 		}
 
@@ -122,7 +133,11 @@ func CreateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 			return
 		}
 		orderIndexStr := c.DefaultPostForm("order_index", "0")
-		orderIndex, _ := strconv.Atoi(orderIndexStr)
+		orderIndex, orderIndexErr := strconv.Atoi(orderIndexStr)
+		if orderIndexErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order_index: must be an integer"})
+			return
+		}
 
 		file, err := c.FormFile("file")
 		if err != nil {
@@ -151,7 +166,7 @@ func CreateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 		}
 		fileData := buf.Bytes()
 
-		mimeType := mimeTypeFromFilename(file.Filename)
+		mimeType := upload.MimeTypeFromFilename(file.Filename)
 		uploaderID := userID.(uint)
 
 		// Pre-generate a UUID for fallback postgres path
@@ -232,6 +247,16 @@ func UpdateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 			return
 		}
 
+		var group models.Group
+		if err := db.Select("has_protocols").First(&group, groupIDStr).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+		if !group.HasProtocols {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Scripts not enabled for this group"})
+			return
+		}
+
 		var script models.Script
 		if err := db.Where("id = ? AND group_id = ?", scriptIDStr, groupIDStr).First(&script).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Script not found"})
@@ -249,12 +274,15 @@ func UpdateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 			return
 		}
 		orderIndexStr := c.DefaultPostForm("order_index", strconv.Itoa(script.OrderIndex))
-		orderIndex, _ := strconv.Atoi(orderIndexStr)
+		orderIndex, orderIndexErr := strconv.Atoi(orderIndexStr)
+		if orderIndexErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order_index: must be an integer"})
+			return
+		}
 
 		script.Title = title
 		script.Description = description
 		script.OrderIndex = orderIndex
-		script.UpdatedAt = time.Now()
 
 		// Replace file if a new one was provided
 		if file, err := c.FormFile("file"); err == nil {
@@ -289,7 +317,7 @@ func UpdateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 				}
 			}
 
-			mimeType := mimeTypeFromFilename(file.Filename)
+			mimeType := upload.MimeTypeFromFilename(file.Filename)
 
 			// Pre-generate fallback UUID for postgres path
 			replacementUUID := uuid.New().String()
@@ -353,6 +381,16 @@ func DeleteScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 
 		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDStr) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		var group models.Group
+		if err := db.Select("has_protocols").First(&group, groupIDStr).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+		if !group.HasProtocols {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Scripts not enabled for this group"})
 			return
 		}
 
@@ -430,6 +468,17 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 			}
 		}
 
+		// Verify the feature is still enabled for this group
+		var group models.Group
+		if err := db.WithContext(ctx).First(&group, script.GroupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+		if !group.HasProtocols {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Scripts not enabled for this group"})
+			return
+		}
+
 		if script.FileProvider == "azure" && script.FileBlobIdentifier != "" {
 			data, mimeType, err := storageProvider.GetDocument(ctx, script.FileBlobIdentifier)
 			if err != nil {
@@ -500,11 +549,20 @@ func SetAnimalScripts(db *gorm.DB) gin.HandlerFunc {
 
 		var scripts []models.Script
 		if len(req.ScriptIDs) > 0 {
-			if err := db.Where("id IN ? AND group_id = ?", req.ScriptIDs, groupID).Find(&scripts).Error; err != nil {
+			// Deduplicate IDs so a double-submit doesn't cause a spurious length mismatch
+			seen := make(map[uint]struct{}, len(req.ScriptIDs))
+			uniqueIDs := make([]uint, 0, len(req.ScriptIDs))
+			for _, id := range req.ScriptIDs {
+				if _, ok := seen[id]; !ok {
+					seen[id] = struct{}{}
+					uniqueIDs = append(uniqueIDs, id)
+				}
+			}
+			if err := db.Where("id IN ? AND group_id = ?", uniqueIDs, groupID).Find(&scripts).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate scripts"})
 				return
 			}
-			if len(scripts) != len(req.ScriptIDs) {
+			if len(scripts) != len(uniqueIDs) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "One or more scripts not found in this group"})
 				return
 			}
@@ -517,18 +575,6 @@ func SetAnimalScripts(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Animal scripts updated successfully"})
-	}
-}
-
-// mimeTypeFromFilename returns a MIME type for common document extensions.
-func mimeTypeFromFilename(filename string) string {
-	switch path.Ext(filename) {
-	case ".pdf":
-		return "application/pdf"
-	case ".docx":
-		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-	default:
-		return "application/octet-stream"
 	}
 }
 
