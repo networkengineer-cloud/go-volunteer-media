@@ -61,6 +61,36 @@ func TestValidateDocumentUpload(t *testing.T) {
 			maxSize:     MaxDocumentSize,
 			expectError: true,
 		},
+		{
+			name:        "Valid XLSX (ZIP format)",
+			filename:    "spreadsheet.xlsx",
+			content:     []byte("PK\x03\x04test content"),
+			maxSize:     MaxDocumentSize,
+			expectError: false,
+		},
+		{
+			name:        "Wrong content type for DOCX",
+			filename:    "fake.docx",
+			content:     []byte("This is not a DOCX file"),
+			maxSize:     MaxDocumentSize,
+			expectError: true,
+			errorMsg:    "file does not appear to be a valid DOCX document",
+		},
+		{
+			name:        "Wrong content type for XLSX",
+			filename:    "fake.xlsx",
+			content:     []byte("This is not an XLSX file"),
+			maxSize:     MaxDocumentSize,
+			expectError: true,
+			errorMsg:    "file does not appear to be a valid XLSX document",
+		},
+		{
+			name:        "Uppercase PDF extension is case-insensitive",
+			filename:    "PROTOCOL.PDF",
+			content:     []byte("%PDF-1.4\ntest content"),
+			maxSize:     MaxDocumentSize,
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {

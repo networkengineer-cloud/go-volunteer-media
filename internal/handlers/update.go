@@ -76,6 +76,17 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 			req.SendEmail = false
 		}
 
+		// Normalize SendGroupMe: silently disable if the group has no bot ID configured.
+		// This prevents storing send_groupme=true on records where no message will be sent.
+		if req.SendGroupMe {
+			var grp models.Group
+			if err := db.WithContext(ctx).Select("groupme_enabled, groupme_bot_id").First(&grp, gid).Error; err == nil {
+				if !grp.GroupMeEnabled || grp.GroupMeBotID == "" {
+					req.SendGroupMe = false
+				}
+			}
+		}
+
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})

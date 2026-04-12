@@ -140,7 +140,7 @@ func TestGetGroupDocuments(t *testing.T) {
 			setupUser: func(db *gorm.DB, group *models.Group) (uint, bool) {
 				user := &models.User{Username: "member", Email: "member@test.com", Password: "x"}
 				db.Create(user)
-				AddUserToGroupWithAdmin(nil, db, user.ID, group.ID, false)
+				addUserToGroupForDocTest(db, user.ID, group.ID, false)
 				return user.ID, false
 			},
 			insertDocs:     2,
@@ -163,7 +163,7 @@ func TestGetGroupDocuments(t *testing.T) {
 			setupUser: func(db *gorm.DB, group *models.Group) (uint, bool) {
 				user := &models.User{Username: "emptymember", Email: "empty@test.com", Password: "x"}
 				db.Create(user)
-				AddUserToGroupWithAdmin(nil, db, user.ID, group.ID, false)
+				addUserToGroupForDocTest(db, user.ID, group.ID, false)
 				return user.ID, false
 			},
 			insertDocs:     0,
@@ -365,6 +365,66 @@ func TestUploadGroupDocument(t *testing.T) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
+// UploadGroupDocument — postgres fallback
+// ───────────────────────────────────────────────────────────────────────────────
+
+func TestUploadGroupDocument_PostgresFallback(t *testing.T) {
+	db := setupGroupDocumentTestDB(t)
+
+	group := &models.Group{Name: "FallbackGroup", Description: "desc"}
+	if err := db.Create(group).Error; err != nil {
+		t.Fatalf("Failed to create group: %v", err)
+	}
+	admin := &models.User{Username: "fbadmin", Email: "fbadmin@test.com", Password: "x"}
+	if err := db.Create(admin).Error; err != nil {
+		t.Fatalf("Failed to create admin user: %v", err)
+	}
+	addUserToGroupForDocTest(db, admin.ID, group.ID, true)
+
+	// Simulate a storage provider failure — handler must fall back to postgres
+	storageMock := &mockStorageProvider{UploadDocumentErr: fmt.Errorf("storage unavailable")}
+
+	req := buildDocumentMultipartRequest(t,
+		map[string]string{"title": "Fallback Doc"},
+		"file", "fallback.pdf", minimalPDF,
+	)
+
+	c, w := newGroupDocTestContext(admin.ID, false)
+	c.Request = req
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+
+	UploadGroupDocument(db, storageMock)(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	docID, ok := resp["id"].(float64)
+	if !ok || docID == 0 {
+		t.Fatalf("expected non-zero id in response, got %v", resp["id"])
+	}
+	if fileURL, _ := resp["file_url"].(string); fileURL == "" {
+		t.Error("expected file_url to be set on fallback document")
+	}
+
+	// FileProvider and FileData are json:"-"; verify via DB fetch
+	var saved models.GroupDocument
+	if err := db.First(&saved, uint(docID)).Error; err != nil {
+		t.Fatalf("Failed to fetch saved document: %v", err)
+	}
+	if saved.FileProvider != "postgres" {
+		t.Errorf("expected file_provider=postgres on fallback, got %q", saved.FileProvider)
+	}
+	if len(saved.FileData) == 0 {
+		t.Error("expected file_data to be stored in postgres on fallback")
+	}
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
 // DeleteGroupDocument
 // ───────────────────────────────────────────────────────────────────────────────
 
@@ -501,6 +561,8 @@ func TestServeGroupDocument(t *testing.T) {
 		lookupBlobID      string // the uuid param passed to the handler
 		expectedStatus    int
 		checkHeader       bool // verify Content-Disposition is set on 200
+		useMemberUser     bool // if true, authenticate as member; if false, authenticate as nonMember
+		addMemberToGroup  bool // if true, add member to the group before calling the handler
 	}{
 		{
 			name: "unauthenticated request returns 401",
@@ -510,29 +572,33 @@ func TestServeGroupDocument(t *testing.T) {
 			insertDocForGroup: true,
 			lookupBlobID:      blobID,
 			expectedStatus:    http.StatusUnauthorized,
+			useMemberUser:     false,
+			addMemberToGroup:  false,
 		},
 		{
 			name: "non-member returns 403",
 			setupAuth: func(c *gin.Context, groupID, userID uint) {
 				c.Set("user_id", userID)
 				c.Set("is_admin", false)
-				// userID is NOT a member of the group
 			},
 			insertDocForGroup: true,
 			lookupBlobID:      blobID,
 			expectedStatus:    http.StatusForbidden,
+			useMemberUser:     false,
+			addMemberToGroup:  false,
 		},
 		{
 			name: "group member can serve (200)",
 			setupAuth: func(c *gin.Context, groupID, userID uint) {
 				c.Set("user_id", userID)
 				c.Set("is_admin", false)
-				// userID IS a member — added in the test body below
 			},
 			insertDocForGroup: true,
 			lookupBlobID:      blobID,
 			expectedStatus:    http.StatusOK,
 			checkHeader:       true,
+			useMemberUser:     true,
+			addMemberToGroup:  true,
 		},
 		{
 			name: "non-existent document returns 404",
@@ -543,6 +609,8 @@ func TestServeGroupDocument(t *testing.T) {
 			insertDocForGroup: true,
 			lookupBlobID:      "does-not-exist-uuid",
 			expectedStatus:    http.StatusNotFound,
+			useMemberUser:     false,
+			addMemberToGroup:  false,
 		},
 	}
 
@@ -565,8 +633,7 @@ func TestServeGroupDocument(t *testing.T) {
 				t.Fatalf("Failed to create non-member user: %v", err)
 			}
 
-			// The "member" test case needs membership set up
-			if tt.name == "group member can serve (200)" {
+			if tt.addMemberToGroup {
 				addUserToGroupForDocTest(db, member.ID, group.ID, false)
 			}
 
@@ -577,16 +644,9 @@ func TestServeGroupDocument(t *testing.T) {
 			storageMock := &mockStorageProvider{}
 
 			var authUserID uint
-			switch tt.name {
-			case "non-member returns 403":
-				authUserID = nonMember.ID
-			case "group member can serve (200)":
+			if tt.useMemberUser {
 				authUserID = member.ID
-			case "non-existent document returns 404":
-				// use member (member is in group, but blob doesn't exist)
-				addUserToGroupForDocTest(db, member.ID, group.ID, false)
-				authUserID = member.ID
-			default:
+			} else {
 				authUserID = nonMember.ID
 			}
 

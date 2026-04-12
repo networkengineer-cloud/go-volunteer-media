@@ -127,10 +127,11 @@ func AddUserToGroupWithAdmin(t *testing.T, db *gorm.DB, userID, groupID uint, is
 var minimalPNG = []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
 
 // mockStorageProvider is a test double for storage.Provider.
-// Set UploadImageErr to simulate a storage failure.
+// Set UploadImageErr or UploadDocumentErr to simulate storage failures.
 type mockStorageProvider struct {
-	UploadImageErr error
-	LastMimeType   string
+	UploadImageErr    error
+	UploadDocumentErr error
+	LastMimeType      string
 }
 
 func (m *mockStorageProvider) Name() string { return "mock" }
@@ -142,6 +143,9 @@ func (m *mockStorageProvider) UploadImage(_ context.Context, _ []byte, mimeType 
 	return "/api/images/test-uuid", "test-uuid", ".png", nil
 }
 func (m *mockStorageProvider) UploadDocument(_ context.Context, _ []byte, _, _ string) (string, string, string, error) {
+	if m.UploadDocumentErr != nil {
+		return "", "", "", m.UploadDocumentErr
+	}
 	return "/api/documents/test-uuid", "test-uuid", ".pdf", nil
 }
 func (m *mockStorageProvider) GetImage(_ context.Context, _ string) ([]byte, string, error) {

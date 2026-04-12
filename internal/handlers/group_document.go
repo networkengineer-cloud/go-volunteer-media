@@ -30,12 +30,6 @@ func GetGroupDocuments(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		var group models.Group
-		if err := db.First(&group, groupID).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
-			return
-		}
-
 		var documents []models.GroupDocument
 		if err := db.WithContext(ctx).
 			Select("id, created_at, updated_at, group_id, title, description, order_index, "+
@@ -130,7 +124,10 @@ func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 		// Pre-generate a UUID for fallback postgres path
 		docUUID := uuid.New().String()
 
-		// Upload to storage provider
+		// Upload to storage provider.
+		// The first return value (provider URL) is intentionally discarded: all document
+		// downloads are proxied through /api/group-documents/:uuid so that the auth check
+		// in ServeGroupDocument is always enforced, even for Azure-backed storage.
 		_, blobUUID, blobExt, uploadErr := storageProvider.UploadDocument(ctx, fileData, mimeType, file.Filename)
 		var fileURL, blobIdentifier, fileProvider string
 		var fileDataForDB []byte
@@ -286,7 +283,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 				return
 			}
 			c.Header("Content-Type", mimeType)
-			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeFilename(doc.FileName)))
+			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(doc.FileName)))
 			c.Header("Content-Length", strconv.Itoa(len(data)))
 			c.Header("Cache-Control", "private, max-age=3600")
 			c.Data(http.StatusOK, mimeType, data)
@@ -296,7 +293,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 				return
 			}
 			c.Header("Content-Type", doc.FileType)
-			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeFilename(doc.FileName)))
+			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(doc.FileName)))
 			c.Header("Content-Length", strconv.Itoa(len(doc.FileData)))
 			c.Header("Cache-Control", "private, max-age=3600")
 			c.Data(http.StatusOK, doc.FileType, doc.FileData)
