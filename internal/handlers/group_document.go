@@ -36,8 +36,7 @@ func GetGroupDocuments(db *gorm.DB) gin.HandlerFunc {
 		var documents []models.GroupDocument
 		if err := db.WithContext(ctx).
 			Select("id, created_at, updated_at, group_id, title, description, order_index, "+
-				"file_url, file_name, file_type, file_size, file_provider, "+
-				"file_blob_identifier, file_blob_extension, file_uploaded_by_user_id").
+				"file_url, file_name, file_type, file_size, file_provider, file_uploaded_by_user_id").
 			Where("group_id = ?", groupID).
 			Order("order_index ASC, created_at ASC").
 			Find(&documents).Error; err != nil {
@@ -225,8 +224,9 @@ func DeleteGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 			return
 		}
 
-		// Delete file from storage if stored externally (non-postgres provider)
-		if doc.FileProvider == storage.ProviderAzure && doc.FileBlobIdentifier != "" {
+		// Delete file from storage for any non-postgres provider.
+		// Using != ProviderPostgres ensures future providers also clean up their blobs.
+		if doc.FileProvider != storage.ProviderPostgres && doc.FileBlobIdentifier != "" {
 			if err := storageProvider.DeleteDocument(ctx, doc.FileBlobIdentifier); err != nil {
 				logger.WithFields(map[string]interface{}{
 					"error":           err.Error(),

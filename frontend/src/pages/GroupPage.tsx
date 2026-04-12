@@ -67,6 +67,7 @@ const GroupPage: React.FC = () => {
   const [docUploadFile, setDocUploadFile] = useState<File | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [downloadingDocId, setDownloadingDocId] = useState<number | null>(null);
+  const [openingDocId, setOpeningDocId] = useState<number | null>(null);
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ show: boolean; doc: GroupDocument | null }>({ show: false, doc: null });
 
   // Skill tag state
@@ -1358,6 +1359,27 @@ const GroupPage: React.FC = () => {
                       </div>
                     </div>
                     <div className="document-item__actions">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={openingDocId === doc.id}
+                        onClick={async () => {
+                          setOpeningDocId(doc.id);
+                          try {
+                            const res = await groupDocumentsApi.serve(doc.file_url);
+                            const url = URL.createObjectURL(res.data as Blob);
+                            window.open(url, '_blank');
+                            // Revoke after a short delay to allow the new tab to load.
+                            setTimeout(() => URL.revokeObjectURL(url), 10000);
+                          } catch {
+                            toast.showError('Failed to open document');
+                          } finally {
+                            setOpeningDocId(null);
+                          }
+                        }}
+                      >
+                        {openingDocId === doc.id ? 'Opening...' : 'Open'}
+                      </button>
                       <button
                         type="button"
                         className="btn btn-secondary btn-sm"

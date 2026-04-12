@@ -441,9 +441,7 @@ func main() {
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      router,
-		// ReadTimeout covers the full request read including the upload body.
-		// A 20 MB file on a 2 Mbit/s connection takes ~80 s; 120 s gives headroom.
-		ReadTimeout:  120 * time.Second,
+		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}

@@ -56,9 +56,23 @@ func minimalDOCXBytes(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// TestLibreOfficeConverter_ToPDF_InvalidInput verifies that garbage input returns an error.
+// Note: some LibreOffice versions silently produce an empty PDF from invalid input rather
+// than exiting non-zero. The implementation guards against this with the len(pdf)==0 check,
+// so the test may not always reach the libreoffice-failed branch, but it must never return
+// nil error for garbage bytes.
+func TestLibreOfficeConverter_ToPDF_InvalidInput(t *testing.T) {
+	skipIfNoLibreOffice(t)
+	c := convert.NewLibreOfficeConverter()
+	_, err := c.ToPDF(context.Background(), []byte("this is not a valid docx file"), ".docx")
+	if err == nil {
+		t.Error("expected error for invalid input, got nil")
+	}
+}
+
 func TestLibreOfficeConverter_ToPDF_ValidDOCX(t *testing.T) {
 	skipIfNoLibreOffice(t)
-	c := &convert.LibreOfficeConverter{}
+	c := convert.NewLibreOfficeConverter()
 	pdf, err := c.ToPDF(context.Background(), minimalDOCXBytes(t), ".docx")
 	if err != nil {
 		t.Fatalf("ToPDF returned error: %v", err)
