@@ -40,6 +40,9 @@ func (c *LibreOfficeConverter) ToPDF(ctx context.Context, data []byte, ext strin
 
 	cmd := exec.CommandContext(convCtx,
 		"libreoffice", "--headless",
+		// Isolate the user profile per conversion so concurrent requests do not
+		// collide on the shared LibreOffice lock file under $HOME/.config/libreoffice/.
+		"-env:UserInstallation=file://"+tmpDir,
 		"--convert-to", "pdf",
 		"--outdir", tmpDir,
 		inputPath,
