@@ -56,9 +56,6 @@ func newGroupDocTestContext(userID uint, isAdmin bool) (*gin.Context, *httptest.
 	return c, w
 }
 
-// minimalPDF is the smallest byte sequence that passes ValidateDocumentUpload for a PDF.
-var minimalPDF = []byte("%PDF-1.4 test content that is long enough to pass validation checks and everything else needed")
-
 // buildDocumentMultipartRequest builds a multipart/form-data POST with a document file and optional form fields.
 func buildDocumentMultipartRequest(t *testing.T, fields map[string]string, fileFieldName, filename string, fileContent []byte) *http.Request {
 	t.Helper()
@@ -236,7 +233,8 @@ func TestUploadGroupDocument(t *testing.T) {
 		fields         map[string]string
 		fileFieldName  string
 		filename       string
-		fileContent    []byte // nil = don't include a file
+		fileContent      []byte // nil = don't include a file
+		converterOverride *mockConverter // nil = use default &mockConverter{}
 		expectedStatus int
 	}{
 		{
@@ -322,6 +320,55 @@ func TestUploadGroupDocument(t *testing.T) {
 			fileContent:    minimalPDF,
 			expectedStatus: http.StatusBadRequest,
 		},
+		{
+			name: "DOCX is converted to PDF on upload (201)",
+			setupUser: func(db *gorm.DB, group *models.Group) (uint, bool) {
+				u := &models.User{Username: "convadmin", Email: "convadmin@test.com", Password: "x"}
+				db.Create(u)
+				addUserToGroupForDocTest(db, u.ID, group.ID, true)
+				return u.ID, false
+			},
+			fields:        map[string]string{"title": "Converted Doc"},
+			fileFieldName: "file",
+			filename:      "report.docx",
+			// ZIP magic bytes — passes ValidateDocumentUpload for .docx
+			fileContent:    append([]byte{0x50, 0x4B, 0x03, 0x04}, make([]byte, 60)...),
+			expectedStatus: http.StatusCreated,
+		},
+		{
+			name: "conversion failure returns 422",
+			setupUser: func(db *gorm.DB, group *models.Group) (uint, bool) {
+				u := &models.User{Username: "convfailadmin", Email: "convfail@test.com", Password: "x"}
+				db.Create(u)
+				addUserToGroupForDocTest(db, u.ID, group.ID, true)
+				return u.ID, false
+			},
+			fields:        map[string]string{"title": "Bad Doc"},
+			fileFieldName: "file",
+			filename:      "broken.docx",
+			fileContent:   append([]byte{0x50, 0x4B, 0x03, 0x04}, make([]byte, 60)...),
+			converterOverride: &mockConverter{
+				ConvertErr: fmt.Errorf("libreoffice conversion failed"),
+			},
+			expectedStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name: "PDF upload skips conversion even when converter would fail",
+			setupUser: func(db *gorm.DB, group *models.Group) (uint, bool) {
+				u := &models.User{Username: "pdfskipadmin", Email: "pdfskip@test.com", Password: "x"}
+				db.Create(u)
+				addUserToGroupForDocTest(db, u.ID, group.ID, true)
+				return u.ID, false
+			},
+			fields:        map[string]string{"title": "PDF Doc"},
+			fileFieldName: "file",
+			filename:      "direct.pdf",
+			fileContent:   minimalPDF,
+			// ConvertErr is set — if the handler calls the converter for a PDF the upload
+			// would return 422. Getting 201 proves the converter was NOT called.
+			converterOverride: &mockConverter{ConvertErr: fmt.Errorf("should not be called")},
+			expectedStatus:    http.StatusCreated,
+		},
 	}
 
 	for _, tt := range tests {
@@ -336,13 +383,17 @@ func TestUploadGroupDocument(t *testing.T) {
 			userID, isAdmin := tt.setupUser(db, group)
 
 			storageMock := &mockStorageProvider{}
+			conv := tt.converterOverride
+			if conv == nil {
+				conv = &mockConverter{}
+			}
 			req := buildDocumentMultipartRequest(t, tt.fields, tt.fileFieldName, tt.filename, tt.fileContent)
 
 			c, w := newGroupDocTestContext(userID, isAdmin)
 			c.Request = req
 			c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
 
-			UploadGroupDocument(db, storageMock)(c)
+			UploadGroupDocument(db, storageMock, conv)(c)
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d; body: %s", tt.expectedStatus, w.Code, w.Body.String())
@@ -393,7 +444,7 @@ func TestUploadGroupDocument_PostgresFallback(t *testing.T) {
 	c.Request = req
 	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
 
-	UploadGroupDocument(db, storageMock)(c)
+	UploadGroupDocument(db, storageMock, &mockConverter{})(c)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d; body: %s", w.Code, w.Body.String())

@@ -126,6 +126,23 @@ func AddUserToGroupWithAdmin(t *testing.T, db *gorm.DB, userID, groupID uint, is
 // minimalPNG is a valid PNG header sufficient to pass ValidateImageUpload without a real image.
 var minimalPNG = []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
 
+// minimalPDF is a valid PDF header sufficient to pass ValidateDocumentUpload without a real PDF.
+var minimalPDF = []byte{'%', 'P', 'D', 'F', '-', '1', '.', '4', '\n'}
+
+// mockConverter is a test double for convert.Converter.
+// Set ConvertErr to simulate a conversion failure.
+// When ConvertErr is nil, ToPDF returns minimalPDF bytes.
+type mockConverter struct {
+	ConvertErr error
+}
+
+func (m *mockConverter) ToPDF(_ context.Context, _ []byte, _ string) ([]byte, error) {
+	if m.ConvertErr != nil {
+		return nil, m.ConvertErr
+	}
+	return minimalPDF, nil
+}
+
 // mockStorageProvider is a test double for storage.Provider.
 // Set UploadImageErr or UploadDocumentErr to simulate storage failures.
 type mockStorageProvider struct {
