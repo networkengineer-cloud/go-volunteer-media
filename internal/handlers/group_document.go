@@ -89,8 +89,8 @@ func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converte
 		}
 		orderIndexStr := c.DefaultPostForm("order_index", "0")
 		orderIndex, orderIndexErr := strconv.Atoi(orderIndexStr)
-		if orderIndexErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order_index: must be an integer"})
+		if orderIndexErr != nil || orderIndex < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order_index: must be a non-negative integer"})
 			return
 		}
 
@@ -101,7 +101,7 @@ func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converte
 		}
 
 		if err := upload.ValidateDocumentUpload(file, upload.MaxDocumentSize); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file: " + err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -158,13 +158,13 @@ func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converte
 				Warn("Failed to upload document to storage provider, falling back to PostgreSQL")
 			fileURL = fmt.Sprintf("/api/group-documents/%s", docUUID)
 			blobIdentifier = docUUID
-			fileProvider = "postgres"
+			fileProvider = storage.ProviderPostgres
 			fileDataForDB = fileData
 		} else {
 			blobIdentifier = blobUUID + blobExt
 			fileURL = fmt.Sprintf("/api/group-documents/%s", blobIdentifier)
 			fileProvider = storageProvider.Name()
-			if fileProvider == "postgres" {
+			if fileProvider == storage.ProviderPostgres {
 				fileDataForDB = fileData
 			} else {
 				fileDataForDB = nil
@@ -225,8 +225,8 @@ func DeleteGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 			return
 		}
 
-		// Delete file from storage if stored in Azure
-		if doc.FileProvider == "azure" && doc.FileBlobIdentifier != "" {
+		// Delete file from storage if stored externally (non-postgres provider)
+		if doc.FileProvider == storage.ProviderAzure && doc.FileBlobIdentifier != "" {
 			if err := storageProvider.DeleteDocument(ctx, doc.FileBlobIdentifier); err != nil {
 				logger.WithFields(map[string]interface{}{
 					"error":           err.Error(),
@@ -236,7 +236,7 @@ func DeleteGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 		}
 
 		// For postgres-backed documents, clear the binary data before soft-deleting
-		if doc.FileProvider == "postgres" && len(doc.FileData) > 0 {
+		if doc.FileProvider == storage.ProviderPostgres && len(doc.FileData) > 0 {
 			if err := db.Model(&doc).Update("file_data", nil).Error; err != nil {
 				logger.WithFields(map[string]interface{}{"document_id": doc.ID}).
 					Warn("Failed to clear file data before delete, proceeding anyway")
@@ -292,7 +292,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 			}
 		}
 
-		if doc.FileProvider == "azure" && doc.FileBlobIdentifier != "" {
+		if doc.FileProvider == storage.ProviderAzure && doc.FileBlobIdentifier != "" {
 			data, mimeType, err := storageProvider.GetDocument(ctx, doc.FileBlobIdentifier)
 			if err != nil {
 				if err == storage.ErrNotFound {

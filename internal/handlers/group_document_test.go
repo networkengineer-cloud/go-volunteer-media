@@ -20,7 +20,7 @@ import (
 // setupGroupDocumentTestDB creates an in-memory SQLite DB with all models needed for group document tests.
 func setupGroupDocumentTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	os.Setenv("JWT_SECRET", "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1fG3hI5jK7lM9nO1pQ3")
+	os.Setenv("JWT_SECRET", "test-only-jwt-secret-not-used-in-production-padding-xxxxx")
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {

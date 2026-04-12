@@ -92,7 +92,7 @@ func main() {
 	}).Info("Storage provider initialized")
 
 	// Initialize document converter (LibreOffice must be installed in the container).
-	converter := &convert.LibreOfficeConverter{}
+	converter := convert.NewLibreOfficeConverter()
 
 	// Initialize email service
 	emailService := email.NewService(db)
@@ -441,7 +441,9 @@ func main() {
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      router,
-		ReadTimeout:  30 * time.Second,
+		// ReadTimeout covers the full request read including the upload body.
+		// A 20 MB file on a 2 Mbit/s connection takes ~80 s; 120 s gives headroom.
+		ReadTimeout:  120 * time.Second,
 		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}

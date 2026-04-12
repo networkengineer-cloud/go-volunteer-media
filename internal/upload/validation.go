@@ -204,16 +204,9 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 		}
 	}
 
-	// Special handling for DOCX files - they're detected as application/zip
-	if !validContentType && ext == ".docx" {
-		// DOCX files are ZIP archives, check for ZIP signature
-		if bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x03, 0x04}) || bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x05, 0x06}) {
-			validContentType = true
-		}
-	}
-
-	// Special handling for XLSX files - they're also ZIP archives
-	if !validContentType && ext == ".xlsx" {
+	// DOCX and XLSX are both ZIP archives; accept either ZIP local-file or
+	// end-of-central-directory signatures.
+	if !validContentType && (ext == ".docx" || ext == ".xlsx") {
 		if bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x03, 0x04}) || bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x05, 0x06}) {
 			validContentType = true
 		}
