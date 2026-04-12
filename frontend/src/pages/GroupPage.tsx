@@ -1291,7 +1291,7 @@ const GroupPage: React.FC = () => {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="doc-file">File * (.pdf, .docx, .xlsx)</label>
+                  <label htmlFor="doc-file">File * (.pdf, .docx, .xlsx — DOCX/XLSX will be converted to PDF)</label>
                   <input
                     id="doc-file"
                     type="file"
