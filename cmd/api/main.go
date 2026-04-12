@@ -137,8 +137,8 @@ func main() {
 	// Structured logging middleware
 	router.Use(middleware.LoggingMiddleware())
 
-	// Max request body size middleware — raised to 25 MB to accommodate the
-	// 20 MB document-upload limit (MaxDocumentSize) plus multipart overhead.
+	// Max request body size middleware — 10 MB default for most routes.
+	// Document upload routes raise this to 25 MB via per-route middleware.
 	// Per-type limits are enforced by ValidateImageUpload / ValidateDocumentUpload.
 	router.Use(middleware.MaxRequestBodySize(10 * 1024 * 1024))
 

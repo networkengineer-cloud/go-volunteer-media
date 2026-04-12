@@ -292,7 +292,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 			}
 		}
 
-		if doc.FileProvider == storage.ProviderAzure && doc.FileBlobIdentifier != "" {
+		if doc.FileProvider != storage.ProviderPostgres && doc.FileBlobIdentifier != "" {
 			data, mimeType, err := storageProvider.GetDocument(ctx, doc.FileBlobIdentifier)
 			if err != nil {
 				if err == storage.ErrNotFound {

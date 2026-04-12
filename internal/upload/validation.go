@@ -228,17 +228,12 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 }
 
 // MimeTypeFromFilename returns the MIME type for a filename based on its extension.
+// It derives the answer from AllowedDocumentTypes so the two never drift.
 // Falls back to "application/octet-stream" for unknown extensions.
 func MimeTypeFromFilename(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
-	switch ext {
-	case ".pdf":
-		return "application/pdf"
-	case ".docx":
-		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-	case ".xlsx":
-		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-	default:
-		return "application/octet-stream"
+	if types, ok := AllowedDocumentTypes[ext]; ok && len(types) > 0 {
+		return types[0]
 	}
+	return "application/octet-stream"
 }

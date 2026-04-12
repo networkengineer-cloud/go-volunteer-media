@@ -852,8 +852,11 @@ export const groupDocumentsApi = {
     api.post<GroupDocument>(`/groups/${groupId}/documents`, formData),
   delete: (groupId: number, docId: number) =>
     api.delete(`/groups/${groupId}/documents/${docId}`),
-  serve: (fileUrl: string) =>
-    api.get(fileUrl.replace(/^\/api/, ''), { responseType: 'blob' }),
+  serve: (fileUrl: string) => {
+    const apiBase = '/api';
+    const path = fileUrl.startsWith(apiBase) ? fileUrl.slice(apiBase.length) : fileUrl;
+    return api.get(path, { responseType: 'blob' });
+  },
 };
 
 export default api;
