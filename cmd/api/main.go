@@ -140,7 +140,7 @@ func main() {
 	// Max request body size middleware — raised to 25 MB to accommodate the
 	// 20 MB document-upload limit (MaxDocumentSize) plus multipart overhead.
 	// Per-type limits are enforced by ValidateImageUpload / ValidateDocumentUpload.
-	router.Use(middleware.MaxRequestBodySize(25 * 1024 * 1024))
+	router.Use(middleware.MaxRequestBodySize(10 * 1024 * 1024))
 
 	// CORS middleware
 	router.Use(middleware.CORS())
@@ -399,7 +399,8 @@ func main() {
 		// Group admin or site admin document management routes
 		groupAdminDocuments := protected.Group("/groups/:id/documents")
 		{
-			groupAdminDocuments.POST("", handlers.UploadGroupDocument(db, storageProvider, converter))
+			// Document uploads can be up to 20 MB; raise the body limit for this route only.
+			groupAdminDocuments.POST("", middleware.MaxRequestBodySize(25*1024*1024), handlers.UploadGroupDocument(db, storageProvider, converter))
 			groupAdminDocuments.DELETE("/:docId", handlers.DeleteGroupDocument(db, storageProvider))
 		}
 
