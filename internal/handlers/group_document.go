@@ -303,7 +303,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 				return
 			}
 			c.Header("Content-Type", mimeType)
-			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(doc.FileName)))
+			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeFilename(doc.FileName)))
 			c.Header("Content-Length", strconv.Itoa(len(data)))
 			c.Header("Cache-Control", "private, max-age=3600")
 			c.Data(http.StatusOK, mimeType, data)
@@ -313,7 +313,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 				return
 			}
 			c.Header("Content-Type", doc.FileType)
-			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(doc.FileName)))
+			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeFilename(doc.FileName)))
 			c.Header("Content-Length", strconv.Itoa(len(doc.FileData)))
 			c.Header("Cache-Control", "private, max-age=3600")
 			c.Data(http.StatusOK, doc.FileType, doc.FileData)
