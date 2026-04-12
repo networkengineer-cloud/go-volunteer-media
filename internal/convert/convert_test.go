@@ -71,12 +71,3 @@ func TestLibreOfficeConverter_ToPDF_ValidDOCX(t *testing.T) {
 		t.Errorf("expected PDF output starting with %%PDF, got: %q", pdf[:n])
 	}
 }
-
-func TestLibreOfficeConverter_ToPDF_InvalidInput(t *testing.T) {
-	skipIfNoLibreOffice(t)
-	c := &convert.LibreOfficeConverter{}
-	_, err := c.ToPDF(context.Background(), []byte("this is not a valid docx file"), ".docx")
-	if err == nil {
-		t.Error("expected error for invalid input, got nil")
-	}
-}

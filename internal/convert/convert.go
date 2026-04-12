@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 )
 
@@ -43,6 +44,16 @@ func (c *LibreOfficeConverter) ToPDF(ctx context.Context, data []byte, ext strin
 		"--outdir", tmpDir,
 		inputPath,
 	)
+	// Put LibreOffice in its own process group so all child processes
+	// (soffice.bin, font loaders, etc.) are killed together on timeout/cancel.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		// Negative PID kills the entire process group.
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("libreoffice failed: %w\noutput: %s", err, out)
 	}
