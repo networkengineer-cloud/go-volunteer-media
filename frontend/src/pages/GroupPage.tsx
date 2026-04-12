@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { groupsApi, animalsApi, authApi, updatesApi } from '../api/client';
+import { groupsApi, animalsApi, authApi, updatesApi, groupDocumentsApi } from '../api/client';
 import ConfirmDialog from '../components/ConfirmDialog';
-import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSkillTag } from '../api/client';
+import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSkillTag, GroupDocument } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
@@ -66,6 +66,7 @@ const GroupPage: React.FC = () => {
   const [docUploadDescription, setDocUploadDescription] = useState('');
   const [docUploadFile, setDocUploadFile] = useState<File | null>(null);
   const [docUploading, setDocUploading] = useState(false);
+  const [downloadingDocId, setDownloadingDocId] = useState<number | null>(null);
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ show: boolean; doc: GroupDocument | null }>({ show: false, doc: null });
 
   // Skill tag state
@@ -131,7 +132,7 @@ const GroupPage: React.FC = () => {
   // Update view mode when URL search params change
   useEffect(() => {
     const viewParam = searchParams.get('view') as ViewMode;
-    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols')) {
+    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols' || viewParam === 'documents')) {
       setViewMode(viewParam);
     } else if (viewParam === 'members' && (membership?.is_member || membership?.is_site_admin)) {
       setViewMode(viewParam);
@@ -1273,6 +1274,9 @@ const GroupPage: React.FC = () => {
                     maxLength={200}
                     className="form-control"
                   />
+                  {docUploadTitle.length > 0 && docUploadTitle.length < 2 && (
+                    <p className="form-error">Title must be at least 2 characters.</p>
+                  )}
                 </div>
                 <div className="form-group">
                   <label htmlFor="doc-description">Description</label>
@@ -1295,11 +1299,14 @@ const GroupPage: React.FC = () => {
                     onChange={(e) => setDocUploadFile(e.target.files?.[0] ?? null)}
                     className="form-control"
                   />
+                  {(docUploadFile?.size ?? 0) > 20 * 1024 * 1024 && (
+                    <p className="form-error">File exceeds the 20 MB limit.</p>
+                  )}
                 </div>
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={docUploading || !docUploadTitle || !docUploadFile}
+                  disabled={docUploading || docUploadTitle.length < 2 || !docUploadFile || (docUploadFile?.size ?? 0) > 20 * 1024 * 1024}
                   onClick={async () => {
                     if (!id || !docUploadFile) return;
                     setDocUploading(true);
@@ -1333,7 +1340,7 @@ const GroupPage: React.FC = () => {
             {documentsLoading && <SkeletonLoader />}
             {documentsError && <ErrorState message={documentsError} />}
             {!documentsLoading && !documentsError && documents.length === 0 && (
-              <EmptyState message="No documents have been uploaded yet." />
+              <EmptyState title="No documents" description="No documents have been uploaded yet." />
             )}
             {!documentsLoading && !documentsError && documents.length > 0 && (
               <ul className="document-list">
@@ -1346,7 +1353,7 @@ const GroupPage: React.FC = () => {
                       )}
                       <div className="document-item__meta">
                         <span>{doc.file_name}</span>
-                        <span>{(doc.file_size / 1024).toFixed(1)} KB</span>
+                        <span>{doc.file_size >= 1024 * 1024 ? `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB` : `${(doc.file_size / 1024).toFixed(1)} KB`}</span>
                         <span>{new Date(doc.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
@@ -1354,10 +1361,11 @@ const GroupPage: React.FC = () => {
                       <button
                         type="button"
                         className="btn btn-secondary btn-sm"
+                        disabled={downloadingDocId === doc.id}
                         onClick={async () => {
+                          setDownloadingDocId(doc.id);
                           try {
-                            const blobId = doc.file_url.split('/').pop() ?? '';
-                            const res = await groupDocumentsApi.serve(blobId);
+                            const res = await groupDocumentsApi.serve(doc.file_url);
                             const url = URL.createObjectURL(res.data as Blob);
                             const a = document.createElement('a');
                             a.href = url;
@@ -1366,10 +1374,12 @@ const GroupPage: React.FC = () => {
                             URL.revokeObjectURL(url);
                           } catch {
                             toast.showError('Failed to download document');
+                          } finally {
+                            setDownloadingDocId(null);
                           }
                         }}
                       >
-                        Download
+                        {downloadingDocId === doc.id ? 'Downloading...' : 'Download'}
                       </button>
                       {(membership?.is_group_admin || membership?.is_site_admin) && (
                         <button
