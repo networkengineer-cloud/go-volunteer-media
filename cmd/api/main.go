@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/networkengineer-cloud/go-volunteer-media/frontend"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/convert"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
@@ -89,6 +90,9 @@ func main() {
 	logger.WithFields(map[string]interface{}{
 		"provider": storageConfig.Provider,
 	}).Info("Storage provider initialized")
+
+	// Initialize document converter (LibreOffice must be installed in the container).
+	converter := &convert.LibreOfficeConverter{}
 
 	// Initialize email service
 	emailService := email.NewService(db)
@@ -395,7 +399,7 @@ func main() {
 		// Group admin or site admin document management routes
 		groupAdminDocuments := protected.Group("/groups/:id/documents")
 		{
-			groupAdminDocuments.POST("", handlers.UploadGroupDocument(db, storageProvider))
+			groupAdminDocuments.POST("", handlers.UploadGroupDocument(db, storageProvider, converter))
 			groupAdminDocuments.DELETE("/:docId", handlers.DeleteGroupDocument(db, storageProvider))
 		}
 
@@ -437,8 +441,8 @@ func main() {
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 

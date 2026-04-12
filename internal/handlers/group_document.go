@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/convert"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
@@ -47,7 +50,7 @@ func GetGroupDocuments(db *gorm.DB) gin.HandlerFunc {
 }
 
 // UploadGroupDocument uploads a new document to a group (group admin or site admin only).
-func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
+func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converter convert.Converter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
@@ -117,6 +120,23 @@ func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 			return
 		}
 		fileData := buf.Bytes()
+
+		// Convert DOCX and XLSX to PDF so all documents can be viewed inline in the browser.
+		// PDFs pass through unchanged. Conversion failure rejects the upload.
+		ext := strings.ToLower(filepath.Ext(file.Filename))
+		if ext != ".pdf" {
+			pdfData, convErr := converter.ToPDF(ctx, fileData, ext)
+			if convErr != nil {
+				logger.WithFields(map[string]interface{}{"error": convErr.Error(), "ext": ext}).
+					Warn("Document conversion to PDF failed")
+				c.JSON(http.StatusUnprocessableEntity, gin.H{
+					"error": "File could not be converted to PDF. Please check the file and try again.",
+				})
+				return
+			}
+			fileData = pdfData
+			file.Filename = strings.TrimSuffix(file.Filename, ext) + ".pdf"
+		}
 
 		mimeType := upload.MimeTypeFromFilename(file.Filename)
 		uploaderID := userID.(uint)
