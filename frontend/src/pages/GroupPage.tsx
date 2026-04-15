@@ -12,11 +12,12 @@ import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import Modal from '../components/Modal';
 import ScriptsList from '../components/ScriptsList';
+import ProtocolsList from '../components/ProtocolsList';
 import { calculateAge, formatAge } from '../utils/dateUtils';
 import { formatDisplayName } from '../utils/formatName';
 import './GroupPage.css';
 
-type ViewMode = 'activity' | 'animals' | 'protocols' | 'members';
+type ViewMode = 'activity' | 'animals' | 'protocols' | 'scripts' | 'members';
 type FilterType = 'all' | 'comments' | 'announcements';
 
 const GroupPage: React.FC = () => {
@@ -41,6 +42,7 @@ const GroupPage: React.FC = () => {
   const [nameSearch, setNameSearch] = useState<string>('');
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showProtocolForm, setShowProtocolForm] = useState(false);
+  const [showScriptForm, setShowScriptForm] = useState(false);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; updateId: number | null; title: string }>({
     show: false, updateId: null, title: '',
@@ -121,7 +123,7 @@ const GroupPage: React.FC = () => {
   // Update view mode when URL search params change
   useEffect(() => {
     const viewParam = searchParams.get('view') as ViewMode;
-    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols')) {
+    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols' || viewParam === 'scripts')) {
       setViewMode(viewParam);
     } else if (viewParam === 'members' && (membership?.is_member || membership?.is_site_admin)) {
       setViewMode(viewParam);
@@ -457,6 +459,22 @@ const GroupPage: React.FC = () => {
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
             </svg>
+            <span>Protocols</span>
+          </button>
+        )}
+        {group.has_protocols && (
+          <button
+            role="tab"
+            aria-selected={viewMode === 'scripts'}
+            aria-controls="scripts-panel"
+            id="scripts-tab"
+            className={`group-tab ${viewMode === 'scripts' ? 'group-tab--active' : ''}`}
+            onClick={() => setViewMode('scripts')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+            </svg>
             <span>Scripts</span>
           </button>
         )}
@@ -517,6 +535,22 @@ const GroupPage: React.FC = () => {
               onClick={() => {
                 setViewMode('protocols');
                 setShowProtocolForm(true);
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+              </svg>
+              <span>Add Protocol</span>
+            </button>
+          )}
+          {group.has_protocols && (
+            <button 
+              type="button"
+              className="group-admin-link"
+              onClick={() => {
+                setViewMode('scripts');
+                setShowScriptForm(true);
               }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -982,7 +1016,7 @@ const GroupPage: React.FC = () => {
         </div>
       )}
 
-      {/* Scripts View */}
+      {/* Protocols View */}
       {viewMode === 'protocols' && group.has_protocols && (
         <div 
           role="tabpanel"
@@ -990,11 +1024,29 @@ const GroupPage: React.FC = () => {
           aria-labelledby="protocols-tab"
           className="group-content"
         >
-          <ScriptsList 
+          <ProtocolsList 
             groupId={Number(id)} 
             isGroupAdmin={membership?.is_group_admin || membership?.is_site_admin}
             showFormExternal={showProtocolForm}
             onShowFormChange={setShowProtocolForm}
+            hideAddButton={true}
+          />
+        </div>
+      )}
+
+      {/* Scripts View */}
+      {viewMode === 'scripts' && group.has_protocols && (
+        <div 
+          role="tabpanel"
+          id="scripts-panel"
+          aria-labelledby="scripts-tab"
+          className="group-content"
+        >
+          <ScriptsList 
+            groupId={Number(id)} 
+            isGroupAdmin={membership?.is_group_admin || membership?.is_site_admin}
+            showFormExternal={showScriptForm}
+            onShowFormChange={setShowScriptForm}
             hideAddButton={true}
           />
         </div>
