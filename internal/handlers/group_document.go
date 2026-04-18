@@ -306,6 +306,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeFilename(doc.FileName)))
 			c.Header("Content-Length", strconv.Itoa(len(data)))
 			c.Header("Cache-Control", "private, max-age=3600")
+			c.Header("X-Content-Type-Options", "nosniff")
 			c.Data(http.StatusOK, mimeType, data)
 		} else {
 			if len(doc.FileData) == 0 {
@@ -316,6 +317,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 			c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeFilename(doc.FileName)))
 			c.Header("Content-Length", strconv.Itoa(len(doc.FileData)))
 			c.Header("Cache-Control", "private, max-age=3600")
+			c.Header("X-Content-Type-Options", "nosniff")
 			c.Data(http.StatusOK, doc.FileType, doc.FileData)
 		}
 	}

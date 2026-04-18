@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { groupsApi, animalsApi, authApi, updatesApi, groupDocumentsApi } from '../api/client';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -69,6 +69,7 @@ const GroupPage: React.FC = () => {
   const [downloadingDocId, setDownloadingDocId] = useState<number | null>(null);
   const [openingDocId, setOpeningDocId] = useState<number | null>(null);
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ show: boolean; doc: GroupDocument | null }>({ show: false, doc: null });
+  const docFileInputRef = useRef<HTMLInputElement>(null);
 
   // Skill tag state
   const [skillTags, setSkillTags] = useState<UserSkillTag[]>([]);
@@ -319,7 +320,7 @@ const GroupPage: React.FC = () => {
     }
   }, [id, viewMode]);
 
-  const loadDocuments = async (groupId: number) => {
+  const loadDocuments = useCallback(async (groupId: number) => {
     setDocumentsLoading(true);
     setDocumentsError('');
     try {
@@ -330,7 +331,7 @@ const GroupPage: React.FC = () => {
     } finally {
       setDocumentsLoading(false);
     }
-  };
+  }, []);
 
   const handleCreateSkillTag = useCallback(async () => {
     if (!id || !newSkillTagName.trim() || creatingSkillTag) return;
@@ -1294,6 +1295,7 @@ const GroupPage: React.FC = () => {
                 <div className="form-group">
                   <label htmlFor="doc-file">File * (.pdf, .docx, .xlsx — DOCX/XLSX will be converted to PDF)</label>
                   <input
+                    ref={docFileInputRef}
                     id="doc-file"
                     type="file"
                     accept=".pdf,.docx,.xlsx"
@@ -1321,12 +1323,12 @@ const GroupPage: React.FC = () => {
                       setDocUploadDescription('');
                       setDocUploadFile(null);
                       // Reset file input
-                      const fileInput = document.getElementById('doc-file') as HTMLInputElement;
-                      if (fileInput) fileInput.value = '';
+                      if (docFileInputRef.current) docFileInputRef.current.value = '';
                       await loadDocuments(Number(id));
                       toast.showSuccess('Document uploaded successfully');
-                    } catch {
-                      toast.showError('Failed to upload document');
+                    } catch (err: unknown) {
+                      const axiosError = err as { response?: { data?: { error?: string } } };
+                      toast.showError(axiosError?.response?.data?.error || 'Failed to upload document');
                     } finally {
                       setDocUploading(false);
                     }
@@ -1368,8 +1370,12 @@ const GroupPage: React.FC = () => {
                           try {
                             const res = await groupDocumentsApi.serve(doc.file_url);
                             const url = URL.createObjectURL(res.data as Blob);
-                            window.open(url, '_blank');
-                            // Revoke after a short delay to allow the new tab to load.
+                            // Use anchor click instead of window.open to avoid popup blockers
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.target = '_blank';
+                            a.rel = 'noopener noreferrer';
+                            a.click();
                             setTimeout(() => URL.revokeObjectURL(url), 10000);
                           } catch {
                             toast.showError('Failed to open document');
