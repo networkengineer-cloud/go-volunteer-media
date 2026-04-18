@@ -207,14 +207,25 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 	// DOCX and XLSX are both ZIP archives; accept either ZIP local-file or
 	// end-of-central-directory signatures.
 	if !validContentType && (ext == ".docx" || ext == ".xlsx") {
-		if bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x03, 0x04}) || bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x05, 0x06}) {
+		if bytes.HasPrefix(buffer[:n], []byte{0x50, 0x4B, 0x03, 0x04}) || bytes.HasPrefix(buffer[:n], []byte{0x50, 0x4B, 0x05, 0x06}) {
 			validContentType = true
 		}
 	}
 
-	// PDF files start with %PDF
+	// Some PDF generators prepend a UTF-8 BOM or whitespace before the
+	// %PDF- header. Strip those known prefixes, then check at byte 0.
+	// Reject if the combined preamble (BOM + whitespace) exceeds 64 bytes.
 	if !validContentType && ext == ".pdf" {
-		if bytes.HasPrefix(buffer, []byte("%PDF")) {
+		const maxPreamble = 64
+		b := buffer[:n]
+		skipped := 0
+		if bytes.HasPrefix(b, []byte{0xEF, 0xBB, 0xBF}) {
+			b = b[3:]
+			skipped += 3
+		}
+		trimmed := bytes.TrimLeft(b, " \t\r\n")
+		skipped += len(b) - len(trimmed)
+		if skipped <= maxPreamble && bytes.HasPrefix(trimmed, []byte("%PDF-")) {
 			validContentType = true
 		}
 	}
