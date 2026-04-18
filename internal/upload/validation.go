@@ -214,18 +214,18 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 
 	// Some PDF generators prepend a UTF-8 BOM or whitespace before the
 	// %PDF- header. Strip those known prefixes, then check at byte 0.
-	// Cap the combined preamble (BOM + whitespace) to 64 bytes.
+	// Reject if the combined preamble (BOM + whitespace) exceeds 64 bytes.
 	if !validContentType && ext == ".pdf" {
 		const maxPreamble = 64
 		b := buffer[:n]
-		if len(b) > maxPreamble {
-			b = b[:maxPreamble]
-		}
+		skipped := 0
 		if bytes.HasPrefix(b, []byte{0xEF, 0xBB, 0xBF}) {
 			b = b[3:]
+			skipped += 3
 		}
-		b = bytes.TrimLeft(b, " \t\r\n")
-		if bytes.HasPrefix(b, []byte("%PDF-")) {
+		trimmed := bytes.TrimLeft(b, " \t\r\n")
+		skipped += len(b) - len(trimmed)
+		if skipped <= maxPreamble && bytes.HasPrefix(trimmed, []byte("%PDF-")) {
 			validContentType = true
 		}
 	}
