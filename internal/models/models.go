@@ -311,7 +311,7 @@ type Script struct {
 	FileURL              string         `json:"file_url"`
 	FileName             string         `json:"file_name"`
 	FileType             string         `json:"file_type"`
-	FileSize             int            `json:"file_size"`
+	FileSize             int64          `json:"file_size"`
 	FileProvider         string         `gorm:"default:'postgres'" json:"-"` // Storage backend: "postgres" or "azure"
 	FileBlobIdentifier   string         `json:"-"`                           // Azure blob identifier (UUID without extension)
 	FileBlobExtension    string         `json:"-"`                           // File extension for blob storage
@@ -334,7 +334,7 @@ type GroupDocument struct {
 	FileURL              string         `json:"file_url"`
 	FileName             string         `json:"file_name"`
 	FileType             string         `json:"file_type"`
-	FileSize             int            `json:"file_size"`
+	FileSize             int64          `json:"file_size"`
 	FileProvider         string         `gorm:"default:'postgres'" json:"-"`
 	FileBlobIdentifier   string         `json:"-"`
 	FileBlobExtension    string         `json:"-"`
@@ -382,7 +382,7 @@ type AnimalImage struct {
 	IsProfilePicture bool           `gorm:"default:false;index:idx_animal_images_profile" json:"is_profile_picture"`
 	Width            int            `json:"width"`
 	Height           int            `json:"height"`
-	FileSize         int            `json:"file_size"`                   // in bytes
+	FileSize         int64          `json:"file_size"`                   // in bytes
 	StorageProvider  string         `gorm:"default:'postgres'" json:"-"` // Storage backend: "postgres" or "azure"
 	BlobIdentifier   string         `json:"-"`                           // Azure blob identifier (UUID without extension)
 	BlobExtension    string         `json:"-"`                           // File extension (e.g., ".jpg", ".png") for blob storage

@@ -438,7 +438,10 @@ func main() {
 		port = "8080"
 	}
 
-	// Create HTTP server with timeouts
+	// ReadTimeout and WriteTimeout apply to all routes. WriteTimeout is raised
+	// to 120 s to cover the 60 s LibreOffice conversion window; a reverse proxy
+	// or CDN in front of the server should enforce tighter per-route timeouts
+	// for lightweight endpoints.
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      router,

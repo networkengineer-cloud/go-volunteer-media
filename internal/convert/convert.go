@@ -67,8 +67,8 @@ func (c *LibreOfficeConverter) ToPDF(ctx context.Context, data []byte, ext strin
 		"--outdir", tmpDir,
 		inputPath,
 	)
-	// Put LibreOffice in its own process group so all child processes
-	// (soffice.bin, font loaders, etc.) are killed together on timeout/cancel.
+	// Process group management (Setpgid, Kill) is Linux-only; this code runs
+	// exclusively in the Debian container image defined in the project Dockerfile.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {

@@ -138,7 +138,11 @@ func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converte
 		}
 
 		mimeType := upload.MimeTypeFromFilename(file.Filename)
-		uploaderID := userID.(uint)
+		uploaderID, ok := userID.(uint)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user identity"})
+			return
+		}
 
 		// Pre-generate a UUID for fallback postgres path
 		docUUID := uuid.New().String()
@@ -178,7 +182,7 @@ func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converte
 			FileURL:              fileURL,
 			FileName:             file.Filename,
 			FileType:             mimeType,
-			FileSize:             len(fileData),
+			FileSize:             int64(len(fileData)),
 			FileProvider:         fileProvider,
 			FileBlobIdentifier:   blobIdentifier,
 			FileBlobExtension:    blobExt,
@@ -265,7 +269,11 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
-		userID := userIDValue.(uint)
+		userID, ok := userIDValue.(uint)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user identity"})
+			return
+		}
 		isAdminValue, _ := c.Get("is_admin")
 		isAdmin, _ := isAdminValue.(bool)
 

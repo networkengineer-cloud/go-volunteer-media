@@ -126,7 +126,7 @@ func UploadAnimalImage(db *gorm.DB) gin.HandlerFunc {
 			MimeType:  "image/jpeg",
 			Width:     finalBounds.Dx(),
 			Height:    finalBounds.Dy(),
-			FileSize:  len(imageData),
+			FileSize:  int64(len(imageData)),
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -331,7 +331,7 @@ func UploadAnimalImageSimple(db *gorm.DB, storageProvider storage.Provider) gin.
 			MimeType:        "image/jpeg",
 			Width:           finalBounds.Dx(),
 			Height:          finalBounds.Dy(),
-			FileSize:        len(imageData),
+			FileSize:        int64(len(imageData)),
 			StorageProvider: storageProviderName,
 			BlobIdentifier:  blobIdentifier,
 			BlobExtension:   blobExt,

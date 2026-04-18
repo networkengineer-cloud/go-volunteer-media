@@ -97,7 +97,7 @@ func insertGroupDocument(t *testing.T, db *gorm.DB, groupID uint, uploaderID uin
 		FileURL:              fmt.Sprintf("/api/group-documents/%s", blobID),
 		FileName:             filename,
 		FileType:             "application/pdf",
-		FileSize:             len(fileData),
+		FileSize:             int64(len(fileData)),
 		FileProvider:         "postgres",
 		FileBlobIdentifier:   blobID,
 		FileBlobExtension:    ".pdf",

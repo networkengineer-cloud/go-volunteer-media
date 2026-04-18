@@ -219,7 +219,7 @@ func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) g
 			Caption:         caption,
 			Width:           finalBounds.Dx(),
 			Height:          finalBounds.Dy(),
-			FileSize:        len(imageData),
+			FileSize:        int64(len(imageData)),
 			StorageProvider: storageProviderName,
 			BlobIdentifier:  blobIdentifier,
 			BlobExtension:   blobExt,
