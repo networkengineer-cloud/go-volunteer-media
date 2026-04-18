@@ -207,15 +207,14 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 	// DOCX and XLSX are both ZIP archives; accept either ZIP local-file or
 	// end-of-central-directory signatures.
 	if !validContentType && (ext == ".docx" || ext == ".xlsx") {
-		if bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x03, 0x04}) || bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x05, 0x06}) {
+		if bytes.HasPrefix(buffer[:n], []byte{0x50, 0x4B, 0x03, 0x04}) || bytes.HasPrefix(buffer[:n], []byte{0x50, 0x4B, 0x05, 0x06}) {
 			validContentType = true
 		}
 	}
 
 	// Some PDF generators prepend a UTF-8 BOM or whitespace before the
 	// %PDF- header. Strip those known prefixes, then check at byte 0.
-	// Cap the preamble window to 64 bytes so only legitimate small
-	// prefixes are tolerated, not large amounts of padding.
+	// Cap the combined preamble (BOM + whitespace) to 64 bytes.
 	if !validContentType && ext == ".pdf" {
 		const maxPreamble = 64
 		b := buffer[:n]
