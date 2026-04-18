@@ -47,7 +47,7 @@ FROM debian:bookworm-slim
 
 # Install runtime dependencies.
 # libreoffice: converts DOCX/XLSX uploads to PDF at upload time.
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
     libreoffice \
     ca-certificates \
     tzdata \
