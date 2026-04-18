@@ -105,6 +105,14 @@ func TestValidateDocumentUpload(t *testing.T) {
 			maxSize:     MaxDocumentSize,
 			expectError: false,
 		},
+		{
+			name:        "Non-PDF file containing %PDF string",
+			filename:    "fake.pdf",
+			content:     []byte("This document references %PDF format but is not one"),
+			maxSize:     MaxDocumentSize,
+			expectError: true,
+			errorMsg:    "file does not appear to be a valid PDF document",
+		},
 	}
 
 	for _, tt := range tests {
