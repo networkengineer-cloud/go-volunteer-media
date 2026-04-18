@@ -49,6 +49,7 @@ var AllowedImageTypes = map[string][]string{
 var AllowedDocumentTypes = map[string][]string{
 	".pdf":  {"application/pdf"},
 	".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+	".xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
 }
 
 // ValidateImageUpload validates an uploaded image file
@@ -174,7 +175,7 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	allowedMimeTypes, ok := AllowedDocumentTypes[ext]
 	if !ok {
-		return fmt.Errorf("%w: extension %s is not allowed (only PDF and DOCX are supported)", ErrInvalidFileType, ext)
+		return fmt.Errorf("%w: extension %s is not allowed (only PDF, DOCX, and XLSX are supported)", ErrInvalidFileType, ext)
 	}
 
 	// Open file to check content type
@@ -203,9 +204,9 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 		}
 	}
 
-	// Special handling for DOCX files - they're detected as application/zip
-	if !validContentType && ext == ".docx" {
-		// DOCX files are ZIP archives, check for ZIP signature
+	// DOCX and XLSX are both ZIP archives; accept either ZIP local-file or
+	// end-of-central-directory signatures.
+	if !validContentType && (ext == ".docx" || ext == ".xlsx") {
 		if bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x03, 0x04}) || bytes.HasPrefix(buffer, []byte{0x50, 0x4B, 0x05, 0x06}) {
 			validContentType = true
 		}
@@ -224,4 +225,15 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 	}
 
 	return nil
+}
+
+// MimeTypeFromFilename returns the MIME type for a filename based on its extension.
+// It derives the answer from AllowedDocumentTypes so the two never drift.
+// Falls back to "application/octet-stream" for unknown extensions.
+func MimeTypeFromFilename(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	if types, ok := AllowedDocumentTypes[ext]; ok && len(types) > 0 {
+		return types[0]
+	}
+	return "application/octet-stream"
 }

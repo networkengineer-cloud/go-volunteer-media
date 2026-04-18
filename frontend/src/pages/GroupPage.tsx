@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { groupsApi, animalsApi, authApi, updatesApi } from '../api/client';
+import { groupsApi, animalsApi, authApi, updatesApi, groupDocumentsApi } from '../api/client';
 import ConfirmDialog from '../components/ConfirmDialog';
-import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSkillTag } from '../api/client';
+import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSkillTag, GroupDocument } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
@@ -16,7 +16,7 @@ import { calculateAge, formatAge } from '../utils/dateUtils';
 import { formatDisplayName } from '../utils/formatName';
 import './GroupPage.css';
 
-type ViewMode = 'activity' | 'animals' | 'protocols' | 'members';
+type ViewMode = 'activity' | 'animals' | 'protocols' | 'members' | 'documents';
 type FilterType = 'all' | 'comments' | 'announcements';
 
 const GroupPage: React.FC = () => {
@@ -57,6 +57,19 @@ const GroupPage: React.FC = () => {
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersError, setMembersError] = useState('');
+
+  // Documents state
+  const [documents, setDocuments] = useState<GroupDocument[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsError, setDocumentsError] = useState('');
+  const [docUploadTitle, setDocUploadTitle] = useState('');
+  const [docUploadDescription, setDocUploadDescription] = useState('');
+  const [docUploadFile, setDocUploadFile] = useState<File | null>(null);
+  const [docUploading, setDocUploading] = useState(false);
+  const [downloadingDocId, setDownloadingDocId] = useState<number | null>(null);
+  const [openingDocId, setOpeningDocId] = useState<number | null>(null);
+  const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ show: boolean; doc: GroupDocument | null }>({ show: false, doc: null });
+  const docFileInputRef = useRef<HTMLInputElement>(null);
 
   // Skill tag state
   const [skillTags, setSkillTags] = useState<UserSkillTag[]>([]);
@@ -121,7 +134,7 @@ const GroupPage: React.FC = () => {
   // Update view mode when URL search params change
   useEffect(() => {
     const viewParam = searchParams.get('view') as ViewMode;
-    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols')) {
+    if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols' || viewParam === 'documents')) {
       setViewMode(viewParam);
     } else if (viewParam === 'members' && (membership?.is_member || membership?.is_site_admin)) {
       setViewMode(viewParam);
@@ -302,7 +315,23 @@ const GroupPage: React.FC = () => {
     if (id && viewMode === 'members') {
       loadMembers(Number(id));
     }
+    if (id && viewMode === 'documents') {
+      loadDocuments(Number(id));
+    }
   }, [id, viewMode]);
+
+  const loadDocuments = useCallback(async (groupId: number) => {
+    setDocumentsLoading(true);
+    setDocumentsError('');
+    try {
+      const res = await groupDocumentsApi.getAll(groupId);
+      setDocuments(res.data);
+    } catch {
+      setDocumentsError('Failed to load documents');
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, []);
 
   const handleCreateSkillTag = useCallback(async () => {
     if (!id || !newSkillTagName.trim() || creatingSkillTag) return;
@@ -476,6 +505,25 @@ const GroupPage: React.FC = () => {
               <path d="M16 3.13a4 4 0 0 1 0 7.75" />
             </svg>
             <span>Members</span>
+          </button>
+        )}
+        {(membership?.is_member || membership?.is_site_admin) && (
+          <button
+            role="tab"
+            aria-selected={viewMode === 'documents'}
+            aria-controls="documents-panel"
+            id="documents-tab"
+            className={`group-tab ${viewMode === 'documents' ? 'group-tab--active' : ''}`}
+            onClick={() => setViewMode('documents')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
+            </svg>
+            <span>Documents</span>
           </button>
         )}
       </div>
@@ -1202,6 +1250,183 @@ const GroupPage: React.FC = () => {
         </div>
       )}
 
+      {/* Documents View */}
+      {viewMode === 'documents' && (membership?.is_member || membership?.is_site_admin) && (
+        <div
+          role="tabpanel"
+          id="documents-panel"
+          aria-labelledby="documents-tab"
+          className="group-content"
+        >
+          <div className="documents-section">
+            <h2 className="section-title">Group Documents</h2>
+
+            {/* Upload form for group admins */}
+            {(membership?.is_group_admin || membership?.is_site_admin) && (
+              <div className="document-upload-form">
+                <h3>Upload Document</h3>
+                <div className="form-group">
+                  <label htmlFor="doc-title">Title *</label>
+                  <input
+                    id="doc-title"
+                    type="text"
+                    value={docUploadTitle}
+                    onChange={(e) => setDocUploadTitle(e.target.value)}
+                    placeholder="Document title"
+                    maxLength={200}
+                    className="form-control"
+                  />
+                  {docUploadTitle.length > 0 && docUploadTitle.length < 2 && (
+                    <p className="form-error">Title must be at least 2 characters.</p>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label htmlFor="doc-description">Description</label>
+                  <textarea
+                    id="doc-description"
+                    value={docUploadDescription}
+                    onChange={(e) => setDocUploadDescription(e.target.value)}
+                    placeholder="Optional description"
+                    maxLength={500}
+                    rows={3}
+                    className="form-control"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="doc-file">File * (.pdf, .docx, .xlsx — DOCX/XLSX will be converted to PDF)</label>
+                  <input
+                    ref={docFileInputRef}
+                    id="doc-file"
+                    type="file"
+                    accept=".pdf,.docx,.xlsx"
+                    onChange={(e) => setDocUploadFile(e.target.files?.[0] ?? null)}
+                    className="form-control"
+                  />
+                  {(docUploadFile?.size ?? 0) > 20 * 1024 * 1024 && (
+                    <p className="form-error">File exceeds the 20 MB limit.</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={docUploading || docUploadTitle.length < 2 || !docUploadFile || (docUploadFile?.size ?? 0) > 20 * 1024 * 1024}
+                  onClick={async () => {
+                    if (!id || !docUploadFile) return;
+                    setDocUploading(true);
+                    try {
+                      const formData = new FormData();
+                      formData.append('title', docUploadTitle);
+                      formData.append('description', docUploadDescription);
+                      formData.append('file', docUploadFile);
+                      await groupDocumentsApi.upload(Number(id), formData);
+                      setDocUploadTitle('');
+                      setDocUploadDescription('');
+                      setDocUploadFile(null);
+                      // Reset file input
+                      if (docFileInputRef.current) docFileInputRef.current.value = '';
+                      await loadDocuments(Number(id));
+                      toast.showSuccess('Document uploaded successfully');
+                    } catch (err: unknown) {
+                      const axiosError = err as { response?: { data?: { error?: string } } };
+                      toast.showError(axiosError?.response?.data?.error || 'Failed to upload document');
+                    } finally {
+                      setDocUploading(false);
+                    }
+                  }}
+                >
+                  {docUploading ? 'Uploading...' : 'Upload Document'}
+                </button>
+              </div>
+            )}
+
+            {/* Documents list */}
+            {documentsLoading && <SkeletonLoader />}
+            {documentsError && <ErrorState message={documentsError} />}
+            {!documentsLoading && !documentsError && documents.length === 0 && (
+              <EmptyState title="No documents" description="No documents have been uploaded yet." />
+            )}
+            {!documentsLoading && !documentsError && documents.length > 0 && (
+              <ul className="document-list">
+                {documents.map((doc) => (
+                  <li key={doc.id} className="document-item">
+                    <div className="document-item__info">
+                      <div className="document-item__title">{doc.title}</div>
+                      {doc.description && (
+                        <div className="document-item__description">{doc.description}</div>
+                      )}
+                      <div className="document-item__meta">
+                        <span>{doc.file_name}</span>
+                        <span>{doc.file_size >= 1024 * 1024 ? `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB` : `${(doc.file_size / 1024).toFixed(1)} KB`}</span>
+                        <span>{new Date(doc.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    <div className="document-item__actions">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={openingDocId === doc.id}
+                        onClick={async () => {
+                          setOpeningDocId(doc.id);
+                          try {
+                            const res = await groupDocumentsApi.serve(doc.file_url);
+                            const url = URL.createObjectURL(res.data as Blob);
+                            // Use anchor click instead of window.open to avoid popup blockers
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.target = '_blank';
+                            a.rel = 'noopener noreferrer';
+                            a.click();
+                            setTimeout(() => URL.revokeObjectURL(url), 10000);
+                          } catch {
+                            toast.showError('Failed to open document');
+                          } finally {
+                            setOpeningDocId(null);
+                          }
+                        }}
+                      >
+                        {openingDocId === doc.id ? 'Opening...' : 'Open'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={downloadingDocId === doc.id}
+                        onClick={async () => {
+                          setDownloadingDocId(doc.id);
+                          try {
+                            const res = await groupDocumentsApi.serve(doc.file_url);
+                            const url = URL.createObjectURL(res.data as Blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = doc.file_name;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          } catch {
+                            toast.showError('Failed to download document');
+                          } finally {
+                            setDownloadingDocId(null);
+                          }
+                        }}
+                      >
+                        {downloadingDocId === doc.id ? 'Downloading...' : 'Download'}
+                      </button>
+                      {(membership?.is_group_admin || membership?.is_site_admin) && (
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-sm"
+                          onClick={() => setDocDeleteConfirm({ show: true, doc })}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Announcement Form Modal */}
       <Modal
         isOpen={showAnnouncementForm}
@@ -1252,6 +1477,28 @@ const GroupPage: React.FC = () => {
           }
         }}
         onCancel={() => setDeleteTagConfirm({ show: false, tag: null })}
+      />
+
+      <ConfirmDialog
+        isOpen={docDeleteConfirm.show}
+        title="Delete Document"
+        message={`Are you sure you want to delete "${docDeleteConfirm.doc?.title}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={async () => {
+          const doc = docDeleteConfirm.doc;
+          setDocDeleteConfirm({ show: false, doc: null });
+          if (!id || !doc) return;
+          try {
+            await groupDocumentsApi.delete(Number(id), doc.id);
+            await loadDocuments(Number(id));
+            toast.showSuccess('Document deleted successfully');
+          } catch {
+            toast.showError('Failed to delete document');
+          }
+        }}
+        onCancel={() => setDocDeleteConfirm({ show: false, doc: null })}
       />
     </div>
   );

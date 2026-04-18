@@ -8,6 +8,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// Provider name constants used across the application to identify storage backends.
+const (
+	ProviderPostgres = "postgres"
+	ProviderAzure    = "azure"
+)
+
 var (
 	// ErrNotFound is returned when a file is not found in storage
 	ErrNotFound = errors.New("file not found in storage")

@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/networkengineer-cloud/go-volunteer-media/frontend"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/convert"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
@@ -90,6 +91,9 @@ func main() {
 		"provider": storageConfig.Provider,
 	}).Info("Storage provider initialized")
 
+	// Initialize document converter (LibreOffice must be installed in the container).
+	converter := convert.NewLibreOfficeConverter()
+
 	// Initialize email service
 	emailService := email.NewService(db)
 	if emailService.IsConfigured() {
@@ -133,7 +137,9 @@ func main() {
 	// Structured logging middleware
 	router.Use(middleware.LoggingMiddleware())
 
-	// Max request body size middleware (10MB default, prevents DOS attacks)
+	// Max request body size middleware — 10 MB default for most routes.
+	// Document upload routes raise this to 25 MB via per-route middleware.
+	// Per-type limits are enforced by ValidateImageUpload / ValidateDocumentUpload.
 	router.Use(middleware.MaxRequestBodySize(10 * 1024 * 1024))
 
 	// CORS middleware
@@ -317,6 +323,7 @@ func main() {
 			group.GET("/protocols/:protocolId", handlers.GetProtocol(db))
 			group.GET("/scripts", handlers.GetScripts(db))
 			group.GET("/scripts/:scriptId", handlers.GetScript(db))
+			group.GET("/documents", handlers.GetGroupDocuments(db))
 
 			// Group-specific tag routes - viewing accessible to all group members
 			// Tag management (create/update/delete) requires group admin or site admin
@@ -389,6 +396,17 @@ func main() {
 			groupAdminScripts.DELETE("/:scriptId", handlers.DeleteScript(db, storageProvider))
 		}
 
+		// Group admin or site admin document management routes
+		groupAdminDocuments := protected.Group("/groups/:id/documents")
+		{
+			// Document uploads can be up to 20 MB; raise the body limit for this route only.
+			groupAdminDocuments.POST("", middleware.MaxRequestBodySize(25*1024*1024), handlers.UploadGroupDocument(db, storageProvider, converter))
+			groupAdminDocuments.DELETE("/:docId", handlers.DeleteGroupDocument(db, storageProvider))
+		}
+
+		// Group document file serving (authenticated, group membership checked inside handler)
+		protected.GET("/group-documents/:uuid", handlers.ServeGroupDocument(db, storageProvider))
+
 		// Script file serving (authenticated, group membership checked inside handler)
 		protected.GET("/script-files/:uuid", handlers.ServeScriptFile(db, storageProvider))
 
@@ -420,12 +438,15 @@ func main() {
 		port = "8080"
 	}
 
-	// Create HTTP server with timeouts
+	// ReadTimeout and WriteTimeout apply to all routes. WriteTimeout is raised
+	// to 120 s to cover the 60 s LibreOffice conversion window; a reverse proxy
+	// or CDN in front of the server should enforce tighter per-route timeouts
+	// for lightweight endpoints.
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 

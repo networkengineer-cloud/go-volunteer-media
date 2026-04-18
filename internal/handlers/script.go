@@ -207,7 +207,7 @@ func CreateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 			FileURL:              fileURL,
 			FileName:             file.Filename,
 			FileType:             mimeType,
-			FileSize:             len(fileData),
+			FileSize:             int64(len(fileData)),
 			FileProvider:         fileProvider,
 			FileBlobIdentifier:   blobIdentifier,
 			FileBlobExtension:    blobExt,
@@ -350,7 +350,7 @@ func UpdateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 			script.FileURL = newFileURL
 			script.FileName = file.Filename
 			script.FileType = mimeType
-			script.FileSize = len(fileData)
+			script.FileSize = int64(len(fileData))
 			script.FileProvider = newFileProvider
 			script.FileBlobIdentifier = newBlobIdentifier
 			script.FileBlobExtension = newBlobExt

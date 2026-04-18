@@ -181,7 +181,7 @@ func UploadHeroImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 			ImageURL:        storageURL,
 			ImageData:       imageDataForDB,
 			MimeType:        mimeType,
-			FileSize:        len(data),
+			FileSize:        int64(len(data)),
 			StorageProvider: storageProviderName,
 			BlobIdentifier:  blobIdentifier,
 			BlobExtension:   blobExt,
