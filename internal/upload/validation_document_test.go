@@ -113,6 +113,29 @@ func TestValidateDocumentUpload(t *testing.T) {
 			expectError: true,
 			errorMsg:    "file does not appear to be a valid PDF document",
 		},
+		{
+			name:        "PDF with BOM and whitespace combined",
+			filename:    "bom-ws.pdf",
+			content:     append([]byte{0xEF, 0xBB, 0xBF}, []byte("\n%PDF-1.7\ntest content")...),
+			maxSize:     MaxDocumentSize,
+			expectError: false,
+		},
+		{
+			name:        "PDF header without hyphen is rejected",
+			filename:    "nohyphen.pdf",
+			content:     []byte("%PDF1.4\ntest content"),
+			maxSize:     MaxDocumentSize,
+			expectError: true,
+			errorMsg:    "file does not appear to be a valid PDF document",
+		},
+		{
+			name:        "Excessive whitespace before PDF header is rejected",
+			filename:    "padded.pdf",
+			content:     append(bytes.Repeat([]byte(" "), 100), []byte("%PDF-1.4\ntest content")...),
+			maxSize:     MaxDocumentSize,
+			expectError: true,
+			errorMsg:    "file does not appear to be a valid PDF document",
+		},
 	}
 
 	for _, tt := range tests {
