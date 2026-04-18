@@ -91,6 +91,20 @@ func TestValidateDocumentUpload(t *testing.T) {
 			maxSize:     MaxDocumentSize,
 			expectError: false,
 		},
+		{
+			name:        "PDF with UTF-8 BOM prefix",
+			filename:    "bom.pdf",
+			content:     append([]byte{0xEF, 0xBB, 0xBF}, []byte("%PDF-1.7\ntest content")...),
+			maxSize:     MaxDocumentSize,
+			expectError: false,
+		},
+		{
+			name:        "PDF with leading whitespace",
+			filename:    "whitespace.pdf",
+			content:     append([]byte("\n\n"), []byte("%PDF-1.4\ntest content")...),
+			maxSize:     MaxDocumentSize,
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {

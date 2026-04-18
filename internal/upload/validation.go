@@ -212,9 +212,11 @@ func ValidateDocumentUpload(file *multipart.FileHeader, maxSize int64) error {
 		}
 	}
 
-	// PDF files start with %PDF
+	// PDF files contain the %PDF- header within the first 1024 bytes.
+	// Some generators prepend a UTF-8 BOM or whitespace before the header,
+	// so search within the buffer rather than requiring it at byte 0.
 	if !validContentType && ext == ".pdf" {
-		if bytes.HasPrefix(buffer, []byte("%PDF")) {
+		if bytes.Contains(buffer[:n], []byte("%PDF")) {
 			validContentType = true
 		}
 	}
