@@ -8,6 +8,7 @@ import SkeletonLoader from './SkeletonLoader';
 import ErrorState from './ErrorState';
 import Modal from './Modal';
 import ConfirmDialog from './ConfirmDialog';
+import ProtocolPdfViewer from './ProtocolPdfViewer';
 import './ScriptsList.css';
 
 interface ScriptsListProps {
@@ -343,13 +344,8 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
 
 // ─────────────────────────────────────────────
 // ScriptViewer: fetches the file with the stored JWT, then renders inline.
-// DOCX/DOC → HTML via mammoth.js | PDF → iframe (desktop) / open link (mobile) | other → download link
+// DOCX/DOC → HTML via mammoth.js | PDF → ProtocolPdfViewer (PDF.js) | other → download link
 // ─────────────────────────────────────────────
-
-// Module-level constant — UA strings don't change mid-session.
-// Note: iPads with "Request Desktop Website" enabled send a macOS UA and will
-// receive the iframe path; that is intentional since their PDF support works.
-const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 export interface ScriptViewerProps {
   script: Script;
@@ -361,14 +357,14 @@ export interface ScriptViewerProps {
 export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onEdit, onDelete }) => {
   const [viewState, setViewState] = useState<{
     status: 'loading' | 'pdf' | 'docx' | 'other' | 'error';
+    blob: Blob | null;
     blobUrl: string | null;
     htmlContent: string | null;
-  }>({ status: 'loading', blobUrl: null, htmlContent: null });
+  }>({ status: 'loading', blob: null, blobUrl: null, htmlContent: null });
 
   useEffect(() => {
     let activeBlobUrl: string | null = null;
     let cancelled = false;
-    let revocationTimer: ReturnType<typeof setTimeout> | null = null;
 
     const load = async () => {
       try {
@@ -393,35 +389,27 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
           if (cancelled) return;
           const DOMPurify = (await import('dompurify')).default;
           const safe = DOMPurify.sanitize(result.value);
-          setViewState({ status: 'docx', blobUrl: null, htmlContent: safe });
+          setViewState({ status: 'docx', blob: null, blobUrl: null, htmlContent: safe });
         } else {
           const blob = await res.blob();
           if (cancelled) return;
-          activeBlobUrl = URL.createObjectURL(blob);
           const isPdf = type === 'application/pdf' || name.endsWith('.pdf');
-          setViewState({ status: isPdf ? 'pdf' : 'other', blobUrl: activeBlobUrl, htmlContent: null });
+          if (isPdf) {
+            setViewState({ status: 'pdf', blob, blobUrl: null, htmlContent: null });
+          } else {
+            activeBlobUrl = URL.createObjectURL(blob);
+            setViewState({ status: 'other', blob: null, blobUrl: activeBlobUrl, htmlContent: null });
+          }
         }
       } catch {
-        if (!cancelled) setViewState({ status: 'error', blobUrl: null, htmlContent: null });
+        if (!cancelled) setViewState({ status: 'error', blob: null, blobUrl: null, htmlContent: null });
       }
     };
 
     load();
     return () => {
       cancelled = true;
-      if (revocationTimer !== null) clearTimeout(revocationTimer);
-      if (activeBlobUrl) {
-        // On mobile the blob URL is opened in a new tab via "Open PDF". If we
-        // revoke immediately on unmount (e.g. the modal closes while the tab is
-        // loading) the new tab receives a broken document. Delay revocation to
-        // give the browser time to load the file. The timer is cancelled above
-        // if the effect re-runs before the 60 seconds elapse.
-        if (IS_MOBILE) {
-          revocationTimer = setTimeout(() => URL.revokeObjectURL(activeBlobUrl!), 60_000);
-        } else {
-          URL.revokeObjectURL(activeBlobUrl);
-        }
-      }
+      if (activeBlobUrl) URL.revokeObjectURL(activeBlobUrl);
     };
   }, [script.file_url, script.file_name, script.file_type]);
 
@@ -468,41 +456,10 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
   }
 
   if (viewState.status === 'pdf') {
-    if (IS_MOBILE) {
-      return (
-        <div className="script-viewer script-viewer-download">
-          <div className="script-viewer-icon">{FILE_ICON}</div>
-          <p className="script-viewer-name">{script.file_name}</p>
-          {viewState.blobUrl && (
-            <a
-              href={viewState.blobUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-primary"
-              aria-label={`Open ${script.file_name}`}
-            >
-              Open PDF
-            </a>
-          )}
-          {canEdit && (
-            <div className="script-viewer-actions">
-              <button className="btn-secondary" onClick={onEdit}>Edit</button>
-              <button className="btn-danger" onClick={onDelete}>Delete</button>
-            </div>
-          )}
-        </div>
-      );
-    }
-
     return (
       <div className="script-viewer">
-        {viewState.blobUrl && (
-          <iframe
-            src={viewState.blobUrl}
-            title={script.title}
-            className="script-iframe"
-            aria-label={`${script.title} PDF viewer`}
-          />
+        {viewState.blob && (
+          <ProtocolPdfViewer blob={viewState.blob} fileName={script.file_name} />
         )}
         {canEdit && (
           <div className="script-viewer-actions">

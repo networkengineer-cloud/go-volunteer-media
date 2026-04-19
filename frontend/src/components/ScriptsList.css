@@ -254,13 +254,6 @@
   min-height: 200px;
 }
 
-.script-iframe {
-  width: 100%;
-  height: 55vh;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-}
-
 /* DOCX rendered HTML body */
 .script-docx-body {
   flex: 1;
@@ -387,36 +380,6 @@
   margin: 0 0 1.5rem;
 }
 
-.script-viewer-download .btn-primary {
-  display: inline-block;
-  padding: 0.75rem 2rem;
-  background: var(--brand);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 1rem;
-  cursor: pointer;
-  font-family: inherit;
-  text-decoration: none;
-  margin-bottom: 1rem;
-  transition: all 0.2s ease;
-}
-
-.script-viewer-download .btn-primary:hover {
-  background: var(--brand-600);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 163, 173, 0.3);
-}
-
-.script-viewer-download .btn-primary:focus {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
-
-.script-viewer-download .btn-primary:active {
-  transform: translateY(0);
-}
 
 .script-viewer-actions {
   display: flex;
@@ -550,9 +513,5 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 1rem;
-  }
-
-  .script-iframe {
-    height: 60vh;
   }
 }
