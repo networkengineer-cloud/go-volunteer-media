@@ -456,11 +456,26 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
   }
 
   if (viewState.status === 'pdf') {
+    if (!viewState.blob) {
+      // Should not happen — blob is always set when status is 'pdf' — but fall
+      // through to the error UI rather than rendering an empty viewer.
+      return (
+        <div className="script-viewer script-viewer-download">
+          <div className="script-viewer-icon">{FILE_ICON}</div>
+          <p className="script-viewer-name">{script.file_name}</p>
+          <p style={{ color: 'var(--error, #e53e3e)', marginBottom: '1rem' }}>Unable to load file.</p>
+          {canEdit && (
+            <div className="script-viewer-actions">
+              <button className="btn-secondary" onClick={onEdit}>Edit</button>
+              <button className="btn-danger" onClick={onDelete}>Delete</button>
+            </div>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="script-viewer">
-        {viewState.blob && (
-          <ProtocolPdfViewer blob={viewState.blob} fileName={script.file_name} />
-        )}
+        <ProtocolPdfViewer blob={viewState.blob} fileName={script.file_name} />
         {canEdit && (
           <div className="script-viewer-actions">
             <button className="btn-secondary" onClick={onEdit}>Edit</button>
