@@ -426,7 +426,7 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
       <div className="script-viewer script-viewer-download">
         <div className="script-viewer-icon">{FILE_ICON}</div>
         <p className="script-viewer-name">{script.file_name}</p>
-        <p style={{ color: 'var(--error, #e53e3e)', marginBottom: '1rem' }}>Unable to load file.</p>
+        <p className="script-viewer-error">Unable to load file.</p>
         {canEdit && (
           <div className="script-viewer-actions">
             <button className="btn-secondary" onClick={onEdit}>Edit</button>
@@ -463,7 +463,7 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
         <div className="script-viewer script-viewer-download">
           <div className="script-viewer-icon">{FILE_ICON}</div>
           <p className="script-viewer-name">{script.file_name}</p>
-          <p style={{ color: 'var(--error, #e53e3e)', marginBottom: '1rem' }}>Unable to load file.</p>
+          <p className="script-viewer-error">Unable to load file.</p>
           {canEdit && (
             <div className="script-viewer-actions">
               <button className="btn-secondary" onClick={onEdit}>Edit</button>

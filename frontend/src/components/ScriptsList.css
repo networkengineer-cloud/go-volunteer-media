@@ -380,6 +380,11 @@
   margin: 0 0 1.5rem;
 }
 
+.script-viewer-error {
+  color: var(--error, #e53e3e);
+  margin-bottom: 1rem;
+}
+
 .script-viewer-actions {
   display: flex;
   gap: 0.75rem;
