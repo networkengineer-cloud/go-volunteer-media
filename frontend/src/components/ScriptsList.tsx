@@ -8,6 +8,7 @@ import SkeletonLoader from './SkeletonLoader';
 import ErrorState from './ErrorState';
 import Modal from './Modal';
 import ConfirmDialog from './ConfirmDialog';
+import ProtocolPdfViewer from './ProtocolPdfViewer';
 import './ScriptsList.css';
 
 interface ScriptsListProps {
@@ -343,7 +344,7 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
 
 // ─────────────────────────────────────────────
 // ScriptViewer: fetches the file with the stored JWT, then renders inline.
-// DOCX/DOC → HTML via mammoth.js | PDF → iframe | other → download link
+// DOCX/DOC → HTML via mammoth.js | PDF → ProtocolPdfViewer (PDF.js) | other → download link
 // ─────────────────────────────────────────────
 
 export interface ScriptViewerProps {
@@ -356,9 +357,10 @@ export interface ScriptViewerProps {
 export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onEdit, onDelete }) => {
   const [viewState, setViewState] = useState<{
     status: 'loading' | 'pdf' | 'docx' | 'other' | 'error';
+    blob: Blob | null;
     blobUrl: string | null;
     htmlContent: string | null;
-  }>({ status: 'loading', blobUrl: null, htmlContent: null });
+  }>({ status: 'loading', blob: null, blobUrl: null, htmlContent: null });
 
   useEffect(() => {
     let activeBlobUrl: string | null = null;
@@ -387,16 +389,20 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
           if (cancelled) return;
           const DOMPurify = (await import('dompurify')).default;
           const safe = DOMPurify.sanitize(result.value);
-          setViewState({ status: 'docx', blobUrl: null, htmlContent: safe });
+          setViewState({ status: 'docx', blob: null, blobUrl: null, htmlContent: safe });
         } else {
           const blob = await res.blob();
           if (cancelled) return;
-          activeBlobUrl = URL.createObjectURL(blob);
           const isPdf = type === 'application/pdf' || name.endsWith('.pdf');
-          setViewState({ status: isPdf ? 'pdf' : 'other', blobUrl: activeBlobUrl, htmlContent: null });
+          if (isPdf) {
+            setViewState({ status: 'pdf', blob, blobUrl: null, htmlContent: null });
+          } else {
+            activeBlobUrl = URL.createObjectURL(blob);
+            setViewState({ status: 'other', blob: null, blobUrl: activeBlobUrl, htmlContent: null });
+          }
         }
       } catch {
-        if (!cancelled) setViewState({ status: 'error', blobUrl: null, htmlContent: null });
+        if (!cancelled) setViewState({ status: 'error', blob: null, blobUrl: null, htmlContent: null });
       }
     };
 
@@ -420,7 +426,7 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
       <div className="script-viewer script-viewer-download">
         <div className="script-viewer-icon">{FILE_ICON}</div>
         <p className="script-viewer-name">{script.file_name}</p>
-        <p style={{ color: 'var(--error, #e53e3e)', marginBottom: '1rem' }}>Unable to load file.</p>
+        <p className="script-viewer-error">Unable to load file.</p>
         {canEdit && (
           <div className="script-viewer-actions">
             <button className="btn-secondary" onClick={onEdit}>Edit</button>
@@ -450,14 +456,26 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
   }
 
   if (viewState.status === 'pdf') {
+    if (!viewState.blob) {
+      // Should not happen — blob is always set when status is 'pdf' — but fall
+      // through to the error UI rather than rendering an empty viewer.
+      return (
+        <div className="script-viewer script-viewer-download">
+          <div className="script-viewer-icon">{FILE_ICON}</div>
+          <p className="script-viewer-name">{script.file_name}</p>
+          <p className="script-viewer-error">Unable to load file.</p>
+          {canEdit && (
+            <div className="script-viewer-actions">
+              <button className="btn-secondary" onClick={onEdit}>Edit</button>
+              <button className="btn-danger" onClick={onDelete}>Delete</button>
+            </div>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="script-viewer">
-        <iframe
-          src={viewState.blobUrl!}
-          title={script.title}
-          className="script-iframe"
-          aria-label={`${script.title} PDF viewer`}
-        />
+        <ProtocolPdfViewer blob={viewState.blob} fileName={script.file_name} />
         {canEdit && (
           <div className="script-viewer-actions">
             <button className="btn-secondary" onClick={onEdit}>Edit</button>

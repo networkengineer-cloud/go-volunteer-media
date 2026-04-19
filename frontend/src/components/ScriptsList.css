@@ -254,13 +254,6 @@
   min-height: 200px;
 }
 
-.script-iframe {
-  width: 100%;
-  height: 55vh;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-}
-
 /* DOCX rendered HTML body */
 .script-docx-body {
   flex: 1;
@@ -385,6 +378,11 @@
 .script-viewer-desc {
   color: var(--text-secondary);
   margin: 0 0 1.5rem;
+}
+
+.script-viewer-error {
+  color: var(--error, #e53e3e);
+  margin-bottom: 1rem;
 }
 
 .script-viewer-actions {
@@ -519,9 +517,5 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 1rem;
-  }
-
-  .script-iframe {
-    height: 60vh;
   }
 }

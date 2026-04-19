@@ -14,7 +14,7 @@ interface ProtocolPdfViewerProps {
   fileName?: string;
 }
 
-const ProtocolPdfViewer: React.FC<ProtocolPdfViewerProps> = ({ blob }) => {
+const ProtocolPdfViewer: React.FC<ProtocolPdfViewerProps> = ({ blob, fileName }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -191,7 +191,7 @@ const ProtocolPdfViewer: React.FC<ProtocolPdfViewerProps> = ({ blob }) => {
   }
 
   return (
-    <div className="protocol-pdf-viewer">
+    <div className="protocol-pdf-viewer" aria-label={fileName ? `PDF viewer: ${fileName}` : 'PDF viewer'}>
       <div className="protocol-pdf-controls">
         <div className="pdf-zoom-controls">
           <button
