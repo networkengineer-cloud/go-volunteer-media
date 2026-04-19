@@ -343,8 +343,13 @@ const ScriptsList: React.FC<ScriptsListProps> = ({
 
 // ─────────────────────────────────────────────
 // ScriptViewer: fetches the file with the stored JWT, then renders inline.
-// DOCX/DOC → HTML via mammoth.js | PDF → iframe | other → download link
+// DOCX/DOC → HTML via mammoth.js | PDF → iframe (desktop) / open link (mobile) | other → download link
 // ─────────────────────────────────────────────
+
+// Module-level constant — UA strings don't change mid-session.
+// Note: iPads with "Request Desktop Website" enabled send a macOS UA and will
+// receive the iframe path; that is intentional since their PDF support works.
+const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 export interface ScriptViewerProps {
   script: Script;
@@ -363,6 +368,7 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
   useEffect(() => {
     let activeBlobUrl: string | null = null;
     let cancelled = false;
+    let revocationTimer: ReturnType<typeof setTimeout> | null = null;
 
     const load = async () => {
       try {
@@ -403,7 +409,19 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
     load();
     return () => {
       cancelled = true;
-      if (activeBlobUrl) URL.revokeObjectURL(activeBlobUrl);
+      if (revocationTimer !== null) clearTimeout(revocationTimer);
+      if (activeBlobUrl) {
+        // On mobile the blob URL is opened in a new tab via "Open PDF". If we
+        // revoke immediately on unmount (e.g. the modal closes while the tab is
+        // loading) the new tab receives a broken document. Delay revocation to
+        // give the browser time to load the file. The timer is cancelled above
+        // if the effect re-runs before the 60 seconds elapse.
+        if (IS_MOBILE) {
+          revocationTimer = setTimeout(() => URL.revokeObjectURL(activeBlobUrl!), 60_000);
+        } else {
+          URL.revokeObjectURL(activeBlobUrl);
+        }
+      }
     };
   }, [script.file_url, script.file_name, script.file_type]);
 
@@ -450,14 +468,42 @@ export const ScriptViewer: React.FC<ScriptViewerProps> = ({ script, canEdit, onE
   }
 
   if (viewState.status === 'pdf') {
+    if (IS_MOBILE) {
+      return (
+        <div className="script-viewer script-viewer-download">
+          <div className="script-viewer-icon">{FILE_ICON}</div>
+          <p className="script-viewer-name">{script.file_name}</p>
+          {viewState.blobUrl && (
+            <a
+              href={viewState.blobUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary"
+              aria-label={`Open ${script.file_name}`}
+            >
+              Open PDF
+            </a>
+          )}
+          {canEdit && (
+            <div className="script-viewer-actions">
+              <button className="btn-secondary" onClick={onEdit}>Edit</button>
+              <button className="btn-danger" onClick={onDelete}>Delete</button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="script-viewer">
-        <iframe
-          src={viewState.blobUrl!}
-          title={script.title}
-          className="script-iframe"
-          aria-label={`${script.title} PDF viewer`}
-        />
+        {viewState.blobUrl && (
+          <iframe
+            src={viewState.blobUrl}
+            title={script.title}
+            className="script-iframe"
+            aria-label={`${script.title} PDF viewer`}
+          />
+        )}
         {canEdit && (
           <div className="script-viewer-actions">
             <button className="btn-secondary" onClick={onEdit}>Edit</button>
