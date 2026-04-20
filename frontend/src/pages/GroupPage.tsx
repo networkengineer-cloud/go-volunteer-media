@@ -72,6 +72,14 @@ const GroupPage: React.FC = () => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
 
+  const closeUploadModal = useCallback(() => {
+    setShowUploadModal(false);
+    setDocUploadTitle('');
+    setDocUploadDescription('');
+    setDocUploadFile(null);
+    if (docFileInputRef.current) docFileInputRef.current.value = '';
+  }, []);
+
   // Skill tag state
   const [skillTags, setSkillTags] = useState<UserSkillTag[]>([]);
   const [editingMemberTags, setEditingMemberTags] = useState<number | null>(null); // userId being edited
@@ -1425,13 +1433,7 @@ const GroupPage: React.FC = () => {
       {/* Upload Document Modal */}
       <Modal
         isOpen={showUploadModal}
-        onClose={() => {
-          setShowUploadModal(false);
-          setDocUploadTitle('');
-          setDocUploadDescription('');
-          setDocUploadFile(null);
-          if (docFileInputRef.current) docFileInputRef.current.value = '';
-        }}
+        onClose={closeUploadModal}
         title="Upload Document"
       >
         <div className="form-group">
@@ -1489,11 +1491,7 @@ const GroupPage: React.FC = () => {
                 formData.append('description', docUploadDescription);
                 formData.append('file', docUploadFile);
                 await groupDocumentsApi.upload(Number(id), formData);
-                setShowUploadModal(false);
-                setDocUploadTitle('');
-                setDocUploadDescription('');
-                setDocUploadFile(null);
-                if (docFileInputRef.current) docFileInputRef.current.value = '';
+                closeUploadModal();
                 await loadDocuments(Number(id));
                 toast.showSuccess('Document uploaded successfully');
               } catch (err: unknown) {
@@ -1509,13 +1507,7 @@ const GroupPage: React.FC = () => {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => {
-              setShowUploadModal(false);
-              setDocUploadTitle('');
-              setDocUploadDescription('');
-              setDocUploadFile(null);
-              if (docFileInputRef.current) docFileInputRef.current.value = '';
-            }}
+            onClick={closeUploadModal}
           >
             Cancel
           </button>

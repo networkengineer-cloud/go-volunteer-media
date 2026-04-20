@@ -116,16 +116,16 @@ test.describe('Group Documents UX', () => {
   test('clicking Upload Document opens the modal', async ({ page }) => {
     await navigateToDocuments(page);
     await page.getByRole('button', { name: /upload document/i }).click();
-    await expect(page.locator('.modal-overlay')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.modal-backdrop')).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole('heading', { name: /upload document/i })).toBeVisible();
   });
 
   test('modal closes on Cancel', async ({ page }) => {
     await navigateToDocuments(page);
     await page.getByRole('button', { name: /upload document/i }).click();
-    await expect(page.locator('.modal-overlay')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.modal-backdrop')).toBeVisible({ timeout: 5000 });
     await page.getByRole('button', { name: /cancel/i }).click();
-    await expect(page.locator('.modal-overlay')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.modal-backdrop')).not.toBeVisible({ timeout: 5000 });
   });
 
   test('each document card has Open button and icon buttons', async ({ page, request }) => {
