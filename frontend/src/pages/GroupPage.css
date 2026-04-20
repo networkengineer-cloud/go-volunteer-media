@@ -655,6 +655,7 @@
     width: 3rem;
     background: linear-gradient(to right, transparent, var(--bg));
     pointer-events: none;
+    z-index: 1;
   }
 
   .group-tabs {
