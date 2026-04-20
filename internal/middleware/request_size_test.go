@@ -80,9 +80,42 @@ func TestMaxRequestBodySizePerRouteEnforced(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code == http.StatusOK {
-		t.Errorf("expected rejection for %d-byte body exceeding the %d-byte per-route limit, got 200",
-			bodySize, perRouteLimit)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413 RequestEntityTooLarge for %d-byte body exceeding the %d-byte per-route limit, got %d",
+			bodySize, perRouteLimit, w.Code)
+	}
+}
+
+// TestMaxRequestBodySizeGlobalHappyPath verifies that a body under the global
+// limit is accepted on a route that has no per-route override.
+func TestMaxRequestBodySizeGlobalHappyPath(t *testing.T) {
+	const (
+		globalLimit = 10 * 1024 * 1024 // 10 MB
+		bodySize    = 5 * 1024 * 1024  // 5 MB — under global limit
+	)
+
+	router := gin.New()
+	router.Use(MaxRequestBodySize(globalLimit))
+
+	router.POST("/upload", func(c *gin.Context) {
+		buf := new(bytes.Buffer)
+		if _, err := buf.ReadFrom(c.Request.Body); err != nil {
+			c.Status(http.StatusRequestEntityTooLarge)
+			return
+		}
+		c.Status(http.StatusOK)
+	})
+
+	body := strings.NewReader(strings.Repeat("x", bodySize))
+	req, _ := http.NewRequest(http.MethodPost, "/upload", body)
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 OK for %d-byte body under the %d-byte global limit, got %d",
+			bodySize, globalLimit, w.Code)
 	}
 }
 
@@ -113,8 +146,8 @@ func TestMaxRequestBodySizeGlobalEnforced(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code == http.StatusOK {
-		t.Errorf("expected a non-200 response for %d-byte body exceeding the %d-byte global limit",
-			bodySize, globalLimit)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413 RequestEntityTooLarge for %d-byte body exceeding the %d-byte global limit, got %d",
+			bodySize, globalLimit, w.Code)
 	}
 }

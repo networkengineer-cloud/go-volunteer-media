@@ -24,7 +24,10 @@ func MaxRequestBodySize(maxBytes int64) gin.HandlerFunc {
 		// of layering a larger limit inside a smaller one.
 		body := c.Request.Body
 		if orig, exists := c.Get(originalBodyCtxKey); exists {
-			body = orig.(io.ReadCloser)
+			rc, ok := orig.(io.ReadCloser)
+			if ok {
+				body = rc
+			}
 		} else {
 			c.Set(originalBodyCtxKey, body)
 		}

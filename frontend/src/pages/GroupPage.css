@@ -1520,7 +1520,7 @@
   gap: var(--space-sm);
 }
 
-/* Matches member-card pattern: surface bg, neutral-200 border, 10px radius */
+/* document-item: surface bg, neutral-200 border, --radius-lg radius */
 .document-item {
   display: flex;
   align-items: center;
@@ -1528,7 +1528,7 @@
   gap: var(--space-md);
   background: var(--surface);
   border: 1px solid var(--neutral-200);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   padding: var(--space-md) 1.25rem;
   transition: box-shadow var(--transition-base), border-color var(--transition-base);
   box-shadow: var(--shadow-sm);
