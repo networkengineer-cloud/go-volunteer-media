@@ -454,6 +454,7 @@ const GroupPage: React.FC = () => {
       </div>
 
       {/* View Mode Tabs */}
+      <div className="group-tabs-outer">
       <div className="group-tabs" role="tablist" aria-label="Group view modes">
         <button
           role="tab"
@@ -535,6 +536,7 @@ const GroupPage: React.FC = () => {
             <span>Documents</span>
           </button>
         )}
+      </div>
       </div>
 
       {/* Group Admin Quick Links - shown only to group admins (site admins already have nav bar) */}
