@@ -71,6 +71,8 @@ const GroupPage: React.FC = () => {
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ show: boolean; doc: GroupDocument | null }>({ show: false, doc: null });
   const [showUploadModal, setShowUploadModal] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [showTabsChevron, setShowTabsChevron] = useState(false);
 
   const closeUploadModal = useCallback(() => {
     setShowUploadModal(false);
@@ -366,6 +368,22 @@ const GroupPage: React.FC = () => {
     }
   }, [id, viewMode, filterType, filterAnimal, filterTags, filterRating, filterDateFrom, filterDateTo]);
 
+  // Track whether the tab bar has hidden tabs to the right
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const update = () => {
+      setShowTabsChevron(el.scrollWidth > el.clientWidth && el.scrollLeft < el.scrollWidth - el.clientWidth - 1);
+    };
+    update();
+    el.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
   // Close animal dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -454,85 +472,97 @@ const GroupPage: React.FC = () => {
       </div>
 
       {/* View Mode Tabs */}
-      <div className="group-tabs" role="tablist" aria-label="Group view modes">
-        <button
-          role="tab"
-          aria-selected={viewMode === 'activity'}
-          aria-controls="activity-panel"
-          id="activity-tab"
-          className={`group-tab ${viewMode === 'activity' ? 'group-tab--active' : ''}`}
-          onClick={() => setViewMode('activity')}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-          <span>Activity Feed</span>
-        </button>
-        <button
-          role="tab"
-          aria-selected={viewMode === 'animals'}
-          aria-controls="animals-panel"
-          id="animals-tab"
-          className={`group-tab ${viewMode === 'animals' ? 'group-tab--active' : ''}`}
-          onClick={() => setViewMode('animals')}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <circle cx="12" cy="8" r="4" />
-            <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
-          </svg>
-          <span>Animals ({animals.length})</span>
-        </button>
-        {group.has_protocols && (
+      <div className="group-tabs-outer">
+        <div className="group-tabs" role="tablist" aria-label="Group view modes" ref={tabsRef}>
           <button
             role="tab"
-            aria-selected={viewMode === 'protocols'}
-            aria-controls="protocols-panel"
-            id="protocols-tab"
-            className={`group-tab ${viewMode === 'protocols' ? 'group-tab--active' : ''}`}
-            onClick={() => setViewMode('protocols')}
+            aria-selected={viewMode === 'activity'}
+            aria-controls="activity-panel"
+            id="activity-tab"
+            className={`group-tab ${viewMode === 'activity' ? 'group-tab--active' : ''}`}
+            onClick={() => setViewMode('activity')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
-            <span>Scripts</span>
+            <span>Activity Feed</span>
           </button>
-        )}
-        {(membership?.is_member || membership?.is_site_admin) && (
           <button
             role="tab"
-            aria-selected={viewMode === 'members'}
-            aria-controls="members-panel"
-            id="members-tab"
-            className={`group-tab ${viewMode === 'members' ? 'group-tab--active' : ''}`}
-            onClick={() => setViewMode('members')}
+            aria-selected={viewMode === 'animals'}
+            aria-controls="animals-panel"
+            id="animals-tab"
+            className={`group-tab ${viewMode === 'animals' ? 'group-tab--active' : ''}`}
+            onClick={() => setViewMode('animals')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              <circle cx="12" cy="8" r="4" />
+              <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
             </svg>
-            <span>Members</span>
+            <span>Animals ({animals.length})</span>
           </button>
-        )}
-        {(membership?.is_member || membership?.is_site_admin) && (
+          {group.has_protocols && (
+            <button
+              role="tab"
+              aria-selected={viewMode === 'protocols'}
+              aria-controls="protocols-panel"
+              id="protocols-tab"
+              className={`group-tab ${viewMode === 'protocols' ? 'group-tab--active' : ''}`}
+              onClick={() => setViewMode('protocols')}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+              </svg>
+              <span>Scripts</span>
+            </button>
+          )}
+          {(membership?.is_member || membership?.is_site_admin) && (
+            <button
+              role="tab"
+              aria-selected={viewMode === 'members'}
+              aria-controls="members-panel"
+              id="members-tab"
+              className={`group-tab ${viewMode === 'members' ? 'group-tab--active' : ''}`}
+              onClick={() => setViewMode('members')}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              <span>Members</span>
+            </button>
+          )}
+          {(membership?.is_member || membership?.is_site_admin) && (
+            <button
+              role="tab"
+              aria-selected={viewMode === 'documents'}
+              aria-controls="documents-panel"
+              id="documents-tab"
+              className={`group-tab ${viewMode === 'documents' ? 'group-tab--active' : ''}`}
+              onClick={() => setViewMode('documents')}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+              <span>Documents</span>
+            </button>
+          )}
+        </div>
+        {showTabsChevron && (
           <button
-            role="tab"
-            aria-selected={viewMode === 'documents'}
-            aria-controls="documents-panel"
-            id="documents-tab"
-            className={`group-tab ${viewMode === 'documents' ? 'group-tab--active' : ''}`}
-            onClick={() => setViewMode('documents')}
+            className="group-tabs-chevron"
+            aria-hidden="true"
+            tabIndex={-1}
+            onClick={() => tabsRef.current?.scrollBy({ left: 160, behavior: 'smooth' })}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-              <polyline points="10 9 9 9 8 9" />
-            </svg>
-            <span>Documents</span>
+            ›
           </button>
         )}
       </div>

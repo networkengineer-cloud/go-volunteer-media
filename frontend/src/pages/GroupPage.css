@@ -642,9 +642,29 @@
     font-size: 2rem;
   }
 
+  .group-tabs-outer {
+    position: relative;
+  }
+
   .group-tabs {
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+  }
+
+  .group-tabs-chevron {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(to right, transparent, var(--bg) 60%);
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 0;
   }
 
   .group-tab {
