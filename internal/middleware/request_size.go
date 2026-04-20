@@ -37,9 +37,9 @@ func MaxRequestBodySize(maxBytes int64) gin.HandlerFunc {
 
 		// Check if body size limit was exceeded
 		if c.Errors.Last() != nil {
-			errMsg := c.Errors.Last().Err.Error()
+			var mbe *http.MaxBytesError
 			if errors.Is(c.Errors.Last().Err, http.ErrHandlerTimeout) ||
-				errMsg == "http: request body too large" {
+				errors.As(c.Errors.Last().Err, &mbe) {
 				c.JSON(http.StatusRequestEntityTooLarge, gin.H{
 					"error": "Request body too large",
 				})
