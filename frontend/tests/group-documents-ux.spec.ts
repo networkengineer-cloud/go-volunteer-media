@@ -1,5 +1,5 @@
 // frontend/tests/group-documents-ux.spec.ts
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { testUsers } from './helpers/auth';
 import fs from 'fs';
 import path from 'path';
@@ -18,12 +18,6 @@ test.describe('Group Documents UX', () => {
   let groupId: number;
   let uploadedDocId: number | null = null;
   const tokenCachePath = path.join(os.tmpdir(), 'go-volunteer-media-e2e-admin-token.json');
-
-  const getToken = async (page: Page): Promise<string> => {
-    const token = await page.evaluate(() => localStorage.getItem('token'));
-    expect(token, 'Missing auth token').toBeTruthy();
-    return token as string;
-  };
 
   const readCachedToken = (): string | null => {
     try {
@@ -97,7 +91,22 @@ test.describe('Group Documents UX', () => {
     await expect(page.locator('#documents-panel')).toBeVisible({ timeout: 10000 });
   };
 
-  test('document list renders as card grid, not full-width list', async ({ page }) => {
+  test('document list renders as card grid, not full-width list', async ({ page, request }) => {
+    // Upload a document so the grid renders
+    const pdfBuffer = Buffer.from('%PDF-1.4 test');
+    const uploadResp = await request.post(`/api/groups/${groupId}/documents`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      multipart: {
+        title: 'E2E Grid Layout Test Doc',
+        description: 'grid test',
+        file: { name: 'grid-test.pdf', mimeType: 'application/pdf', buffer: pdfBuffer },
+      },
+    });
+    if (uploadResp.ok()) {
+      const json = (await uploadResp.json()) as { id: number };
+      uploadedDocId = json.id;
+    }
+
     await navigateToDocuments(page);
     // Card grid should exist
     await expect(page.locator('.document-grid')).toBeVisible({ timeout: 8000 });
