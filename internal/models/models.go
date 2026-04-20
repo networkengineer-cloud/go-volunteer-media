@@ -138,13 +138,18 @@ func (a *Animal) AgeYearsFromBirthDate() int {
 
 // calendarDaysSince returns the number of calendar days between t and now,
 // comparing dates rather than raw hours to avoid DST skew.
+// Returns 0 for future timestamps.
 func calendarDaysSince(t time.Time) int {
 	now := time.Now()
 	y1, m1, d1 := t.Date()
 	y2, m2, d2 := now.Date()
 	start := time.Date(y1, m1, d1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(y2, m2, d2, 0, 0, 0, 0, time.UTC)
-	return int(end.Sub(start).Hours() / 24)
+	days := int(end.Sub(start).Hours() / 24)
+	if days < 0 {
+		return 0
+	}
+	return days
 }
 
 // LengthOfStay returns the number of days since the animal's arrival date
