@@ -1589,8 +1589,8 @@
 }
 
 .document-card__icon-btn--danger:hover {
-  background: #fef2f2;
-  border-color: #fecaca;
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
 }
 
 [data-theme='dark'] .document-card__icon-btn {
@@ -1616,6 +1616,12 @@
 .document-card__icon-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.document-card__open-btn:focus-visible,
+.document-card__icon-btn:focus-visible {
+  outline: 2px solid rgba(var(--brand-rgb), 0.5);
+  outline-offset: 2px;
 }
 
 @media (max-width: 600px) {
