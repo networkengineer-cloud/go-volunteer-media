@@ -642,11 +642,27 @@
     font-size: 2rem;
   }
 
+  .group-tabs-outer {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .group-tabs-outer::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 3rem;
+    background: linear-gradient(to right, transparent, var(--bg));
+    pointer-events: none;
+    z-index: 1;
+  }
+
   .group-tabs {
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    -webkit-mask-image: linear-gradient(to right, black calc(100% - 3rem), transparent 100%);
-    mask-image: linear-gradient(to right, black calc(100% - 3rem), transparent 100%);
+    /* -webkit-overflow-scrolling: touch removed — deprecated since iOS 13,
+       no-op on iOS 15+, and was causing compositing layer to sit above ::after */
   }
 
   .group-tab {
