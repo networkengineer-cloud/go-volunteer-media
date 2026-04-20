@@ -642,25 +642,11 @@
     font-size: 2rem;
   }
 
-  .group-tabs-outer {
-    position: relative;
-  }
-
-  .group-tabs-outer::after {
-    content: '';
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 3rem;
-    background: linear-gradient(to right, transparent, var(--bg));
-    pointer-events: none;
-    z-index: 1;
-  }
-
   .group-tabs {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 3rem), transparent 100%);
+    mask-image: linear-gradient(to right, black calc(100% - 3rem), transparent 100%);
   }
 
   .group-tab {
