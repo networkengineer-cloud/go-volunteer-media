@@ -1435,53 +1435,53 @@
   padding: 0 0 2rem;
 }
 
-/* Upload form card */
+/* Upload form card — uses neutral-50 tint to distinguish from list cards */
 .document-upload-form {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
+  background: var(--neutral-50);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-xl);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
 }
 
 .document-upload-form h3 {
-  margin: 0 0 1.25rem;
-  font-size: 1rem;
-  font-weight: 600;
+  margin: 0 0 var(--space-md);
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
   color: var(--text-primary);
 }
 
 .document-upload-form .form-group {
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-md);
 }
 
 .document-upload-form .form-group label {
   display: block;
-  margin-bottom: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
+  margin-bottom: var(--space-xs);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   color: var(--text-secondary);
 }
 
 .document-upload-form .form-control {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
   color: var(--text-primary);
-  font-size: 0.9375rem;
-  transition: border-color 0.2s;
+  font-size: var(--text-base);
+  transition: border-color var(--transition-base);
   box-sizing: border-box;
 }
 
 .document-upload-form .form-control:focus {
   outline: none;
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(0, 163, 173, 0.1);
+  box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.1);
 }
 
-/* Style the file input to match other form controls */
+/* File input — style the browser button to match brand */
 .document-upload-form input[type="file"].form-control {
   padding: 0.375rem 0.75rem;
   cursor: pointer;
@@ -1491,13 +1491,13 @@
   padding: 0.25rem 0.75rem;
   margin-right: 0.75rem;
   background: var(--brand);
-  color: white;
+  color: var(--brand-contrast);
   border: none;
-  border-radius: 6px;
-  font-size: 0.8125rem;
-  font-weight: 500;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--transition-base);
 }
 
 .document-upload-form input[type="file"].form-control::file-selector-button:hover {
@@ -1505,9 +1505,9 @@
 }
 
 .document-upload-form .form-error {
-  margin: 0.25rem 0 0;
-  font-size: 0.8125rem;
-  color: var(--danger, #ef4444);
+  margin: var(--space-xs) 0 0;
+  font-size: var(--text-sm);
+  color: var(--danger);
 }
 
 /* Document list */
@@ -1517,23 +1517,26 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-sm);
 }
 
+/* Matches member-card pattern: surface bg, neutral-200 border, 10px radius */
 .document-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  gap: var(--space-md);
+  background: var(--surface);
+  border: 1px solid var(--neutral-200);
   border-radius: 10px;
-  padding: 1rem 1.25rem;
-  transition: box-shadow 0.15s;
+  padding: var(--space-md) 1.25rem;
+  transition: box-shadow var(--transition-base), border-color var(--transition-base);
+  box-shadow: var(--shadow-sm);
 }
 
 .document-item:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-md);
+  border-color: var(--brand);
 }
 
 .document-item__info {
@@ -1542,17 +1545,17 @@
 }
 
 .document-item__title {
-  font-weight: 600;
-  font-size: 0.9375rem;
+  font-weight: var(--font-semibold);
+  font-size: var(--text-base);
   color: var(--text-primary);
-  margin-bottom: 0.1875rem;
+  margin-bottom: 0.125rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .document-item__description {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   margin-bottom: 0.25rem;
   white-space: nowrap;
@@ -1563,23 +1566,23 @@
 .document-item__meta {
   display: flex;
   align-items: center;
-  gap: 0;
   flex-wrap: wrap;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
 }
 
+/* Dot separator between meta spans */
 .document-item__meta span + span::before {
   content: "·";
   margin: 0 0.375rem;
-  color: var(--border-color);
+  color: var(--neutral-300);
 }
 
-/* Action buttons — scoped to document items */
+/* Action buttons — scoped so they don't bleed globally */
 .document-item__actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-sm);
   flex-shrink: 0;
 }
 
@@ -1587,23 +1590,24 @@
   display: inline-flex;
   align-items: center;
   padding: 0.375rem 0.75rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  border-radius: 6px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  border-radius: var(--radius-md);
   border: none;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s;
+  transition: all var(--transition-base);
   line-height: 1.4;
 }
 
 .document-item__actions .btn-primary {
   background: var(--brand);
-  color: white;
+  color: var(--brand-contrast);
+  /* Override GroupPage's global btn-primary lift/shadow — not appropriate at this size */
   box-shadow: none;
   transform: none;
-  font-size: 0.8125rem;
   padding: 0.375rem 0.75rem;
+  font-size: var(--text-sm);
 }
 
 .document-item__actions .btn-primary:hover {
@@ -1613,35 +1617,28 @@
 }
 
 .document-item__actions .btn-secondary {
-  background: var(--bg-primary);
+  background: var(--surface);
   color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--neutral-200);
 }
 
 .document-item__actions .btn-secondary:hover {
-  background: var(--bg-tertiary);
+  background: var(--neutral-100);
+  border-color: var(--neutral-300);
 }
 
 .document-item__actions .btn-danger {
-  background: var(--danger, #ef4444);
+  background: var(--danger);
   color: white;
 }
 
 .document-item__actions .btn-danger:hover {
-  background: #dc2626;
+  background: var(--danger-600);
 }
 
 .document-item__actions .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-[data-theme='dark'] .document-item {
-  border-color: var(--border-color);
-}
-
-[data-theme='dark'] .document-upload-form {
-  border-color: var(--border-color);
 }
 
 @media (max-width: 600px) {
