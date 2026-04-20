@@ -69,6 +69,7 @@ const GroupPage: React.FC = () => {
   const [downloadingDocId, setDownloadingDocId] = useState<number | null>(null);
   const [openingDocId, setOpeningDocId] = useState<number | null>(null);
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ show: boolean; doc: GroupDocument | null }>({ show: false, doc: null });
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
 
   // Skill tag state
@@ -1259,169 +1260,111 @@ const GroupPage: React.FC = () => {
           className="group-content"
         >
           <div className="documents-section">
-            <h2 className="section-title">Group Documents</h2>
-
-            {/* Upload form for group admins */}
-            {(membership?.is_group_admin || membership?.is_site_admin) && (
-              <div className="document-upload-form">
-                <h3>Upload Document</h3>
-                <div className="form-group">
-                  <label htmlFor="doc-title">Title *</label>
-                  <input
-                    id="doc-title"
-                    type="text"
-                    value={docUploadTitle}
-                    onChange={(e) => setDocUploadTitle(e.target.value)}
-                    placeholder="Document title"
-                    maxLength={200}
-                    className="form-control"
-                  />
-                  {docUploadTitle.length > 0 && docUploadTitle.length < 2 && (
-                    <p className="form-error">Title must be at least 2 characters.</p>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label htmlFor="doc-description">Description</label>
-                  <textarea
-                    id="doc-description"
-                    value={docUploadDescription}
-                    onChange={(e) => setDocUploadDescription(e.target.value)}
-                    placeholder="Optional description"
-                    maxLength={500}
-                    rows={3}
-                    className="form-control"
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="doc-file">File * (.pdf, .docx, .xlsx — DOCX/XLSX will be converted to PDF)</label>
-                  <input
-                    ref={docFileInputRef}
-                    id="doc-file"
-                    type="file"
-                    accept=".pdf,.docx,.xlsx"
-                    onChange={(e) => setDocUploadFile(e.target.files?.[0] ?? null)}
-                    className="form-control"
-                  />
-                  {(docUploadFile?.size ?? 0) > 20 * 1024 * 1024 && (
-                    <p className="form-error">File exceeds the 20 MB limit.</p>
-                  )}
-                </div>
+            <div className="documents-section-header">
+              <h2>Group Documents</h2>
+              {(membership?.is_group_admin || membership?.is_site_admin) && (
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={docUploading || docUploadTitle.length < 2 || !docUploadFile || (docUploadFile?.size ?? 0) > 20 * 1024 * 1024}
-                  onClick={async () => {
-                    if (!id || !docUploadFile) return;
-                    setDocUploading(true);
-                    try {
-                      const formData = new FormData();
-                      formData.append('title', docUploadTitle);
-                      formData.append('description', docUploadDescription);
-                      formData.append('file', docUploadFile);
-                      await groupDocumentsApi.upload(Number(id), formData);
-                      setDocUploadTitle('');
-                      setDocUploadDescription('');
-                      setDocUploadFile(null);
-                      // Reset file input
-                      if (docFileInputRef.current) docFileInputRef.current.value = '';
-                      await loadDocuments(Number(id));
-                      toast.showSuccess('Document uploaded successfully');
-                    } catch (err: unknown) {
-                      const axiosError = err as { response?: { data?: { error?: string } } };
-                      toast.showError(axiosError?.response?.data?.error || 'Failed to upload document');
-                    } finally {
-                      setDocUploading(false);
-                    }
-                  }}
+                  onClick={() => setShowUploadModal(true)}
                 >
-                  {docUploading ? 'Uploading...' : 'Upload Document'}
+                  + Upload Document
                 </button>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* Documents list */}
+            {/* Documents grid */}
             {documentsLoading && <SkeletonLoader />}
             {documentsError && <ErrorState message={documentsError} />}
             {!documentsLoading && !documentsError && documents.length === 0 && (
-              <EmptyState title="No documents" description="No documents have been uploaded yet." />
+              <EmptyState title="No documents yet" description="No documents have been uploaded for this group." />
             )}
             {!documentsLoading && !documentsError && documents.length > 0 && (
-              <ul className="document-list">
-                {documents.map((doc) => (
-                  <li key={doc.id} className="document-item">
-                    <div className="document-item__info">
-                      <div className="document-item__title">{doc.title}</div>
+              <div className="document-grid">
+                {documents.map((doc) => {
+                  const ext = doc.file_name.split('.').pop()?.toUpperCase() ?? 'FILE';
+                  const fileSize = doc.file_size >= 1024 * 1024
+                    ? `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB`
+                    : `${(doc.file_size / 1024).toFixed(1)} KB`;
+                  const uploadDate = new Date(doc.created_at).toLocaleDateString();
+                  return (
+                    <div key={doc.id} className="document-card">
+                      <div className="document-card__type-badge" aria-hidden="true">{ext}</div>
+                      <div className="document-card__title">{doc.title}</div>
                       {doc.description && (
-                        <div className="document-item__description">{doc.description}</div>
+                        <div className="document-card__description">{doc.description}</div>
                       )}
-                      <div className="document-item__meta">
-                        <span>{doc.file_name}</span>
-                        <span>{doc.file_size >= 1024 * 1024 ? `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB` : `${(doc.file_size / 1024).toFixed(1)} KB`}</span>
-                        <span>{new Date(doc.created_at).toLocaleDateString()}</span>
+                      <div className="document-card__meta">
+                        <span>{fileSize}</span>
+                        <span>{uploadDate}</span>
                       </div>
-                    </div>
-                    <div className="document-item__actions">
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={openingDocId === doc.id}
-                        onClick={async () => {
-                          setOpeningDocId(doc.id);
-                          try {
-                            const res = await groupDocumentsApi.serve(doc.file_url);
-                            const url = URL.createObjectURL(res.data as Blob);
-                            // Use anchor click instead of window.open to avoid popup blockers
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.target = '_blank';
-                            a.rel = 'noopener noreferrer';
-                            a.click();
-                            setTimeout(() => URL.revokeObjectURL(url), 10000);
-                          } catch {
-                            toast.showError('Failed to open document');
-                          } finally {
-                            setOpeningDocId(null);
-                          }
-                        }}
-                      >
-                        {openingDocId === doc.id ? 'Opening...' : 'Open'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        disabled={downloadingDocId === doc.id}
-                        onClick={async () => {
-                          setDownloadingDocId(doc.id);
-                          try {
-                            const res = await groupDocumentsApi.serve(doc.file_url);
-                            const url = URL.createObjectURL(res.data as Blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = doc.file_name;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                          } catch {
-                            toast.showError('Failed to download document');
-                          } finally {
-                            setDownloadingDocId(null);
-                          }
-                        }}
-                      >
-                        {downloadingDocId === doc.id ? 'Downloading...' : 'Download'}
-                      </button>
-                      {(membership?.is_group_admin || membership?.is_site_admin) && (
+                      <div className="document-card__actions">
                         <button
                           type="button"
-                          className="btn btn-danger"
-                          onClick={() => setDocDeleteConfirm({ show: true, doc })}
+                          className="document-card__open-btn"
+                          disabled={openingDocId === doc.id}
+                          aria-label={`Open ${doc.title}`}
+                          onClick={async () => {
+                            setOpeningDocId(doc.id);
+                            try {
+                              const res = await groupDocumentsApi.serve(doc.file_url);
+                              const url = URL.createObjectURL(res.data as Blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.target = '_blank';
+                              a.rel = 'noopener noreferrer';
+                              a.click();
+                              setTimeout(() => URL.revokeObjectURL(url), 10000);
+                            } catch {
+                              toast.showError('Failed to open document');
+                            } finally {
+                              setOpeningDocId(null);
+                            }
+                          }}
                         >
-                          Delete
+                          {openingDocId === doc.id ? 'Opening…' : 'Open'}
                         </button>
-                      )}
+                        <button
+                          type="button"
+                          className="document-card__icon-btn"
+                          disabled={downloadingDocId === doc.id}
+                          aria-label={`Download ${doc.title}`}
+                          title="Download"
+                          onClick={async () => {
+                            setDownloadingDocId(doc.id);
+                            try {
+                              const res = await groupDocumentsApi.serve(doc.file_url);
+                              const url = URL.createObjectURL(res.data as Blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = doc.file_name;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            } catch {
+                              toast.showError('Failed to download document');
+                            } finally {
+                              setDownloadingDocId(null);
+                            }
+                          }}
+                        >
+                          ↓
+                        </button>
+                        {(membership?.is_group_admin || membership?.is_site_admin) && (
+                          <button
+                            type="button"
+                            className="document-card__icon-btn document-card__icon-btn--danger"
+                            aria-label={`Delete ${doc.title}`}
+                            title="Delete"
+                            onClick={() => setDocDeleteConfirm({ show: true, doc })}
+                          >
+                            🗑
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </li>
-                ))}
-              </ul>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
@@ -1478,6 +1421,106 @@ const GroupPage: React.FC = () => {
         }}
         onCancel={() => setDeleteTagConfirm({ show: false, tag: null })}
       />
+
+      {/* Upload Document Modal */}
+      <Modal
+        isOpen={showUploadModal}
+        onClose={() => {
+          setShowUploadModal(false);
+          setDocUploadTitle('');
+          setDocUploadDescription('');
+          setDocUploadFile(null);
+          if (docFileInputRef.current) docFileInputRef.current.value = '';
+        }}
+        title="Upload Document"
+      >
+        <div className="form-group">
+          <label htmlFor="doc-title">Title *</label>
+          <input
+            id="doc-title"
+            type="text"
+            value={docUploadTitle}
+            onChange={(e) => setDocUploadTitle(e.target.value)}
+            placeholder="Document title"
+            maxLength={200}
+            className="form-control"
+          />
+          {docUploadTitle.length > 0 && docUploadTitle.length < 2 && (
+            <p className="form-error">Title must be at least 2 characters.</p>
+          )}
+        </div>
+        <div className="form-group">
+          <label htmlFor="doc-description">Description</label>
+          <textarea
+            id="doc-description"
+            value={docUploadDescription}
+            onChange={(e) => setDocUploadDescription(e.target.value)}
+            placeholder="Optional description"
+            maxLength={500}
+            rows={3}
+            className="form-control"
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="doc-file">File * (.pdf, .docx, .xlsx — DOCX/XLSX will be converted to PDF)</label>
+          <input
+            ref={docFileInputRef}
+            id="doc-file"
+            type="file"
+            accept=".pdf,.docx,.xlsx"
+            onChange={(e) => setDocUploadFile(e.target.files?.[0] ?? null)}
+            className="form-control"
+          />
+          {(docUploadFile?.size ?? 0) > 20 * 1024 * 1024 && (
+            <p className="form-error">File exceeds the 20 MB limit.</p>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={docUploading || docUploadTitle.length < 2 || !docUploadFile || (docUploadFile?.size ?? 0) > 20 * 1024 * 1024}
+            onClick={async () => {
+              if (!id || !docUploadFile) return;
+              setDocUploading(true);
+              try {
+                const formData = new FormData();
+                formData.append('title', docUploadTitle);
+                formData.append('description', docUploadDescription);
+                formData.append('file', docUploadFile);
+                await groupDocumentsApi.upload(Number(id), formData);
+                setShowUploadModal(false);
+                setDocUploadTitle('');
+                setDocUploadDescription('');
+                setDocUploadFile(null);
+                if (docFileInputRef.current) docFileInputRef.current.value = '';
+                await loadDocuments(Number(id));
+                toast.showSuccess('Document uploaded successfully');
+              } catch (err: unknown) {
+                const axiosError = err as { response?: { data?: { error?: string } } };
+                toast.showError(axiosError?.response?.data?.error || 'Failed to upload document');
+              } finally {
+                setDocUploading(false);
+              }
+            }}
+          >
+            {docUploading ? 'Uploading...' : 'Upload Document'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              setShowUploadModal(false);
+              setDocUploadTitle('');
+              setDocUploadDescription('');
+              setDocUploadFile(null);
+              if (docFileInputRef.current) docFileInputRef.current.value = '';
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         isOpen={docDeleteConfirm.show}
