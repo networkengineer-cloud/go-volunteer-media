@@ -1363,7 +1363,7 @@ const GroupPage: React.FC = () => {
                     <div className="document-item__actions">
                       <button
                         type="button"
-                        className="btn btn-primary btn-sm"
+                        className="btn btn-primary"
                         disabled={openingDocId === doc.id}
                         onClick={async () => {
                           setOpeningDocId(doc.id);
@@ -1388,7 +1388,7 @@ const GroupPage: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        className="btn btn-secondary btn-sm"
+                        className="btn btn-secondary"
                         disabled={downloadingDocId === doc.id}
                         onClick={async () => {
                           setDownloadingDocId(doc.id);
@@ -1412,7 +1412,7 @@ const GroupPage: React.FC = () => {
                       {(membership?.is_group_admin || membership?.is_site_admin) && (
                         <button
                           type="button"
-                          className="btn btn-danger btn-sm"
+                          className="btn btn-danger"
                           onClick={() => setDocDeleteConfirm({ show: true, doc })}
                         >
                           Delete

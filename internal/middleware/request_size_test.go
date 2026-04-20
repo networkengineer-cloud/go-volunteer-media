@@ -51,6 +51,41 @@ func TestMaxRequestBodySizeOverride(t *testing.T) {
 	}
 }
 
+// TestMaxRequestBodySizePerRouteEnforced verifies that the per-route limit still
+// rejects bodies that exceed it, ensuring the fix did not simply disable
+// per-route enforcement.
+func TestMaxRequestBodySizePerRouteEnforced(t *testing.T) {
+	const (
+		globalLimit   = 10 * 1024 * 1024 // 10 MB
+		perRouteLimit = 25 * 1024 * 1024 // 25 MB
+		bodySize      = 30 * 1024 * 1024 // 30 MB — exceeds per-route limit
+	)
+
+	router := gin.New()
+	router.Use(MaxRequestBodySize(globalLimit))
+
+	router.POST("/upload", MaxRequestBodySize(perRouteLimit), func(c *gin.Context) {
+		buf := new(bytes.Buffer)
+		if _, err := buf.ReadFrom(c.Request.Body); err != nil {
+			c.Status(http.StatusRequestEntityTooLarge)
+			return
+		}
+		c.Status(http.StatusOK)
+	})
+
+	body := strings.NewReader(strings.Repeat("x", bodySize))
+	req, _ := http.NewRequest(http.MethodPost, "/upload", body)
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code == http.StatusOK {
+		t.Errorf("expected rejection for %d-byte body exceeding the %d-byte per-route limit, got 200",
+			bodySize, perRouteLimit)
+	}
+}
+
 // TestMaxRequestBodySizeGlobalEnforced verifies that the global limit still
 // rejects bodies that exceed both the global and per-route thresholds.
 func TestMaxRequestBodySizeGlobalEnforced(t *testing.T) {
