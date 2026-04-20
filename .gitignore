@@ -85,3 +85,4 @@ crash.*.log
 .claude/
 CLAUDE.md
 
+.worktrees/
