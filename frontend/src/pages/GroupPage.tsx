@@ -71,6 +71,8 @@ const GroupPage: React.FC = () => {
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ show: boolean; doc: GroupDocument | null }>({ show: false, doc: null });
   const [showUploadModal, setShowUploadModal] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [showTabsChevron, setShowTabsChevron] = useState(false);
 
   const closeUploadModal = useCallback(() => {
     setShowUploadModal(false);
@@ -366,6 +368,22 @@ const GroupPage: React.FC = () => {
     }
   }, [id, viewMode, filterType, filterAnimal, filterTags, filterRating, filterDateFrom, filterDateTo]);
 
+  // Track whether the tab bar has hidden tabs to the right
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const update = () => {
+      setShowTabsChevron(el.scrollWidth > el.clientWidth && el.scrollLeft < el.scrollWidth - el.clientWidth - 1);
+    };
+    update();
+    el.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
   // Close animal dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -455,7 +473,7 @@ const GroupPage: React.FC = () => {
 
       {/* View Mode Tabs */}
       <div className="group-tabs-outer">
-        <div className="group-tabs" role="tablist" aria-label="Group view modes">
+        <div className="group-tabs" role="tablist" aria-label="Group view modes" ref={tabsRef}>
           <button
             role="tab"
             aria-selected={viewMode === 'activity'}
@@ -537,6 +555,16 @@ const GroupPage: React.FC = () => {
             </button>
           )}
         </div>
+        {showTabsChevron && (
+          <button
+            className="group-tabs-chevron"
+            aria-hidden="true"
+            tabIndex={-1}
+            onClick={() => tabsRef.current?.scrollBy({ left: 160, behavior: 'smooth' })}
+          >
+            ›
+          </button>
+        )}
       </div>
 
       {/* Group Admin Quick Links - shown only to group admins (site admins already have nav bar) */}
