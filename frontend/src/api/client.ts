@@ -256,6 +256,25 @@ export interface AnimalImage {
   user?: User;
 }
 
+export interface AnimalVideo {
+  id: number;
+  animal_id: number | null;
+  user_id: number;
+  video_url: string;
+  thumbnail_url: string;
+  mime_type: string;
+  caption: string;
+  duration_seconds: number;
+  file_size: number;
+  created_at: string;
+  user?: User;
+}
+
+export interface AnimalMedia {
+  images: AnimalImage[];
+  videos: AnimalVideo[];
+}
+
 export interface AnimalComment {
   id: number;
   animal_id: number;
@@ -585,6 +604,28 @@ export const animalsApi = {
   },
   deleteImage: (groupId: number, animalId: number, imageId: number) =>
     api.delete('/groups/' + groupId + '/animals/' + animalId + '/images/' + imageId),
+  getMedia: (groupId: number, animalId: number) =>
+    api.get<AnimalMedia>('/groups/' + groupId + '/animals/' + animalId + '/media'),
+  uploadVideo: (
+    groupId: number,
+    animalId: number,
+    videoFile: File,
+    thumbnailBlob: Blob,
+    caption?: string,
+    durationSeconds?: number,
+  ) => {
+    const formData = new FormData();
+    formData.append('video', videoFile);
+    formData.append('thumbnail', new File([thumbnailBlob], 'thumbnail.jpg', { type: 'image/jpeg' }));
+    if (caption) formData.append('caption', caption);
+    formData.append('duration_seconds', String(durationSeconds ?? 0));
+    return api.post<AnimalVideo>(
+      '/groups/' + groupId + '/animals/' + animalId + '/videos',
+      formData,
+    );
+  },
+  deleteVideo: (groupId: number, animalId: number, videoId: number) =>
+    api.delete('/groups/' + groupId + '/animals/' + animalId + '/videos/' + videoId),
   getDeletedImages: (groupId: number) =>
     api.get<AnimalImage[]>('/admin/groups/' + groupId + '/deleted-images'),
   setProfilePicture: (groupId: number, animalId: number, imageId: number) =>
