@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { animalsApi } from '../api/client';
-import type { Animal, AnimalImage } from '../api/client';
+import type { Animal, AnimalImage, AnimalVideo } from '../api/client';
+import VideoUpload from '../components/VideoUpload';
 import type { AxiosResponse } from 'axios';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -16,6 +17,9 @@ const PhotoGallery: React.FC = () => {
   const { showToast } = useToast();
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [images, setImages] = useState<AnimalImage[]>([]);
+  const [videos, setVideos] = useState<AnimalVideo[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<AnimalVideo | null>(null);
+  const [showVideoUpload, setShowVideoUpload] = useState(false);
   const [deletedImages, setDeletedImages] = useState<AnimalImage[]>([]);
   const [showDeleted, setShowDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -37,7 +41,7 @@ const PhotoGallery: React.FC = () => {
     try {
       const promises = [
         animalsApi.getById(gId, animalId),
-        animalsApi.getImages(gId, animalId),
+        animalsApi.getMedia(gId, animalId),
       ];
 
       if (isAdmin) {
@@ -45,14 +49,15 @@ const PhotoGallery: React.FC = () => {
       }
 
       const results = await Promise.all(promises);
-      const [animalRes, imagesRes, deletedRes] = results as [
+      const [animalRes, mediaRes, deletedRes] = results as [
         AxiosResponse<Animal>,
-        AxiosResponse<AnimalImage[]>,
+        AxiosResponse<{ images: AnimalImage[]; videos: AnimalVideo[] }>,
         AxiosResponse<{ data?: AnimalImage[] }> | undefined,
       ];
 
       setAnimal(animalRes.data);
-      setImages(imagesRes.data);
+      setImages(mediaRes.data.images);
+      setVideos(mediaRes.data.videos);
 
       if (isAdmin && deletedRes) {
         setDeletedImages(deletedRes.data.data || (deletedRes.data as unknown as AnimalImage[]));
@@ -85,6 +90,24 @@ const PhotoGallery: React.FC = () => {
         } catch (error) {
           console.error('Failed to delete image:', error);
           showToast('Failed to delete photo', 'error');
+        }
+      },
+    );
+  };
+
+  const handleDeleteVideo = (videoId: number) => {
+    if (!groupId || !id) return;
+    openConfirmDialog(
+      'Delete Video',
+      'Are you sure you want to delete this video?',
+      async () => {
+        try {
+          await animalsApi.deleteVideo(Number(groupId), Number(id), videoId);
+          showToast('Video deleted successfully', 'success');
+          setSelectedVideo(null);
+          await loadData(Number(groupId), Number(id));
+        } catch {
+          showToast('Failed to delete video', 'error');
         }
       },
     );
@@ -246,10 +269,28 @@ const PhotoGallery: React.FC = () => {
           <h1>{animal.name}'s Photos</h1>
           <div className="gallery-header-actions">
             <p className="photo-count">
-              {images.length} {images.length === 1 ? 'photo' : 'photos'}
+              {images.length} {images.length === 1 ? 'photo' : 'photos'}, {videos.length}{' '}
+              {videos.length === 1 ? 'video' : 'videos'}
             </p>
-            <button className="btn-primary" onClick={() => setShowUploadModal(true)}>
-              + Upload Photo
+            <input
+              id="media-upload-input"
+              type="file"
+              accept="image/*,video/mp4,video/quicktime,.mov"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                e.target.value = '';
+                if (file.type.startsWith('video/')) {
+                  setShowVideoUpload(true);
+                } else {
+                  setEditingImageUrl(URL.createObjectURL(file));
+                  setShowImageEditor(true);
+                }
+              }}
+            />
+            <button className="btn-primary" onClick={() => document.getElementById('media-upload-input')?.click()}>
+              + Upload Media
             </button>
           </div>
         </div>
@@ -291,18 +332,18 @@ const PhotoGallery: React.FC = () => {
           </div>
         )}
 
-        {images.length === 0 ? (
+        {images.length === 0 && videos.length === 0 ? (
           <div className="no-photos">
-            <p>No photos have been shared for {animal.name} yet.</p>
-            <button className="btn-primary" onClick={() => setShowUploadModal(true)}>
-              Upload First Photo
+            <p>No media has been shared for {animal.name} yet.</p>
+            <button className="btn-primary" onClick={() => document.getElementById('media-upload-input')?.click()}>
+              Upload First Media
             </button>
           </div>
         ) : (
           <div className="photos-grid">
             {images.map((image, index) => (
               <div
-                key={image.id}
+                key={`img-${image.id}`}
                 className="photo-card"
                 onClick={() => openLightbox(index)}
               >
@@ -312,13 +353,26 @@ const PhotoGallery: React.FC = () => {
                 <img src={image.image_url} alt={image.caption || `Photo ${index + 1}`} />
                 <div className="photo-info">
                   <span className="photo-author">{image.user?.username}</span>
-                  <span className="photo-date">
-                    {new Date(image.created_at).toLocaleDateString()}
-                  </span>
+                  <span className="photo-date">{new Date(image.created_at).toLocaleDateString()}</span>
                 </div>
-                {image.caption && (
-                  <div className="photo-caption">{image.caption}</div>
-                )}
+                {image.caption && <div className="photo-caption">{image.caption}</div>}
+              </div>
+            ))}
+            {videos.map((video) => (
+              <div
+                key={`vid-${video.id}`}
+                className="photo-card video-card"
+                onClick={() => setSelectedVideo(video)}
+              >
+                <div className="video-thumbnail-wrapper">
+                  <img src={video.thumbnail_url} alt={video.caption || 'Video thumbnail'} />
+                  <div className="play-overlay">▶</div>
+                </div>
+                <div className="photo-info">
+                  <span className="photo-author">{video.user?.username}</span>
+                  <span className="photo-date">{new Date(video.created_at).toLocaleDateString()}</span>
+                </div>
+                {video.caption && <div className="photo-caption">{video.caption}</div>}
               </div>
             ))}
           </div>
@@ -401,6 +455,60 @@ const PhotoGallery: React.FC = () => {
               >
                 ›
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Video player modal */}
+        {selectedVideo && (
+          <div className="lightbox" onClick={() => setSelectedVideo(null)}>
+            <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+              <button className="lightbox-close" onClick={() => setSelectedVideo(null)}>✕</button>
+              <div className="lightbox-image-container">
+                <video
+                  src={selectedVideo.video_url}
+                  controls
+                  autoPlay
+                  style={{ maxWidth: '100%', maxHeight: '80vh' }}
+                />
+                <div className="lightbox-info">
+                  {selectedVideo.caption && (
+                    <p className="lightbox-caption">{selectedVideo.caption}</p>
+                  )}
+                  <div className="lightbox-meta">
+                    <span>By {selectedVideo.user?.username}</span>
+                    <span>{new Date(selectedVideo.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <div className="lightbox-actions">
+                    {(isAdmin || selectedVideo.user?.id === user?.id) && (
+                      <button
+                        className="btn-danger"
+                        onClick={() => handleDeleteVideo(selectedVideo.id)}
+                      >
+                        Delete Video
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Video upload modal */}
+        {showVideoUpload && groupId && id && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <VideoUpload
+                groupId={Number(groupId)}
+                animalId={Number(id)}
+                onSuccess={() => {
+                  setShowVideoUpload(false);
+                  showToast('Video uploaded successfully', 'success');
+                  loadData(Number(groupId), Number(id));
+                }}
+                onCancel={() => setShowVideoUpload(false)}
+              />
             </div>
           </div>
         )}
