@@ -302,7 +302,9 @@ func main() {
 
 			// Animal media and videos - all group members can view, upload videos, and delete videos
 			group.GET("/animals/:animalId/media", handlers.GetAnimalMedia(db))
-			group.POST("/animals/:animalId/videos", handlers.UploadAnimalVideo(db, storageProvider))
+			group.POST("/animals/:animalId/videos",
+				middleware.MaxRequestBodySize(210*1024*1024),
+				handlers.UploadAnimalVideo(db, storageProvider))
 			group.DELETE("/animals/:animalId/videos/:videoId", handlers.DeleteAnimalVideo(db, storageProvider))
 
 			// Animal comments - all group members can view, add, and edit own comments

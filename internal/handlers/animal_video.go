@@ -196,6 +196,12 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 
 		if err := db.Create(&animalVideo).Error; err != nil {
 			logger.Error("Failed to save video to database", err)
+			if delErr := storageProvider.DeleteImage(ctx, videoBlobID+videoBlobExt); delErr != nil {
+				logger.Error("Failed to clean up video blob after DB failure", delErr)
+			}
+			if delErr := storageProvider.DeleteImage(ctx, thumbBlobID+thumbExt); delErr != nil {
+				logger.Error("Failed to clean up thumbnail blob after DB failure", delErr)
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save video"})
 			return
 		}
