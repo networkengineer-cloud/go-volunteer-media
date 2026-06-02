@@ -390,6 +390,26 @@ type AnimalImage struct {
 	Animal           Animal         `gorm:"foreignKey:AnimalID" json:"animal,omitempty"`
 }
 
+// AnimalVideo represents a video uploaded for an animal
+type AnimalVideo struct {
+	ID              uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
+	AnimalID        *uint          `gorm:"index:idx_animal_video_animal" json:"animal_id"`
+	UserID          uint           `gorm:"not null;index" json:"user_id"`
+	VideoURL        string         `gorm:"not null" json:"video_url"`
+	ThumbnailURL    string         `gorm:"not null" json:"thumbnail_url"`
+	MimeType        string         `gorm:"default:'video/mp4'" json:"mime_type"`
+	Caption         string         `json:"caption"`
+	DurationSeconds int            `json:"duration_seconds"`
+	FileSize        int64          `json:"file_size"`
+	BlobIdentifier  string         `json:"-"` // UUID+ext of video blob in Azure
+	ThumbnailBlobID string         `json:"-"` // UUID+ext of thumbnail blob in Azure
+	BlobExtension   string         `json:"-"` // e.g. ".mp4"
+	User            User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
 // AnimalNameHistory tracks name changes for an animal
 type AnimalNameHistory struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
