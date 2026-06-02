@@ -300,7 +300,8 @@ func isVideoContent(data []byte) bool {
 	}
 	boxType := data[4:8]
 	for _, valid := range [][]byte{
-		[]byte("ftyp"), []byte("moov"), []byte("wide"), []byte("mdat"), []byte("free"),
+		[]byte("ftyp"),
+		[]byte("moov"), // legacy QuickTime files without ftyp box
 	} {
 		if bytes.Equal(boxType, valid) {
 			return true

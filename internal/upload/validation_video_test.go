@@ -63,6 +63,14 @@ func TestValidateVideoUpload(t *testing.T) {
 			wantErr:     ErrInvalidFileType,
 			errContains: "does not appear to be a valid",
 		},
+		{
+			name:        "empty content",
+			fileSize:    4,
+			filename:    "clip.mp4",
+			content:     []byte{0x00, 0x00, 0x00, 0x04},
+			wantErr:     ErrInvalidFileType,
+			errContains: "does not appear to be a valid",
+		},
 	}
 
 	for _, tt := range tests {
