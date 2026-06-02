@@ -157,7 +157,6 @@ func TestUploadAnimalVideo_Success(t *testing.T) {
 func TestDeleteAnimalVideo(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupVideoTestDB(t)
-	store := &mockStorageProvider{ProviderName: "azure"}
 
 	group := models.Group{Name: "Dogs", Description: "x"}
 	assert.NoError(t, db.Create(&group).Error)
@@ -167,24 +166,25 @@ func TestDeleteAnimalVideo(t *testing.T) {
 	other := models.User{Username: "other", Email: "other@t.com", Password: "x"}
 	assert.NoError(t, db.Create(&other).Error)
 	assert.NoError(t, db.Model(&other).Association("Groups").Append(&group))
-
 	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
 	assert.NoError(t, db.Create(&animal).Error)
-	animalIDRef := animal.ID
 
 	videoBlob := "video-blob-id.mp4"
 	thumbBlob := "thumb-blob-id.png"
-	video := models.AnimalVideo{
-		AnimalID:        &animalIDRef,
-		UserID:          owner.ID,
-		VideoURL:        "/video.mp4",
-		ThumbnailURL:    "/thumb.jpg",
-		BlobIdentifier:  videoBlob,
-		ThumbnailBlobID: thumbBlob,
-	}
-	assert.NoError(t, db.Create(&video).Error)
 
 	t.Run("non-owner is forbidden", func(t *testing.T) {
+		store := &mockStorageProvider{ProviderName: "azure"}
+		animalIDRef := animal.ID
+		video := models.AnimalVideo{
+			AnimalID:        &animalIDRef,
+			UserID:          owner.ID,
+			VideoURL:        "/video.mp4",
+			ThumbnailURL:    "/thumb.jpg",
+			BlobIdentifier:  videoBlob,
+			ThumbnailBlobID: thumbBlob,
+		}
+		assert.NoError(t, db.Create(&video).Error)
+
 		r := gin.New()
 		r.DELETE("/groups/:id/animals/:animalId/videos/:videoId", func(c *gin.Context) {
 			c.Set("user_id", other.ID)
@@ -196,9 +196,22 @@ func TestDeleteAnimalVideo(t *testing.T) {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.Empty(t, store.DeletedBlobs, "no blobs should be deleted on forbidden request")
 	})
 
 	t.Run("owner can delete and blobs are cleaned up", func(t *testing.T) {
+		store := &mockStorageProvider{ProviderName: "azure"}
+		animalIDRef := animal.ID
+		video := models.AnimalVideo{
+			AnimalID:        &animalIDRef,
+			UserID:          owner.ID,
+			VideoURL:        "/video.mp4",
+			ThumbnailURL:    "/thumb.jpg",
+			BlobIdentifier:  videoBlob,
+			ThumbnailBlobID: thumbBlob,
+		}
+		assert.NoError(t, db.Create(&video).Error)
+
 		r := gin.New()
 		r.DELETE("/groups/:id/animals/:animalId/videos/:videoId", func(c *gin.Context) {
 			c.Set("user_id", owner.ID)
@@ -211,11 +224,9 @@ func TestDeleteAnimalVideo(t *testing.T) {
 		r.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		// Both blobs must be queued for deletion
 		assert.Contains(t, store.DeletedBlobs, videoBlob)
 		assert.Contains(t, store.DeletedBlobs, thumbBlob)
 
-		// Record should be soft-deleted
 		var count int64
 		db.Model(&models.AnimalVideo{}).Where("id = ?", video.ID).Count(&count)
 		assert.Equal(t, int64(0), count)
