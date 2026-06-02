@@ -144,14 +144,23 @@ func (m *mockConverter) ToPDF(_ context.Context, _ []byte, _ string) ([]byte, er
 }
 
 // mockStorageProvider is a test double for storage.Provider.
-// Set UploadImageErr or UploadDocumentErr to simulate storage failures.
+// Set ProviderName to control what Name() returns (default: "mock").
+// Set UploadImageErr or UploadDocumentErr to simulate failures.
+// DeletedBlobs records every identifier passed to DeleteImage.
 type mockStorageProvider struct {
+	ProviderName      string
 	UploadImageErr    error
 	UploadDocumentErr error
 	LastMimeType      string
+	DeletedBlobs      []string
 }
 
-func (m *mockStorageProvider) Name() string { return "mock" }
+func (m *mockStorageProvider) Name() string {
+	if m.ProviderName != "" {
+		return m.ProviderName
+	}
+	return "mock"
+}
 func (m *mockStorageProvider) UploadImage(_ context.Context, _ []byte, mimeType string, _ map[string]string) (string, string, string, error) {
 	m.LastMimeType = mimeType
 	if m.UploadImageErr != nil {
@@ -171,7 +180,10 @@ func (m *mockStorageProvider) GetImage(_ context.Context, _ string) ([]byte, str
 func (m *mockStorageProvider) GetDocument(_ context.Context, _ string) ([]byte, string, error) {
 	return nil, "", nil
 }
-func (m *mockStorageProvider) DeleteImage(_ context.Context, _ string) error    { return nil }
+func (m *mockStorageProvider) DeleteImage(_ context.Context, identifier string) error {
+	m.DeletedBlobs = append(m.DeletedBlobs, identifier)
+	return nil
+}
 func (m *mockStorageProvider) DeleteDocument(_ context.Context, _ string) error { return nil }
 func (m *mockStorageProvider) GetImageURL(_ string) string                      { return "" }
 func (m *mockStorageProvider) GetDocumentURL(_ string) string                   { return "" }
@@ -189,6 +201,49 @@ func createImageMultipartRequest(t *testing.T, fieldName, filename string, conte
 		t.Fatalf("Failed to write file content: %v", err)
 	}
 	writer.Close()
+	req := httptest.NewRequest(http.MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
+}
+
+// minimalMP4 passes isVideoContent — "ftyp" box type at bytes 4-7.
+var minimalMP4 = func() []byte {
+	b := make([]byte, 20)
+	copy(b[4:8], []byte("ftyp"))
+	copy(b[8:12], []byte("isom"))
+	return b
+}()
+
+// minimalJPEG is a valid JPEG header that passes ValidateImageUpload.
+var minimalJPEG = []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46}
+
+// createVideoMultipartRequest builds a multipart POST with "video", "thumbnail",
+// "caption", and "duration_seconds" fields.
+func createVideoMultipartRequest(t *testing.T, videoContent, thumbContent []byte) *http.Request {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	videoPart, err := writer.CreateFormFile("video", "clip.mp4")
+	if err != nil {
+		t.Fatalf("failed to create video form file: %v", err)
+	}
+	if _, err := videoPart.Write(videoContent); err != nil {
+		t.Fatalf("failed to write video content: %v", err)
+	}
+
+	thumbPart, err := writer.CreateFormFile("thumbnail", "thumb.jpg")
+	if err != nil {
+		t.Fatalf("failed to create thumbnail form file: %v", err)
+	}
+	if _, err := thumbPart.Write(thumbContent); err != nil {
+		t.Fatalf("failed to write thumbnail content: %v", err)
+	}
+
+	_ = writer.WriteField("caption", "Test caption")
+	_ = writer.WriteField("duration_seconds", "15")
+	writer.Close()
+
 	req := httptest.NewRequest(http.MethodPost, "/test", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req
