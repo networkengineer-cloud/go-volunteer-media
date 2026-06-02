@@ -85,3 +85,71 @@ func TestGetAnimalMedia(t *testing.T) {
 func itoa(n uint) string {
 	return fmt.Sprintf("%d", n)
 }
+
+func TestUploadAnimalVideo_AzureRequired(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+	store := &mockStorageProvider{} // Name() returns "mock", not "azure"
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "vol", Email: "v@t.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.NoError(t, db.Model(&user).Association("Groups").Append(&group))
+	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	r := gin.New()
+	r.POST("/groups/:id/animals/:animalId/videos", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, UploadAnimalVideo(db, store))
+
+	req := createVideoMultipartRequest(t, minimalMP4, minimalJPEG)
+	req.URL.Path = "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Video upload is not available right now")
+}
+
+func TestUploadAnimalVideo_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+	store := &mockStorageProvider{ProviderName: "azure"}
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "vol", Email: "v@t.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.NoError(t, db.Model(&user).Association("Groups").Append(&group))
+	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	r := gin.New()
+	r.POST("/groups/:id/animals/:animalId/videos", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, UploadAnimalVideo(db, store))
+
+	req := createVideoMultipartRequest(t, minimalMP4, minimalJPEG)
+	req.URL.Path = "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var video models.AnimalVideo
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &video))
+	assert.NotZero(t, video.ID)
+	assert.Equal(t, "Test caption", video.Caption)
+	assert.Equal(t, 15, video.DurationSeconds)
+
+	// Verify DB record
+	var dbVideo models.AnimalVideo
+	assert.NoError(t, db.First(&dbVideo, video.ID).Error)
+	assert.Equal(t, *dbVideo.AnimalID, animal.ID)
+	assert.NotZero(t, video.User.ID, "response should include the preloaded User")
+	assert.Equal(t, user.ID, video.User.ID)
+}
