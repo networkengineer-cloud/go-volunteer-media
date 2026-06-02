@@ -86,6 +86,48 @@ func itoa(n uint) string {
 	return fmt.Sprintf("%d", n)
 }
 
+func TestGetAnimalMedia_ImagesIncludeUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+
+	group := models.Group{Name: "Dogs2", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "uploader", Email: "up@test.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.NoError(t, db.Model(&user).Association("Groups").Append(&group))
+	animal := models.Animal{Name: "Buddy", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	animalIDRef := animal.ID
+	assert.NoError(t, db.Create(&models.AnimalImage{
+		AnimalID: &animalIDRef,
+		UserID:   user.ID,
+		ImageURL: "/images/buddy.jpg",
+	}).Error)
+
+	r := gin.New()
+	r.GET("/groups/:id/animals/:animalId/media", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, GetAnimalMedia(db))
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/groups/"+itoa(group.ID)+"/animals/"+itoa(animal.ID)+"/media", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var body struct {
+		Images []models.AnimalImage `json:"images"`
+		Videos []models.AnimalVideo `json:"videos"`
+	}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Len(t, body.Images, 1)
+	assert.NotZero(t, body.Images[0].User.ID, "image should include preloaded User")
+	assert.Equal(t, user.ID, body.Images[0].User.ID)
+}
+
 func TestUploadAnimalVideo_AzureRequired(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupVideoTestDB(t)
@@ -110,7 +152,7 @@ func TestUploadAnimalVideo_AzureRequired(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 	assert.Contains(t, w.Body.String(), "Video upload is not available right now")
 }
 
@@ -171,6 +213,69 @@ func TestDeleteAnimalVideo(t *testing.T) {
 
 	videoBlob := "video-blob-id.mp4"
 	thumbBlob := "thumb-blob-id.png"
+
+	t.Run("cross-group delete rejected when animal belongs to different group", func(t *testing.T) {
+		group2 := models.Group{Name: "Cats", Description: "x"}
+		assert.NoError(t, db.Create(&group2).Error)
+		animalGroup2 := models.Animal{Name: "Luna", Species: "Cat", GroupID: group2.ID, Status: "available"}
+		assert.NoError(t, db.Create(&animalGroup2).Error)
+
+		animalIDRef := animalGroup2.ID
+		video := models.AnimalVideo{
+			AnimalID:        &animalIDRef,
+			UserID:          owner.ID,
+			VideoURL:        "/video.mp4",
+			ThumbnailURL:    "/thumb.jpg",
+			BlobIdentifier:  "cross-group-video.mp4",
+			ThumbnailBlobID: "cross-group-thumb.png",
+		}
+		assert.NoError(t, db.Create(&video).Error)
+
+		store := &mockStorageProvider{ProviderName: "azure"}
+		r := gin.New()
+		r.DELETE("/groups/:id/animals/:animalId/videos/:videoId", func(c *gin.Context) {
+			c.Set("user_id", owner.ID)
+			c.Set("is_admin", false)
+		}, DeleteAnimalVideo(db, store))
+
+		path := "/groups/" + itoa(group.ID) + "/animals/" + itoa(animalGroup2.ID) + "/videos/" + itoa(video.ID)
+		req := httptest.NewRequest(http.MethodDelete, path, nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Empty(t, store.DeletedBlobs, "no blobs should be deleted when animal is in a different group")
+	})
+
+	t.Run("site admin can delete video without being the uploader", func(t *testing.T) {
+		admin := models.User{Username: "admin", Email: "admin@t.com", Password: "x", IsAdmin: true}
+		assert.NoError(t, db.Create(&admin).Error)
+
+		animalIDRef := animal.ID
+		video := models.AnimalVideo{
+			AnimalID:        &animalIDRef,
+			UserID:          owner.ID,
+			VideoURL:        "/video.mp4",
+			ThumbnailURL:    "/thumb.jpg",
+			BlobIdentifier:  videoBlob,
+			ThumbnailBlobID: thumbBlob,
+		}
+		assert.NoError(t, db.Create(&video).Error)
+
+		store := &mockStorageProvider{ProviderName: "azure"}
+		r := gin.New()
+		r.DELETE("/groups/:id/animals/:animalId/videos/:videoId", func(c *gin.Context) {
+			c.Set("user_id", admin.ID)
+			c.Set("is_admin", true)
+		}, DeleteAnimalVideo(db, store))
+
+		path := "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos/" + itoa(video.ID)
+		req := httptest.NewRequest(http.MethodDelete, path, nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, store.DeletedBlobs, videoBlob)
+		assert.Contains(t, store.DeletedBlobs, thumbBlob)
+	})
 
 	t.Run("non-owner is forbidden", func(t *testing.T) {
 		store := &mockStorageProvider{ProviderName: "azure"}

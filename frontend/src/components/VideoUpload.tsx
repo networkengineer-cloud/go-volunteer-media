@@ -9,10 +9,11 @@ interface VideoUploadProps {
   animalId: number;
   onSuccess: () => void;
   onCancel: () => void;
+  preselectedFile?: File;
 }
 
-const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess, onCancel }) => {
-  const [videoFile, setVideoFile] = useState<File | null>(null);
+const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess, onCancel, preselectedFile }) => {
+  const [videoFile, setVideoFile] = useState<File | null>(preselectedFile ?? null);
   const [caption, setCaption] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       };
 
       video.onseeked = () => {
+        video.onseeked = null;
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;

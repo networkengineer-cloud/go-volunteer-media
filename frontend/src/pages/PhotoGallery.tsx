@@ -20,6 +20,7 @@ const PhotoGallery: React.FC = () => {
   const [videos, setVideos] = useState<AnimalVideo[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<AnimalVideo | null>(null);
   const [showVideoUpload, setShowVideoUpload] = useState(false);
+  const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
   const [deletedImages, setDeletedImages] = useState<AnimalImage[]>([]);
   const [showDeleted, setShowDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -282,6 +283,7 @@ const PhotoGallery: React.FC = () => {
                 if (!file) return;
                 e.target.value = '';
                 if (file.type.startsWith('video/')) {
+                  setPendingVideoFile(file);
                   setShowVideoUpload(true);
                 } else {
                   setEditingImageUrl(URL.createObjectURL(file));
@@ -502,12 +504,14 @@ const PhotoGallery: React.FC = () => {
               <VideoUpload
                 groupId={Number(groupId)}
                 animalId={Number(id)}
+                preselectedFile={pendingVideoFile ?? undefined}
                 onSuccess={() => {
                   setShowVideoUpload(false);
+                  setPendingVideoFile(null);
                   showToast('Video uploaded successfully', 'success');
                   loadData(Number(groupId), Number(id));
                 }}
-                onCancel={() => setShowVideoUpload(false)}
+                onCancel={() => { setShowVideoUpload(false); setPendingVideoFile(null); }}
               />
             </div>
           </div>

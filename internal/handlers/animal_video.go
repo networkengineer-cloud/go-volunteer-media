@@ -47,7 +47,7 @@ func GetAnimalMedia(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var images []models.AnimalImage
-		if err := db.
+		if err := db.Preload("User").
 			Select("id, created_at, updated_at, animal_id, user_id, image_url, caption, is_profile_picture, width, height, file_size").
 			Where("animal_id = ?", animalID).
 			Order("is_profile_picture DESC, created_at DESC").
@@ -88,7 +88,7 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		isAdmin, _ := c.Get("is_admin")
 
 		if storageProvider.Name() != storage.ProviderAzure {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Video upload is not available right now. Please contact support."})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Video upload is not available right now. Please contact support."})
 			return
 		}
 
@@ -191,7 +191,6 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			FileSize:        videoFile.Size,
 			BlobIdentifier:  videoBlobID + videoBlobExt,
 			ThumbnailBlobID: thumbBlobID + thumbExt,
-			BlobExtension:   videoBlobExt,
 		}
 
 		if err := db.Create(&animalVideo).Error; err != nil {
@@ -241,13 +240,14 @@ func DeleteAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			return
 		}
 
-		var video models.AnimalVideo
-		if err := db.Where("id = ?", videoID).First(&video).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"})
+		var animal models.Animal
+		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}
 
-		if video.AnimalID == nil || strconv.FormatUint(uint64(*video.AnimalID), 10) != animalID {
+		var video models.AnimalVideo
+		if err := db.Where("id = ? AND animal_id = ?", videoID, animal.ID).First(&video).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"})
 			return
 		}
@@ -255,6 +255,12 @@ func DeleteAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		isAdminBool, _ := isAdmin.(bool)
 		if video.UserID != userIDUint && !isAdminBool {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own videos"})
+			return
+		}
+
+		if err := db.Delete(&video).Error; err != nil {
+			logger.Error("Failed to delete video from database", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete video"})
 			return
 		}
 
@@ -270,12 +276,6 @@ func DeleteAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 				logger.WithFields(map[string]interface{}{"error": err.Error(), "blob": video.ThumbnailBlobID}).
 					Warn("Failed to delete thumbnail blob")
 			}
-		}
-
-		if err := db.Delete(&video).Error; err != nil {
-			logger.Error("Failed to delete video from database", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete video"})
-			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Video deleted successfully"})

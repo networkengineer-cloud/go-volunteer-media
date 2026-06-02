@@ -406,7 +406,6 @@ type AnimalVideo struct {
 	FileSize        int64          `json:"file_size"`
 	BlobIdentifier  string         `json:"-"` // UUID+ext of video blob in Azure
 	ThumbnailBlobID string         `json:"-"` // UUID+ext of thumbnail blob in Azure
-	BlobExtension   string         `json:"-"` // e.g. ".mp4"
 	User            User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
