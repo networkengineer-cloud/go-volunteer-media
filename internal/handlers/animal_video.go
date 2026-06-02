@@ -213,3 +213,65 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		c.JSON(http.StatusOK, animalVideo)
 	}
 }
+
+// DeleteAnimalVideo deletes a video and its Azure blobs. Only the uploader or a site admin may delete.
+// DELETE /api/groups/:id/animals/:animalId/videos/:videoId
+func DeleteAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		logger := middleware.GetLogger(c)
+		groupID := c.Param("id")
+		animalID := c.Param("animalId")
+		videoID := c.Param("videoId")
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		var video models.AnimalVideo
+		if err := db.Where("id = ?", videoID).First(&video).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"})
+			return
+		}
+
+		if video.AnimalID == nil || strconv.FormatUint(uint64(*video.AnimalID), 10) != animalID {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"})
+			return
+		}
+
+		isAdminBool, _ := isAdmin.(bool)
+		if video.UserID != userIDUint && !isAdminBool {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own videos"})
+			return
+		}
+
+		if video.BlobIdentifier != "" {
+			if err := storageProvider.DeleteImage(ctx, video.BlobIdentifier); err != nil {
+				logger.WithFields(map[string]interface{}{"error": err.Error(), "blob": video.BlobIdentifier}).
+					Warn("Failed to delete video blob")
+			}
+		}
+
+		if video.ThumbnailBlobID != "" {
+			if err := storageProvider.DeleteImage(ctx, video.ThumbnailBlobID); err != nil {
+				logger.WithFields(map[string]interface{}{"error": err.Error(), "blob": video.ThumbnailBlobID}).
+					Warn("Failed to delete thumbnail blob")
+			}
+		}
+
+		if err := db.Delete(&video).Error; err != nil {
+			logger.Error("Failed to delete video from database", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete video"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Video deleted successfully"})
+	}
+}
