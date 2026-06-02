@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -145,14 +146,18 @@ func (m *mockConverter) ToPDF(_ context.Context, _ []byte, _ string) ([]byte, er
 
 // mockStorageProvider is a test double for storage.Provider.
 // Set ProviderName to control what Name() returns (default: "mock").
-// Set UploadImageErr or UploadDocumentErr to simulate failures.
+// Set UploadImageErr to fail every call, or UploadImageCallErrors to fail specific
+// calls by 1-based index. Each successful call returns a unique identifier
+// ("test-uuid-N") so tests can assert which blobs were cleaned up.
 // DeletedBlobs records every identifier passed to DeleteImage.
 type mockStorageProvider struct {
-	ProviderName      string
-	UploadImageErr    error
-	UploadDocumentErr error
-	LastMimeType      string
-	DeletedBlobs      []string
+	ProviderName          string
+	UploadImageErr        error
+	UploadImageCallErrors map[int]error // 1-based call index → error
+	UploadDocumentErr     error
+	LastMimeType          string
+	DeletedBlobs          []string
+	uploadCallCount       int
 }
 
 func (m *mockStorageProvider) Name() string {
@@ -162,11 +167,16 @@ func (m *mockStorageProvider) Name() string {
 	return "mock"
 }
 func (m *mockStorageProvider) UploadImage(_ context.Context, _ []byte, mimeType string, _ map[string]string) (string, string, string, error) {
+	m.uploadCallCount++
 	m.LastMimeType = mimeType
+	if err, ok := m.UploadImageCallErrors[m.uploadCallCount]; ok {
+		return "", "", "", err
+	}
 	if m.UploadImageErr != nil {
 		return "", "", "", m.UploadImageErr
 	}
-	return "/api/images/test-uuid", "test-uuid", ".png", nil
+	id := fmt.Sprintf("test-uuid-%d", m.uploadCallCount)
+	return "/api/images/" + id, id, ".png", nil
 }
 func (m *mockStorageProvider) UploadDocument(_ context.Context, _ []byte, _, _ string) (string, string, string, error) {
 	if m.UploadDocumentErr != nil {

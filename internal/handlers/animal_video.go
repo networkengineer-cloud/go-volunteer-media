@@ -177,11 +177,8 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			return
 		}
 
-		animalIDUint, _ := strconv.ParseUint(animalID, 10, 32)
-		animalIDVal := uint(animalIDUint)
-
 		animalVideo := models.AnimalVideo{
-			AnimalID:        &animalIDVal,
+			AnimalID:        animal.ID,
 			UserID:          userIDUint,
 			VideoURL:        videoURL,
 			ThumbnailURL:    thumbURL,
@@ -215,7 +212,7 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			"size":      videoFile.Size,
 		}).Info("Video uploaded and stored")
 
-		c.JSON(http.StatusOK, animalVideo)
+		c.JSON(http.StatusCreated, animalVideo)
 	}
 }
 

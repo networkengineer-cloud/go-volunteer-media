@@ -396,7 +396,7 @@ type AnimalVideo struct {
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
-	AnimalID        *uint          `gorm:"index:idx_animal_video_animal" json:"animal_id"`
+	AnimalID        uint           `gorm:"not null;index:idx_animal_video_animal" json:"animal_id"`
 	UserID          uint           `gorm:"not null;index" json:"user_id"`
 	VideoURL        string         `gorm:"not null" json:"video_url"`
 	ThumbnailURL    string         `gorm:"not null" json:"thumbnail_url"`

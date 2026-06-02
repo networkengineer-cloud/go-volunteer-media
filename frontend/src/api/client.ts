@@ -258,7 +258,7 @@ export interface AnimalImage {
 
 export interface AnimalVideo {
   id: number;
-  animal_id: number | null;
+  animal_id: number;
   user_id: number;
   video_url: string;
   thumbnail_url: string;
