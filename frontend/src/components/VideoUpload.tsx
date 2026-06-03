@@ -47,11 +47,19 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   const extractThumbnail = (file: File): Promise<{ blob: Blob; duration: number }> =>
     new Promise((resolve, reject) => {
       const video = document.createElement('video');
-      video.preload = 'metadata';
+      // 'auto' tells iOS Safari to buffer frame data, not just metadata.
+      // Without this, videoWidth/videoHeight are 0 at capture time on iOS.
+      video.preload = 'auto';
       video.muted = true;
+      video.playsInline = true;
       const objectUrl = URL.createObjectURL(file);
 
       const capture = () => {
+        if (video.videoWidth === 0 || video.videoHeight === 0) {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error('Video dimensions unavailable'));
+          return;
+        }
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -76,25 +84,49 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
         );
       };
 
-      video.onloadeddata = () => {
-        if (video.currentTime === 0) {
-          // Already at frame 0 — draw directly; seeking to 0 may not fire onseeked
-          capture();
-        } else {
-          video.onseeked = () => {
-            video.onseeked = null;
+      // Use loadedmetadata + explicit seek so iOS Safari decodes an actual frame
+      // before canvas capture. loadeddata with currentTime=0 is unreliable on iOS
+      // because frame 0 may not be decoded until a seek completes.
+      video.onloadedmetadata = () => {
+        let settled = false;
+        const done = () => {
+          if (!settled) {
+            settled = true;
             capture();
-          };
-          video.currentTime = 0;
-        }
+          }
+        };
+
+        video.onseeked = () => {
+          video.onseeked = null;
+          done();
+        };
+
+        // Seek to 0.5 s rather than 0: iOS HEVC streams may not have a decodable
+        // keyframe at exactly t=0, causing canvas.toBlob() to return null.
+        // Fall back to 0 when duration is NaN (some formats at loadedmetadata time);
+        // Math.min(0.5, NaN) === NaN and assigning NaN to currentTime is a no-op
+        // that would leave onseeked unregistered and the Promise hanging forever.
+        video.currentTime = isFinite(video.duration) ? Math.min(0.5, video.duration) : 0;
+
+        // Guard against onseeked never firing (corrupted file, certain WebKit builds).
+        setTimeout(() => {
+          video.onseeked = null;
+          if (!settled) {
+            settled = true;
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error('Video seek timed out'));
+          }
+        }, 5000);
       };
 
       video.onerror = () => {
+        video.onseeked = null;
         URL.revokeObjectURL(objectUrl);
         reject(new Error('Failed to load video'));
       };
 
       video.src = objectUrl;
+      video.load();
     });
 
   const handleUpload = async () => {
