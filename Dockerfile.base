@@ -1,0 +1,16 @@
+FROM debian:bookworm-slim
+
+# Install LibreOffice and runtime dependencies.
+# This layer is slow (~8 min) so it lives in a separate base image that is
+# rebuilt only when this file changes or on the monthly security schedule.
+# The main Dockerfile references the pre-built image so app builds stay fast.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
+    libreoffice \
+    ca-certificates \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -r -s /bin/false appuser
+
+# LibreOffice writes its user profile to HOME; /tmp is writable by all users.
+ENV HOME=/tmp
