@@ -87,13 +87,13 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		}
 		isAdmin, _ := c.Get("is_admin")
 
-		if storageProvider.Name() != storage.ProviderAzure {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Video upload is not available right now. Please contact support."})
+		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
 
-		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		if storageProvider.Name() != storage.ProviderAzure {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Video upload is not available right now. Please contact support."})
 			return
 		}
 
@@ -152,7 +152,16 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		}
 
 		caption := c.PostForm("caption")
+		if len(caption) > 500 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "caption must be 500 characters or fewer"})
+			return
+		}
+
 		durationSeconds, _ := strconv.Atoi(c.PostForm("duration_seconds"))
+		if durationSeconds < 0 || durationSeconds > 3600 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "duration must be between 0 and 3600 seconds"})
+			return
+		}
 
 		thumbURL, thumbBlobID, thumbExt, err := storageProvider.UploadImage(ctx, thumbData, "image/jpeg", map[string]string{"caption": caption})
 		if err != nil {
@@ -162,10 +171,7 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		}
 
 		videoExt := strings.ToLower(filepath.Ext(videoFile.Filename))
-		videoMimeType := "video/mp4"
-		if videoExt == ".mov" {
-			videoMimeType = "video/quicktime"
-		}
+		videoMimeType := upload.AllowedVideoTypes[videoExt][0]
 
 		videoURL, videoBlobID, videoBlobExt, err := storageProvider.UploadImage(ctx, videoData, videoMimeType, map[string]string{"caption": caption})
 		if err != nil {

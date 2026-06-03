@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { animalsApi } from '../api/client';
 import type { Animal, AnimalImage, AnimalVideo } from '../api/client';
@@ -21,6 +21,7 @@ const PhotoGallery: React.FC = () => {
   const [selectedVideo, setSelectedVideo] = useState<AnimalVideo | null>(null);
   const [showVideoUpload, setShowVideoUpload] = useState(false);
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
   const [deletedImages, setDeletedImages] = useState<AnimalImage[]>([]);
   const [showDeleted, setShowDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -274,7 +275,7 @@ const PhotoGallery: React.FC = () => {
               {videos.length === 1 ? 'video' : 'videos'}
             </p>
             <input
-              id="media-upload-input"
+              ref={mediaInputRef}
               type="file"
               accept="image/*,video/mp4,video/quicktime,.mov"
               style={{ display: 'none' }}
@@ -291,7 +292,7 @@ const PhotoGallery: React.FC = () => {
                 }
               }}
             />
-            <button className="btn-primary" onClick={() => document.getElementById('media-upload-input')?.click()}>
+            <button className="btn-primary" onClick={() => mediaInputRef.current?.click()}>
               + Upload Media
             </button>
           </div>
@@ -337,7 +338,7 @@ const PhotoGallery: React.FC = () => {
         {images.length === 0 && videos.length === 0 ? (
           <div className="no-photos">
             <p>No media has been shared for {animal.name} yet.</p>
-            <button className="btn-primary" onClick={() => document.getElementById('media-upload-input')?.click()}>
+            <button className="btn-primary" onClick={() => mediaInputRef.current?.click()}>
               Upload First Media
             </button>
           </div>
@@ -470,7 +471,6 @@ const PhotoGallery: React.FC = () => {
                 <video
                   src={selectedVideo.video_url}
                   controls
-                  autoPlay
                   style={{ maxWidth: '100%', maxHeight: '80vh' }}
                 />
                 <div className="lightbox-info">

@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -194,6 +197,180 @@ func TestUploadAnimalVideo_Success(t *testing.T) {
 	assert.Equal(t, dbVideo.AnimalID, animal.ID)
 	assert.NotZero(t, video.User.ID, "response should include the preloaded User")
 	assert.Equal(t, user.ID, video.User.ID)
+}
+
+// createVideoRequestWithFields builds a multipart POST with explicit caption, duration, and filename.
+func createVideoRequestWithFields(t *testing.T, videoContent, thumbContent []byte, filename, caption, duration string) *http.Request {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	vp, err := writer.CreateFormFile("video", filename)
+	if err != nil {
+		t.Fatalf("failed to create video form file: %v", err)
+	}
+	if _, err := vp.Write(videoContent); err != nil {
+		t.Fatalf("failed to write video content: %v", err)
+	}
+
+	tp, err := writer.CreateFormFile("thumbnail", "thumb.jpg")
+	if err != nil {
+		t.Fatalf("failed to create thumbnail form file: %v", err)
+	}
+	if _, err := tp.Write(thumbContent); err != nil {
+		t.Fatalf("failed to write thumbnail content: %v", err)
+	}
+
+	_ = writer.WriteField("caption", caption)
+	_ = writer.WriteField("duration_seconds", duration)
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
+}
+
+func TestUploadAnimalVideo_NonMemberGetsForbiddenNotStorageError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+	store := &mockStorageProvider{} // Name() returns "mock", not "azure"
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "stranger", Email: "s@t.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	// user is deliberately NOT added to group
+
+	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	r := gin.New()
+	r.POST("/groups/:id/animals/:animalId/videos", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, UploadAnimalVideo(db, store))
+
+	req := createVideoMultipartRequest(t, minimalMP4, minimalJPEG)
+	req.URL.Path = "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code, "access check must run before storage check so non-members don't learn about Azure configuration")
+}
+
+func TestUploadAnimalVideo_MovFile_StoresMimeTypeAsQuicktime(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+	store := &mockStorageProvider{ProviderName: "azure"}
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "vol", Email: "v@t.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.NoError(t, db.Model(&user).Association("Groups").Append(&group))
+	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	r := gin.New()
+	r.POST("/groups/:id/animals/:animalId/videos", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, UploadAnimalVideo(db, store))
+
+	req := createVideoRequestWithFields(t, minimalMP4, minimalJPEG, "clip.mov", "", "5")
+	req.URL.Path = "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	var video models.AnimalVideo
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &video))
+	assert.Equal(t, "video/quicktime", video.MimeType)
+}
+
+func TestUploadAnimalVideo_NegativeDuration_ReturnsBadRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+	store := &mockStorageProvider{ProviderName: "azure"}
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "vol", Email: "v@t.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.NoError(t, db.Model(&user).Association("Groups").Append(&group))
+	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	r := gin.New()
+	r.POST("/groups/:id/animals/:animalId/videos", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, UploadAnimalVideo(db, store))
+
+	req := createVideoRequestWithFields(t, minimalMP4, minimalJPEG, "clip.mp4", "hello", "-1")
+	req.URL.Path = "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "duration")
+}
+
+func TestUploadAnimalVideo_DurationTooLarge_ReturnsBadRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+	store := &mockStorageProvider{ProviderName: "azure"}
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "vol", Email: "v@t.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.NoError(t, db.Model(&user).Association("Groups").Append(&group))
+	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	r := gin.New()
+	r.POST("/groups/:id/animals/:animalId/videos", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, UploadAnimalVideo(db, store))
+
+	req := createVideoRequestWithFields(t, minimalMP4, minimalJPEG, "clip.mp4", "", "3601")
+	req.URL.Path = "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "duration")
+}
+
+func TestUploadAnimalVideo_CaptionTooLong_ReturnsBadRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+	store := &mockStorageProvider{ProviderName: "azure"}
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "vol", Email: "v@t.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.NoError(t, db.Model(&user).Association("Groups").Append(&group))
+	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	r := gin.New()
+	r.POST("/groups/:id/animals/:animalId/videos", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, UploadAnimalVideo(db, store))
+
+	longCaption := strings.Repeat("x", 501)
+	req := createVideoRequestWithFields(t, minimalMP4, minimalJPEG, "clip.mp4", longCaption, "10")
+	req.URL.Path = "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "caption")
 }
 
 func TestUploadAnimalVideo_VideoUploadFails_ThumbnailCleanedup(t *testing.T) {
