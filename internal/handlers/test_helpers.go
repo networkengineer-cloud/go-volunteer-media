@@ -198,6 +198,11 @@ func (m *mockStorageProvider) DeleteDocument(_ context.Context, _ string) error 
 func (m *mockStorageProvider) GetImageURL(_ string) string                      { return "" }
 func (m *mockStorageProvider) GetDocumentURL(_ string) string                   { return "" }
 
+// itoa converts a uint to its decimal string representation for URL construction in tests.
+func itoa(n uint) string {
+	return fmt.Sprintf("%d", n)
+}
+
 // createImageMultipartRequest builds a multipart/form-data POST request containing one image file.
 func createImageMultipartRequest(t *testing.T, fieldName, filename string, content []byte) *http.Request {
 	t.Helper()

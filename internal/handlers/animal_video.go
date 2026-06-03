@@ -103,6 +103,18 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			return
 		}
 
+		caption := c.PostForm("caption")
+		if len(caption) > 500 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "caption must be 500 characters or fewer"})
+			return
+		}
+
+		durationSeconds, _ := strconv.Atoi(c.PostForm("duration_seconds"))
+		if durationSeconds < 0 || durationSeconds > 3600 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "duration must be between 0 and 3600 seconds"})
+			return
+		}
+
 		videoFile, err := c.FormFile("video")
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "No video file uploaded"})
@@ -151,18 +163,8 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			return
 		}
 
-		caption := c.PostForm("caption")
-		if len(caption) > 500 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "caption must be 500 characters or fewer"})
-			return
-		}
-
-		durationSeconds, _ := strconv.Atoi(c.PostForm("duration_seconds"))
-		if durationSeconds < 0 || durationSeconds > 3600 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "duration must be between 0 and 3600 seconds"})
-			return
-		}
-
+		// The thumbnail is client-supplied and is not verified to be a frame from
+		// the uploaded video. This is intentional for the volunteer portal use-case.
 		thumbURL, thumbBlobID, thumbExt, err := storageProvider.UploadImage(ctx, thumbData, "image/jpeg", map[string]string{"caption": caption})
 		if err != nil {
 			logger.Error("Failed to upload thumbnail", err)
@@ -178,6 +180,8 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		}
 		videoMimeType := mimeTypes[0]
 
+		// UploadImage is intentionally reused for video blobs; the provider stores
+		// any content type without image-specific processing.
 		videoURL, videoBlobID, videoBlobExt, err := storageProvider.UploadImage(ctx, videoData, videoMimeType, map[string]string{"caption": caption})
 		if err != nil {
 			logger.Error("Failed to upload video, cleaning up thumbnail", err)
@@ -266,7 +270,9 @@ func DeleteAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			return
 		}
 
-		if err := db.Delete(&video).Error; err != nil {
+		// Hard-delete: blobs are permanently removed below, so a soft-delete
+		// row would point to missing blobs if ever recovered.
+		if err := db.Unscoped().Delete(&video).Error; err != nil {
 			logger.Error("Failed to delete video from database", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete video"})
 			return

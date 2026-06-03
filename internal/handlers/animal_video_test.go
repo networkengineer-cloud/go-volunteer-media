@@ -84,9 +84,28 @@ func TestGetAnimalMedia(t *testing.T) {
 	assert.Len(t, body.Videos, 1)
 }
 
-// itoa converts uint to string for URL building in tests.
-func itoa(n uint) string {
-	return fmt.Sprintf("%d", n)
+func TestGetAnimalMedia_UnknownAnimalReturns404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "vol", Email: "vol@test.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.NoError(t, db.Model(&user).Association("Groups").Append(&group))
+
+	r := gin.New()
+	r.GET("/groups/:id/animals/:animalId/media", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, GetAnimalMedia(db))
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/groups/"+itoa(group.ID)+"/animals/99999/media", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestGetAnimalMedia_NonMemberIsForbidden(t *testing.T) {
@@ -481,6 +500,37 @@ func TestDeleteAnimalVideo(t *testing.T) {
 
 	videoBlob := "video-blob-id.mp4"
 	thumbBlob := "thumb-blob-id.png"
+
+	t.Run("non-member is forbidden", func(t *testing.T) {
+		stranger := models.User{Username: "stranger", Email: "stranger@t.com", Password: "x"}
+		assert.NoError(t, db.Create(&stranger).Error)
+		// stranger is deliberately NOT added to group
+
+		store := &mockStorageProvider{ProviderName: "azure"}
+		animalIDRef := animal.ID
+		video := models.AnimalVideo{
+			AnimalID:        animalIDRef,
+			UserID:          owner.ID,
+			VideoURL:        "/video.mp4",
+			ThumbnailURL:    "/thumb.jpg",
+			BlobIdentifier:  videoBlob,
+			ThumbnailBlobID: thumbBlob,
+		}
+		assert.NoError(t, db.Create(&video).Error)
+
+		r := gin.New()
+		r.DELETE("/groups/:id/animals/:animalId/videos/:videoId", func(c *gin.Context) {
+			c.Set("user_id", stranger.ID)
+			c.Set("is_admin", false)
+		}, DeleteAnimalVideo(db, store))
+
+		path := "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos/" + itoa(video.ID)
+		req := httptest.NewRequest(http.MethodDelete, path, nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.Empty(t, store.DeletedBlobs)
+	})
 
 	t.Run("cross-group delete rejected when animal belongs to different group", func(t *testing.T) {
 		group2 := models.Group{Name: "Cats", Description: "x"}
