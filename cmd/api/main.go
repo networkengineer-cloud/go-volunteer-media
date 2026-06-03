@@ -445,16 +445,19 @@ func main() {
 		port = "8080"
 	}
 
-	// ReadTimeout and WriteTimeout apply to all routes. WriteTimeout is raised
-	// to 120 s to cover the 60 s LibreOffice conversion window; a reverse proxy
-	// or CDN in front of the server should enforce tighter per-route timeouts
-	// for lightweight endpoints.
+	// ReadHeaderTimeout protects against slow-header attacks without imposing a
+	// body-read deadline. ReadTimeout (which covers the entire request including
+	// the body) is intentionally omitted: a 200 MB video upload over a mobile
+	// connection can easily exceed any reasonable global limit, and the per-route
+	// MaxRequestBodySize middleware already bounds the payload size.
+	// WriteTimeout covers the response-write phase and is raised to 120 s for
+	// the LibreOffice conversion path.
 	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 120 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              ":" + port,
+		Handler:           router,
+		ReadHeaderTimeout: 30 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	// Start server in a goroutine
