@@ -39,23 +39,46 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Versioned date tag — used in Dockerfile FROM (Renovate bumps this monthly)
+            type=raw,value={{date 'YYYY.MM'}}
+            # Also push latest as a convenience alias
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=go-volunteer-media-base
+            org.opencontainers.image.description=Pre-built base image with LibreOffice for go-volunteer-media
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
       - name: Build and push base image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile.base
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
       - name: Summary
         env:
-          FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           echo "## Base Image Built 📦" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${FULL_IMAGE}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${IMAGE_DIGEST}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The main app image will use this base on the next build." >> $GITHUB_STEP_SUMMARY
+          echo "**Tags pushed:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${IMAGE_TAGS}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Update \`Dockerfile\` FROM line to the new date tag, or let Renovate open the PR automatically." >> $GITHUB_STEP_SUMMARY

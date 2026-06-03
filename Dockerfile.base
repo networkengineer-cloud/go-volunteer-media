@@ -10,7 +10,7 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get inst
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -r -s /bin/false appuser
+RUN useradd --no-log-init -r -s /bin/false appuser
 
 # LibreOffice writes its user profile to HOME; /tmp is writable by all users.
 ENV HOME=/tmp
