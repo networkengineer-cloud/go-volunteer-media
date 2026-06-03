@@ -87,10 +87,13 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
           video.onseeked = null;
           capture();
         };
+        // Seek to 0.5 s rather than 0: iOS HEVC streams may not have a decodable
+        // keyframe at exactly t=0, causing canvas.toBlob() to return null.
         video.currentTime = Math.min(0.5, video.duration);
       };
 
       video.onerror = () => {
+        video.onseeked = null;
         URL.revokeObjectURL(objectUrl);
         reject(new Error('Failed to load video'));
       };
