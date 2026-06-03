@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -144,20 +145,38 @@ func (m *mockConverter) ToPDF(_ context.Context, _ []byte, _ string) ([]byte, er
 }
 
 // mockStorageProvider is a test double for storage.Provider.
-// Set UploadImageErr or UploadDocumentErr to simulate storage failures.
+// Set ProviderName to control what Name() returns (default: "mock").
+// Set UploadImageErr to fail every call, or UploadImageCallErrors to fail specific
+// calls by 1-based index. Each successful call returns a unique identifier
+// ("test-uuid-N") so tests can assert which blobs were cleaned up.
+// DeletedBlobs records every identifier passed to DeleteImage.
 type mockStorageProvider struct {
-	UploadImageErr    error
-	UploadDocumentErr error
-	LastMimeType      string
+	ProviderName          string
+	UploadImageErr        error
+	UploadImageCallErrors map[int]error // 1-based call index → error
+	UploadDocumentErr     error
+	LastMimeType          string
+	DeletedBlobs          []string
+	uploadCallCount       int
 }
 
-func (m *mockStorageProvider) Name() string { return "mock" }
+func (m *mockStorageProvider) Name() string {
+	if m.ProviderName != "" {
+		return m.ProviderName
+	}
+	return "mock"
+}
 func (m *mockStorageProvider) UploadImage(_ context.Context, _ []byte, mimeType string, _ map[string]string) (string, string, string, error) {
+	m.uploadCallCount++
 	m.LastMimeType = mimeType
+	if err, ok := m.UploadImageCallErrors[m.uploadCallCount]; ok {
+		return "", "", "", err
+	}
 	if m.UploadImageErr != nil {
 		return "", "", "", m.UploadImageErr
 	}
-	return "/api/images/test-uuid", "test-uuid", ".png", nil
+	id := fmt.Sprintf("test-uuid-%d", m.uploadCallCount)
+	return "/api/images/" + id, id, ".png", nil
 }
 func (m *mockStorageProvider) UploadDocument(_ context.Context, _ []byte, _, _ string) (string, string, string, error) {
 	if m.UploadDocumentErr != nil {
@@ -171,10 +190,18 @@ func (m *mockStorageProvider) GetImage(_ context.Context, _ string) ([]byte, str
 func (m *mockStorageProvider) GetDocument(_ context.Context, _ string) ([]byte, string, error) {
 	return nil, "", nil
 }
-func (m *mockStorageProvider) DeleteImage(_ context.Context, _ string) error    { return nil }
+func (m *mockStorageProvider) DeleteImage(_ context.Context, identifier string) error {
+	m.DeletedBlobs = append(m.DeletedBlobs, identifier)
+	return nil
+}
 func (m *mockStorageProvider) DeleteDocument(_ context.Context, _ string) error { return nil }
 func (m *mockStorageProvider) GetImageURL(_ string) string                      { return "" }
 func (m *mockStorageProvider) GetDocumentURL(_ string) string                   { return "" }
+
+// itoa converts a uint to its decimal string representation for URL construction in tests.
+func itoa(n uint) string {
+	return fmt.Sprintf("%d", n)
+}
 
 // createImageMultipartRequest builds a multipart/form-data POST request containing one image file.
 func createImageMultipartRequest(t *testing.T, fieldName, filename string, content []byte) *http.Request {
@@ -189,6 +216,49 @@ func createImageMultipartRequest(t *testing.T, fieldName, filename string, conte
 		t.Fatalf("Failed to write file content: %v", err)
 	}
 	writer.Close()
+	req := httptest.NewRequest(http.MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
+}
+
+// minimalMP4 passes isVideoContent — "ftyp" box type at bytes 4-7.
+var minimalMP4 = func() []byte {
+	b := make([]byte, 20)
+	copy(b[4:8], []byte("ftyp"))
+	copy(b[8:12], []byte("isom"))
+	return b
+}()
+
+// minimalJPEG is a valid JPEG header that passes ValidateImageUpload.
+var minimalJPEG = []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46}
+
+// createVideoMultipartRequest builds a multipart POST with "video", "thumbnail",
+// "caption", and "duration_seconds" fields.
+func createVideoMultipartRequest(t *testing.T, videoContent, thumbContent []byte) *http.Request {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	videoPart, err := writer.CreateFormFile("video", "clip.mp4")
+	if err != nil {
+		t.Fatalf("failed to create video form file: %v", err)
+	}
+	if _, err := videoPart.Write(videoContent); err != nil {
+		t.Fatalf("failed to write video content: %v", err)
+	}
+
+	thumbPart, err := writer.CreateFormFile("thumbnail", "thumb.jpg")
+	if err != nil {
+		t.Fatalf("failed to create thumbnail form file: %v", err)
+	}
+	if _, err := thumbPart.Write(thumbContent); err != nil {
+		t.Fatalf("failed to write thumbnail content: %v", err)
+	}
+
+	_ = writer.WriteField("caption", "Test caption")
+	_ = writer.WriteField("duration_seconds", "15")
+	writer.Close()
+
 	req := httptest.NewRequest(http.MethodPost, "/test", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req

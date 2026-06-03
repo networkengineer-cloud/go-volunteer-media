@@ -165,6 +165,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.AnimalTag{},
 		&models.UserSkillTag{},
 		&models.AnimalImage{},
+		&models.AnimalVideo{},
 		&models.AnimalNameHistory{},
 		&models.GroupDocument{},
 	)

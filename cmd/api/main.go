@@ -300,6 +300,13 @@ func main() {
 			// Profile picture selection - available to all group members to help curate animal photos
 			group.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePictureGroupScoped(db))
 
+			// Animal media and videos - all group members can view, upload videos, and delete videos
+			group.GET("/animals/:animalId/media", handlers.GetAnimalMedia(db))
+			group.POST("/animals/:animalId/videos",
+				middleware.MaxRequestBodySize(210*1024*1024),
+				handlers.UploadAnimalVideo(db, storageProvider))
+			group.DELETE("/animals/:animalId/videos/:videoId", handlers.DeleteAnimalVideo(db, storageProvider))
+
 			// Animal comments - all group members can view, add, and edit own comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
 			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))

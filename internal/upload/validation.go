@@ -20,6 +20,9 @@ const (
 
 	// MaxDocumentSize is the maximum allowed document upload size (20MB)
 	MaxDocumentSize = 20 * 1024 * 1024 // 20 MB
+
+	// MaxVideoSize is the maximum allowed video upload size (200MB)
+	MaxVideoSize = 200 * 1024 * 1024 // 200 MB
 )
 
 var (
@@ -50,6 +53,12 @@ var AllowedDocumentTypes = map[string][]string{
 	".pdf":  {"application/pdf"},
 	".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
 	".xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+}
+
+// AllowedVideoTypes maps file extensions to their MIME types for video uploads
+var AllowedVideoTypes = map[string][]string{
+	".mp4": {"video/mp4"},
+	".mov": {"video/quicktime"},
 }
 
 // ValidateImageUpload validates an uploaded image file
@@ -247,4 +256,56 @@ func MimeTypeFromFilename(filename string) string {
 		return types[0]
 	}
 	return "application/octet-stream"
+}
+
+// ValidateVideoUpload validates an uploaded video file (size, extension, magic bytes).
+// Videos must be MP4 or MOV and fit within maxSize bytes.
+func ValidateVideoUpload(file *multipart.FileHeader, maxSize int64) error {
+	if file.Size > maxSize {
+		return fmt.Errorf("%w: file size is %d bytes, maximum is %d bytes",
+			ErrFileTooLarge, file.Size, maxSize)
+	}
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if _, ok := AllowedVideoTypes[ext]; !ok {
+		return fmt.Errorf("%w: extension %s is not allowed (only .mp4 and .mov are supported)",
+			ErrInvalidFileType, ext)
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer src.Close()
+
+	buf := make([]byte, 12)
+	n, err := src.Read(buf)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	if !isVideoContent(buf[:n]) {
+		return fmt.Errorf("%w: file does not appear to be a valid MP4 or MOV video",
+			ErrInvalidFileType)
+	}
+
+	return nil
+}
+
+// isVideoContent checks the ISO Base Media File Format box type at bytes 4-7.
+// Both MP4 and MOV are built on this format.
+func isVideoContent(data []byte) bool {
+	if len(data) < 8 {
+		return false
+	}
+	boxType := data[4:8]
+	for _, valid := range [][]byte{
+		[]byte("ftyp"),
+		[]byte("moov"), // legacy QuickTime files without ftyp box
+	} {
+		if bytes.Equal(boxType, valid) {
+			return true
+		}
+	}
+	return false
 }
