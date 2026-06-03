@@ -89,6 +89,32 @@ func itoa(n uint) string {
 	return fmt.Sprintf("%d", n)
 }
 
+func TestGetAnimalMedia_NonMemberIsForbidden(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	stranger := models.User{Username: "stranger", Email: "stranger@test.com", Password: "x"}
+	assert.NoError(t, db.Create(&stranger).Error)
+	// stranger is deliberately NOT added to the group
+	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	r := gin.New()
+	r.GET("/groups/:id/animals/:animalId/media", func(c *gin.Context) {
+		c.Set("user_id", stranger.ID)
+		c.Set("is_admin", false)
+	}, GetAnimalMedia(db))
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/groups/"+itoa(group.ID)+"/animals/"+itoa(animal.ID)+"/media", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
 func TestGetAnimalMedia_ImagesIncludeUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupVideoTestDB(t)

@@ -171,7 +171,12 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		}
 
 		videoExt := strings.ToLower(filepath.Ext(videoFile.Filename))
-		videoMimeType := upload.AllowedVideoTypes[videoExt][0]
+		mimeTypes, ok := upload.AllowedVideoTypes[videoExt]
+		if !ok || len(mimeTypes) == 0 {
+			c.JSON(http.StatusUnsupportedMediaType, gin.H{"error": "Only MP4 and MOV videos are supported."})
+			return
+		}
+		videoMimeType := mimeTypes[0]
 
 		videoURL, videoBlobID, videoBlobExt, err := storageProvider.UploadImage(ctx, videoData, videoMimeType, map[string]string{"caption": caption})
 		if err != nil {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { animalsApi } from '../api/client';
 
 const MAX_VIDEO_SIZE = 200 * 1024 * 1024;
@@ -17,6 +17,17 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   const [caption, setCaption] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!preselectedFile) return;
+    if (!ALLOWED_TYPES.includes(preselectedFile.type)) {
+      setError('Only MP4 and MOV videos are supported.');
+      setVideoFile(null);
+    } else if (preselectedFile.size > MAX_VIDEO_SIZE) {
+      setError('This video is too large. Please use a clip under 200MB.');
+      setVideoFile(null);
+    }
+  }, [preselectedFile]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -40,12 +51,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       video.muted = true;
       const objectUrl = URL.createObjectURL(file);
 
-      video.onloadeddata = () => {
-        video.currentTime = 0;
-      };
-
-      video.onseeked = () => {
-        video.onseeked = null;
+      const capture = () => {
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -68,6 +74,19 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
           'image/jpeg',
           0.85,
         );
+      };
+
+      video.onloadeddata = () => {
+        if (video.currentTime === 0) {
+          // Already at frame 0 — draw directly; seeking to 0 may not fire onseeked
+          capture();
+        } else {
+          video.onseeked = () => {
+            video.onseeked = null;
+            capture();
+          };
+          video.currentTime = 0;
+        }
       };
 
       video.onerror = () => {
