@@ -47,8 +47,11 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   const extractThumbnail = (file: File): Promise<{ blob: Blob; duration: number }> =>
     new Promise((resolve, reject) => {
       const video = document.createElement('video');
-      video.preload = 'metadata';
+      // 'auto' tells iOS Safari to buffer frame data, not just metadata.
+      // Without this, videoWidth/videoHeight are 0 at capture time on iOS.
+      video.preload = 'auto';
       video.muted = true;
+      video.playsInline = true;
       const objectUrl = URL.createObjectURL(file);
 
       const capture = () => {
@@ -76,17 +79,15 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
         );
       };
 
-      video.onloadeddata = () => {
-        if (video.currentTime === 0) {
-          // Already at frame 0 — draw directly; seeking to 0 may not fire onseeked
+      // Use loadedmetadata + explicit seek so iOS Safari decodes an actual frame
+      // before canvas capture. loadeddata with currentTime=0 is unreliable on iOS
+      // because frame 0 may not be decoded until a seek completes.
+      video.onloadedmetadata = () => {
+        video.onseeked = () => {
+          video.onseeked = null;
           capture();
-        } else {
-          video.onseeked = () => {
-            video.onseeked = null;
-            capture();
-          };
-          video.currentTime = 0;
-        }
+        };
+        video.currentTime = Math.min(0.5, video.duration);
       };
 
       video.onerror = () => {
@@ -95,6 +96,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       };
 
       video.src = objectUrl;
+      video.load();
     });
 
   const handleUpload = async () => {
