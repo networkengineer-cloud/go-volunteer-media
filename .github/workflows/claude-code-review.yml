@@ -1,14 +1,11 @@
 name: Claude Code Review
 
+# Disabled: auto code review replaced by manual superpowers review workflow
+# on:
+#   pull_request:
+#     types: [opened, synchronize]
 on:
-  pull_request:
-    types: [opened, synchronize]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+  workflow_dispatch:
 
 jobs:
   claude-review:
