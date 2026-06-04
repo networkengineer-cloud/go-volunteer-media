@@ -42,25 +42,12 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "-static"' -o /app/api ./cmd/api
 
-# Final stage
-FROM debian:bookworm-slim
-
-# Install runtime dependencies.
-# libreoffice: converts DOCX/XLSX uploads to PDF at upload time.
-RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
-    libreoffice \
-    ca-certificates \
-    tzdata \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user (no home directory needed — HOME is set to /tmp below)
-RUN useradd -r -s /bin/false appuser
-
-# LibreOffice writes its user profile to HOME; /tmp is writable by all users.
-ENV HOME=/tmp
-
-# Copy certificates and timezone data
-COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# Final stage — use the pre-built base image so LibreOffice is not installed
+# on every build. Rebuild the base by running build-base-image.yml manually
+# or by editing Dockerfile.base (it also rebuilds monthly for security patches).
+# Tag format: YYYY.MM — update this after each monthly base rebuild
+# (see build-base-image.yml; configure Renovate to automate the bump).
+FROM ghcr.io/networkengineer-cloud/go-volunteer-media-base:2026.06
 
 # Copy binary from backend builder
 COPY --from=backend-builder /app/api /api
