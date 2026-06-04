@@ -159,6 +159,7 @@ FULL_IMAGE_TAG="${REPO}:${REVISION_TAG}"
 if [[ "${SKIP_BUILD}" == false ]]; then
   echo "Building image ${FULL_IMAGE_TAG} for linux/amd64..."
   docker build --platform linux/amd64 \
+    --cache-from "${REPO}:${IMAGE_TAG}" \
     -t "${FULL_IMAGE_TAG}" \
     -t "${REPO}:${IMAGE_TAG}" \
     --label "revision=${REVISION_TAG}" \
