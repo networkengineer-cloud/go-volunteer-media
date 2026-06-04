@@ -163,6 +163,8 @@ func main() {
 
 	// Serve images from database (public endpoint, no auth required)
 	api.GET("/images/:uuid", handlers.ServeImage(db, storageProvider))
+	// Serve video blobs through the backend proxy (public, no auth required)
+	api.GET("/videos/:uuid", handlers.ServeVideo(db, storageProvider))
 
 	// Public routes (with rate limiting for auth endpoints)
 	authRateLimit := 5

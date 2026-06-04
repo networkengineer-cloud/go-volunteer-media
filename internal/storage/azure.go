@@ -110,6 +110,10 @@ func (a *AzureBlobProvider) UploadImage(ctx context.Context, data []byte, mimeTy
 		ext = ".gif"
 	case "image/webp":
 		ext = ".webp"
+	case "video/mp4":
+		ext = ".mp4"
+	case "video/quicktime":
+		ext = ".mov"
 	}
 	
 	// Construct blob path: images/animals/{uuid}{ext}

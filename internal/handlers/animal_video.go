@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -182,7 +183,7 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 
 		// UploadImage is intentionally reused for video blobs; the provider stores
 		// any content type without image-specific processing.
-		videoURL, videoBlobID, videoBlobExt, err := storageProvider.UploadImage(ctx, videoData, videoMimeType, map[string]string{"caption": caption})
+		_, videoBlobID, videoBlobExt, err := storageProvider.UploadImage(ctx, videoData, videoMimeType, map[string]string{"caption": caption})
 		if err != nil {
 			logger.Error("Failed to upload video, cleaning up thumbnail", err)
 			if delErr := storageProvider.DeleteImage(ctx, thumbBlobID+thumbExt); delErr != nil {
@@ -191,6 +192,7 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Upload failed. Please try again."})
 			return
 		}
+		videoURL := fmt.Sprintf("/api/videos/%s", videoBlobID)
 
 		animalVideo := models.AnimalVideo{
 			AnimalID:        animal.ID,
