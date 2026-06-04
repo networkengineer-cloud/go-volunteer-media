@@ -86,3 +86,7 @@ crash.*.log
 CLAUDE.md
 
 .worktrees/
+
+# Superpowers plugin
+.superpowers/
+docs/superpowers/
