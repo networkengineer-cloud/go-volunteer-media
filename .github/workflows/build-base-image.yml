@@ -27,13 +27,13 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -41,13 +41,14 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Versioned date tag — used in Dockerfile FROM (Renovate bumps this monthly)
+            # Versioned date tag — referenced in Dockerfile FROM; update manually
+            # after each monthly base rebuild (or configure Renovate to do it).
             type=raw,value={{date 'YYYY.MM'}}
-            # Also push latest as a convenience alias
+            # Convenience alias — not used in Dockerfile FROM
             type=raw,value=latest
           labels: |
             org.opencontainers.image.title=go-volunteer-media-base
@@ -56,7 +57,7 @@ jobs:
 
       - name: Build and push base image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
         with:
           context: .
           file: ./Dockerfile.base
@@ -81,4 +82,4 @@ jobs:
           echo "${IMAGE_TAGS}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Update \`Dockerfile\` FROM line to the new date tag, or let Renovate open the PR automatically." >> $GITHUB_STEP_SUMMARY
+          echo "Update the FROM tag in Dockerfile to the new date tag and open a PR." >> $GITHUB_STEP_SUMMARY

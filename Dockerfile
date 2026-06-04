@@ -45,7 +45,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "
 # Final stage — use the pre-built base image so LibreOffice is not installed
 # on every build. Rebuild the base by running build-base-image.yml manually
 # or by editing Dockerfile.base (it also rebuilds monthly for security patches).
-# Tag format: YYYY.MM — Renovate bumps this automatically each month.
+# Tag format: YYYY.MM — update this after each monthly base rebuild
+# (see build-base-image.yml; configure Renovate to automate the bump).
 FROM ghcr.io/networkengineer-cloud/go-volunteer-media-base:2026.06
 
 # Copy binary from backend builder
