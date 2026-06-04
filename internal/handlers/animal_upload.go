@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif" // Register GIF format
@@ -163,6 +164,17 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 		// First, get the image metadata from database
 		var animalImage models.AnimalImage
 		if err := db.Where("image_url = ?", imageURL).First(&animalImage).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve image"})
+				return
+			}
+			// Backward compat: videos uploaded before the /api/videos/ route existed have
+			// VideoURL stored as /api/images/{uuid}. Fall through to serve them as video.
+			var animalVideo models.AnimalVideo
+			if err2 := db.Where("video_url = ?", imageURL).First(&animalVideo).Error; err2 == nil {
+				serveVideoBlob(c, storageProvider, animalVideo.BlobIdentifier, animalVideo.MimeType)
+				return
+			}
 			c.JSON(http.StatusNotFound, gin.H{"error": "Image not found"})
 			return
 		}
@@ -199,6 +211,48 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 			c.Data(http.StatusOK, animalImage.MimeType, animalImage.ImageData)
 		}
 	}
+}
+
+// ServeVideo serves a video blob through the backend proxy.
+// GET /api/videos/:uuid
+func ServeVideo(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		videoUUID := c.Param("uuid")
+		videoURL := fmt.Sprintf("/api/videos/%s", videoUUID)
+
+		var animalVideo models.AnimalVideo
+		if err := db.Where("video_url = ?", videoURL).First(&animalVideo).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve video"})
+			}
+			return
+		}
+
+		serveVideoBlob(c, storageProvider, animalVideo.BlobIdentifier, animalVideo.MimeType)
+	}
+}
+
+func serveVideoBlob(c *gin.Context, storageProvider storage.Provider, blobIdentifier, mimeType string) {
+	// GetImage is reused here: video blobs are stored under images/animals/ in Azure
+	// because UploadImage is the only upload path. The content-type on the blob is
+	// correct (video/mp4 etc.), so retrieval works despite the path prefix.
+	data, contentType, err := storageProvider.GetImage(c.Request.Context(), blobIdentifier)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Video not found in storage"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve video"})
+		}
+		return
+	}
+	if contentType == "" {
+		contentType = mimeType
+	}
+	c.Header("Cache-Control", "public, max-age=31536000")
+	c.Header("Content-Length", strconv.Itoa(len(data)))
+	c.Data(http.StatusOK, contentType, data)
 }
 
 // UploadAnimalImageSimple handles simple image upload without animal context
