@@ -577,6 +577,23 @@ func TestServeImage_ThumbnailFallback(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
+
+	t.Run("returns 500 when DB query itself fails", func(t *testing.T) {
+		db := setupVideoTestDB(t)
+		store := &mockStorageProvider{}
+
+		// Drop the table so the thumbnail_url query returns a DB error, not ErrRecordNotFound.
+		db.Exec("DROP TABLE animal_videos")
+
+		r := gin.New()
+		r.GET("/api/images/:uuid", ServeImage(db, store))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/images/thumb-db-err", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+	})
 }
 
 func TestDeleteAnimalVideo(t *testing.T) {

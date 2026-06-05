@@ -178,7 +178,12 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 			// Thumbnail blobs are stored under images/animals/ in Azure but have no
 			// AnimalImage row — look them up via the video's ThumbnailBlobID.
 			var thumbVideo models.AnimalVideo
-			if err3 := db.Where("thumbnail_url = ?", imageURL).First(&thumbVideo).Error; err3 == nil {
+			thumbErr := db.Where("thumbnail_url = ?", imageURL).First(&thumbVideo).Error
+			if thumbErr != nil && !errors.Is(thumbErr, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve thumbnail"})
+				return
+			}
+			if thumbErr == nil {
 				if thumbVideo.ThumbnailBlobID == "" {
 					c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail blob not available"})
 					return
