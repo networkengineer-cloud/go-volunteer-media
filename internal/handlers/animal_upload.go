@@ -179,12 +179,21 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 			// AnimalImage row — look them up via the video's ThumbnailBlobID.
 			var thumbVideo models.AnimalVideo
 			if err3 := db.Where("thumbnail_url = ?", imageURL).First(&thumbVideo).Error; err3 == nil {
+				if thumbVideo.ThumbnailBlobID == "" {
+					c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail blob not available"})
+					return
+				}
 				data, mimeType, err := storageProvider.GetImage(ctx, thumbVideo.ThumbnailBlobID)
 				if err != nil {
-					c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail not found in storage"})
+					if err == storage.ErrNotFound {
+						c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail not found in storage"})
+					} else {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve thumbnail"})
+					}
 					return
 				}
 				c.Header("Cache-Control", "public, max-age=31536000")
+				c.Header("Content-Type", mimeType)
 				c.Header("Content-Length", strconv.Itoa(len(data)))
 				c.Data(http.StatusOK, mimeType, data)
 				return

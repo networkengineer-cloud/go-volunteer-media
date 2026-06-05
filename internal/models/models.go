@@ -399,7 +399,7 @@ type AnimalVideo struct {
 	AnimalID        uint           `gorm:"not null;index:idx_animal_video_animal" json:"animal_id"`
 	UserID          uint           `gorm:"not null;index" json:"user_id"`
 	VideoURL        string         `gorm:"not null" json:"video_url"`
-	ThumbnailURL    string         `gorm:"not null" json:"thumbnail_url"`
+	ThumbnailURL    string         `gorm:"not null;index" json:"thumbnail_url"`
 	MimeType        string         `gorm:"default:'video/mp4'" json:"mime_type"`
 	Caption         string         `json:"caption"`
 	DurationSeconds int            `json:"duration_seconds"`

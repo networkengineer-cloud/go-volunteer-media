@@ -155,6 +155,9 @@ type mockStorageProvider struct {
 	UploadImageErr        error
 	UploadImageCallErrors map[int]error // 1-based call index → error
 	UploadDocumentErr     error
+	GetImageData          []byte
+	GetImageMime          string
+	GetImageErr           error
 	LastMimeType          string
 	DeletedBlobs          []string
 	uploadCallCount       int
@@ -185,7 +188,10 @@ func (m *mockStorageProvider) UploadDocument(_ context.Context, _ []byte, _, _ s
 	return "/api/documents/test-uuid", "test-uuid", ".pdf", nil
 }
 func (m *mockStorageProvider) GetImage(_ context.Context, _ string) ([]byte, string, error) {
-	return nil, "", nil
+	if m.GetImageErr != nil {
+		return nil, "", m.GetImageErr
+	}
+	return m.GetImageData, m.GetImageMime, nil
 }
 func (m *mockStorageProvider) GetDocument(_ context.Context, _ string) ([]byte, string, error) {
 	return nil, "", nil

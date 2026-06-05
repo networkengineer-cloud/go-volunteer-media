@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -481,6 +482,101 @@ func TestUploadAnimalVideo_DBCreateFails_BothBlobsCleanedup(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, store.DeletedBlobs, "test-uuid-1.png", "thumbnail blob should be cleaned up on DB failure")
 	assert.Contains(t, store.DeletedBlobs, "test-uuid-2.png", "video blob should be cleaned up on DB failure")
+}
+
+func TestServeImage_ThumbnailFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("serves thumbnail blob via thumbnail_url lookup", func(t *testing.T) {
+		db := setupVideoTestDB(t)
+		imgData := []byte{0xFF, 0xD8, 0xFF} // fake JPEG bytes
+		store := &mockStorageProvider{GetImageData: imgData, GetImageMime: "image/jpeg"}
+
+		assert.NoError(t, db.Create(&models.AnimalVideo{
+			AnimalID:        1,
+			UserID:          1,
+			VideoURL:        "/api/videos/video-uuid",
+			ThumbnailURL:    "/api/images/thumb-uuid",
+			ThumbnailBlobID: "thumb-uuid.jpg",
+		}).Error)
+
+		r := gin.New()
+		r.GET("/api/images/:uuid", ServeImage(db, store))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/images/thumb-uuid", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "image/jpeg", w.Header().Get("Content-Type"))
+		assert.Equal(t, imgData, w.Body.Bytes())
+	})
+
+	t.Run("returns 404 when ThumbnailBlobID is empty", func(t *testing.T) {
+		db := setupVideoTestDB(t)
+		store := &mockStorageProvider{}
+
+		assert.NoError(t, db.Create(&models.AnimalVideo{
+			AnimalID:        1,
+			UserID:          1,
+			VideoURL:        "/api/videos/video-uuid2",
+			ThumbnailURL:    "/api/images/thumb-no-blob",
+			ThumbnailBlobID: "",
+		}).Error)
+
+		r := gin.New()
+		r.GET("/api/images/:uuid", ServeImage(db, store))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/images/thumb-no-blob", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("returns 500 on non-ErrNotFound storage error", func(t *testing.T) {
+		db := setupVideoTestDB(t)
+		store := &mockStorageProvider{GetImageErr: fmt.Errorf("azure: connection refused")}
+
+		assert.NoError(t, db.Create(&models.AnimalVideo{
+			AnimalID:        1,
+			UserID:          1,
+			VideoURL:        "/api/videos/video-uuid3",
+			ThumbnailURL:    "/api/images/thumb-infra-err",
+			ThumbnailBlobID: "thumb-infra-err.jpg",
+		}).Error)
+
+		r := gin.New()
+		r.GET("/api/images/:uuid", ServeImage(db, store))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/images/thumb-infra-err", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+	})
+
+	t.Run("returns 404 when storage returns ErrNotFound", func(t *testing.T) {
+		db := setupVideoTestDB(t)
+		store := &mockStorageProvider{GetImageErr: storage.ErrNotFound}
+
+		assert.NoError(t, db.Create(&models.AnimalVideo{
+			AnimalID:        1,
+			UserID:          1,
+			VideoURL:        "/api/videos/video-uuid4",
+			ThumbnailURL:    "/api/images/thumb-missing",
+			ThumbnailBlobID: "thumb-missing.jpg",
+		}).Error)
+
+		r := gin.New()
+		r.GET("/api/images/:uuid", ServeImage(db, store))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/images/thumb-missing", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
 }
 
 func TestDeleteAnimalVideo(t *testing.T) {
