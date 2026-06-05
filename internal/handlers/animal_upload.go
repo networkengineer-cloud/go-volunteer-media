@@ -175,6 +175,20 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 				serveVideoBlob(c, storageProvider, animalVideo.BlobIdentifier, animalVideo.MimeType)
 				return
 			}
+			// Thumbnail blobs are stored under images/animals/ in Azure but have no
+			// AnimalImage row — look them up via the video's ThumbnailBlobID.
+			var thumbVideo models.AnimalVideo
+			if err3 := db.Where("thumbnail_url = ?", imageURL).First(&thumbVideo).Error; err3 == nil {
+				data, mimeType, err := storageProvider.GetImage(ctx, thumbVideo.ThumbnailBlobID)
+				if err != nil {
+					c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail not found in storage"})
+					return
+				}
+				c.Header("Cache-Control", "public, max-age=31536000")
+				c.Header("Content-Length", strconv.Itoa(len(data)))
+				c.Data(http.StatusOK, mimeType, data)
+				return
+			}
 			c.JSON(http.StatusNotFound, gin.H{"error": "Image not found"})
 			return
 		}
