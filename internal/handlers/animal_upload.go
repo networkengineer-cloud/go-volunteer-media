@@ -175,6 +175,34 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 				serveVideoBlob(c, storageProvider, animalVideo.BlobIdentifier, animalVideo.MimeType)
 				return
 			}
+			// Thumbnail blobs are stored under images/animals/ in Azure but have no
+			// AnimalImage row — look them up via the video's ThumbnailBlobID.
+			var thumbVideo models.AnimalVideo
+			thumbErr := db.Where("thumbnail_url = ?", imageURL).First(&thumbVideo).Error
+			if thumbErr != nil && !errors.Is(thumbErr, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve thumbnail"})
+				return
+			}
+			if thumbErr == nil {
+				if thumbVideo.ThumbnailBlobID == "" {
+					c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail blob not available"})
+					return
+				}
+				data, mimeType, err := storageProvider.GetImage(ctx, thumbVideo.ThumbnailBlobID)
+				if err != nil {
+					if err == storage.ErrNotFound {
+						c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail not found in storage"})
+					} else {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve thumbnail"})
+					}
+					return
+				}
+				c.Header("Cache-Control", "public, max-age=31536000")
+				c.Header("Content-Type", mimeType)
+				c.Header("Content-Length", strconv.Itoa(len(data)))
+				c.Data(http.StatusOK, mimeType, data)
+				return
+			}
 			c.JSON(http.StatusNotFound, gin.H{"error": "Image not found"})
 			return
 		}
