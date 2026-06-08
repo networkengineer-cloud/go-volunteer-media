@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { animalsApi } from '../api/client';
 
 const MAX_VIDEO_SIZE = 200 * 1024 * 1024;
@@ -17,6 +17,10 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   const [caption, setCaption] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Thumbnail extraction starts as soon as a file is selected so it runs
+  // in the background while the user types a caption. By upload time it's
+  // usually already resolved and only the network transfer remains.
+  const thumbnailPromiseRef = useRef<Promise<{ blob: Blob; duration: number }> | null>(null);
 
   useEffect(() => {
     if (!preselectedFile) return;
@@ -26,6 +30,8 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
     } else if (preselectedFile.size > MAX_VIDEO_SIZE) {
       setError('This video is too large. Please use a clip under 200MB.');
       setVideoFile(null);
+    } else {
+      thumbnailPromiseRef.current = extractThumbnail(preselectedFile);
     }
   }, [preselectedFile]);
 
@@ -42,6 +48,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
     }
     setError(null);
     setVideoFile(file);
+    thumbnailPromiseRef.current = extractThumbnail(file);
   };
 
   const extractThumbnail = (file: File): Promise<{ blob: Blob; duration: number }> =>
@@ -137,7 +144,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
     let thumbnailBlob: Blob;
     let duration: number;
     try {
-      ({ blob: thumbnailBlob, duration } = await extractThumbnail(videoFile));
+      ({ blob: thumbnailBlob, duration } = await (thumbnailPromiseRef.current ?? extractThumbnail(videoFile)));
     } catch {
       setError("Couldn't generate a preview for this video. Please try a different file.");
       setUploading(false);
