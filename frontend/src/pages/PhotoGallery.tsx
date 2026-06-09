@@ -99,6 +99,9 @@ const PhotoGallery: React.FC = () => {
 
   const handleDeleteVideo = (videoId: number) => {
     if (!groupId || !id) return;
+    // Close the lightbox before opening the confirm dialog: ConfirmDialog has
+    // z-index 1000 and the lightbox has z-index 9999, so the dialog would render
+    // invisibly behind the player if we didn't dismiss it first.
     setSelectedVideo(null);
     openConfirmDialog(
       'Delete Video',

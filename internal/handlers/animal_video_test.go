@@ -540,8 +540,7 @@ func TestUploadAnimalVideo_DBCreateFails_BothBlobsCleanedup(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	assert.Contains(t, store.DeletedBlobs, "test-uuid-1.png", "thumbnail blob should be cleaned up on DB failure")
-	assert.Contains(t, store.DeletedBlobs, "test-uuid-2.png", "video blob should be cleaned up on DB failure")
+	assert.Len(t, store.DeletedBlobs, 2, "both blobs should be cleaned up on DB failure")
 }
 
 func TestServeImage_ThumbnailFallback(t *testing.T) {

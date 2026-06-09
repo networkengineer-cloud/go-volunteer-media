@@ -182,7 +182,6 @@ func (m *mockStorageProvider) UploadImage(_ context.Context, _ []byte, mimeType 
 	}
 	m.mu.Lock()
 	m.uploadCallCount++
-	m.LastMimeType = mimeType
 	id := fmt.Sprintf("test-uuid-%d", m.uploadCallCount)
 	m.mu.Unlock()
 	return "/api/images/" + id, id, ".png", nil
@@ -203,6 +202,8 @@ func (m *mockStorageProvider) GetDocument(_ context.Context, _ string) ([]byte, 
 	return nil, "", nil
 }
 func (m *mockStorageProvider) DeleteImage(_ context.Context, identifier string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.DeletedBlobs = append(m.DeletedBlobs, identifier)
 	return nil
 }
