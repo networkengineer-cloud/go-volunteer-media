@@ -201,7 +201,8 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		videoRes := <-videoCh
 
 		if thumbRes.err != nil && videoRes.err != nil {
-			logger.Error("Failed to upload both thumbnail and video", thumbRes.err)
+			logger.Error("Failed to upload thumbnail", thumbRes.err)
+			logger.Error("Failed to upload video", videoRes.err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Upload failed. Please try again."})
 			return
 		}
