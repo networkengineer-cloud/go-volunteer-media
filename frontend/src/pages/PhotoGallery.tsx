@@ -99,6 +99,7 @@ const PhotoGallery: React.FC = () => {
 
   const handleDeleteVideo = (videoId: number) => {
     if (!groupId || !id) return;
+    setSelectedVideo(null);
     openConfirmDialog(
       'Delete Video',
       'Are you sure you want to delete this video?',
@@ -106,7 +107,6 @@ const PhotoGallery: React.FC = () => {
         try {
           await animalsApi.deleteVideo(Number(groupId), Number(id), videoId);
           showToast('Video deleted successfully', 'success');
-          setSelectedVideo(null);
           await loadData(Number(groupId), Number(id));
         } catch {
           showToast('Failed to delete video', 'error');
