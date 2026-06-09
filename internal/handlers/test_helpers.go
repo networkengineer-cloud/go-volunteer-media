@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
@@ -146,21 +147,24 @@ func (m *mockConverter) ToPDF(_ context.Context, _ []byte, _ string) ([]byte, er
 
 // mockStorageProvider is a test double for storage.Provider.
 // Set ProviderName to control what Name() returns (default: "mock").
-// Set UploadImageErr to fail every call, or UploadImageCallErrors to fail specific
-// calls by 1-based index. Each successful call returns a unique identifier
-// ("test-uuid-N") so tests can assert which blobs were cleaned up.
+// Set UploadImageErr to fail every call.
+// Set UploadImageErrForMimeType to fail uploads for a specific MIME type
+// (e.g. "image/jpeg" for thumbnail, "video/mp4" for video) — safe for
+// concurrent callers because it reads a pre-set map without mutation.
+// Each successful call returns a unique identifier ("test-uuid-N").
 // DeletedBlobs records every identifier passed to DeleteImage.
 type mockStorageProvider struct {
-	ProviderName          string
-	UploadImageErr        error
-	UploadImageCallErrors map[int]error // 1-based call index → error
-	UploadDocumentErr     error
-	GetImageData          []byte
-	GetImageMime          string
-	GetImageErr           error
-	LastMimeType          string
-	DeletedBlobs          []string
-	uploadCallCount       int
+	ProviderName             string
+	UploadImageErr           error
+	UploadImageErrForMimeType map[string]error // mime type → error; safe for concurrent use
+	UploadDocumentErr        error
+	GetImageData             []byte
+	GetImageMime             string
+	GetImageErr              error
+	LastMimeType             string
+	DeletedBlobs             []string
+	mu                       sync.Mutex
+	uploadCallCount          int
 }
 
 func (m *mockStorageProvider) Name() string {
@@ -170,15 +174,16 @@ func (m *mockStorageProvider) Name() string {
 	return "mock"
 }
 func (m *mockStorageProvider) UploadImage(_ context.Context, _ []byte, mimeType string, _ map[string]string) (string, string, string, error) {
-	m.uploadCallCount++
-	m.LastMimeType = mimeType
-	if err, ok := m.UploadImageCallErrors[m.uploadCallCount]; ok {
+	if err, ok := m.UploadImageErrForMimeType[mimeType]; ok {
 		return "", "", "", err
 	}
 	if m.UploadImageErr != nil {
 		return "", "", "", m.UploadImageErr
 	}
+	m.mu.Lock()
+	m.uploadCallCount++
 	id := fmt.Sprintf("test-uuid-%d", m.uploadCallCount)
+	m.mu.Unlock()
 	return "/api/images/" + id, id, ".png", nil
 }
 func (m *mockStorageProvider) UploadDocument(_ context.Context, _ []byte, _, _ string) (string, string, string, error) {
@@ -197,6 +202,8 @@ func (m *mockStorageProvider) GetDocument(_ context.Context, _ string) ([]byte, 
 	return nil, "", nil
 }
 func (m *mockStorageProvider) DeleteImage(_ context.Context, identifier string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.DeletedBlobs = append(m.DeletedBlobs, identifier)
 	return nil
 }

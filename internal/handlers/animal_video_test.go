@@ -422,10 +422,9 @@ func TestUploadAnimalVideo_CaptionTooLong_ReturnsBadRequest(t *testing.T) {
 func TestUploadAnimalVideo_VideoUploadFails_ThumbnailCleanedup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupVideoTestDB(t)
-	// Call 1 (thumbnail) succeeds; call 2 (video) fails.
 	store := &mockStorageProvider{
-		ProviderName:          "azure",
-		UploadImageCallErrors: map[int]error{2: fmt.Errorf("azure: container unavailable")},
+		ProviderName:             "azure",
+		UploadImageErrForMimeType: map[string]error{"video/mp4": fmt.Errorf("azure: container unavailable")},
 	}
 
 	group := models.Group{Name: "Dogs", Description: "x"}
@@ -448,8 +447,69 @@ func TestUploadAnimalVideo_VideoUploadFails_ThumbnailCleanedup(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	assert.Contains(t, store.DeletedBlobs, "test-uuid-1.png", "thumbnail blob should be cleaned up after video upload failure")
-	assert.Len(t, store.DeletedBlobs, 1, "only the thumbnail should be deleted")
+	assert.Len(t, store.DeletedBlobs, 1, "only the thumbnail blob should be deleted")
+}
+
+func TestUploadAnimalVideo_ThumbnailUploadFails_VideoCleanedup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+	store := &mockStorageProvider{
+		ProviderName:             "azure",
+		UploadImageErrForMimeType: map[string]error{"image/jpeg": fmt.Errorf("azure: container unavailable")},
+	}
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "vol", Email: "v@t.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.NoError(t, db.Model(&user).Association("Groups").Append(&group))
+	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	r := gin.New()
+	r.POST("/groups/:id/animals/:animalId/videos", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, UploadAnimalVideo(db, store))
+
+	req := createVideoMultipartRequest(t, minimalMP4, minimalJPEG)
+	req.URL.Path = "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Len(t, store.DeletedBlobs, 1, "only the video blob should be deleted")
+}
+
+func TestUploadAnimalVideo_BothUploadsFail_NoBlobsDeleted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupVideoTestDB(t)
+	store := &mockStorageProvider{
+		ProviderName:   "azure",
+		UploadImageErr: fmt.Errorf("azure: service unavailable"),
+	}
+
+	group := models.Group{Name: "Dogs", Description: "x"}
+	assert.NoError(t, db.Create(&group).Error)
+	user := models.User{Username: "vol", Email: "v@t.com", Password: "x"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.NoError(t, db.Model(&user).Association("Groups").Append(&group))
+	animal := models.Animal{Name: "Rex", Species: "Dog", GroupID: group.ID, Status: "available"}
+	assert.NoError(t, db.Create(&animal).Error)
+
+	r := gin.New()
+	r.POST("/groups/:id/animals/:animalId/videos", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("is_admin", false)
+	}, UploadAnimalVideo(db, store))
+
+	req := createVideoMultipartRequest(t, minimalMP4, minimalJPEG)
+	req.URL.Path = "/groups/" + itoa(group.ID) + "/animals/" + itoa(animal.ID) + "/videos"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, store.DeletedBlobs, "no blobs to clean up when both uploads failed")
 }
 
 func TestUploadAnimalVideo_DBCreateFails_BothBlobsCleanedup(t *testing.T) {
@@ -480,8 +540,7 @@ func TestUploadAnimalVideo_DBCreateFails_BothBlobsCleanedup(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	assert.Contains(t, store.DeletedBlobs, "test-uuid-1.png", "thumbnail blob should be cleaned up on DB failure")
-	assert.Contains(t, store.DeletedBlobs, "test-uuid-2.png", "video blob should be cleaned up on DB failure")
+	assert.Len(t, store.DeletedBlobs, 2, "both blobs should be cleaned up on DB failure")
 }
 
 func TestServeImage_ThumbnailFallback(t *testing.T) {

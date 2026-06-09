@@ -164,15 +164,6 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			return
 		}
 
-		// The thumbnail is client-supplied and is not verified to be a frame from
-		// the uploaded video. This is intentional for the volunteer portal use-case.
-		thumbURL, thumbBlobID, thumbExt, err := storageProvider.UploadImage(ctx, thumbData, "image/jpeg", map[string]string{"caption": caption})
-		if err != nil {
-			logger.Error("Failed to upload thumbnail", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Upload failed. Please try again."})
-			return
-		}
-
 		videoExt := strings.ToLower(filepath.Ext(videoFile.Filename))
 		mimeTypes, ok := upload.AllowedVideoTypes[videoExt]
 		if !ok || len(mimeTypes) == 0 {
@@ -181,17 +172,62 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		}
 		videoMimeType := mimeTypes[0]
 
-		// UploadImage is intentionally reused for video blobs; the provider stores
-		// any content type without image-specific processing.
-		_, videoBlobID, videoBlobExt, err := storageProvider.UploadImage(ctx, videoData, videoMimeType, map[string]string{"caption": caption})
-		if err != nil {
-			logger.Error("Failed to upload video, cleaning up thumbnail", err)
-			if delErr := storageProvider.DeleteImage(ctx, thumbBlobID+thumbExt); delErr != nil {
+		// Upload thumbnail and video blobs concurrently — they are independent.
+		// The thumbnail is client-supplied and is not verified to be a frame from
+		// the uploaded video. This is intentional for the volunteer portal use-case.
+		type thumbResult struct {
+			url, blobID, ext string
+			err              error
+		}
+		type videoResult struct {
+			blobID, ext string
+			err         error
+		}
+		thumbCh := make(chan thumbResult, 1)
+		videoCh := make(chan videoResult, 1)
+
+		go func() {
+			url, id, ext, err := storageProvider.UploadImage(ctx, thumbData, "image/jpeg", map[string]string{"caption": caption})
+			thumbCh <- thumbResult{url, id, ext, err}
+		}()
+		go func() {
+			// UploadImage is intentionally reused for video blobs; the provider stores
+			// any content type without image-specific processing.
+			_, id, ext, err := storageProvider.UploadImage(ctx, videoData, videoMimeType, map[string]string{"caption": caption})
+			videoCh <- videoResult{id, ext, err}
+		}()
+
+		thumbRes := <-thumbCh
+		videoRes := <-videoCh
+
+		if thumbRes.err != nil && videoRes.err != nil {
+			logger.Error("Failed to upload thumbnail", thumbRes.err)
+			logger.Error("Failed to upload video", videoRes.err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Upload failed. Please try again."})
+			return
+		}
+		if thumbRes.err != nil {
+			logger.Error("Failed to upload thumbnail, cleaning up video", thumbRes.err)
+			if delErr := storageProvider.DeleteImage(ctx, videoRes.blobID+videoRes.ext); delErr != nil {
+				logger.Error("Failed to clean up video blob after thumbnail upload failure", delErr)
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Upload failed. Please try again."})
+			return
+		}
+		if videoRes.err != nil {
+			logger.Error("Failed to upload video, cleaning up thumbnail", videoRes.err)
+			if delErr := storageProvider.DeleteImage(ctx, thumbRes.blobID+thumbRes.ext); delErr != nil {
 				logger.Error("Failed to clean up thumbnail after video upload failure", delErr)
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Upload failed. Please try again."})
 			return
 		}
+
+		thumbURL := thumbRes.url
+		thumbBlobID := thumbRes.blobID
+		thumbExt := thumbRes.ext
+		videoBlobID := videoRes.blobID
+		videoBlobExt := videoRes.ext
 		videoURL := fmt.Sprintf("/api/videos/%s", videoBlobID)
 
 		animalVideo := models.AnimalVideo{
