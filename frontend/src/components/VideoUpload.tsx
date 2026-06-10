@@ -43,7 +43,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
         thumbnailObjectUrlRef.current = url;
         setThumbnailUrl(url);
       })
-      .catch(() => { setThumbnailFailed(true); });
+      .catch(() => { if (gen === generationRef.current) setThumbnailFailed(true); });
   };
 
   useEffect(() => {
@@ -57,6 +57,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
     } else {
       setVideoFile(preselectedFile);
       setCaption('');
+      setThumbnailFailed(false);
       if (thumbnailObjectUrlRef.current) {
         URL.revokeObjectURL(thumbnailObjectUrlRef.current);
         thumbnailObjectUrlRef.current = null;

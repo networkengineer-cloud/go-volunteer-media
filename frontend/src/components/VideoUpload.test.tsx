@@ -11,6 +11,7 @@ vi.mock('../api/client', () => ({
 }));
 
 const originalCreateElement = document.createElement.bind(document);
+let simulateExtractionFailure = false;
 
 function makeMockVideo() {
   const el = originalCreateElement('div') as unknown as HTMLVideoElement;
@@ -57,12 +58,21 @@ const defaultProps = {
 };
 
 beforeEach(() => {
+  simulateExtractionFailure = false;
   defaultProps.onSuccess.mockReset();
   defaultProps.onCancel.mockReset();
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-thumbnail');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-    if (tag === 'video') return makeMockVideo();
+    if (tag === 'video') {
+      const el = makeMockVideo();
+      if (simulateExtractionFailure) {
+        (el as any).load = function () {
+          Promise.resolve().then(() => (el as any).onerror?.());
+        };
+      }
+      return el;
+    }
     if (tag === 'canvas') return makeMockCanvas();
     return originalCreateElement(tag);
   });
@@ -100,13 +110,13 @@ describe('VideoUpload', () => {
     });
   });
 
-  describe('file selected state', () => {
-    async function selectFile(container: HTMLElement, filename = 'clip.mp4', type = 'video/mp4') {
-      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-      const file = new File(['video-data'], filename, { type });
-      await userEvent.upload(input, file);
-    }
+  async function selectFile(container: HTMLElement, filename = 'clip.mp4', type = 'video/mp4') {
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['video-data'], filename, { type });
+    await userEvent.upload(input, file);
+  }
 
+  describe('file selected state', () => {
     it('shows the thumbnail banner after a valid file is selected', async () => {
       const { container } = render(<VideoUpload {...defaultProps} />);
       await selectFile(container);
@@ -259,6 +269,34 @@ describe('VideoUpload', () => {
         expect(screen.getByRole('alert')).toHaveTextContent('This video is too large.');
       });
       expect(screen.getByRole('button', { name: 'Choose a video file' })).toBeInTheDocument();
+    });
+  });
+
+  describe('thumbnail failure state', () => {
+    it('shows preview unavailable when extraction fails', async () => {
+      simulateExtractionFailure = true;
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      await selectFile(container);
+      await waitFor(() => {
+        expect(screen.getByText('Preview unavailable')).toBeInTheDocument();
+      });
+    });
+
+    it('clears preview unavailable when selection is cleared and re-picked with working extraction', async () => {
+      simulateExtractionFailure = true;
+      const user = userEvent.setup();
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      await selectFile(container);
+      await waitFor(() => expect(screen.getByText('Preview unavailable')).toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: 'Remove selected video' }));
+
+      simulateExtractionFailure = false;
+      await selectFile(container, 'new-clip.mp4');
+      await waitFor(() => {
+        expect(screen.queryByText('Preview unavailable')).not.toBeInTheDocument();
+        expect(screen.getByText(/new-clip\.mp4/)).toBeInTheDocument();
+      });
     });
   });
 

@@ -6,7 +6,7 @@
 
 .video-upload__dropzone {
   width: 100%;
-  border: 2px dashed var(--border, #cbd5e1);
+  border: 2px solid var(--border, #cbd5e1);
   border-radius: var(--radius-md, 0.375rem);
   padding: 2rem 1rem;
   text-align: center;
