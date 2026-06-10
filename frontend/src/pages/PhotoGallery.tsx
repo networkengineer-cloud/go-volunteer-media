@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { animalsApi } from '../api/client';
 import type { Animal, AnimalImage, AnimalVideo } from '../api/client';
 import VideoUpload from '../components/VideoUpload';
+import Modal from '../components/Modal';
 import type { AxiosResponse } from 'axios';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -501,23 +502,26 @@ const PhotoGallery: React.FC = () => {
         )}
 
         {/* Video upload modal */}
-        {showVideoUpload && groupId && id && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <VideoUpload
-                groupId={Number(groupId)}
-                animalId={Number(id)}
-                preselectedFile={pendingVideoFile ?? undefined}
-                onSuccess={() => {
-                  setShowVideoUpload(false);
-                  setPendingVideoFile(null);
-                  showToast('Video uploaded successfully', 'success');
-                  loadData(Number(groupId), Number(id));
-                }}
-                onCancel={() => { setShowVideoUpload(false); setPendingVideoFile(null); }}
-              />
-            </div>
-          </div>
+        {groupId && id && (
+          <Modal
+            isOpen={showVideoUpload}
+            onClose={() => { setShowVideoUpload(false); setPendingVideoFile(null); }}
+            title="Upload Video"
+            size="small"
+          >
+            <VideoUpload
+              groupId={Number(groupId)}
+              animalId={Number(id)}
+              preselectedFile={pendingVideoFile ?? undefined}
+              onSuccess={() => {
+                setShowVideoUpload(false);
+                setPendingVideoFile(null);
+                showToast('Video uploaded successfully', 'success');
+                loadData(Number(groupId), Number(id));
+              }}
+              onCancel={() => { setShowVideoUpload(false); setPendingVideoFile(null); }}
+            />
+          </Modal>
         )}
 
         {/* Upload Modal */}
