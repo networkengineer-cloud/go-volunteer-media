@@ -208,6 +208,8 @@ export interface Animal {
   last_status_change?: string;
   return_count: number;
   is_returned: boolean;
+  image_count?: number;
+  video_count?: number;
   protocol_document_url?: string;
   protocol_document_name?: string;
   protocol_document_type?: string;
