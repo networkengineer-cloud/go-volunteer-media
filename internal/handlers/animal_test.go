@@ -35,7 +35,12 @@ func TestGetAnimals_Success(t *testing.T) {
 		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
 	}
 
-	var animals []models.Animal
+	var animals []struct {
+		ID         uint   `json:"id"`
+		Name       string `json:"name"`
+		ImageCount *int   `json:"image_count"`
+		VideoCount *int   `json:"video_count"`
+	}
 	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
@@ -114,7 +119,12 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 				return
 			}
 
-			var animals []models.Animal
+			var animals []struct {
+				ID         uint   `json:"id"`
+				Name       string `json:"name"`
+				ImageCount *int   `json:"image_count"`
+				VideoCount *int   `json:"video_count"`
+			}
 			if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 				t.Fatalf("Failed to unmarshal response: %v", err)
 			}
@@ -178,7 +188,12 @@ func TestGetAnimals_NameSearch(t *testing.T) {
 				return
 			}
 
-			var animals []models.Animal
+			var animals []struct {
+				ID         uint   `json:"id"`
+				Name       string `json:"name"`
+				ImageCount *int   `json:"image_count"`
+				VideoCount *int   `json:"video_count"`
+			}
 			if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 				t.Fatalf("Failed to unmarshal response: %v", err)
 			}
@@ -233,7 +248,12 @@ func TestGetAnimals_AdminAccess(t *testing.T) {
 		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
 	}
 
-	var animals []models.Animal
+	var animals []struct {
+		ID         uint   `json:"id"`
+		Name       string `json:"name"`
+		ImageCount *int   `json:"image_count"`
+		VideoCount *int   `json:"video_count"`
+	}
 	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
@@ -1530,6 +1550,12 @@ func TestGetAnimals_IncludesMediaCounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open db: %v", err)
 	}
+	sqlDB, err2 := db.DB()
+	if err2 != nil {
+		t.Fatalf("failed to get sql.DB: %v", err2)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 	if err := db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
