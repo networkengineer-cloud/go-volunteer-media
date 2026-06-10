@@ -154,6 +154,16 @@ describe('VideoUpload', () => {
       expect(screen.getByRole('button', { name: 'Choose a video file' })).toBeInTheDocument();
     });
 
+    it('resets the caption when the selection is cleared', async () => {
+      const user = userEvent.setup();
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      await selectFile(container);
+      await user.type(screen.getByPlaceholderText('Caption (optional)'), 'My caption');
+      await user.click(screen.getByRole('button', { name: 'Remove selected video' }));
+      await selectFile(container);
+      expect(screen.getByPlaceholderText('Caption (optional)')).toHaveValue('');
+    });
+
     it('clears an existing error when a new valid file is selected', async () => {
       const { container } = render(<VideoUpload {...defaultProps} />);
       const input = container.querySelector('input[type="file"]') as HTMLInputElement;

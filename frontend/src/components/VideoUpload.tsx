@@ -55,6 +55,10 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       setVideoFile(null);
     } else {
       setVideoFile(preselectedFile);
+      if (thumbnailObjectUrlRef.current) {
+        URL.revokeObjectURL(thumbnailObjectUrlRef.current);
+        thumbnailObjectUrlRef.current = null;
+      }
       const promise = extractThumbnail(preselectedFile);
       thumbnailPromiseRef.current = promise;
       applyThumbnailPromise(promise);
@@ -163,6 +167,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   const clearSelection = () => {
     generationRef.current++;
     setVideoFile(null);
+    setCaption('');
     setError(null);
     setThumbnailUrl(null);
     thumbnailPromiseRef.current = null;
@@ -231,36 +236,35 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
           <div className="video-upload__dropzone-hint">MP4 or MOV · up to 200 MB</div>
         </div>
       ) : (
-        <div
-          className="video-upload__thumbnail"
-          role="button"
-          tabIndex={0}
-          aria-label="Change video"
-          onClick={() => fileInputRef.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
-          }}
-        >
+        <div className="video-upload__thumbnail">
           <div
-            className="video-upload__thumbnail-bg"
-            style={thumbnailUrl ? { backgroundImage: `url("${thumbnailUrl}")` } : undefined}
-          />
-          <div className="video-upload__thumbnail-overlay" />
-          <div className="video-upload__thumbnail-play">
-            <div className="video-upload__thumbnail-play-circle">▶</div>
-          </div>
-          <div className="video-upload__thumbnail-meta">
-            {videoFile.name} · {fileSizeMB} MB
+            role="button"
+            tabIndex={0}
+            aria-label="Change video"
+            className="video-upload__thumbnail-clickable"
+            onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
+            }}
+          >
+            <div
+              className="video-upload__thumbnail-bg"
+              style={thumbnailUrl ? { backgroundImage: `url("${thumbnailUrl}")` } : undefined}
+            />
+            <div className="video-upload__thumbnail-overlay" />
+            <div className="video-upload__thumbnail-play">
+              <div className="video-upload__thumbnail-play-circle">▶</div>
+            </div>
+            <div className="video-upload__thumbnail-meta">
+              {videoFile.name} · {fileSizeMB} MB
+            </div>
           </div>
           <button
             type="button"
             className="video-upload__thumbnail-repick"
             aria-label="Remove selected video"
             disabled={uploading}
-            onClick={(e) => {
-              e.stopPropagation();
-              clearSelection();
-            }}
+            onClick={clearSelection}
           >
             ✕
           </button>
