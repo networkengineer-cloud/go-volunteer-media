@@ -1661,9 +1661,9 @@
 }
 
 .media-pill.no-media {
-  background: rgba(0, 0, 0, 0.03);
-  border: 1px solid #e5e7eb;
-  color: #c9cdd4;
+  background: var(--neutral-100);
+  border: 1px solid var(--border);
+  color: var(--text-tertiary);
   cursor: default;
   pointer-events: none;
 }

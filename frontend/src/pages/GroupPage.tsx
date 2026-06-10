@@ -958,7 +958,7 @@ const GroupPage: React.FC = () => {
                       aria-label={`View ${animal.name}`}
                       onClick={() => navigate(`/groups/${id}/animals/${animal.id}/view`)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
+                        if (e.key === 'Enter') {
                           e.preventDefault();
                           navigate(`/groups/${id}/animals/${animal.id}/view`);
                         }
@@ -1045,7 +1045,7 @@ const GroupPage: React.FC = () => {
                               className="media-pill has-media"
                               onClick={(e) => e.stopPropagation()}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+                                if (e.key === 'Enter') e.stopPropagation();
                               }}
                               aria-label={`${animal.image_count} photos`}
                             >
@@ -1060,7 +1060,7 @@ const GroupPage: React.FC = () => {
                               className="media-pill has-media"
                               onClick={(e) => e.stopPropagation()}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+                                if (e.key === 'Enter') e.stopPropagation();
                               }}
                               aria-label={`${animal.video_count} videos`}
                             >

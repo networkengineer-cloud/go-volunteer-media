@@ -92,10 +92,13 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 			// Best-effort: counts remain zero on error so the list still renders.
 			if result := db.WithContext(ctx).Raw(`
 				SELECT a.id AS animal_id,
-					(SELECT COUNT(*) FROM animal_images WHERE animal_id = a.id) AS image_count,
-					(SELECT COUNT(*) FROM animal_videos WHERE animal_id = a.id) AS video_count
+					COUNT(DISTINCT ai.id) AS image_count,
+					COUNT(DISTINCT av.id) AS video_count
 				FROM animals a
-				WHERE a.id IN ?`, ids).Scan(&counts); result.Error != nil {
+				LEFT JOIN animal_images ai ON ai.animal_id = a.id
+				LEFT JOIN animal_videos av ON av.animal_id = a.id
+				WHERE a.id IN ?
+				GROUP BY a.id`, ids).Scan(&counts); result.Error != nil {
 				log.Printf("GetAnimals: failed to fetch media counts: %v", result.Error)
 			}
 		}

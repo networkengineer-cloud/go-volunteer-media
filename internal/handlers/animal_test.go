@@ -11,8 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 // animalListItem is the minimal shape of a GetAnimals response entry used across tests.
@@ -122,12 +120,7 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 				return
 			}
 
-			var animals []struct {
-				ID         uint   `json:"id"`
-				Name       string `json:"name"`
-				ImageCount *int   `json:"image_count"`
-				VideoCount *int   `json:"video_count"`
-			}
+			var animals []animalListItem
 			if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 				t.Fatalf("Failed to unmarshal response: %v", err)
 			}
@@ -191,12 +184,7 @@ func TestGetAnimals_NameSearch(t *testing.T) {
 				return
 			}
 
-			var animals []struct {
-				ID         uint   `json:"id"`
-				Name       string `json:"name"`
-				ImageCount *int   `json:"image_count"`
-				VideoCount *int   `json:"video_count"`
-			}
+			var animals []animalListItem
 			if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 				t.Fatalf("Failed to unmarshal response: %v", err)
 			}
@@ -1544,28 +1532,7 @@ func TestUpdateAnimal_IsReturned(t *testing.T) {
 
 // TestGetAnimals_IncludesMediaCounts verifies that GetAnimals returns image_count and video_count for each animal
 func TestGetAnimals_IncludesMediaCounts(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed to open db: %v", err)
-	}
-	sqlDB, err2 := db.DB()
-	if err2 != nil {
-		t.Fatalf("failed to get sql.DB: %v", err2)
-	}
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
-	if err := db.AutoMigrate(
-		&models.User{},
-		&models.Group{},
-		&models.UserGroup{},
-		&models.Animal{},
-		&models.AnimalTag{},
-		&models.AnimalImage{},
-		&models.AnimalVideo{},
-	); err != nil {
-		t.Fatalf("failed to migrate: %v", err)
-	}
-
+	db := setupAnimalTestDB(t)
 	user, group := createAnimalTestUser(t, db, "counter", "counter@example.com", false)
 
 	// One animal with 2 images and 1 video
