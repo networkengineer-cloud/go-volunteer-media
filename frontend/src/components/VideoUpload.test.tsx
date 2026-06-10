@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import React from 'react';
 import VideoUpload from './VideoUpload';
 import { animalsApi } from '../api/client';
 
@@ -142,7 +141,8 @@ describe('VideoUpload', () => {
       await selectFile(container);
       await waitFor(() => {
         const bg = container.querySelector('.video-upload__thumbnail-bg') as HTMLElement;
-        expect(bg.style.backgroundImage).toBe('url(blob:mock-thumbnail)');
+        // JSDOM's CSS parser normalizes URLs to quoted format
+        expect(bg.style.backgroundImage).toMatch(/url\(.*blob:mock-thumbnail.*\)/);
       });
     });
 
@@ -158,11 +158,30 @@ describe('VideoUpload', () => {
       const { container } = render(<VideoUpload {...defaultProps} />);
       const input = container.querySelector('input[type="file"]') as HTMLInputElement;
       // Select invalid file to trigger an error
-      await userEvent.upload(input, new File(['data'], 'clip.avi', { type: 'video/avi' }));
-      expect(screen.getByRole('alert')).toBeInTheDocument();
+      const invalidFile = new File(['data'], 'clip.avi', { type: 'video/avi' });
+      Object.defineProperty(input, 'files', {
+        value: [invalidFile],
+        writable: false,
+        configurable: true,
+      });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+      });
+
       // Select a valid file — error should clear
-      await userEvent.upload(input, new File(['video'], 'clip.mp4', { type: 'video/mp4' }));
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      const validFile = new File(['video'], 'clip.mp4', { type: 'video/mp4' });
+      Object.defineProperty(input, 'files', {
+        value: [validFile],
+        writable: false,
+        configurable: true,
+      });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      });
     });
   });
 
@@ -170,8 +189,19 @@ describe('VideoUpload', () => {
     it('shows error for unsupported file type', async () => {
       const { container } = render(<VideoUpload {...defaultProps} />);
       const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-      await userEvent.upload(input, new File(['data'], 'clip.avi', { type: 'video/avi' }));
-      expect(screen.getByRole('alert')).toHaveTextContent('Only MP4 and MOV videos are supported.');
+      // Try bypassing the input's accept attribute by directly triggering the change event
+      const file = new File(['data'], 'clip.avi', { type: 'video/avi' });
+      // Manually set the files property and trigger change
+      Object.defineProperty(input, 'files', {
+        value: [file],
+        writable: false,
+        configurable: true,
+      });
+      const event = new Event('change', { bubbles: true });
+      input.dispatchEvent(event);
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('Only MP4 and MOV videos are supported.');
+      });
     });
 
     it('shows error for oversized file', async () => {
