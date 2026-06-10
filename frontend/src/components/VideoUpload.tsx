@@ -23,6 +23,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   const thumbnailPromiseRef = useRef<Promise<{ blob: Blob; duration: number }> | null>(null);
   const thumbnailObjectUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const generationRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -33,8 +34,10 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   }, []);
 
   const applyThumbnailPromise = (promise: Promise<{ blob: Blob; duration: number }>) => {
+    const gen = ++generationRef.current;
     promise
       .then(({ blob }) => {
+        if (gen !== generationRef.current) return;
         const url = URL.createObjectURL(blob);
         thumbnailObjectUrlRef.current = url;
         setThumbnailUrl(url);
@@ -51,6 +54,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       setError('This video is too large. Please use a clip under 200MB.');
       setVideoFile(null);
     } else {
+      setVideoFile(preselectedFile);
       const promise = extractThumbnail(preselectedFile);
       thumbnailPromiseRef.current = promise;
       applyThumbnailPromise(promise);
@@ -158,6 +162,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   };
 
   const clearSelection = () => {
+    generationRef.current++;
     setVideoFile(null);
     setError(null);
     setThumbnailUrl(null);
@@ -277,6 +282,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
         </p>
       )}
 
+      {/* modal__actions styles come from Modal.css — requires Modal component in tree */}
       <div className="modal__actions">
         <Button variant="secondary" onClick={onCancel} disabled={uploading}>
           Cancel
