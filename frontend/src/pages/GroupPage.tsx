@@ -950,10 +950,18 @@ const GroupPage: React.FC = () => {
                   const { years: cardAgeYears, months: cardAgeMonths } = calculateAge(animal.estimated_birth_date, animal.age);
                   
                   return (
-                    <Link
+                    <div
                       key={animal.id}
-                      to={`/groups/${id}/animals/${animal.id}/view`}
                       className="animal-card"
+                      role="link"
+                      tabIndex={0}
+                      onClick={() => navigate(`/groups/${id}/animals/${animal.id}/view`)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          navigate(`/groups/${id}/animals/${animal.id}/view`);
+                        }
+                      }}
                     >
                       {animal.image_url && (
                         <img
@@ -1029,8 +1037,26 @@ const GroupPage: React.FC = () => {
                             })()}
                           </p>
                         )}
+                        <div className="media-indicator">
+                          <Link
+                            to={`/groups/${id}/animals/${animal.id}/photos`}
+                            className={`media-pill ${(animal.image_count ?? 0) > 0 ? 'has-media' : 'no-media'}`}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`${animal.image_count ?? 0} photos`}
+                          >
+                            📷 {animal.image_count ?? 0}
+                          </Link>
+                          <Link
+                            to={`/groups/${id}/animals/${animal.id}/photos`}
+                            className={`media-pill ${(animal.video_count ?? 0) > 0 ? 'has-media' : 'no-media'}`}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`${animal.video_count ?? 0} videos`}
+                          >
+                            🎥 {animal.video_count ?? 0}
+                          </Link>
+                        </div>
                       </div>
-                    </Link>
+                    </div>
                   );
                 })}
               </div>
