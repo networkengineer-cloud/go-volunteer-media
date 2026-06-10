@@ -15,6 +15,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// animalListItem is the minimal shape of a GetAnimals response entry used across tests.
+type animalListItem struct {
+	ID         uint   `json:"id"`
+	Name       string `json:"name"`
+	ImageCount *int   `json:"image_count"`
+	VideoCount *int   `json:"video_count"`
+}
+
 // TestGetAnimals_Success tests successful retrieval of animals
 func TestGetAnimals_Success(t *testing.T) {
 	db := setupAnimalTestDB(t)
@@ -35,12 +43,7 @@ func TestGetAnimals_Success(t *testing.T) {
 		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
 	}
 
-	var animals []struct {
-		ID         uint   `json:"id"`
-		Name       string `json:"name"`
-		ImageCount *int   `json:"image_count"`
-		VideoCount *int   `json:"video_count"`
-	}
+	var animals []animalListItem
 	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
@@ -248,12 +251,7 @@ func TestGetAnimals_AdminAccess(t *testing.T) {
 		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
 	}
 
-	var animals []struct {
-		ID         uint   `json:"id"`
-		Name       string `json:"name"`
-		ImageCount *int   `json:"image_count"`
-		VideoCount *int   `json:"video_count"`
-	}
+	var animals []animalListItem
 	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
@@ -1590,11 +1588,7 @@ func TestGetAnimals_IncludesMediaCounts(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var animals []struct {
-		ID         uint `json:"id"`
-		ImageCount int  `json:"image_count"`
-		VideoCount int  `json:"video_count"`
-	}
+	var animals []animalListItem
 	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -1602,27 +1596,40 @@ func TestGetAnimals_IncludesMediaCounts(t *testing.T) {
 		t.Fatalf("expected 2 animals, got %d", len(animals))
 	}
 
-	// Find Biscuit's entry
-	var richCounts struct{ ImageCount, VideoCount int }
+	// Find Biscuit's entry and dereference counts (nil pointer = field absent = bug)
+	var imageCount, videoCount int
 	for _, a := range animals {
 		if a.ID == rich.ID {
-			richCounts.ImageCount = a.ImageCount
-			richCounts.VideoCount = a.VideoCount
+			if a.ImageCount == nil {
+				t.Fatal("image_count field missing from response")
+			}
+			if a.VideoCount == nil {
+				t.Fatal("video_count field missing from response")
+			}
+			imageCount = *a.ImageCount
+			videoCount = *a.VideoCount
 		}
 	}
 
-	if richCounts.ImageCount != 2 {
-		t.Errorf("expected image_count 2 for Biscuit, got %d", richCounts.ImageCount)
+	if imageCount != 2 {
+		t.Errorf("expected image_count 2 for Biscuit, got %d", imageCount)
 	}
-	if richCounts.VideoCount != 1 {
-		t.Errorf("expected video_count 1 for Biscuit, got %d", richCounts.VideoCount)
+	if videoCount != 1 {
+		t.Errorf("expected video_count 1 for Biscuit, got %d", videoCount)
 	}
 
-	// Mochi has no media — verify the fields exist with zero values
+	// Mochi has no media — verify the fields exist and are zero
 	for _, a := range animals {
 		if a.ID != rich.ID {
-			if a.ImageCount != 0 || a.VideoCount != 0 {
-				t.Errorf("expected zero counts for Mochi, got images=%d videos=%d", a.ImageCount, a.VideoCount)
+			ic, vc := 0, 0
+			if a.ImageCount != nil {
+				ic = *a.ImageCount
+			}
+			if a.VideoCount != nil {
+				vc = *a.VideoCount
+			}
+			if ic != 0 || vc != 0 {
+				t.Errorf("expected zero counts for Mochi, got images=%d videos=%d", ic, vc)
 			}
 		}
 	}

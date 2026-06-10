@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -88,14 +89,15 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 		}
 		var counts []countRow
 		if len(ids) > 0 {
-			// Best-effort: if the media tables don't exist yet (e.g. in minimal test
-			// environments), counts simply remain zero rather than surfacing a 500.
-			db.WithContext(ctx).Raw(`
+			// Best-effort: counts remain zero on error so the list still renders.
+			if result := db.WithContext(ctx).Raw(`
 				SELECT a.id AS animal_id,
 					(SELECT COUNT(*) FROM animal_images WHERE animal_id = a.id) AS image_count,
 					(SELECT COUNT(*) FROM animal_videos WHERE animal_id = a.id) AS video_count
 				FROM animals a
-				WHERE a.id IN ?`, ids).Scan(&counts)
+				WHERE a.id IN ?`, ids).Scan(&counts); result.Error != nil {
+				log.Printf("GetAnimals: failed to fetch media counts: %v", result.Error)
+			}
 		}
 		countMap := make(map[uint]countRow, len(counts))
 		for _, cr := range counts {
