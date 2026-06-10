@@ -11,6 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 // TestGetAnimals_Success tests successful retrieval of animals
@@ -1519,6 +1521,84 @@ func TestUpdateAnimal_IsReturned(t *testing.T) {
 				t.Errorf("Expected is_returned %v, got %v", tt.wantValue, updatedAnimal.IsReturned)
 			}
 		})
+	}
+}
+
+// TestGetAnimals_IncludesMediaCounts verifies that GetAnimals returns image_count and video_count for each animal
+func TestGetAnimals_IncludesMediaCounts(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open db: %v", err)
+	}
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.Group{},
+		&models.UserGroup{},
+		&models.Animal{},
+		&models.AnimalTag{},
+		&models.AnimalImage{},
+		&models.AnimalVideo{},
+	); err != nil {
+		t.Fatalf("failed to migrate: %v", err)
+	}
+
+	user, group := createAnimalTestUser(t, db, "counter", "counter@example.com", false)
+
+	// One animal with 2 images and 1 video
+	rich := createTestAnimal(t, db, group.ID, "Biscuit", "Dog")
+	animalIDRef := rich.ID
+	db.Create(&models.AnimalImage{AnimalID: &animalIDRef, UserID: user.ID, ImageURL: "/img/1.jpg"})
+	db.Create(&models.AnimalImage{AnimalID: &animalIDRef, UserID: user.ID, ImageURL: "/img/2.jpg"})
+	db.Create(&models.AnimalVideo{AnimalID: animalIDRef, UserID: user.ID, VideoURL: "/vid/1.mp4", ThumbnailURL: "/img/t.jpg"})
+
+	// One animal with no media
+	createTestAnimal(t, db, group.ID, "Mochi", "Cat")
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/v1/groups/%d/animals?status=all", group.ID), nil)
+
+	GetAnimals(db)(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var animals []struct {
+		ID         uint `json:"id"`
+		ImageCount int  `json:"image_count"`
+		VideoCount int  `json:"video_count"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(animals) != 2 {
+		t.Fatalf("expected 2 animals, got %d", len(animals))
+	}
+
+	// Find Biscuit's entry
+	var richCounts struct{ ImageCount, VideoCount int }
+	for _, a := range animals {
+		if a.ID == rich.ID {
+			richCounts.ImageCount = a.ImageCount
+			richCounts.VideoCount = a.VideoCount
+		}
+	}
+
+	if richCounts.ImageCount != 2 {
+		t.Errorf("expected image_count 2 for Biscuit, got %d", richCounts.ImageCount)
+	}
+	if richCounts.VideoCount != 1 {
+		t.Errorf("expected video_count 1 for Biscuit, got %d", richCounts.VideoCount)
+	}
+
+	// Mochi has no media — verify the fields exist with zero values
+	for _, a := range animals {
+		if a.ID != rich.ID {
+			if a.ImageCount != 0 || a.VideoCount != 0 {
+				t.Errorf("expected zero counts for Mochi, got images=%d videos=%d", a.ImageCount, a.VideoCount)
+			}
+		}
 	}
 }
 

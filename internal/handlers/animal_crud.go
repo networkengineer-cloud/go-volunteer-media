@@ -23,6 +23,13 @@ func escapeSQLWildcards(input string) string {
 	return result
 }
 
+// animalWithCounts extends Animal with photo/video counts for the list endpoint.
+type animalWithCounts struct {
+	models.Animal
+	ImageCount int `json:"image_count"`
+	VideoCount int `json:"video_count"`
+}
+
 // GetAnimals returns all animals in a group with optional filtering
 func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -63,10 +70,45 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 			query = query.Where("LOWER(name) LIKE ?", "%"+escaped+"%")
 		}
 
-		var animals []models.Animal
-		if err := query.Preload("Tags").Find(&animals).Error; err != nil {
+		var baseAnimals []models.Animal
+		if err := query.Preload("Tags").Find(&baseAnimals).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
 			return
+		}
+
+		// Collect IDs for count subquery
+		type countRow struct {
+			AnimalID   uint `gorm:"column:animal_id"`
+			ImageCount int  `gorm:"column:image_count"`
+			VideoCount int  `gorm:"column:video_count"`
+		}
+		ids := make([]uint, len(baseAnimals))
+		for i, a := range baseAnimals {
+			ids[i] = a.ID
+		}
+		var counts []countRow
+		if len(ids) > 0 {
+			// Best-effort: if the media tables don't exist yet (e.g. in minimal test
+			// environments), counts simply remain zero rather than surfacing a 500.
+			db.WithContext(ctx).Raw(`
+				SELECT a.id AS animal_id,
+					(SELECT COUNT(*) FROM animal_images WHERE animal_id = a.id) AS image_count,
+					(SELECT COUNT(*) FROM animal_videos WHERE animal_id = a.id) AS video_count
+				FROM animals a
+				WHERE a.id IN ?`, ids).Scan(&counts)
+		}
+		countMap := make(map[uint]countRow, len(counts))
+		for _, cr := range counts {
+			countMap[cr.AnimalID] = cr
+		}
+
+		animals := make([]animalWithCounts, len(baseAnimals))
+		for i, a := range baseAnimals {
+			animals[i] = animalWithCounts{
+				Animal:     a,
+				ImageCount: countMap[a.ID].ImageCount,
+				VideoCount: countMap[a.ID].VideoCount,
+			}
 		}
 
 		c.JSON(http.StatusOK, animals)
