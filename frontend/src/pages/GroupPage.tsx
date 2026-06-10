@@ -955,6 +955,7 @@ const GroupPage: React.FC = () => {
                       className="animal-card"
                       role="link"
                       tabIndex={0}
+                      aria-label={`View ${animal.name}`}
                       onClick={() => navigate(`/groups/${id}/animals/${animal.id}/view`)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
@@ -1042,6 +1043,9 @@ const GroupPage: React.FC = () => {
                             to={`/groups/${id}/animals/${animal.id}/photos`}
                             className={`media-pill ${(animal.image_count ?? 0) > 0 ? 'has-media' : 'no-media'}`}
                             onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+                            }}
                             aria-label={`${animal.image_count ?? 0} photos`}
                           >
                             📷 {animal.image_count ?? 0}
@@ -1050,6 +1054,9 @@ const GroupPage: React.FC = () => {
                             to={`/groups/${id}/animals/${animal.id}/photos`}
                             className={`media-pill ${(animal.video_count ?? 0) > 0 ? 'has-media' : 'no-media'}`}
                             onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+                            }}
                             aria-label={`${animal.video_count ?? 0} videos`}
                           >
                             🎥 {animal.video_count ?? 0}
