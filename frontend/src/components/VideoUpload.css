@@ -5,6 +5,7 @@
 }
 
 .video-upload__dropzone {
+  width: 100%;
   border: 2px dashed var(--border, #cbd5e1);
   border-radius: var(--radius-md, 0.375rem);
   padding: 2rem 1rem;
@@ -13,6 +14,7 @@
   background: var(--bg-secondary, #f9fafb);
   transition: border-color 0.15s ease, background-color 0.15s ease;
   user-select: none;
+  min-height: 0;
 }
 
 .video-upload__dropzone:hover,
@@ -53,6 +55,11 @@
   inset: 0;
   cursor: pointer;
   outline: none;
+  border: none;
+  padding: 0;
+  background: none;
+  min-height: 0;
+  min-width: 0;
 }
 
 .video-upload__thumbnail-clickable:focus-visible {
@@ -128,6 +135,12 @@
   line-height: 1;
   min-height: 0;
   min-width: 0;
+}
+
+.video-upload__thumbnail-repick::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
 }
 
 .video-upload__thumbnail-repick:hover {

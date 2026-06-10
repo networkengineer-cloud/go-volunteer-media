@@ -20,6 +20,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const thumbnailPromiseRef = useRef<Promise<{ blob: Blob; duration: number }> | null>(null);
   const thumbnailObjectUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,7 +43,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
         thumbnailObjectUrlRef.current = url;
         setThumbnailUrl(url);
       })
-      .catch(() => {});
+      .catch(() => { setThumbnailFailed(true); });
   };
 
   useEffect(() => {
@@ -55,6 +56,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       setVideoFile(null);
     } else {
       setVideoFile(preselectedFile);
+      setCaption('');
       if (thumbnailObjectUrlRef.current) {
         URL.revokeObjectURL(thumbnailObjectUrlRef.current);
         thumbnailObjectUrlRef.current = null;
@@ -68,6 +70,8 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   const extractThumbnail = (file: File): Promise<{ blob: Blob; duration: number }> =>
     new Promise((resolve, reject) => {
       const video = document.createElement('video');
+      // 'auto' tells iOS Safari to buffer frame data, not just metadata —
+      // without it, videoWidth/videoHeight are 0 at canvas capture time on iOS.
       video.preload = 'auto';
       video.muted = true;
       video.playsInline = true;
@@ -119,8 +123,14 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
           done();
         };
 
+        // Seek to 0.5 s rather than 0: iOS HEVC streams may not have a decodable
+        // keyframe at t=0, causing canvas.toBlob() to return null. Fall back to 0
+        // when duration is NaN (some formats before loadedmetadata fully resolves);
+        // Math.min(0.5, NaN) === NaN and assigning NaN to currentTime is a no-op
+        // that leaves onseeked unregistered, hanging the Promise forever.
         video.currentTime = isFinite(video.duration) ? Math.min(0.5, video.duration) : 0;
 
+        // Guard against onseeked never firing (corrupted file, certain WebKit builds).
         setTimeout(() => {
           video.onseeked = null;
           if (!settled) {
@@ -154,6 +164,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
     }
     setError(null);
     setVideoFile(file);
+    setThumbnailFailed(false);
     if (thumbnailObjectUrlRef.current) {
       URL.revokeObjectURL(thumbnailObjectUrlRef.current);
       thumbnailObjectUrlRef.current = null;
@@ -170,6 +181,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
     setCaption('');
     setError(null);
     setThumbnailUrl(null);
+    setThumbnailFailed(false);
     thumbnailPromiseRef.current = null;
     if (thumbnailObjectUrlRef.current) {
       URL.revokeObjectURL(thumbnailObjectUrlRef.current);
@@ -181,7 +193,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   };
 
   const handleUpload = async () => {
-    if (!videoFile) return;
+    if (!videoFile || uploading) return;
     setUploading(true);
     setError(null);
 
@@ -221,31 +233,23 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       />
 
       {!videoFile ? (
-        <div
+        <button
+          type="button"
           className="video-upload__dropzone"
-          role="button"
-          tabIndex={0}
           aria-label="Choose a video file"
           onClick={() => fileInputRef.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
-          }}
         >
           <div className="video-upload__dropzone-icon" aria-hidden="true">🎬</div>
           <div className="video-upload__dropzone-label">Tap to choose a video</div>
           <div className="video-upload__dropzone-hint">MP4 or MOV · up to 200 MB</div>
-        </div>
+        </button>
       ) : (
         <div className="video-upload__thumbnail">
-          <div
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             aria-label="Change video"
             className="video-upload__thumbnail-clickable"
             onClick={() => fileInputRef.current?.click()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
-            }}
           >
             <div
               className="video-upload__thumbnail-bg"
@@ -256,9 +260,9 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
               <div className="video-upload__thumbnail-play-circle">▶</div>
             </div>
             <div className="video-upload__thumbnail-meta">
-              {videoFile.name} · {fileSizeMB} MB
+              {thumbnailFailed ? 'Preview unavailable' : `${videoFile.name} · ${fileSizeMB} MB`}
             </div>
-          </div>
+          </button>
           <button
             type="button"
             className="video-upload__thumbnail-repick"
