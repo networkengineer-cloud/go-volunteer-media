@@ -239,11 +239,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
         >
           <div
             className="video-upload__thumbnail-bg"
-            ref={(el) => {
-              if (el && thumbnailUrl) {
-                el.style.backgroundImage = `url(${thumbnailUrl})`;
-              }
-            }}
+            style={thumbnailUrl ? { backgroundImage: `url(${thumbnailUrl})` } : undefined}
           />
           <div className="video-upload__thumbnail-overlay" />
           <div className="video-upload__thumbnail-play">
