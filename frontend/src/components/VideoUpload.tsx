@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { animalsApi } from '../api/client';
+import Button from './Button';
+import './VideoUpload.css';
 
 const MAX_VIDEO_SIZE = 200 * 1024 * 1024;
 const ALLOWED_TYPES = ['video/mp4', 'video/quicktime'];
@@ -17,10 +19,32 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
   const [caption, setCaption] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Thumbnail extraction starts as soon as a file is selected so it runs
-  // in the background while the user types a caption. By upload time it's
-  // usually already resolved and only the network transfer remains.
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const thumbnailPromiseRef = useRef<Promise<{ blob: Blob; duration: number }> | null>(null);
+  const thumbnailObjectUrlRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const generationRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (thumbnailObjectUrlRef.current) {
+        URL.revokeObjectURL(thumbnailObjectUrlRef.current);
+      }
+    };
+  }, []);
+
+  const applyThumbnailPromise = (promise: Promise<{ blob: Blob; duration: number }>) => {
+    const gen = ++generationRef.current;
+    promise
+      .then(({ blob }) => {
+        if (gen !== generationRef.current) return;
+        const url = URL.createObjectURL(blob);
+        thumbnailObjectUrlRef.current = url;
+        setThumbnailUrl(url);
+      })
+      .catch(() => { if (gen === generationRef.current) setThumbnailFailed(true); });
+  };
 
   useEffect(() => {
     if (!preselectedFile) return;
@@ -31,31 +55,24 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       setError('This video is too large. Please use a clip under 200MB.');
       setVideoFile(null);
     } else {
-      thumbnailPromiseRef.current = extractThumbnail(preselectedFile);
+      setVideoFile(preselectedFile);
+      setCaption('');
+      setThumbnailFailed(false);
+      if (thumbnailObjectUrlRef.current) {
+        URL.revokeObjectURL(thumbnailObjectUrlRef.current);
+        thumbnailObjectUrlRef.current = null;
+      }
+      const promise = extractThumbnail(preselectedFile);
+      thumbnailPromiseRef.current = promise;
+      applyThumbnailPromise(promise);
     }
   }, [preselectedFile]);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setError('Only MP4 and MOV videos are supported.');
-      return;
-    }
-    if (file.size > MAX_VIDEO_SIZE) {
-      setError('This video is too large. Please use a clip under 200MB.');
-      return;
-    }
-    setError(null);
-    setVideoFile(file);
-    thumbnailPromiseRef.current = extractThumbnail(file);
-  };
 
   const extractThumbnail = (file: File): Promise<{ blob: Blob; duration: number }> =>
     new Promise((resolve, reject) => {
       const video = document.createElement('video');
-      // 'auto' tells iOS Safari to buffer frame data, not just metadata.
-      // Without this, videoWidth/videoHeight are 0 at capture time on iOS.
+      // 'auto' tells iOS Safari to buffer frame data, not just metadata —
+      // without it, videoWidth/videoHeight are 0 at canvas capture time on iOS.
       video.preload = 'auto';
       video.muted = true;
       video.playsInline = true;
@@ -93,9 +110,6 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
         );
       };
 
-      // Use loadedmetadata + explicit seek so iOS Safari decodes an actual frame
-      // before canvas capture. loadeddata with currentTime=0 is unreliable on iOS
-      // because frame 0 may not be decoded until a seek completes.
       video.onloadedmetadata = () => {
         let settled = false;
         const done = () => {
@@ -111,10 +125,10 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
         };
 
         // Seek to 0.5 s rather than 0: iOS HEVC streams may not have a decodable
-        // keyframe at exactly t=0, causing canvas.toBlob() to return null.
-        // Fall back to 0 when duration is NaN (some formats at loadedmetadata time);
+        // keyframe at t=0, causing canvas.toBlob() to return null. Fall back to 0
+        // when duration is NaN (some formats before loadedmetadata fully resolves);
         // Math.min(0.5, NaN) === NaN and assigning NaN to currentTime is a no-op
-        // that would leave onseeked unregistered and the Promise hanging forever.
+        // that leaves onseeked unregistered, hanging the Promise forever.
         video.currentTime = isFinite(video.duration) ? Math.min(0.5, video.duration) : 0;
 
         // Guard against onseeked never firing (corrupted file, certain WebKit builds).
@@ -138,8 +152,49 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       video.load();
     });
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setError('Only MP4 and MOV videos are supported.');
+      return;
+    }
+    if (file.size > MAX_VIDEO_SIZE) {
+      setError('This video is too large. Please use a clip under 200MB.');
+      return;
+    }
+    setError(null);
+    setVideoFile(file);
+    setThumbnailFailed(false);
+    if (thumbnailObjectUrlRef.current) {
+      URL.revokeObjectURL(thumbnailObjectUrlRef.current);
+      thumbnailObjectUrlRef.current = null;
+    }
+    setThumbnailUrl(null);
+    const promise = extractThumbnail(file);
+    thumbnailPromiseRef.current = promise;
+    applyThumbnailPromise(promise);
+  };
+
+  const clearSelection = () => {
+    generationRef.current++;
+    setVideoFile(null);
+    setCaption('');
+    setError(null);
+    setThumbnailUrl(null);
+    setThumbnailFailed(false);
+    thumbnailPromiseRef.current = null;
+    if (thumbnailObjectUrlRef.current) {
+      URL.revokeObjectURL(thumbnailObjectUrlRef.current);
+      thumbnailObjectUrlRef.current = null;
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleUpload = async () => {
-    if (!videoFile) return;
+    if (!videoFile || uploading) return;
     setUploading(true);
     setError(null);
 
@@ -157,41 +212,92 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       await animalsApi.uploadVideo(groupId, animalId, videoFile, thumbnailBlob, caption, duration);
       onSuccess();
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
       setError(msg || 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
   };
 
+  const fileSizeMB = videoFile ? (videoFile.size / 1024 / 1024).toFixed(1) : '';
+
   return (
     <div className="video-upload">
-      <h3>Upload Video</h3>
       <input
+        ref={fileInputRef}
         type="file"
         accept="video/mp4,video/quicktime,.mp4,.mov"
         onChange={handleFileSelect}
         disabled={uploading}
+        style={{ display: 'none' }}
+        aria-hidden="true"
       />
-      {videoFile && (
-        <p className="file-selected">{videoFile.name} ({(videoFile.size / 1024 / 1024).toFixed(1)} MB)</p>
+
+      {!videoFile ? (
+        <button
+          type="button"
+          className="video-upload__dropzone"
+          aria-label="Choose a video file"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <div className="video-upload__dropzone-icon" aria-hidden="true">🎬</div>
+          <div className="video-upload__dropzone-label">Tap to choose a video</div>
+          <div className="video-upload__dropzone-hint">MP4 or MOV · up to 200 MB</div>
+        </button>
+      ) : (
+        <div className="video-upload__thumbnail">
+          <button
+            type="button"
+            aria-label="Change video"
+            className="video-upload__thumbnail-clickable"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <div
+              className="video-upload__thumbnail-bg"
+              style={thumbnailUrl ? { backgroundImage: `url("${thumbnailUrl}")` } : undefined}
+            />
+            <div className="video-upload__thumbnail-overlay" />
+            <div className="video-upload__thumbnail-play">
+              <div className="video-upload__thumbnail-play-circle">▶</div>
+            </div>
+            <div className="video-upload__thumbnail-meta">
+              {thumbnailFailed ? 'Preview unavailable' : `${videoFile.name} · ${fileSizeMB} MB`}
+            </div>
+          </button>
+          <button
+            type="button"
+            className="video-upload__thumbnail-repick"
+            aria-label="Remove selected video"
+            disabled={uploading}
+            onClick={clearSelection}
+          >
+            ✕
+          </button>
+        </div>
       )}
+
       <input
         type="text"
+        className="video-upload__caption"
         placeholder="Caption (optional)"
         value={caption}
         onChange={(e) => setCaption(e.target.value)}
-        disabled={uploading}
+        disabled={!videoFile || uploading}
       />
-      {error && <p className="upload-error">{error}</p>}
-      <div className="upload-actions">
-        <button onClick={onCancel} disabled={uploading} className="btn-secondary">
+
+      {error && (
+        <p className="video-upload__error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="video-upload__actions">
+        <Button variant="secondary" onClick={onCancel} disabled={uploading}>
           Cancel
-        </button>
-        <button onClick={handleUpload} disabled={!videoFile || uploading} className="btn-primary">
+        </Button>
+        <Button onClick={handleUpload} disabled={!videoFile} loading={uploading}>
           {uploading ? 'Uploading…' : 'Upload Video'}
-        </button>
+        </Button>
       </div>
     </div>
   );
