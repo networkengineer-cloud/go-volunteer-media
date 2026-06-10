@@ -243,7 +243,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
         >
           <div
             className="video-upload__thumbnail-bg"
-            style={thumbnailUrl ? { backgroundImage: `url(${thumbnailUrl})` } : undefined}
+            style={thumbnailUrl ? { backgroundImage: `url("${thumbnailUrl}")` } : undefined}
           />
           <div className="video-upload__thumbnail-overlay" />
           <div className="video-upload__thumbnail-play">
@@ -256,6 +256,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
             type="button"
             className="video-upload__thumbnail-repick"
             aria-label="Remove selected video"
+            disabled={uploading}
             onClick={(e) => {
               e.stopPropagation();
               clearSelection();
@@ -281,8 +282,7 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
         </p>
       )}
 
-      {/* modal__actions styles come from Modal.css — requires Modal component in tree */}
-      <div className="modal__actions">
+      <div className="video-upload__actions">
         <Button variant="secondary" onClick={onCancel} disabled={uploading}>
           Cancel
         </Button>

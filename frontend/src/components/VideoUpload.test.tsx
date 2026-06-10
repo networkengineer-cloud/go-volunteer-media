@@ -142,8 +142,7 @@ describe('VideoUpload', () => {
       await selectFile(container);
       await waitFor(() => {
         const bg = container.querySelector('.video-upload__thumbnail-bg') as HTMLElement;
-        // JSDOM's CSS parser normalizes URLs to quoted format
-        expect(bg.style.backgroundImage).toMatch(/url\(.*blob:mock-thumbnail.*\)/);
+        expect(bg.style.backgroundImage).toBe('url("blob:mock-thumbnail")');
       });
     });
 
@@ -212,6 +211,44 @@ describe('VideoUpload', () => {
       Object.defineProperty(bigFile, 'size', { value: 201 * 1024 * 1024 });
       await userEvent.upload(input, bigFile);
       expect(screen.getByRole('alert')).toHaveTextContent('This video is too large.');
+    });
+  });
+
+  describe('preselectedFile prop', () => {
+    it('shows thumbnail banner immediately when a valid preselectedFile is provided', async () => {
+      const file = new File(['video-data'], 'preselected.mp4', { type: 'video/mp4' });
+      render(<VideoUpload {...defaultProps} preselectedFile={file} />);
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Change video' })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', { name: 'Choose a video file' })).not.toBeInTheDocument();
+    });
+
+    it('shows filename in thumbnail meta for a preselected file', async () => {
+      const file = new File(['video-data'], 'preselected.mp4', { type: 'video/mp4' });
+      render(<VideoUpload {...defaultProps} preselectedFile={file} />);
+      await waitFor(() => {
+        expect(screen.getByText(/preselected\.mp4/)).toBeInTheDocument();
+      });
+    });
+
+    it('shows error and drop zone for an invalid preselected file type', async () => {
+      const file = new File(['data'], 'clip.avi', { type: 'video/avi' });
+      render(<VideoUpload {...defaultProps} preselectedFile={file} />);
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('Only MP4 and MOV videos are supported.');
+      });
+      expect(screen.getByRole('button', { name: 'Choose a video file' })).toBeInTheDocument();
+    });
+
+    it('shows error and drop zone for an oversized preselected file', async () => {
+      const file = new File(['x'], 'huge.mp4', { type: 'video/mp4' });
+      Object.defineProperty(file, 'size', { value: 201 * 1024 * 1024 });
+      render(<VideoUpload {...defaultProps} preselectedFile={file} />);
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('This video is too large.');
+      });
+      expect(screen.getByRole('button', { name: 'Choose a video file' })).toBeInTheDocument();
     });
   });
 

@@ -152,3 +152,24 @@
   font-size: var(--text-sm, 0.875rem);
   margin: 0;
 }
+
+.video-upload__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-md, 1rem);
+  padding-top: var(--space-lg, 1.5rem);
+  margin-top: var(--space-lg, 1.5rem);
+  border-top: 1px solid var(--border, #e5e7eb);
+}
+
+@media (max-width: 640px) {
+  .video-upload__actions {
+    flex-direction: column-reverse;
+    gap: var(--space-sm, 0.5rem);
+  }
+
+  .video-upload__actions > * {
+    width: 100%;
+  }
+}
