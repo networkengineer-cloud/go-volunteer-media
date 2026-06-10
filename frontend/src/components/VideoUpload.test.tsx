@@ -13,23 +13,24 @@ vi.mock('../api/client', () => ({
 const originalCreateElement = document.createElement.bind(document);
 
 function makeMockVideo() {
-  const el = originalCreateElement('div') as any;
-  el.videoWidth = 640;
-  el.videoHeight = 480;
-  el.duration = 5;
+  const el = originalCreateElement('div') as unknown as HTMLVideoElement;
+  Object.defineProperty(el, 'videoWidth', { value: 640, writable: true });
+  Object.defineProperty(el, 'videoHeight', { value: 480, writable: true });
+  Object.defineProperty(el, 'duration', { value: 5, writable: true });
   el.muted = false;
   el.playsInline = false;
   el.preload = '';
   el.src = '';
-  el.onloadedmetadata = null;
-  el.onseeked = null;
-  el.onerror = null;
-  el.load = function () {
-    Promise.resolve().then(() => el.onloadedmetadata?.());
+  (el as any).onloadedmetadata = null;
+  (el as any).onseeked = null;
+  (el as any).onerror = null;
+  (el as any).load = function () {
+    Promise.resolve().then(() => (el as any).onloadedmetadata?.());
   };
   Object.defineProperty(el, 'currentTime', {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     set(_val: number) {
-      Promise.resolve().then(() => el.onseeked?.());
+      Promise.resolve().then(() => (el as any).onseeked?.());
     },
     get() { return 0; },
     configurable: true,
@@ -38,11 +39,11 @@ function makeMockVideo() {
 }
 
 function makeMockCanvas() {
-  const el = originalCreateElement('div') as any;
+  const el = originalCreateElement('div') as unknown as HTMLCanvasElement;
   el.width = 0;
   el.height = 0;
-  el.getContext = () => ({ drawImage: vi.fn() });
-  el.toBlob = (cb: (blob: Blob) => void) => {
+  (el as any).getContext = () => ({ drawImage: vi.fn() });
+  el.toBlob = (cb: (blob: Blob | null) => void) => {
     cb(new Blob(['fake-jpeg'], { type: 'image/jpeg' }));
   };
   return el;
@@ -216,7 +217,7 @@ describe('VideoUpload', () => {
 
   describe('uploading state', () => {
     it('disables both buttons while uploading', async () => {
-      vi.mocked(animalsApi.uploadVideo).mockReturnValue(new Promise(() => {}) as any);
+      vi.mocked(animalsApi.uploadVideo).mockImplementation(() => new Promise(() => {}));
       const user = userEvent.setup();
       const { container } = render(<VideoUpload {...defaultProps} />);
 

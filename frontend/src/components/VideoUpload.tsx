@@ -59,7 +59,6 @@ const VideoUpload: React.FC<VideoUploadProps> = ({ groupId, animalId, onSuccess,
       thumbnailPromiseRef.current = promise;
       applyThumbnailPromise(promise);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselectedFile]);
 
   const extractThumbnail = (file: File): Promise<{ blob: Blob; duration: number }> =>
