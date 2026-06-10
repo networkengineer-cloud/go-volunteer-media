@@ -57,6 +57,8 @@ const defaultProps = {
 };
 
 beforeEach(() => {
+  defaultProps.onSuccess.mockReset();
+  defaultProps.onCancel.mockReset();
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-thumbnail');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
@@ -99,62 +101,62 @@ describe('VideoUpload', () => {
   });
 
   describe('file selected state', () => {
-    async function selectFile(filename = 'clip.mp4', type = 'video/mp4') {
-      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    async function selectFile(container: HTMLElement, filename = 'clip.mp4', type = 'video/mp4') {
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
       const file = new File(['video-data'], filename, { type });
       await userEvent.upload(input, file);
     }
 
     it('shows the thumbnail banner after a valid file is selected', async () => {
-      render(<VideoUpload {...defaultProps} />);
-      await selectFile();
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      await selectFile(container);
       expect(screen.getByRole('button', { name: 'Change video' })).toBeInTheDocument();
     });
 
     it('hides the drop zone after a file is selected', async () => {
-      render(<VideoUpload {...defaultProps} />);
-      await selectFile();
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      await selectFile(container);
       expect(screen.queryByRole('button', { name: 'Choose a video file' })).not.toBeInTheDocument();
     });
 
     it('displays the filename in the thumbnail meta', async () => {
-      render(<VideoUpload {...defaultProps} />);
-      await selectFile('my-clip.mp4');
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      await selectFile(container, 'my-clip.mp4');
       expect(screen.getByText(/my-clip\.mp4/)).toBeInTheDocument();
     });
 
     it('enables the caption field', async () => {
-      render(<VideoUpload {...defaultProps} />);
-      await selectFile();
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      await selectFile(container);
       expect(screen.getByPlaceholderText('Caption (optional)')).not.toBeDisabled();
     });
 
     it('enables the upload button', async () => {
-      render(<VideoUpload {...defaultProps} />);
-      await selectFile();
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      await selectFile(container);
       expect(screen.getByRole('button', { name: 'Upload Video' })).not.toBeDisabled();
     });
 
     it('sets the thumbnail background image once the extraction promise resolves', async () => {
-      render(<VideoUpload {...defaultProps} />);
-      await selectFile();
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      await selectFile(container);
       await waitFor(() => {
-        const bg = document.querySelector('.video-upload__thumbnail-bg') as HTMLElement;
+        const bg = container.querySelector('.video-upload__thumbnail-bg') as HTMLElement;
         expect(bg.style.backgroundImage).toBe('url(blob:mock-thumbnail)');
       });
     });
 
     it('clears the selection and returns to drop zone when ✕ is clicked', async () => {
       const user = userEvent.setup();
-      render(<VideoUpload {...defaultProps} />);
-      await selectFile();
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      await selectFile(container);
       await user.click(screen.getByRole('button', { name: 'Remove selected video' }));
       expect(screen.getByRole('button', { name: 'Choose a video file' })).toBeInTheDocument();
     });
 
     it('clears an existing error when a new valid file is selected', async () => {
-      render(<VideoUpload {...defaultProps} />);
-      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
       // Select invalid file to trigger an error
       await userEvent.upload(input, new File(['data'], 'clip.avi', { type: 'video/avi' }));
       expect(screen.getByRole('alert')).toBeInTheDocument();
@@ -166,15 +168,15 @@ describe('VideoUpload', () => {
 
   describe('validation errors', () => {
     it('shows error for unsupported file type', async () => {
-      render(<VideoUpload {...defaultProps} />);
-      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
       await userEvent.upload(input, new File(['data'], 'clip.avi', { type: 'video/avi' }));
       expect(screen.getByRole('alert')).toHaveTextContent('Only MP4 and MOV videos are supported.');
     });
 
     it('shows error for oversized file', async () => {
-      render(<VideoUpload {...defaultProps} />);
-      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const { container } = render(<VideoUpload {...defaultProps} />);
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
       const bigFile = new File(['x'.repeat(1)], 'huge.mp4', { type: 'video/mp4' });
       Object.defineProperty(bigFile, 'size', { value: 201 * 1024 * 1024 });
       await userEvent.upload(input, bigFile);
@@ -186,9 +188,9 @@ describe('VideoUpload', () => {
     it('disables both buttons while uploading', async () => {
       vi.mocked(animalsApi.uploadVideo).mockReturnValue(new Promise(() => {}) as any);
       const user = userEvent.setup();
-      render(<VideoUpload {...defaultProps} />);
+      const { container } = render(<VideoUpload {...defaultProps} />);
 
-      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
       await userEvent.upload(input, new File(['video'], 'clip.mp4', { type: 'video/mp4' }));
 
       await waitFor(() =>
@@ -199,7 +201,8 @@ describe('VideoUpload', () => {
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-        expect(document.querySelector('.button--loading')).toBeInTheDocument();
+        expect(container.querySelector('.button--loading')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Uploading…' })).toBeDisabled();
       });
     });
   });
