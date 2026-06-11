@@ -1038,6 +1038,7 @@ const GroupPage: React.FC = () => {
                             })()}
                           </p>
                         )}
+                        {/* Both pills link to /photos — PhotoGallery renders images and videos on the same page */}
                         <div className="media-indicator">
                           {(animal.image_count ?? 0) > 0 ? (
                             <Link
