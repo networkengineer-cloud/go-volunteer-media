@@ -521,6 +521,18 @@
   border-color: #b45309;
 }
 
+.badge-returned {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #a5b4fc;
+}
+
+[data-theme='dark'] .badge-returned {
+  background: #312e81;
+  color: #e0e7ff;
+  border-color: #6366f1;
+}
+
 .animal-info .breed {
   color: var(--text-secondary);
   font-size: 0.9375rem;
