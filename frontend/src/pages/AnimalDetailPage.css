@@ -164,6 +164,18 @@
   white-space: nowrap;
 }
 
+.badge-returned {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #a5b4fc;
+}
+
+[data-theme='dark'] .badge-returned {
+  background: #312e81;
+  color: #e0e7ff;
+  border-color: #6366f1;
+}
+
 
 .status.available {
   background: #c6f6d5;

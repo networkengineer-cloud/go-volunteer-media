@@ -463,6 +463,15 @@ const AnimalDetailPage: React.FC = () => {
               </p>
               <div className="status-badges">
                 <span className={`status ${animal.status}`}>{animal.status}</span>
+                {animal.is_returned && (
+                  <span
+                    className="badge badge-returned"
+                    title="Previously adopted and returned to shelter"
+                    aria-label="Returned"
+                  >
+                    Returned
+                  </span>
+                )}
               </div>
               {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
                 <div className="quarantine-info">
