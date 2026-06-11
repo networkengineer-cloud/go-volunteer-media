@@ -983,15 +983,6 @@ const GroupPage: React.FC = () => {
                               {duplicateIndex} of {duplicates.length}
                             </span>
                           )}
-                          {animal.return_count > 0 && (
-                            <span 
-                              className="badge badge-returning" 
-                              title={`This animal has returned to the shelter ${animal.return_count} time${animal.return_count > 1 ? 's' : ''}`}
-                              aria-label={`Returning animal - ${animal.return_count} return${animal.return_count > 1 ? 's' : ''}`}
-                            >
-                              ↩ Returned {animal.return_count}×
-                            </span>
-                          )}
                         </div>
                         {animal.breed && <p className="breed">{animal.breed}</p>}
                         <p className="age">{formatAge(cardAgeYears, cardAgeMonths)}</p>
