@@ -24,8 +24,25 @@ func setupAnimalTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
 
+	// SQLite in-memory databases are per-connection; pin to one to share state.
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("Failed to get sql.DB: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+
 	// Run migrations
-	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{}, &models.Animal{}, &models.AnimalTag{}, &models.AnimalNameHistory{})
+	err = db.AutoMigrate(
+		&models.User{},
+		&models.Group{},
+		&models.UserGroup{},
+		&models.Animal{},
+		&models.AnimalTag{},
+		&models.AnimalNameHistory{},
+		&models.AnimalImage{},
+		&models.AnimalVideo{},
+	)
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
 	}

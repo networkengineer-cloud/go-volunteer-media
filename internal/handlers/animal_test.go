@@ -13,6 +13,14 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 )
 
+// animalListItem is the minimal shape of a GetAnimals response entry used across tests.
+type animalListItem struct {
+	ID         uint   `json:"id"`
+	Name       string `json:"name"`
+	ImageCount *int   `json:"image_count"`
+	VideoCount *int   `json:"video_count"`
+}
+
 // TestGetAnimals_Success tests successful retrieval of animals
 func TestGetAnimals_Success(t *testing.T) {
 	db := setupAnimalTestDB(t)
@@ -33,7 +41,7 @@ func TestGetAnimals_Success(t *testing.T) {
 		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
 	}
 
-	var animals []models.Animal
+	var animals []animalListItem
 	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
@@ -112,7 +120,7 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 				return
 			}
 
-			var animals []models.Animal
+			var animals []animalListItem
 			if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 				t.Fatalf("Failed to unmarshal response: %v", err)
 			}
@@ -176,7 +184,7 @@ func TestGetAnimals_NameSearch(t *testing.T) {
 				return
 			}
 
-			var animals []models.Animal
+			var animals []animalListItem
 			if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 				t.Fatalf("Failed to unmarshal response: %v", err)
 			}
@@ -231,7 +239,7 @@ func TestGetAnimals_AdminAccess(t *testing.T) {
 		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
 	}
 
-	var animals []models.Animal
+	var animals []animalListItem
 	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
@@ -1519,6 +1527,78 @@ func TestUpdateAnimal_IsReturned(t *testing.T) {
 				t.Errorf("Expected is_returned %v, got %v", tt.wantValue, updatedAnimal.IsReturned)
 			}
 		})
+	}
+}
+
+// TestGetAnimals_IncludesMediaCounts verifies that GetAnimals returns image_count and video_count for each animal
+func TestGetAnimals_IncludesMediaCounts(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "counter", "counter@example.com", false)
+
+	// One animal with 2 images and 1 video
+	rich := createTestAnimal(t, db, group.ID, "Biscuit", "Dog")
+	animalIDRef := rich.ID
+	db.Create(&models.AnimalImage{AnimalID: &animalIDRef, UserID: user.ID, ImageURL: "/img/1.jpg"})
+	db.Create(&models.AnimalImage{AnimalID: &animalIDRef, UserID: user.ID, ImageURL: "/img/2.jpg"})
+	db.Create(&models.AnimalVideo{AnimalID: animalIDRef, UserID: user.ID, VideoURL: "/vid/1.mp4", ThumbnailURL: "/img/t.jpg"})
+
+	// One animal with no media
+	createTestAnimal(t, db, group.ID, "Mochi", "Cat")
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/v1/groups/%d/animals?status=all", group.ID), nil)
+
+	GetAnimals(db)(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var animals []animalListItem
+	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(animals) != 2 {
+		t.Fatalf("expected 2 animals, got %d", len(animals))
+	}
+
+	// Find Biscuit's entry and dereference counts (nil pointer = field absent = bug)
+	var imageCount, videoCount int
+	for _, a := range animals {
+		if a.ID == rich.ID {
+			if a.ImageCount == nil {
+				t.Fatal("image_count field missing from response")
+			}
+			if a.VideoCount == nil {
+				t.Fatal("video_count field missing from response")
+			}
+			imageCount = *a.ImageCount
+			videoCount = *a.VideoCount
+		}
+	}
+
+	if imageCount != 2 {
+		t.Errorf("expected image_count 2 for Biscuit, got %d", imageCount)
+	}
+	if videoCount != 1 {
+		t.Errorf("expected video_count 1 for Biscuit, got %d", videoCount)
+	}
+
+	// Mochi has no media — verify the fields exist and are zero
+	for _, a := range animals {
+		if a.ID != rich.ID {
+			ic, vc := 0, 0
+			if a.ImageCount != nil {
+				ic = *a.ImageCount
+			}
+			if a.VideoCount != nil {
+				vc = *a.VideoCount
+			}
+			if ic != 0 || vc != 0 {
+				t.Errorf("expected zero counts for Mochi, got images=%d videos=%d", ic, vc)
+			}
+		}
 	}
 }
 

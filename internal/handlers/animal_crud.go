@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,6 +22,13 @@ func escapeSQLWildcards(input string) string {
 	result = strings.ReplaceAll(result, "%", "\\%")
 	result = strings.ReplaceAll(result, "_", "\\_")
 	return result
+}
+
+// animalWithCounts extends Animal with photo/video counts for the list endpoint.
+type animalWithCounts struct {
+	models.Animal
+	ImageCount int `json:"image_count"`
+	VideoCount int `json:"video_count"`
 }
 
 // GetAnimals returns all animals in a group with optional filtering
@@ -63,10 +71,49 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 			query = query.Where("LOWER(name) LIKE ?", "%"+escaped+"%")
 		}
 
-		var animals []models.Animal
-		if err := query.Preload("Tags").Find(&animals).Error; err != nil {
+		var baseAnimals []models.Animal
+		if err := query.Preload("Tags").Find(&baseAnimals).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
 			return
+		}
+
+		// Collect IDs for count subquery
+		type countRow struct {
+			AnimalID   uint `gorm:"column:animal_id"`
+			ImageCount int  `gorm:"column:image_count"`
+			VideoCount int  `gorm:"column:video_count"`
+		}
+		ids := make([]uint, len(baseAnimals))
+		for i, a := range baseAnimals {
+			ids[i] = a.ID
+		}
+		var counts []countRow
+		if len(ids) > 0 {
+			// Best-effort: counts remain zero on error so the list still renders.
+			if result := db.WithContext(ctx).Raw(`
+				SELECT a.id AS animal_id,
+					COUNT(DISTINCT ai.id) AS image_count,
+					COUNT(DISTINCT av.id) AS video_count
+				FROM animals a
+				LEFT JOIN animal_images ai ON ai.animal_id = a.id
+				LEFT JOIN animal_videos av ON av.animal_id = a.id
+				WHERE a.id IN ?
+				GROUP BY a.id`, ids).Scan(&counts); result.Error != nil {
+				log.Printf("GetAnimals: failed to fetch media counts: %v", result.Error)
+			}
+		}
+		countMap := make(map[uint]countRow, len(counts))
+		for _, cr := range counts {
+			countMap[cr.AnimalID] = cr
+		}
+
+		animals := make([]animalWithCounts, len(baseAnimals))
+		for i, a := range baseAnimals {
+			animals[i] = animalWithCounts{
+				Animal:     a,
+				ImageCount: countMap[a.ID].ImageCount,
+				VideoCount: countMap[a.ID].VideoCount,
+			}
 		}
 
 		c.JSON(http.StatusOK, animals)

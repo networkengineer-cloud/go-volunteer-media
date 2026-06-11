@@ -950,10 +950,19 @@ const GroupPage: React.FC = () => {
                   const { years: cardAgeYears, months: cardAgeMonths } = calculateAge(animal.estimated_birth_date, animal.age);
                   
                   return (
-                    <Link
+                    <div
                       key={animal.id}
-                      to={`/groups/${id}/animals/${animal.id}/view`}
                       className="animal-card"
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`View ${animal.name}`}
+                      onClick={() => navigate(`/groups/${id}/animals/${animal.id}/view`)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          navigate(`/groups/${id}/animals/${animal.id}/view`);
+                        }
+                      }}
                     >
                       {animal.image_url && (
                         <img
@@ -1029,8 +1038,41 @@ const GroupPage: React.FC = () => {
                             })()}
                           </p>
                         )}
+                        {/* Both pills link to /photos — PhotoGallery renders images and videos on the same page */}
+                        <div className="media-indicator">
+                          {(animal.image_count ?? 0) > 0 ? (
+                            <Link
+                              to={`/groups/${id}/animals/${animal.id}/photos`}
+                              className="media-pill has-media"
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.stopPropagation();
+                              }}
+                              aria-label={`${animal.image_count} photos`}
+                            >
+                              📷 {animal.image_count}
+                            </Link>
+                          ) : (
+                            <span className="media-pill no-media" aria-label="0 photos">📷 0</span>
+                          )}
+                          {(animal.video_count ?? 0) > 0 ? (
+                            <Link
+                              to={`/groups/${id}/animals/${animal.id}/photos`}
+                              className="media-pill has-media"
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.stopPropagation();
+                              }}
+                              aria-label={`${animal.video_count} videos`}
+                            >
+                              🎥 {animal.video_count}
+                            </Link>
+                          ) : (
+                            <span className="media-pill no-media" aria-label="0 videos">🎥 0</span>
+                          )}
+                        </div>
                       </div>
-                    </Link>
+                    </div>
                   );
                 })}
               </div>
