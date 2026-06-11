@@ -44,6 +44,7 @@ const AnimalForm: React.FC = () => {
     status: 'available',
     arrival_date: '',
     quarantine_start_date: '',
+    is_returned: false,
     protocol_document_url: '',
     protocol_document_name: '',
   });
@@ -717,6 +718,24 @@ const AnimalForm: React.FC = () => {
                 Date the animal entered the shelter. Used to calculate length of stay. Leave empty to use today's date.
               </p>
             </div>
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="is_returned" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="is_returned"
+                type="checkbox"
+                checked={formData.is_returned}
+                onChange={(e) => setFormData({ ...formData, is_returned: e.target.checked })}
+                aria-describedby="is-returned-helper"
+              />
+              <span className="form-field__label" style={{ marginBottom: 0 }}>
+                Previously adopted &amp; returned to shelter
+              </span>
+            </label>
+            <p id="is-returned-helper" className="form-field__helper">
+              Check if this animal was previously adopted out and has since come back.
+            </p>
           </div>
 
           <div className="form-field">
