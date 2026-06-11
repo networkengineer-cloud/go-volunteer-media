@@ -983,6 +983,15 @@ const GroupPage: React.FC = () => {
                               {duplicateIndex} of {duplicates.length}
                             </span>
                           )}
+                          {animal.is_returned && (
+                            <span
+                              className="badge badge-returned"
+                              title="Previously adopted and returned to shelter"
+                              aria-label="Returned"
+                            >
+                              Returned
+                            </span>
+                          )}
                         </div>
                         {animal.breed && <p className="breed">{animal.breed}</p>}
                         <p className="age">{formatAge(cardAgeYears, cardAgeMonths)}</p>
