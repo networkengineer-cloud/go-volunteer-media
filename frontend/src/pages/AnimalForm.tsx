@@ -721,17 +721,19 @@ const AnimalForm: React.FC = () => {
           </div>
 
           <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <label htmlFor="is_returned" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
               <input
+                id="is_returned"
                 type="checkbox"
                 checked={formData.is_returned}
                 onChange={(e) => setFormData({ ...formData, is_returned: e.target.checked })}
+                aria-describedby="is-returned-helper"
               />
               <span className="form-field__label" style={{ marginBottom: 0 }}>
                 Previously adopted &amp; returned to shelter
               </span>
             </label>
-            <p className="form-field__helper">
+            <p id="is-returned-helper" className="form-field__helper">
               Check if this animal was previously adopted out and has since come back.
             </p>
           </div>
