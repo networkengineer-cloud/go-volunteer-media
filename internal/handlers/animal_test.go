@@ -1485,6 +1485,12 @@ func TestUpdateAnimal_IsReturned(t *testing.T) {
 			isReturned: nil,
 			wantValue:  false,
 		},
+		{
+			name:       "any status with is_returned true",
+			status:     "available",
+			isReturned: boolPtr(true),
+			wantValue:  true,
+		},
 	}
 
 	for _, tt := range tests {
