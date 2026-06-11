@@ -226,31 +226,3 @@ test.describe('Returning Animals & Name Collision UX', () => {
   });
 });
 
-test.describe('Implementation Details', () => {
-  test('backend model changes', async ({ page }) => {
-    console.log('Backend Changes:');
-    console.log('  ✓ Added return_count field to Animal model (default: 0)');
-    console.log('  ✓ Increments on archived → available status change');
-    console.log('  ✓ Added CheckDuplicateNames handler');
-    console.log('  ✓ New API: GET /groups/:id/animals/check-duplicates?name=X');
-    console.log('  ✓ Returns DuplicateNameInfo with animals array');
-  });
-
-  test('frontend interface changes', async ({ page }) => {
-    console.log('Frontend Changes:');
-    console.log('  ✓ Animal interface: added return_count field');
-    console.log('  ✓ Added DuplicateNameInfo interface');
-    console.log('  ✓ animalsApi.checkDuplicates() method');
-    console.log('  ✓ GroupPage: calculates duplicates client-side');
-    console.log('  ✓ AnimalForm: calls API to check duplicates');
-    console.log('  ✓ AnimalDetailPage: shows return badge');
-  });
-
-  test('styling changes', async ({ page }) => {
-    console.log('Styling Changes:');
-    console.log('  ✓ GroupPage.css: .badge-duplicate, .badge-returning styles');
-    console.log('  ✓ AnimalDetailPage.css: .status-badges, .badge styles');
-    console.log('  ✓ Form.css: .duplicate-warning and child styles');
-    console.log('  ✓ Dark mode support for all new styles');
-  });
-});

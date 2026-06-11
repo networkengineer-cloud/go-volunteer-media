@@ -174,18 +174,6 @@ test.describe('Edge Cases & Error Handling', () => {
   });
 });
 
-test.describe('Backend Integration', () => {
-  test('documents backend behavior for unarchive workflow', async ({ page }) => {
-    console.log('Backend Logic:');
-    console.log('  ✓ When status changes from archived to available:');
-    console.log('    - Backend increments return_count automatically');
-    console.log('    - Backend clears is_returned flag');
-    console.log('    - Backend sets is_returned based on request value before clearing');
-    console.log('  ✓ Request includes is_returned value from modal');
-    console.log('  ✓ animal_crud.go line 211-218 handles the transition');
-    console.log('  ✓ The is_returned flag is transitional state, return_count is permanent');
-  });
-});
 
 test.describe('Comparison with Old Workflow', () => {
   test('documents improvements over previous implementation', async ({ page }) => {
