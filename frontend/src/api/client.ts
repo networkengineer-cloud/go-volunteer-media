@@ -206,7 +206,6 @@ export interface Animal {
   quarantine_start_date?: string;
   archived_date?: string;
   last_status_change?: string;
-  return_count: number;
   is_returned: boolean;
   image_count?: number;
   video_count?: number;
