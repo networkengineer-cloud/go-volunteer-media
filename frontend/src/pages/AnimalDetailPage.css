@@ -164,17 +164,6 @@
   white-space: nowrap;
 }
 
-.badge-returning {
-  background: #06b6d4;
-  color: #083344;
-  border: 1px solid #0891b2;
-}
-
-[data-theme='dark'] .badge-returning {
-  background: #164e63;
-  color: #cffafe;
-  border-color: #0e7490;
-}
 
 .status.available {
   background: #c6f6d5;

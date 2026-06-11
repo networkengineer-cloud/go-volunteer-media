@@ -463,15 +463,6 @@ const AnimalDetailPage: React.FC = () => {
               </p>
               <div className="status-badges">
                 <span className={`status ${animal.status}`}>{animal.status}</span>
-                {animal.return_count > 0 && (
-                  <span 
-                    className="badge badge-returning" 
-                    title={`This animal has returned to the shelter ${animal.return_count} time${animal.return_count > 1 ? 's' : ''} after being previously archived`}
-                    aria-label={`Returning animal - ${animal.return_count} return${animal.return_count > 1 ? 's' : ''}`}
-                  >
-                    ↩ Returned {animal.return_count}×
-                  </span>
-                )}
               </div>
               {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
                 <div className="quarantine-info">
