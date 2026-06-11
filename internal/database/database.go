@@ -216,6 +216,11 @@ func RunMigrations(db *gorm.DB) error {
 		logging.WithField("error", err.Error()).Warn("Failed to backfill is_edited flag")
 	}
 
+	// Drop return_count column from animals table
+	if err := dropReturnCount(db); err != nil {
+		return fmt.Errorf("failed to drop return_count column: %w", err)
+	}
+
 	return nil
 }
 
@@ -648,5 +653,14 @@ func backfillEstimatedBirthDates(db *gorm.DB) error {
 		logging.WithField("count", result.RowsAffected).Info("Backfilled estimated birth dates for existing animals")
 	}
 
+	return nil
+}
+
+// dropReturnCount removes the return_count column from animals.
+// Safe to call multiple times — no-ops if the column is already gone.
+func dropReturnCount(db *gorm.DB) error {
+	if db.Migrator().HasColumn(&models.Animal{}, "return_count") {
+		return db.Migrator().DropColumn(&models.Animal{}, "return_count")
+	}
 	return nil
 }
