@@ -26,7 +26,6 @@ const AnimalForm: React.FC = () => {
   const [showImageEditor, setShowImageEditor] = useState(false);
   const [editingImageUrl, setEditingImageUrl] = useState<string>('');
   const [pendingStatusChange, setPendingStatusChange] = useState<string>('');
-  const [unarchiveIsReturned, setUnarchiveIsReturned] = useState(false);
   const [quarantineContext, setQuarantineContext] = useState('');
   const [quarantineDate, setQuarantineDate] = useState('');
   const [originalStatus, setOriginalStatus] = useState('');
@@ -688,7 +687,6 @@ const AnimalForm: React.FC = () => {
                   // If changing away from archived, show confirmation modal
                   if (originalStatus === 'archived' && newStatus !== 'archived' && id) {
                     setPendingStatusChange(newStatus);
-                    setUnarchiveIsReturned(formData.is_returned);
                     setShowUnarchiveModal(true);
                   } else {
                     setFormData({ ...formData, status: newStatus });
@@ -720,6 +718,22 @@ const AnimalForm: React.FC = () => {
                 Date the animal entered the shelter. Used to calculate length of stay. Leave empty to use today's date.
               </p>
             </div>
+          </div>
+
+          <div className="form-field">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={formData.is_returned}
+                onChange={(e) => setFormData({ ...formData, is_returned: e.target.checked })}
+              />
+              <span className="form-field__label" style={{ marginBottom: 0 }}>
+                Previously adopted &amp; returned to shelter
+              </span>
+            </label>
+            <p className="form-field__helper">
+              Check if this animal was previously adopted out and has since come back.
+            </p>
           </div>
 
           <div className="form-field">
@@ -1075,42 +1089,6 @@ const AnimalForm: React.FC = () => {
           <strong>{pendingStatusChange === 'available' ? 'Available' : pendingStatusChange === 'foster' ? 'Foster' : 'Bite Quarantine'}</strong>.
         </p>
         
-        {pendingStatusChange === 'available' && (
-          <>
-            <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'var(--neutral-100)', borderRadius: '8px' }}>
-              <p style={{ marginBottom: '0.75rem', fontWeight: '500' }}>
-                Was this animal returning to the shelter?
-              </p>
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                Select "Yes" if this animal previously left the shelter (adopted, fostered, transferred) and has now come back. 
-                Select "No" if this is a different situation (e.g., moving from quarantine or correcting a mistake).
-              </p>
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="radio"
-                    name="is_returned"
-                    checked={unarchiveIsReturned === true}
-                    onChange={() => setUnarchiveIsReturned(true)}
-                    style={{ marginRight: '0.5rem' }}
-                  />
-                  <span>Yes, this is a returning animal</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="radio"
-                    name="is_returned"
-                    checked={unarchiveIsReturned === false}
-                    onChange={() => setUnarchiveIsReturned(false)}
-                    style={{ marginRight: '0.5rem' }}
-                  />
-                  <span>No, not a return</span>
-                </label>
-              </div>
-            </div>
-          </>
-        )}
-
         <div className="modal__actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
           <Button
             variant="secondary"
@@ -1124,11 +1102,7 @@ const AnimalForm: React.FC = () => {
           <Button
             variant="primary"
             onClick={() => {
-              setFormData({ 
-                ...formData, 
-                status: pendingStatusChange,
-                is_returned: pendingStatusChange === 'available' ? unarchiveIsReturned : false
-              });
+              setFormData({ ...formData, status: pendingStatusChange });
               setShowUnarchiveModal(false);
               setPendingStatusChange('');
             }}
