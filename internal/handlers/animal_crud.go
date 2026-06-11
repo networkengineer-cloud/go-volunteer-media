@@ -217,12 +217,10 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 			}
 		case "archived":
 			animal.ArchivedDate = &now
-			// Set is_returned based on request, default to false
-			if req.IsReturned != nil {
-				animal.IsReturned = *req.IsReturned
-			} else {
-				animal.IsReturned = false
-			}
+		}
+
+		if req.IsReturned != nil {
+			animal.IsReturned = *req.IsReturned
 		}
 
 		if err := db.WithContext(ctx).Create(&animal).Error; err != nil {
@@ -310,17 +308,14 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			// Update status-specific dates
 			switch newStatus {
 			case "available":
-				// When moving back to available from archived, increment return count
+				// When moving back to available from archived, reset arrival date
 				if oldStatus == "archived" {
-					animal.ReturnCount++
-					// Reset arrival date when animal returns to shelter
 					animal.ArrivalDate = &now
 				}
 				// Clear specific status dates
 				animal.FosterStartDate = nil
 				animal.QuarantineStartDate = nil
 				animal.ArchivedDate = nil
-				animal.IsReturned = false // Clear is_returned flag when no longer archived
 			case "foster":
 				animal.FosterStartDate = &now
 				animal.QuarantineStartDate = nil
@@ -336,20 +331,15 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.ArchivedDate = nil
 			case "archived":
 				animal.ArchivedDate = &now
-				// Set is_returned based on request, default to false
-				if req.IsReturned != nil {
-					animal.IsReturned = *req.IsReturned
-				} else {
-					animal.IsReturned = false
-				}
 			}
 			animal.Status = newStatus
 		} else if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil && animal.Status == "bite_quarantine" {
 			// Update quarantine start date if provided and animal is already in quarantine status
 			// This handles the case where only the date is being updated without status change
 			animal.QuarantineStartDate = req.QuarantineStartDate.Time
-		} else if animal.Status == "archived" && req.IsReturned != nil {
-			// Update is_returned flag when editing an archived animal
+		}
+
+		if req.IsReturned != nil {
 			animal.IsReturned = *req.IsReturned
 		}
 
