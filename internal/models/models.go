@@ -89,7 +89,7 @@ type Animal struct {
 	QuarantineStartDate            *time.Time          `json:"quarantine_start_date"`                                           // When bite quarantine started
 	ArchivedDate                   *time.Time          `json:"archived_date"`                                                   // When animal was archived
 	LastStatusChange               *time.Time          `json:"last_status_change"`                                              // Timestamp of last status change
-	IsReturned                     bool                `gorm:"default:false" json:"is_returned"`                                // Indicates if archived animal is a return (not all archived animals are returns)
+	IsReturned                     bool                `gorm:"default:false" json:"is_returned"`                                // Manually set by admins to indicate this animal was previously adopted and returned
 	ProtocolDocumentURL            string              `json:"protocol_document_url"`                                           // URL to protocol document (PDF/DOCX)
 	ProtocolDocumentName           string              `json:"protocol_document_name"`                                          // Original filename of protocol document
 	ProtocolDocumentData           []byte              `gorm:"type:bytea" json:"-"`                                             // Binary data of protocol document (null when using Azure)

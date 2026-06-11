@@ -1608,6 +1608,45 @@ func TestGetAnimals_IncludesMediaCounts(t *testing.T) {
 	}
 }
 
+// TestCreateAnimal_IsReturned tests that is_returned is persisted on animal creation
+func TestCreateAnimal_IsReturned(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "createreturned", "createreturned@example.com", false)
+
+	reqBody := map[string]interface{}{
+		"name":        "ReturnedDog",
+		"species":     "Dog",
+		"breed":       "Mixed",
+		"age":         3,
+		"status":      "available",
+		"is_returned": true,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+	}
+	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := CreateAnimal(db)
+	handler(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	var created models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if !created.IsReturned {
+		t.Errorf("Expected is_returned true, got false")
+	}
+}
+
 // Helper function to create bool pointer
 func boolPtr(b bool) *bool {
 	return &b
