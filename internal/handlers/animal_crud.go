@@ -164,6 +164,10 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
+		if !isValidApprovalStatus(req.QuarantineApprovalStatus) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quarantine_approval_status: must be '', 'requested', or 'granted'"})
+			return
+		}
 
 		gid, err := strconv.ParseUint(groupID, 10, 32)
 		if err != nil {
@@ -275,6 +279,10 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
+		if !isValidApprovalStatus(req.QuarantineApprovalStatus) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quarantine_approval_status: must be '', 'requested', or 'granted'"})
+			return
+		}
 
 		var animal models.Animal
 		if err := db.WithContext(ctx).Preload("Tags").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
@@ -347,16 +355,16 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.ArchivedDate = &now
 			}
 			animal.Status = newStatus
-		} else if animal.Status == "bite_quarantine" && req.QuarantineApprovalStatus != "" {
-			// Update approval status without changing main status
-			approvalNow := time.Now()
-			animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
-			animal.QuarantineApprovalDate = &approvalNow
-		}
-		if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil && animal.Status == "bite_quarantine" {
-			// Update quarantine start date if provided and animal is already in quarantine status
-			// This handles the case where only the date is being updated without status change
-			animal.QuarantineStartDate = req.QuarantineStartDate.Time
+		} else if animal.Status == "bite_quarantine" {
+			// Update approval status (can also be cleared to "") or quarantine start date
+			if req.QuarantineApprovalStatus != animal.QuarantineApprovalStatus {
+				approvalNow := time.Now()
+				animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
+				animal.QuarantineApprovalDate = &approvalNow
+	} else if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
+				// Update quarantine start date if provided and status is unchanged
+				animal.QuarantineStartDate = req.QuarantineStartDate.Time
+			}
 		}
 
 		if req.IsReturned != nil {

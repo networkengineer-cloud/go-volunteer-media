@@ -611,39 +611,6 @@
   margin-top: 0.35rem;
 }
 
-.quarantine-approval-badge {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.quarantine-approval-none {
-  background: rgba(156, 163, 175, 0.2);
-  color: var(--neutral-500);
-}
-
-.quarantine-approval-requested {
-  background: rgba(234, 179, 8, 0.2);
-  color: #b45309;
-}
-
-.quarantine-approval-granted {
-  background: rgba(34, 197, 94, 0.2);
-  color: #16a34a;
-}
-
-[data-theme='dark'] .quarantine-approval-requested {
-  background: rgba(234, 179, 8, 0.25);
-  color: #fbbf24;
-}
-
-[data-theme='dark'] .quarantine-approval-granted {
-  background: rgba(34, 197, 94, 0.25);
-  color: #4ade80;
-}
-
 /* Animal Tags */
 .animal-tags {
   display: flex;

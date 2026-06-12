@@ -23,6 +23,10 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
+		if !isValidApprovalStatus(req.QuarantineApprovalStatus) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quarantine_approval_status: must be '', 'requested', or 'granted'"})
+			return
+		}
 
 		var animal models.Animal
 		if err := db.Preload("Tags").First(&animal, animalID).Error; err != nil {
@@ -94,11 +98,13 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 			case "archived":
 				updates["archived_date"] = now
 			}
-		} else if req.QuarantineApprovalStatus != "" && (req.Status == "bite_quarantine" || animal.Status == "bite_quarantine") {
-			// Update approval status without changing main status
-			now := time.Now()
-			updates["quarantine_approval_status"] = req.QuarantineApprovalStatus
-			updates["quarantine_approval_date"] = now
+		} else if req.Status == "bite_quarantine" || animal.Status == "bite_quarantine" {
+			// Update approval status (allow clearing to "") without changing main status
+			if req.QuarantineApprovalStatus != animal.QuarantineApprovalStatus {
+				now := time.Now()
+				updates["quarantine_approval_status"] = req.QuarantineApprovalStatus
+				updates["quarantine_approval_date"] = now
+			}
 		}
 		if req.GroupID != 0 {
 			updates["group_id"] = req.GroupID

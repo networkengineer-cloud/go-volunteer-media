@@ -93,6 +93,11 @@ type DuplicateNameInfo struct {
 	HasDuplicates bool            `json:"has_duplicates"`
 }
 
+// isValidApprovalStatus returns true for the three allowed quarantine approval values.
+func isValidApprovalStatus(s string) bool {
+	return s == "" || s == "requested" || s == "granted"
+}
+
 // checkGroupAccess verifies if the user has access to a specific group
 func checkGroupAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, groupID string) bool {
 	adminBool, ok := isAdmin.(bool)
