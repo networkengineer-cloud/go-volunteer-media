@@ -164,6 +164,10 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
+		if !isValidApprovalStatus(req.QuarantineApprovalStatus) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quarantine_approval_status: must be '', 'requested', or 'granted'"})
+			return
+		}
 
 		gid, err := strconv.ParseUint(groupID, 10, 32)
 		if err != nil {
@@ -214,6 +218,11 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.QuarantineStartDate = req.QuarantineStartDate.Time
 			} else {
 				animal.QuarantineStartDate = &now
+			}
+			// Set third-party approval status if provided
+			if req.QuarantineApprovalStatus != "" {
+				animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
+				animal.QuarantineApprovalDate = &now
 			}
 		case "archived":
 			animal.ArchivedDate = &now
@@ -270,6 +279,10 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
+		if !isValidApprovalStatus(req.QuarantineApprovalStatus) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quarantine_approval_status: must be '', 'requested', or 'granted'"})
+			return
+		}
 
 		var animal models.Animal
 		if err := db.WithContext(ctx).Preload("Tags").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
@@ -312,13 +325,17 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				if oldStatus == "archived" {
 					animal.ArrivalDate = &now
 				}
-				// Clear specific status dates
+				// Clear specific status dates and approval when leaving quarantine
 				animal.FosterStartDate = nil
 				animal.QuarantineStartDate = nil
+				animal.QuarantineApprovalStatus = ""
+				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
 			case "foster":
 				animal.FosterStartDate = &now
 				animal.QuarantineStartDate = nil
+				animal.QuarantineApprovalStatus = ""
+				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
 			case "bite_quarantine":
 				// Use provided quarantine start date if available, otherwise use current time
@@ -327,16 +344,33 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				} else {
 					animal.QuarantineStartDate = &now
 				}
+				// Set approval status if provided
+				if req.QuarantineApprovalStatus != "" {
+					animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
+					animal.QuarantineApprovalDate = &now
+				}
 				animal.FosterStartDate = nil
 				animal.ArchivedDate = nil
 			case "archived":
 				animal.ArchivedDate = &now
 			}
 			animal.Status = newStatus
-		} else if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil && animal.Status == "bite_quarantine" {
-			// Update quarantine start date if provided and animal is already in quarantine status
-			// This handles the case where only the date is being updated without status change
-			animal.QuarantineStartDate = req.QuarantineStartDate.Time
+		} else if animal.Status == "bite_quarantine" {
+			// Update approval status (can also be cleared to "") when status is unchanged
+			if req.QuarantineApprovalStatus != animal.QuarantineApprovalStatus {
+				if req.QuarantineApprovalStatus == "" {
+					animal.QuarantineApprovalStatus = ""
+					animal.QuarantineApprovalDate = nil
+				} else {
+					approvalNow := time.Now()
+					animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
+					animal.QuarantineApprovalDate = &approvalNow
+				}
+			}
+			// Update quarantine start date independently — both fields can change in one request
+			if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
+				animal.QuarantineStartDate = req.QuarantineStartDate.Time
+			}
 		}
 
 		if req.IsReturned != nil {

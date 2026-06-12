@@ -1038,6 +1038,17 @@ const GroupPage: React.FC = () => {
                             })()}
                           </p>
                         )}
+                        {animal.status === 'bite_quarantine' && (
+                          <p className="quarantine-approval-inline">
+                            <span className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}>
+                              {animal.quarantine_approval_status === 'granted'
+                                ? '✅ Approved'
+                                : animal.quarantine_approval_status === 'requested'
+                                ? '🕐 Approval Pending'
+                                : '⬜ Not Requested'}
+                            </span>
+                          </p>
+                        )}
                         {/* Both pills link to /photos — PhotoGallery renders images and videos on the same page */}
                         <div className="media-indicator">
                           {(animal.image_count ?? 0) > 0 ? (

@@ -23,6 +23,10 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
+		if !isValidApprovalStatus(req.QuarantineApprovalStatus) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quarantine_approval_status: must be '', 'requested', or 'granted'"})
+			return
+		}
 
 		var animal models.Animal
 		if err := db.Preload("Tags").First(&animal, animalID).Error; err != nil {
@@ -58,9 +62,9 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 		if req.ImageURL != "" {
 			updates["image_url"] = req.ImageURL
 		}
+		now := time.Now()
 		if req.Status != "" && req.Status != animal.Status {
 			// Track status change
-			now := time.Now()
 			updates["status"] = req.Status
 			updates["last_status_change"] = now
 
@@ -69,10 +73,14 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 			case "available":
 				updates["foster_start_date"] = nil
 				updates["quarantine_start_date"] = nil
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
 			case "foster":
 				updates["foster_start_date"] = now
 				updates["quarantine_start_date"] = nil
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
 			case "bite_quarantine":
 				// Use provided quarantine start date if available, otherwise use current time
@@ -81,10 +89,25 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				} else {
 					updates["quarantine_start_date"] = now
 				}
+				if req.QuarantineApprovalStatus != "" {
+					updates["quarantine_approval_status"] = req.QuarantineApprovalStatus
+					updates["quarantine_approval_date"] = now
+				}
 				updates["foster_start_date"] = nil
 				updates["archived_date"] = nil
 			case "archived":
 				updates["archived_date"] = now
+			}
+		} else if animal.Status == "bite_quarantine" {
+			// Update approval status (allow clearing to "") without changing main status
+			if req.QuarantineApprovalStatus != animal.QuarantineApprovalStatus {
+				if req.QuarantineApprovalStatus == "" {
+					updates["quarantine_approval_status"] = ""
+					updates["quarantine_approval_date"] = nil
+				} else {
+					updates["quarantine_approval_status"] = req.QuarantineApprovalStatus
+					updates["quarantine_approval_date"] = now
+				}
 			}
 		}
 		if req.GroupID != 0 {
