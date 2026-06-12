@@ -88,7 +88,7 @@ type Animal struct {
 	FosterStartDate                *time.Time          `json:"foster_start_date"`                                               // When animal went to foster
 	QuarantineStartDate            *time.Time          `json:"quarantine_start_date"`                                           // When bite quarantine started
 	QuarantineApprovalStatus       string              `gorm:"default:''" json:"quarantine_approval_status"`                    // Third-party approval: "" (not requested), "requested", "granted"
-	QuarantineApprovalDate         *time.Time          `json:"quarantine_approval_date"`                                        // When approval was requested or granted
+	QuarantineApprovalDate         *time.Time          `json:"quarantine_approval_date"`                                        // When approval status last changed (nil when not requested)
 	ArchivedDate                   *time.Time          `json:"archived_date"`                                                   // When animal was archived
 	LastStatusChange               *time.Time          `json:"last_status_change"`                                              // Timestamp of last status change
 	IsReturned                     bool                `gorm:"default:false" json:"is_returned"`                                // Manually set by admins to indicate this animal was previously adopted and returned

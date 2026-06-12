@@ -1045,7 +1045,7 @@ const GroupPage: React.FC = () => {
                                 ? '✅ Approved'
                                 : animal.quarantine_approval_status === 'requested'
                                 ? '🕐 Approval Pending'
-                                : '⬜ No Approval'}
+                                : '⬜ Not Requested'}
                             </span>
                           </p>
                         )}

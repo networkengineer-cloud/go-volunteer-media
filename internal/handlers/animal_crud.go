@@ -356,13 +356,19 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			}
 			animal.Status = newStatus
 		} else if animal.Status == "bite_quarantine" {
-			// Update approval status (can also be cleared to "") or quarantine start date
+			// Update approval status (can also be cleared to "") when status is unchanged
 			if req.QuarantineApprovalStatus != animal.QuarantineApprovalStatus {
-				approvalNow := time.Now()
-				animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
-				animal.QuarantineApprovalDate = &approvalNow
-			} else if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
-				// Update quarantine start date if provided and status is unchanged
+				if req.QuarantineApprovalStatus == "" {
+					animal.QuarantineApprovalStatus = ""
+					animal.QuarantineApprovalDate = nil
+				} else {
+					approvalNow := time.Now()
+					animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
+					animal.QuarantineApprovalDate = &approvalNow
+				}
+			}
+			// Update quarantine start date independently — both fields can change in one request
+			if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
 				animal.QuarantineStartDate = req.QuarantineStartDate.Time
 			}
 		}
