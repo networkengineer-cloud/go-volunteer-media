@@ -361,7 +361,7 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				approvalNow := time.Now()
 				animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
 				animal.QuarantineApprovalDate = &approvalNow
-	} else if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
+			} else if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
 				// Update quarantine start date if provided and status is unchanged
 				animal.QuarantineStartDate = req.QuarantineStartDate.Time
 			}
