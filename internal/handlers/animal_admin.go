@@ -69,10 +69,14 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 			case "available":
 				updates["foster_start_date"] = nil
 				updates["quarantine_start_date"] = nil
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
 			case "foster":
 				updates["foster_start_date"] = now
 				updates["quarantine_start_date"] = nil
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
 			case "bite_quarantine":
 				// Use provided quarantine start date if available, otherwise use current time
@@ -81,11 +85,20 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				} else {
 					updates["quarantine_start_date"] = now
 				}
+				if req.QuarantineApprovalStatus != "" {
+					updates["quarantine_approval_status"] = req.QuarantineApprovalStatus
+					updates["quarantine_approval_date"] = now
+				}
 				updates["foster_start_date"] = nil
 				updates["archived_date"] = nil
 			case "archived":
 				updates["archived_date"] = now
 			}
+		} else if req.QuarantineApprovalStatus != "" && (req.Status == "bite_quarantine" || animal.Status == "bite_quarantine") {
+			// Update approval status without changing main status
+			now := time.Now()
+			updates["quarantine_approval_status"] = req.QuarantineApprovalStatus
+			updates["quarantine_approval_date"] = now
 		}
 		if req.GroupID != 0 {
 			updates["group_id"] = req.GroupID
