@@ -220,8 +220,8 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.QuarantineStartDate = &now
 			}
 			// Set third-party approval status if provided
-			if req.QuarantineApprovalStatus != "" {
-				animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
+			if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != "" {
+				animal.QuarantineApprovalStatus = *req.QuarantineApprovalStatus
 				animal.QuarantineApprovalDate = &now
 			}
 		case "archived":
@@ -314,8 +314,8 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 		// Track status changes
 		oldStatus := animal.Status
 		newStatus := req.Status
+		now := time.Now()
 		if newStatus != "" && newStatus != oldStatus {
-			now := time.Now()
 			animal.LastStatusChange = &now
 
 			// Update status-specific dates
@@ -345,8 +345,8 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 					animal.QuarantineStartDate = &now
 				}
 				// Set approval status if provided
-				if req.QuarantineApprovalStatus != "" {
-					animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
+				if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != "" {
+					animal.QuarantineApprovalStatus = *req.QuarantineApprovalStatus
 					animal.QuarantineApprovalDate = &now
 				}
 				animal.FosterStartDate = nil
@@ -356,15 +356,14 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			}
 			animal.Status = newStatus
 		} else if animal.Status == "bite_quarantine" {
-			// Update approval status (can also be cleared to "") when status is unchanged
-			if req.QuarantineApprovalStatus != animal.QuarantineApprovalStatus {
-				if req.QuarantineApprovalStatus == "" {
+			// Update approval status only when explicitly provided (nil = not sent = no change)
+			if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != animal.QuarantineApprovalStatus {
+				if *req.QuarantineApprovalStatus == "" {
 					animal.QuarantineApprovalStatus = ""
 					animal.QuarantineApprovalDate = nil
 				} else {
-					approvalNow := time.Now()
-					animal.QuarantineApprovalStatus = req.QuarantineApprovalStatus
-					animal.QuarantineApprovalDate = &approvalNow
+					animal.QuarantineApprovalStatus = *req.QuarantineApprovalStatus
+					animal.QuarantineApprovalDate = &now
 				}
 			}
 			// Update quarantine start date independently — both fields can change in one request

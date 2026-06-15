@@ -81,7 +81,7 @@ type AnimalRequest struct {
 	GroupID                  uint         `json:"group_id,omitempty"`
 	ArrivalDate              NullableTime `json:"arrival_date,omitempty"` // Date animal entered shelter
 	QuarantineStartDate      NullableTime `json:"quarantine_start_date,omitempty"`
-	QuarantineApprovalStatus string       `json:"quarantine_approval_status,omitempty"` // "" | "requested" | "granted"
+	QuarantineApprovalStatus *string      `json:"quarantine_approval_status,omitempty"` // nil = not provided; "" | "requested" | "granted" when set
 	IsReturned               *bool        `json:"is_returned,omitempty"`                // Pointer to distinguish null from false
 }
 
@@ -93,9 +93,12 @@ type DuplicateNameInfo struct {
 	HasDuplicates bool            `json:"has_duplicates"`
 }
 
-// isValidApprovalStatus returns true for the three allowed quarantine approval values.
-func isValidApprovalStatus(s string) bool {
-	return s == "" || s == "requested" || s == "granted"
+// isValidApprovalStatus returns true when s is nil (not provided) or one of the three allowed values.
+func isValidApprovalStatus(s *string) bool {
+	if s == nil {
+		return true
+	}
+	return *s == "" || *s == "requested" || *s == "granted"
 }
 
 // checkGroupAccess verifies if the user has access to a specific group

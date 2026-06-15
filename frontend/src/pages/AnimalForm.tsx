@@ -423,6 +423,12 @@ const AnimalForm: React.FC = () => {
         estimated_birth_date: finalBirthDate || undefined,
         age: birthYears,
         quarantine_start_date: formData.quarantine_start_date || undefined,
+        // Only include quarantine_approval_status when in bite_quarantine so non-quarantine saves
+        // don't accidentally send "" and trigger the "not provided" vs "clear" ambiguity.
+        // The backend uses *string: nil = not provided (no change), "" = explicit clear.
+        quarantine_approval_status: formData.status === 'bite_quarantine'
+          ? formData.quarantine_approval_status
+          : undefined,
       };
       
       if (id && groupId) {
