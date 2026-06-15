@@ -89,6 +89,9 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				} else {
 					updates["quarantine_start_date"] = now
 				}
+				// Always start clean, then apply provided value if any
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
 				if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != "" {
 					updates["quarantine_approval_status"] = *req.QuarantineApprovalStatus
 					updates["quarantine_approval_date"] = now

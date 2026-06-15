@@ -477,7 +477,7 @@ const AnimalDetailPage: React.FC = () => {
                   </p>
                   {animal.quarantine_approval_status ? (
                     <p className="quarantine-approval-status">
-                      <span className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status}`}>
+                      <span className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}>
                         {animal.quarantine_approval_status === 'requested' ? '🕐 Approval Requested' : '✅ Approved — Cleared to Work'}
                       </span>
                     </p>

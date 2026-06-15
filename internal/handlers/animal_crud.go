@@ -344,7 +344,9 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				} else {
 					animal.QuarantineStartDate = &now
 				}
-				// Set approval status if provided
+				// Always start clean, then apply provided value if any
+				animal.QuarantineApprovalStatus = ""
+				animal.QuarantineApprovalDate = nil
 				if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != "" {
 					animal.QuarantineApprovalStatus = *req.QuarantineApprovalStatus
 					animal.QuarantineApprovalDate = &now

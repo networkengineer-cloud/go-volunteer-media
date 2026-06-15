@@ -354,6 +354,11 @@ a:focus-visible {
   color: #16a34a;
 }
 
+[data-theme='dark'] .quarantine-approval-none {
+  background: rgba(156, 163, 175, 0.15);
+  color: var(--neutral-400);
+}
+
 [data-theme='dark'] .quarantine-approval-requested {
   background: rgba(234, 179, 8, 0.25);
   color: #fbbf24;

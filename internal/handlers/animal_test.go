@@ -1651,3 +1651,291 @@ func TestCreateAnimal_IsReturned(t *testing.T) {
 func boolPtr(b bool) *bool {
 	return &b
 }
+
+// stringPtr returns a pointer to a string literal.
+func stringPtr(s string) *string {
+	return &s
+}
+
+// --- Quarantine approval status tests ---
+
+// TestIsValidApprovalStatus verifies the helper covers all expected cases.
+func TestIsValidApprovalStatus(t *testing.T) {
+	cases := []struct {
+		input *string
+		want  bool
+	}{
+		{nil, true},
+		{stringPtr(""), true},
+		{stringPtr("requested"), true},
+		{stringPtr("granted"), true},
+		{stringPtr("approved"), false},
+		{stringPtr("GRANTED"), false},
+		{stringPtr("yes"), false},
+	}
+	for _, tc := range cases {
+		label := "nil"
+		if tc.input != nil {
+			label = *tc.input
+		}
+		if got := isValidApprovalStatus(tc.input); got != tc.want {
+			t.Errorf("isValidApprovalStatus(%q) = %v, want %v", label, got, tc.want)
+		}
+	}
+}
+
+// TestCreateAnimal_WithApprovalStatus verifies that approval status is persisted on create.
+func TestCreateAnimal_WithApprovalStatus(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "adminuser", "admin@example.com", false)
+
+	approvalStatus := "requested"
+	reqBody := AnimalRequest{
+		Name:                     "Fluffy",
+		Species:                  "Cat",
+		Status:                   "bite_quarantine",
+		QuarantineApprovalStatus: &approvalStatus,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	CreateAnimal(db)(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var created models.Animal
+	json.Unmarshal(w.Body.Bytes(), &created)
+	if created.QuarantineApprovalStatus != "requested" {
+		t.Errorf("Expected approval_status 'requested', got %q", created.QuarantineApprovalStatus)
+	}
+	if created.QuarantineApprovalDate == nil {
+		t.Error("Expected approval_date to be set, got nil")
+	}
+}
+
+// TestUpdateAnimal_InvalidApprovalStatus verifies HTTP 400 for bad values.
+func TestUpdateAnimal_InvalidApprovalStatus(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "adminuser2", "admin2@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	badStatus := "approved"
+	reqBody := AnimalRequest{
+		Name:                     animal.Name,
+		QuarantineApprovalStatus: &badStatus,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	UpdateAnimal(db)(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestUpdateAnimal_ApprovalStatusSet verifies approval date is stamped when status is set.
+func TestUpdateAnimal_ApprovalStatusSet(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "adminuser3", "admin3@example.com", false)
+
+	now := time.Now()
+	animal := &models.Animal{
+		GroupID:          group.ID,
+		Name:             "Buddy",
+		Species:          "Dog",
+		Status:           "bite_quarantine",
+		ArrivalDate:      &now,
+		LastStatusChange: &now,
+		QuarantineStartDate: &now,
+	}
+	db.Create(animal)
+
+	newStatus := "granted"
+	reqBody := AnimalRequest{
+		Name:                     "Buddy",
+		Status:                   "bite_quarantine",
+		QuarantineApprovalStatus: &newStatus,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	UpdateAnimal(db)(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Animal
+	db.First(&updated, animal.ID)
+	if updated.QuarantineApprovalStatus != "granted" {
+		t.Errorf("Expected approval_status 'granted', got %q", updated.QuarantineApprovalStatus)
+	}
+	if updated.QuarantineApprovalDate == nil {
+		t.Error("Expected approval_date to be set, got nil")
+	}
+}
+
+// TestUpdateAnimal_ApprovalStatusCleared verifies approval date is cleared when status is reset.
+func TestUpdateAnimal_ApprovalStatusCleared(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "adminuser4", "admin4@example.com", false)
+
+	now := time.Now()
+	animal := &models.Animal{
+		GroupID:                  group.ID,
+		Name:                     "Max",
+		Species:                  "Dog",
+		Status:                   "bite_quarantine",
+		ArrivalDate:              &now,
+		LastStatusChange:         &now,
+		QuarantineStartDate:      &now,
+		QuarantineApprovalStatus: "granted",
+		QuarantineApprovalDate:   &now,
+	}
+	db.Create(animal)
+
+	clearStatus := ""
+	reqBody := AnimalRequest{
+		Name:                     "Max",
+		Status:                   "bite_quarantine",
+		QuarantineApprovalStatus: &clearStatus,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	UpdateAnimal(db)(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Animal
+	db.First(&updated, animal.ID)
+	if updated.QuarantineApprovalStatus != "" {
+		t.Errorf("Expected approval_status '', got %q", updated.QuarantineApprovalStatus)
+	}
+	if updated.QuarantineApprovalDate != nil {
+		t.Error("Expected approval_date to be nil, got non-nil")
+	}
+}
+
+// TestUpdateAnimal_ApprovalNotClearedWhenOmitted verifies that omitting the field doesn't clear it.
+func TestUpdateAnimal_ApprovalNotClearedWhenOmitted(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "adminuser5", "admin5@example.com", false)
+
+	now := time.Now()
+	animal := &models.Animal{
+		GroupID:                  group.ID,
+		Name:                     "Luna",
+		Species:                  "Cat",
+		Status:                   "bite_quarantine",
+		ArrivalDate:              &now,
+		LastStatusChange:         &now,
+		QuarantineStartDate:      &now,
+		QuarantineApprovalStatus: "requested",
+		QuarantineApprovalDate:   &now,
+	}
+	db.Create(animal)
+
+	// Update description only — no quarantine_approval_status in payload
+	reqBody := AnimalRequest{
+		Name:        "Luna",
+		Status:      "bite_quarantine",
+		Description: "Updated description",
+		// QuarantineApprovalStatus is nil (omitted)
+	}
+	body, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	UpdateAnimal(db)(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Animal
+	db.First(&updated, animal.ID)
+	if updated.QuarantineApprovalStatus != "requested" {
+		t.Errorf("Expected approval_status to remain 'requested', got %q", updated.QuarantineApprovalStatus)
+	}
+}
+
+// TestUpdateAnimal_ApprovalClearedOnTransitionToAvailable verifies both fields clear when leaving quarantine.
+func TestUpdateAnimal_ApprovalClearedOnTransitionToAvailable(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "adminuser6", "admin6@example.com", false)
+
+	now := time.Now()
+	animal := &models.Animal{
+		GroupID:                  group.ID,
+		Name:                     "Cleo",
+		Species:                  "Cat",
+		Status:                   "bite_quarantine",
+		ArrivalDate:              &now,
+		LastStatusChange:         &now,
+		QuarantineStartDate:      &now,
+		QuarantineApprovalStatus: "granted",
+		QuarantineApprovalDate:   &now,
+	}
+	db.Create(animal)
+
+	reqBody := AnimalRequest{
+		Name:   "Cleo",
+		Status: "available",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	UpdateAnimal(db)(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Animal
+	db.First(&updated, animal.ID)
+	if updated.QuarantineApprovalStatus != "" {
+		t.Errorf("Expected approval_status '', got %q", updated.QuarantineApprovalStatus)
+	}
+	if updated.QuarantineApprovalDate != nil {
+		t.Error("Expected approval_date to be nil after leaving quarantine, got non-nil")
+	}
+}
