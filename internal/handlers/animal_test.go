@@ -1987,3 +1987,41 @@ func TestUpdateAnimal_ApprovalClearedOnTransitionToFoster(t *testing.T) {
 		t.Error("Expected approval_date to be nil after foster transition, got non-nil")
 	}
 }
+
+// TestCreateAnimal_DefaultApprovalStatusWhenOmitted verifies that creating a bite_quarantine
+// animal without an explicit quarantine_approval_status stores "requested" (the GORM default).
+func TestCreateAnimal_DefaultApprovalStatusWhenOmitted(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "defaultstatus", "defaultstatus@example.com", false)
+
+	// No QuarantineApprovalStatus field — should default to "requested"
+	reqBody := AnimalRequest{
+		Name:    "Pepper",
+		Species: "Cat",
+		Status:  "bite_quarantine",
+		// QuarantineApprovalStatus intentionally omitted (nil)
+	}
+	body, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	CreateAnimal(db)(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var created models.Animal
+	json.Unmarshal(w.Body.Bytes(), &created)
+
+	// GORM default:'requested' should be applied since no value was provided
+	if created.QuarantineApprovalStatus != "requested" {
+		t.Errorf("Expected default approval_status 'requested', got %q", created.QuarantineApprovalStatus)
+	}
+	// Date should NOT be set since no explicit status was provided by the handler
+	if created.QuarantineApprovalDate != nil {
+		t.Error("Expected approval_date to be nil when status defaulted via GORM, got non-nil")
+	}
+}
