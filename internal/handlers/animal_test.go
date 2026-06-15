@@ -1753,12 +1753,12 @@ func TestUpdateAnimal_ApprovalStatusSet(t *testing.T) {
 
 	now := time.Now()
 	animal := &models.Animal{
-		GroupID:          group.ID,
-		Name:             "Buddy",
-		Species:          "Dog",
-		Status:           "bite_quarantine",
-		ArrivalDate:      &now,
-		LastStatusChange: &now,
+		GroupID:             group.ID,
+		Name:                "Buddy",
+		Species:             "Dog",
+		Status:              "bite_quarantine",
+		ArrivalDate:         &now,
+		LastStatusChange:    &now,
 		QuarantineStartDate: &now,
 	}
 	db.Create(animal)
@@ -2014,9 +2014,9 @@ func TestCreateAnimal_DefaultApprovalStatusWhenOmitted(t *testing.T) {
 		t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
 	}
 	var created models.Animal
-	json.Unmarshal(w.Body.Bytes(), &created)
-
-	// GORM default:'requested' should be applied since no value was provided
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
 	if created.QuarantineApprovalStatus != "requested" {
 		t.Errorf("Expected default approval_status 'requested', got %q", created.QuarantineApprovalStatus)
 	}

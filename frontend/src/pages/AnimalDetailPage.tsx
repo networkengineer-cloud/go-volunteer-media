@@ -487,8 +487,17 @@ const AnimalDetailPage: React.FC = () => {
                             : 'Bite Quarantine Permission: Not Requested'
                         }
                       >
-                        <span aria-hidden="true">{animal.quarantine_approval_status === 'requested' ? '🕐' : '✅'}</span>
-                        {' '}{animal.quarantine_approval_status === 'requested' ? 'Permission Requested' : 'Permission Granted — Cleared to Work'}
+                        <span aria-hidden="true">{
+                          animal.quarantine_approval_status === 'granted' ? '✅' :
+                          animal.quarantine_approval_status === 'requested' ? '🕐' : '⬜'
+                        }</span>
+                        {' '}{
+                          animal.quarantine_approval_status === 'granted'
+                            ? 'Permission Granted — Cleared to Work'
+                            : animal.quarantine_approval_status === 'requested'
+                            ? 'Permission Requested'
+                            : 'Not Requested'
+                        }
                       </span>
                     </p>
                   ) : (
