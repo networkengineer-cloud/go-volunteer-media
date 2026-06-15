@@ -1939,3 +1939,51 @@ func TestUpdateAnimal_ApprovalClearedOnTransitionToAvailable(t *testing.T) {
 		t.Error("Expected approval_date to be nil after leaving quarantine, got non-nil")
 	}
 }
+
+// TestUpdateAnimal_ApprovalClearedOnTransitionToFoster verifies both fields clear on foster transition too.
+func TestUpdateAnimal_ApprovalClearedOnTransitionToFoster(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "adminuser7", "admin7@example.com", false)
+
+	now := time.Now()
+	animal := &models.Animal{
+		GroupID:                  group.ID,
+		Name:                     "Biscuit",
+		Species:                  "Dog",
+		Status:                   "bite_quarantine",
+		ArrivalDate:              &now,
+		LastStatusChange:         &now,
+		QuarantineStartDate:      &now,
+		QuarantineApprovalStatus: "requested",
+		QuarantineApprovalDate:   &now,
+	}
+	db.Create(animal)
+
+	reqBody := AnimalRequest{
+		Name:   "Biscuit",
+		Status: "foster",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	UpdateAnimal(db)(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Animal
+	db.First(&updated, animal.ID)
+	if updated.QuarantineApprovalStatus != "" {
+		t.Errorf("Expected approval_status '' after foster transition, got %q", updated.QuarantineApprovalStatus)
+	}
+	if updated.QuarantineApprovalDate != nil {
+		t.Error("Expected approval_date to be nil after foster transition, got non-nil")
+	}
+}

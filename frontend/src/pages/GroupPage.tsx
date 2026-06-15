@@ -1040,12 +1040,25 @@ const GroupPage: React.FC = () => {
                         )}
                         {animal.status === 'bite_quarantine' && (
                           <p className="quarantine-approval-inline">
-                            <span className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}>
-                              {animal.quarantine_approval_status === 'granted'
-                                ? '✅ Approved'
-                                : animal.quarantine_approval_status === 'requested'
-                                ? '🕐 Approval Pending'
-                                : '⬜ Not Requested'}
+                            <span
+                              className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}
+                              aria-label={
+                                animal.quarantine_approval_status === 'granted' ? 'Approved' :
+                                animal.quarantine_approval_status === 'requested' ? 'Approval Pending' :
+                                'No approval requested'
+                              }
+                            >
+                              <span aria-hidden="true">{
+                                animal.quarantine_approval_status === 'granted' ? '✅' :
+                                animal.quarantine_approval_status === 'requested' ? '🕐' : '⬜'
+                              }</span>
+                              {' '}{
+                                animal.quarantine_approval_status === 'granted'
+                                  ? 'Approved'
+                                  : animal.quarantine_approval_status === 'requested'
+                                  ? 'Approval Pending'
+                                  : 'Not Requested'
+                              }
                             </span>
                           </p>
                         )}

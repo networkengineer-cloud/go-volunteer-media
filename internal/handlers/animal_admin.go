@@ -99,11 +99,9 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				updates["foster_start_date"] = nil
 				updates["archived_date"] = nil
 			case "archived":
-				// Clear approval fields when archiving a quarantined animal
-				if animal.Status == "bite_quarantine" {
-					updates["quarantine_approval_status"] = ""
-					updates["quarantine_approval_date"] = nil
-				}
+				// Always clear approval fields on archive (defensive: approval is only meaningful during quarantine)
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = now
 			}
 		} else if animal.Status == "bite_quarantine" {

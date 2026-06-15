@@ -712,12 +712,25 @@ const BulkEditAnimalsPage: React.FC = () => {
                           <div className="info-item full-width">
                             <div className="info-label">Approval</div>
                             <div className="info-value">
-                              <span className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}>
-                                {animal.quarantine_approval_status === 'granted'
-                                  ? '✅ Approved'
-                                  : animal.quarantine_approval_status === 'requested'
-                                  ? '🕐 Pending'
-                                  : '⬜ Not Requested'}
+                              <span
+                                className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}
+                                aria-label={
+                                  animal.quarantine_approval_status === 'granted' ? 'Approved' :
+                                  animal.quarantine_approval_status === 'requested' ? 'Approval Pending' :
+                                  'No approval requested'
+                                }
+                              >
+                                <span aria-hidden="true">{
+                                  animal.quarantine_approval_status === 'granted' ? '✅' :
+                                  animal.quarantine_approval_status === 'requested' ? '🕐' : '⬜'
+                                }</span>
+                                {' '}{
+                                  animal.quarantine_approval_status === 'granted'
+                                    ? 'Approved'
+                                    : animal.quarantine_approval_status === 'requested'
+                                    ? 'Pending'
+                                    : 'Not Requested'
+                                }
                               </span>
                             </div>
                           </div>
