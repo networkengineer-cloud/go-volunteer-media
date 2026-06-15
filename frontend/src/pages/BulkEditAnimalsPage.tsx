@@ -715,9 +715,9 @@ const BulkEditAnimalsPage: React.FC = () => {
                               <span
                                 className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}
                                 aria-label={
-                                  animal.quarantine_approval_status === 'granted' ? 'Approved' :
-                                  animal.quarantine_approval_status === 'requested' ? 'Approval Pending' :
-                                  'No approval requested'
+                                  animal.quarantine_approval_status === 'granted' ? 'Bite Quarantine Permission: Granted' :
+                                  animal.quarantine_approval_status === 'requested' ? 'Bite Quarantine Permission: Requested' :
+                                  'Bite Quarantine Permission: Not Requested'
                                 }
                               >
                                 <span aria-hidden="true">{
@@ -726,9 +726,9 @@ const BulkEditAnimalsPage: React.FC = () => {
                                 }</span>
                                 {' '}{
                                   animal.quarantine_approval_status === 'granted'
-                                    ? 'Approved'
+                                    ? 'Permission Granted'
                                     : animal.quarantine_approval_status === 'requested'
-                                    ? 'Pending'
+                                    ? 'Permission Requested'
                                     : 'Not Requested'
                                 }
                               </span>

@@ -219,7 +219,7 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 			} else {
 				animal.QuarantineStartDate = &now
 			}
-			// Set third-party approval status if provided
+			// Set bite quarantine permission status if provided
 			if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != "" {
 				animal.QuarantineApprovalStatus = *req.QuarantineApprovalStatus
 				animal.QuarantineApprovalDate = &now
