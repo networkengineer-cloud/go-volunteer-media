@@ -49,22 +49,22 @@ type User struct {
 
 // Group represents a volunteer group (dogs, cats, modsquad, etc.)
 type Group struct {
-	ID             uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`
-	Name           string         `gorm:"uniqueIndex;not null" json:"name"`
-	Description    string         `json:"description"`
-	ImageURL       string         `json:"image_url"`
-	HeroImageURL   string         `json:"hero_image_url"`
-	HasProtocols   bool           `gorm:"column:has_protocols;default:false" json:"has_protocols"`     // Enable protocols feature for this group
-	GroupMeBotID   string         `gorm:"column:groupme_bot_id" json:"-"`                              // GroupMe Bot ID — omitted from API responses; exposed via adminGroupResponse only
-	GroupMeEnabled bool           `gorm:"column:groupme_enabled;default:false" json:"groupme_enabled"` // Enable GroupMe integration for this group
-	Users          []User         `gorm:"many2many:user_groups;" json:"users,omitempty"`
-	Animals        []Animal       `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
-	Updates        []Update       `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
-	Protocols      []Protocol     `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
-	Scripts        []Script       `gorm:"foreignKey:GroupID" json:"scripts,omitempty"`
+	ID             uint            `gorm:"primaryKey" json:"id"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+	DeletedAt      gorm.DeletedAt  `gorm:"index" json:"-"`
+	Name           string          `gorm:"uniqueIndex;not null" json:"name"`
+	Description    string          `json:"description"`
+	ImageURL       string          `json:"image_url"`
+	HeroImageURL   string          `json:"hero_image_url"`
+	HasProtocols   bool            `gorm:"column:has_protocols;default:false" json:"has_protocols"`     // Enable protocols feature for this group
+	GroupMeBotID   string          `gorm:"column:groupme_bot_id" json:"-"`                              // GroupMe Bot ID — omitted from API responses; exposed via adminGroupResponse only
+	GroupMeEnabled bool            `gorm:"column:groupme_enabled;default:false" json:"groupme_enabled"` // Enable GroupMe integration for this group
+	Users          []User          `gorm:"many2many:user_groups;" json:"users,omitempty"`
+	Animals        []Animal        `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
+	Updates        []Update        `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
+	Protocols      []Protocol      `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
+	Scripts        []Script        `gorm:"foreignKey:GroupID" json:"scripts,omitempty"`
 	Documents      []GroupDocument `gorm:"foreignKey:GroupID" json:"documents,omitempty"`
 }
 
@@ -87,6 +87,8 @@ type Animal struct {
 	ArrivalDate                    *time.Time          `json:"arrival_date"`                                                    // When animal first became available
 	FosterStartDate                *time.Time          `json:"foster_start_date"`                                               // When animal went to foster
 	QuarantineStartDate            *time.Time          `json:"quarantine_start_date"`                                           // When bite quarantine started
+	QuarantineApprovalStatus       string              `gorm:"default:''" json:"quarantine_approval_status"`                    // Third-party approval: "" (not requested), "requested", "granted"
+	QuarantineApprovalDate         *time.Time          `json:"quarantine_approval_date"`                                        // When approval status last changed (nil when not requested)
 	ArchivedDate                   *time.Time          `json:"archived_date"`                                                   // When animal was archived
 	LastStatusChange               *time.Time          `json:"last_status_change"`                                              // Timestamp of last status change
 	IsReturned                     bool                `gorm:"default:false" json:"is_returned"`                                // Manually set by admins to indicate this animal was previously adopted and returned

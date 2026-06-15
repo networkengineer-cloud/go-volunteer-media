@@ -23,6 +23,10 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 			return
 		}
+		if !isValidApprovalStatus(req.QuarantineApprovalStatus) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quarantine_approval_status: must be '', 'requested', or 'granted'"})
+			return
+		}
 
 		var animal models.Animal
 		if err := db.Preload("Tags").First(&animal, animalID).Error; err != nil {
@@ -58,9 +62,9 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 		if req.ImageURL != "" {
 			updates["image_url"] = req.ImageURL
 		}
+		now := time.Now()
 		if req.Status != "" && req.Status != animal.Status {
 			// Track status change
-			now := time.Now()
 			updates["status"] = req.Status
 			updates["last_status_change"] = now
 
@@ -69,10 +73,14 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 			case "available":
 				updates["foster_start_date"] = nil
 				updates["quarantine_start_date"] = nil
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
 			case "foster":
 				updates["foster_start_date"] = now
 				updates["quarantine_start_date"] = nil
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
 			case "bite_quarantine":
 				// Use provided quarantine start date if available, otherwise use current time
@@ -81,18 +89,39 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				} else {
 					updates["quarantine_start_date"] = now
 				}
+				// Always start clean, then apply provided value if any
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
+				if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != "" {
+					updates["quarantine_approval_status"] = *req.QuarantineApprovalStatus
+					updates["quarantine_approval_date"] = now
+				}
 				updates["foster_start_date"] = nil
 				updates["archived_date"] = nil
 			case "archived":
+				// Always clear approval fields on archive (defensive: approval is only meaningful during quarantine)
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = now
+			}
+		} else if animal.Status == "bite_quarantine" {
+			// Update approval status only when explicitly provided (nil = not sent = no change)
+			if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != animal.QuarantineApprovalStatus {
+				if *req.QuarantineApprovalStatus == "" {
+					updates["quarantine_approval_status"] = ""
+					updates["quarantine_approval_date"] = nil
+				} else {
+					updates["quarantine_approval_status"] = *req.QuarantineApprovalStatus
+					updates["quarantine_approval_date"] = now
+				}
+			}
+			// Update quarantine start date independently — both fields can change in one request
+			if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
+				updates["quarantine_start_date"] = *req.QuarantineStartDate.Time
 			}
 		}
 		if req.GroupID != 0 {
 			updates["group_id"] = req.GroupID
-		}
-		// Update quarantine start date if provided and status is quarantine
-		if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil && (req.Status == "bite_quarantine" || animal.Status == "bite_quarantine") {
-			updates["quarantine_start_date"] = *req.QuarantineStartDate.Time
 		}
 
 		if len(updates) == 0 {

@@ -607,6 +607,10 @@
   background: rgba(239, 68, 68, 0.15);
 }
 
+.quarantine-approval-inline {
+  margin-top: 0.35rem;
+}
+
 /* Animal Tags */
 .animal-tags {
   display: flex;

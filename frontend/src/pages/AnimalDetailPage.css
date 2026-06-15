@@ -1074,6 +1074,10 @@
   margin: 0.25rem 0;
 }
 
+.quarantine-approval-status {
+  margin-top: 0.5rem;
+}
+
 [data-theme='dark'] .quarantine-info {
   background: rgba(239, 68, 68, 0.2);
   border-color: var(--danger);

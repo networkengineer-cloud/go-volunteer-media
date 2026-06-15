@@ -44,6 +44,7 @@ const AnimalForm: React.FC = () => {
     status: 'available',
     arrival_date: '',
     quarantine_start_date: '',
+    quarantine_approval_status: '',
     is_returned: false,
     protocol_document_url: '',
     protocol_document_name: '',
@@ -112,6 +113,7 @@ const AnimalForm: React.FC = () => {
         trainer_notes: animal.trainer_notes || '',
         arrival_date: animal.arrival_date ? animal.arrival_date.split('T')[0] : '',
         quarantine_start_date: animal.quarantine_start_date ? animal.quarantine_start_date.split('T')[0] : '',
+        quarantine_approval_status: animal.quarantine_approval_status || '',
         protocol_document_url: animal.protocol_document_url || '',
         protocol_document_name: animal.protocol_document_name || '',
       });
@@ -421,6 +423,12 @@ const AnimalForm: React.FC = () => {
         estimated_birth_date: finalBirthDate || undefined,
         age: birthYears,
         quarantine_start_date: formData.quarantine_start_date || undefined,
+        // Only include quarantine_approval_status when in bite_quarantine so non-quarantine saves
+        // don't accidentally send "" and trigger the "not provided" vs "clear" ambiguity.
+        // The backend uses *string: nil = not provided (no change), "" = explicit clear.
+        quarantine_approval_status: formData.status === 'bite_quarantine'
+          ? formData.quarantine_approval_status
+          : undefined,
       };
       
       if (id && groupId) {
@@ -701,7 +709,30 @@ const AnimalForm: React.FC = () => {
               </select>
               <p className="form-field__helper">Current status of the animal</p>
             </div>
+          </div>
 
+          {formData.status === 'bite_quarantine' && (
+            <div className="form-field">
+              <label htmlFor="quarantine_approval_status" className="form-field__label">
+                Third-Party Approval
+              </label>
+              <select
+                id="quarantine_approval_status"
+                value={formData.quarantine_approval_status}
+                onChange={(e) => setFormData({ ...formData, quarantine_approval_status: e.target.value as '' | 'requested' | 'granted' })}
+                className="form-field__input"
+              >
+                <option value="">Not Requested</option>
+                <option value="requested">Requested — Awaiting Response</option>
+                <option value="granted">Granted — Cleared to Work</option>
+              </select>
+              <p className="form-field__helper">
+                Track whether third-party permission has been requested or granted to resume working with this animal.
+              </p>
+            </div>
+          )}
+
+          <div className="form-row">
             <div className="form-field">
               <label htmlFor="arrival_date" className="form-field__label">
                 Date in Shelter
