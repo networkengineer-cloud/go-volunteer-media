@@ -484,7 +484,7 @@ const AnimalDetailPage: React.FC = () => {
                   ) : (
                     <p className="quarantine-approval-status">
                       <span className="quarantine-approval-badge quarantine-approval-none">
-                        Not Requested
+                        ⬜ Not Requested
                       </span>
                     </p>
                   )}

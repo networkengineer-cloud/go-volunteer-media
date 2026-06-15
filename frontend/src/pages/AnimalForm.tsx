@@ -719,7 +719,7 @@ const AnimalForm: React.FC = () => {
               <select
                 id="quarantine_approval_status"
                 value={formData.quarantine_approval_status}
-                onChange={(e) => setFormData({ ...formData, quarantine_approval_status: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, quarantine_approval_status: e.target.value as '' | 'requested' | 'granted' })}
                 className="form-field__input"
               >
                 <option value="">Not Requested</option>
