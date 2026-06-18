@@ -370,7 +370,12 @@ const GroupPage: React.FC = () => {
     }
   }, [id, viewMode, filterType, filterAnimal, filterTags, filterRating, filterDateFrom, filterDateTo]);
 
-  // Track whether the tab bar has hidden tabs to the right
+  // Track whether the tab bar has hidden tabs to the right. `group` is null
+  // while the page is still loading, so tabsRef isn't attached to a DOM node
+  // yet on first mount; re-running once group loads lets the effect attach
+  // to the now-rendered tab bar. A ResizeObserver also catches tabs that
+  // appear later (e.g. once membership/has_protocols resolve) without
+  // depending on a window resize.
   useEffect(() => {
     const el = tabsRef.current;
     if (!el) return;
@@ -380,11 +385,19 @@ const GroupPage: React.FC = () => {
     update();
     el.addEventListener('scroll', update);
     window.addEventListener('resize', update);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(update);
+      resizeObserver.observe(el);
+    }
+
     return () => {
       el.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
+      resizeObserver?.disconnect();
     };
-  }, []);
+  }, [group]);
 
   // Close animal dropdown when clicking outside
   useEffect(() => {

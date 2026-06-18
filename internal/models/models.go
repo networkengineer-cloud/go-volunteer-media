@@ -141,7 +141,8 @@ func (a *Animal) AgeYearsFromBirthDate() int {
 // comparing dates rather than raw hours to avoid DST skew.
 // Returns 0 for future timestamps.
 func calendarDaysSince(t time.Time) int {
-	now := time.Now()
+	now := time.Now().UTC()
+	t = t.UTC()
 	y1, m1, d1 := t.Date()
 	y2, m2, d2 := now.Date()
 	start := time.Date(y1, m1, d1, 0, 0, 0, 0, time.UTC)
