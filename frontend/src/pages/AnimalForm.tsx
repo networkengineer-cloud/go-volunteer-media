@@ -4,17 +4,13 @@ import { animalsApi, updatesApi, animalTagsApi, commentTagsApi, animalCommentsAp
 import type { AnimalTag, Animal, DuplicateNameInfo, AnimalImage } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import { calculateQuarantineEndDate, calculateAge, computeEstimatedBirthDate } from '../utils/dateUtils';
+import { formatAnimalStatus } from '../utils/animalUtils';
 import FormField from '../components/FormField';
 import AgePicker from '../components/AgePicker';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
 import ImageEditor from '../components/ImageEditor';
 import './Form.css';
-
-const formatAnimalStatus = (status: string) =>
-  status === 'bite_quarantine'
-    ? 'Bite Quarantine'
-    : status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
 const AnimalForm: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();

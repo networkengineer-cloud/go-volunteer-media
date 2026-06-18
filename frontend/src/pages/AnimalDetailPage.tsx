@@ -6,6 +6,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { calculateQuarantineEndDate, calculateAge, formatAge } from '../utils/dateUtils';
 import { formatDisplayName } from '../utils/formatName';
+import { formatAnimalStatus } from '../utils/animalUtils';
+import QuarantineApprovalBadge from '../components/QuarantineApprovalBadge';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
@@ -22,11 +24,6 @@ import '../components/ScriptsList.css';
 
 // Lazy load ProtocolViewer to reduce initial bundle size (~350KB savings)
 const ProtocolViewer = lazy(() => import('../components/ProtocolViewer'));
-
-const formatAnimalStatus = (status: string) =>
-  status === 'bite_quarantine'
-    ? 'Bite Quarantine'
-    : status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
 const AnimalDetailPage: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
@@ -482,28 +479,7 @@ const AnimalDetailPage: React.FC = () => {
                   </p>
                   <div className="quarantine-permission-row">
                     <span className="quarantine-permission-label">Permission:</span>
-                    <span
-                      className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}
-                      aria-label={
-                        animal.quarantine_approval_status === 'granted'
-                          ? 'Bite Quarantine Permission: Granted — Cleared to Work'
-                          : animal.quarantine_approval_status === 'requested'
-                          ? 'Bite Quarantine Permission: Requested — Awaiting Response'
-                          : 'Bite Quarantine Permission: Not Requested'
-                      }
-                    >
-                      <span aria-hidden="true">{
-                        animal.quarantine_approval_status === 'granted' ? '✅' :
-                        animal.quarantine_approval_status === 'requested' ? '🕐' : '⬜'
-                      }</span>
-                      {' '}{
-                        animal.quarantine_approval_status === 'granted'
-                          ? 'Granted — Cleared to Work'
-                          : animal.quarantine_approval_status === 'requested'
-                          ? 'Requested'
-                          : 'Not Requested'
-                      }
-                    </span>
+                    <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
                   </div>
                 </div>
               )}
