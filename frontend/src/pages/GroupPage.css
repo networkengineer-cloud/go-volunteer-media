@@ -586,6 +586,37 @@
   border: 1px solid var(--danger);
 }
 
+.quarantine-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.625rem 0.625rem;
+  background: rgba(239, 68, 68, 0.04);
+  border: none;
+  border-radius: 10px;
+}
+
+.quarantine-block .status.bite_quarantine {
+  align-self: flex-start;
+}
+
+.quarantine-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.quarantine-end-text {
+  font-size: 0.8125rem;
+  color: var(--danger-600);
+  font-weight: 600;
+}
+
+[data-theme='dark'] .quarantine-block {
+  background: rgba(239, 68, 68, 0.08);
+}
+
 .status.foster {
   background: rgba(245, 158, 11, 0.1);
   color: var(--warning-600);

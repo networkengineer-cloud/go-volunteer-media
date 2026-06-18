@@ -997,7 +997,21 @@ const GroupPage: React.FC = () => {
                         </div>
                         {animal.breed && <p className="breed">{animal.breed}</p>}
                         <p className="age">{formatAge(cardAgeYears, cardAgeMonths)}</p>
-                        <span className={`status ${animal.status}`}>{formatAnimalStatus(animal.status)}</span>
+                        {animal.status === 'bite_quarantine' ? (
+                          <div className="quarantine-block">
+                            <span className="status bite_quarantine">{formatAnimalStatus(animal.status)}</span>
+                            <div className="quarantine-meta">
+                              {animal.quarantine_start_date && (
+                                <span className="quarantine-end-text">
+                                  Ends: {calculateQuarantineEndDate(animal.quarantine_start_date, 'short')}
+                                </span>
+                              )}
+                              <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
+                            </div>
+                          </div>
+                        ) : (
+                          <span className={`status ${animal.status}`}>{formatAnimalStatus(animal.status)}</span>
+                        )}
                         {showLengthOfStay && animal.arrival_date && (
                           <p className="length-of-stay">
                             {(() => {
@@ -1015,7 +1029,7 @@ const GroupPage: React.FC = () => {
                               <span
                                 key={tag.id}
                                 className="animal-tag"
-                                style={{ 
+                                style={{
                                   backgroundColor: `${tag.color}15`,
                                   color: tag.color,
                                   borderColor: tag.color
@@ -1026,17 +1040,6 @@ const GroupPage: React.FC = () => {
                               </span>
                             ))}
                           </div>
-                        )}
-                        {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
-                          <p className="quarantine-end-date">
-                            Ends: {calculateQuarantineEndDate(animal.quarantine_start_date, 'short')}
-                          </p>
-                        )}
-                        {animal.status === 'bite_quarantine' && (
-                          <p className="quarantine-approval-inline">
-                            <span className="quarantine-permission-inline-label" aria-hidden="true">Permission:</span>
-                            <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
-                          </p>
                         )}
                         {/* Both pills link to /photos — PhotoGallery renders images and videos on the same page */}
                         <div className="media-indicator">
