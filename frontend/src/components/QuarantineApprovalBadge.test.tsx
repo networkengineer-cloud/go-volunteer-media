@@ -50,4 +50,10 @@ describe('QuarantineApprovalBadge', () => {
     const badge = screen.getByLabelText('Bite Quarantine Permission: Granted — Cleared to Work');
     expect(badge).toHaveClass('quarantine-approval-granted');
   });
+
+  it('falls back to "Not Requested" state for an unknown status value', () => {
+    render(<QuarantineApprovalBadge status="revoked" />);
+    expect(screen.getByText(/Not Requested/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Bite Quarantine Permission: Not Requested')).toHaveClass('quarantine-approval-none');
+  });
 });
