@@ -1026,41 +1026,42 @@ const GroupPage: React.FC = () => {
                           </div>
                         )}
                         {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
-                          <p className="quarantine-end-date">
-                            Ends: {(() => {
-                              const startDate = new Date(animal.quarantine_start_date);
-                              const endDate = new Date(startDate);
-                              endDate.setDate(endDate.getDate() + 10);
-                              while (endDate.getDay() === 0 || endDate.getDay() === 6) {
-                                endDate.setDate(endDate.getDate() + 1);
-                              }
-                              return endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                            })()}
-                          </p>
-                        )}
-                        {animal.status === 'bite_quarantine' && (
-                          <p className="quarantine-approval-inline">
-                            <span
-                              className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}
-                              aria-label={
-                                animal.quarantine_approval_status === 'granted' ? 'Bite Quarantine Permission: Granted' :
-                                animal.quarantine_approval_status === 'requested' ? 'Bite Quarantine Permission: Requested' :
-                                'Bite Quarantine Permission: Not Requested'
-                              }
-                            >
-                              <span aria-hidden="true">{
-                                animal.quarantine_approval_status === 'granted' ? '✅' :
-                                animal.quarantine_approval_status === 'requested' ? '🕐' : '⬜'
-                              }</span>
-                              {' '}{
-                                animal.quarantine_approval_status === 'granted'
-                                  ? 'Permission Granted'
-                                  : animal.quarantine_approval_status === 'requested'
-                                  ? 'Permission Requested'
-                                  : 'Not Requested'
-                              }
-                            </span>
-                          </p>
+                          <div className="quarantine-summary-card">
+                            <p className="quarantine-end-date">
+                              Ends: {(() => {
+                                const startDate = new Date(animal.quarantine_start_date);
+                                const endDate = new Date(startDate);
+                                endDate.setDate(endDate.getDate() + 10);
+                                while (endDate.getDay() === 0 || endDate.getDay() === 6) {
+                                  endDate.setDate(endDate.getDate() + 1);
+                                }
+                                return endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                              })()}
+                            </p>
+                            <p className="quarantine-approval-inline">
+                              <span className="quarantine-permission-inline-label">Permission:</span>
+                              <span
+                                className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}
+                                aria-label={
+                                  animal.quarantine_approval_status === 'granted' ? 'Bite Quarantine Permission: Granted' :
+                                  animal.quarantine_approval_status === 'requested' ? 'Bite Quarantine Permission: Requested' :
+                                  'Bite Quarantine Permission: Not Requested'
+                                }
+                              >
+                                <span aria-hidden="true">{
+                                  animal.quarantine_approval_status === 'granted' ? '✅' :
+                                  animal.quarantine_approval_status === 'requested' ? '🕐' : '⬜'
+                                }</span>
+                                {' '}{
+                                  animal.quarantine_approval_status === 'granted'
+                                    ? 'Granted'
+                                    : animal.quarantine_approval_status === 'requested'
+                                    ? 'Requested'
+                                    : 'Not Requested'
+                                }
+                              </span>
+                            </p>
+                          </div>
                         )}
                         {/* Both pills link to /photos — PhotoGallery renders images and videos on the same page */}
                         <div className="media-indicator">

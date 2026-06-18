@@ -11,6 +11,11 @@ import Modal from '../components/Modal';
 import ImageEditor from '../components/ImageEditor';
 import './Form.css';
 
+const formatAnimalStatus = (status: string) =>
+  status === 'bite_quarantine'
+    ? 'Bite Quarantine'
+    : status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+
 const AnimalForm: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
@@ -627,7 +632,7 @@ const AnimalForm: React.FC = () => {
                         {animal.name} (ID: {animal.id})
                       </span>
                       <span className="duplicate-animal-details">
-                        {animal.breed || 'Unknown breed'} • {dupAgeLabel} • {animal.status}
+                        {animal.breed || 'Unknown breed'} • {dupAgeLabel} • {formatAnimalStatus(animal.status)}
                       </span>
                     </div>
                   );

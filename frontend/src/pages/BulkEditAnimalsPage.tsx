@@ -11,6 +11,11 @@ import ErrorState from '../components/ErrorState';
 import Modal from '../components/Modal';
 import './BulkEditAnimalsPage.css';
 
+const formatAnimalStatus = (status: string) =>
+  status === 'bite_quarantine'
+    ? 'Bite Quarantine'
+    : status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+
 const BulkEditAnimalsPage: React.FC = () => {
   const toast = useToast();
   const [animals, setAnimals] = useState<Animal[]>([]);
@@ -636,7 +641,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                       disabled={isUpdating}
                     />
                     <span className={`status-badge status-${animal.status}`}>
-                      {animal.status.replace('_', ' ')}
+                      {formatAnimalStatus(animal.status)}
                     </span>
                   </div>
 
@@ -710,8 +715,8 @@ const BulkEditAnimalsPage: React.FC = () => {
                             </div>
                           </div>
                           <div className="info-item full-width">
-                            <div className="info-label">Approval</div>
-                            <div className="info-value">
+                            <div className="info-label">Permission</div>
+                            <div className="info-value quarantine-permission-value">
                               <span
                                 className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}
                                 aria-label={
@@ -726,9 +731,9 @@ const BulkEditAnimalsPage: React.FC = () => {
                                 }</span>
                                 {' '}{
                                   animal.quarantine_approval_status === 'granted'
-                                    ? 'Permission Granted'
+                                    ? 'Granted'
                                     : animal.quarantine_approval_status === 'requested'
-                                    ? 'Permission Requested'
+                                    ? 'Requested'
                                     : 'Not Requested'
                                 }
                               </span>
