@@ -586,39 +586,43 @@
   border: 1px solid var(--danger);
 }
 
+.quarantine-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.625rem 0.625rem;
+  background: rgba(239, 68, 68, 0.04);
+  border: none;
+  border-radius: 10px;
+}
+
+.quarantine-block .status.bite_quarantine {
+  align-self: flex-start;
+}
+
+.quarantine-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.quarantine-end-text {
+  font-size: 0.8125rem;
+  color: var(--danger-600);
+  font-weight: 600;
+}
+
+[data-theme='dark'] .quarantine-block {
+  background: rgba(239, 68, 68, 0.08);
+}
+
 .status.foster {
   background: rgba(245, 158, 11, 0.1);
   color: var(--warning-600);
   border: 1px solid var(--warning);
 }
 
-.quarantine-end-date {
-  font-size: 0.8125rem;
-  color: var(--danger-600);
-  font-weight: 600;
-  margin-top: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  background: rgba(239, 68, 68, 0.05);
-  border-radius: 4px;
-  border-left: 3px solid var(--danger);
-}
-
-[data-theme='dark'] .quarantine-end-date {
-  background: rgba(239, 68, 68, 0.15);
-}
-
-.quarantine-approval-inline {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.35rem;
-}
-
-.quarantine-permission-inline-label {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text-secondary);
-}
 
 /* Animal Tags */
 .animal-tags {
