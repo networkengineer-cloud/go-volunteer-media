@@ -1,14 +1,84 @@
 # Security Review Report
 
-**Review Date:** December 31, 2025  
+**Review Date:** June 18, 2026  
 **Reviewer:** Security and Observability Expert Agent  
 **Application:** go-volunteer-media  
-**Version:** Current (HEAD)  
+**Version:** Current (HEAD, commit f32fe34)  
 **Overall Security Posture:** **GOOD** ✅  
+
+> Supersedes the December 31, 2025 review below. No new exploitable vulnerabilities were
+> identified, including in the bite-quarantine / third-party approval feature shipped since
+> the last review (PRs #228–#231).
 
 ---
 
-## Executive Summary
+## Executive Summary (June 2026 Update)
+
+A fresh, current-state audit was performed covering `internal/auth`, `internal/middleware`,
+`internal/handlers`, `internal/models`, `internal/upload`, `internal/storage`,
+`internal/database`, `internal/email`, `internal/groupme`, `internal/maintenance`, and
+`frontend/src`, with special focus on the new bite-quarantine / third-party-approval feature
+set (third-party approval tracking, "Bite Quarantine Permission" defaulting to requested,
+and the quarantine UI/permission grouping work).
+
+**No high-confidence, concretely exploitable vulnerabilities were found.**
+
+Specific areas verified clean:
+
+- **Quarantine/approval authorization**: `admin.PUT("/animals/:animalId")`
+  (`UpdateAnimalAdmin`, `internal/handlers/animal_admin.go`) sits behind
+  `middleware.AdminRequired()` (`cmd/api/main.go:267`). The group-scoped path
+  `groupAdminAnimals.PUT("/:animalId")` (`UpdateAnimal`,
+  `internal/handlers/animal_crud.go:263`) calls `checkGroupAdminAccess`
+  (`internal/handlers/animal_helpers.go:125`), which re-derives admin/group-admin status from
+  a server-side DB lookup (`UserGroup.IsGroupAdmin`) and from `is_admin` set in the Gin context
+  by `AuthRequired()` from verified JWT claims (`internal/middleware/middleware.go:108`) —
+  never from client-supplied request body fields. `quarantine_approval_status` is restricted
+  server-side to `''|requested|granted` via `isValidApprovalStatus`
+  (`animal_helpers.go:97`) on both write paths.
+- **BulkUpdateAnimals / GetAllAnimals** (`internal/handlers/animal_admin.go:161,251`): both
+  verify `isSiteAdmin || isGroupAdmin` and, for group admins, intersect `animal_ids`/`group_id`
+  against the caller's own `UserGroup.is_group_admin=true` rows before allowing the update —
+  no IDOR path to act on animals outside the admin's groups.
+- **Document/image serving** (`ServeAnimalProtocolDocument`,
+  `internal/handlers/animal_document.go:177`) performs an explicit `UserGroup` membership check
+  before returning blob data; not an open IDOR.
+- **SQL injection**: all new and existing query paths use parameterized GORM calls (`?`
+  placeholders) for user-influenced values. The only `fmt.Sprintf`-built SQL is in
+  `internal/database/database.go` migration helpers, where the table name is a hardcoded
+  literal passed at startup, not user input — not reachable from any HTTP handler.
+- **CSV import** (`internal/handlers/animal_import_export.go`) whitelists `status` values and
+  does not expose `quarantine_approval_status`/dates as importable columns, so CSV import
+  cannot be used to forge approval state.
+- **XSS**: the only `dangerouslySetInnerHTML` usage in the frontend
+  (`frontend/src/components/ScriptsList.tsx:446`) renders mammoth.js DOCX-to-HTML output, but
+  the value is passed through `DOMPurify.sanitize()` first — properly sanitized. No
+  `dangerouslySetInnerHTML` or raw DOM injection in any quarantine-related component
+  (`QuarantineApprovalBadge.tsx`, `BulkEditAnimalsPage.tsx`, `AnimalForm.tsx`).
+- **JWT/secrets**: `internal/auth/auth.go` still enforces JWT secret entropy checks and reads
+  from env only; no hardcoded secrets found.
+- **SSRF**: `internal/groupme` posts only to a fixed `apiURL` with a per-group `bot_id` stored
+  server-side; no attacker-controlled host/URL surface.
+- **Sensitive data exposure**: quarantine update logging (`animal_admin.go:144`) logs only the
+  update map (status/dates), no PII/secrets; admin-only CSV exports
+  (`/admin/animals/export-comments-csv`) remain correctly gated by `AdminRequired()`.
+
+### Non-security note (data integrity, not a vulnerability)
+
+`BulkUpdateAnimalsRequest.Status` (`internal/handlers/animal_admin.go:157`) has no value
+whitelist (unlike the single-animal update path), so a group admin could bulk-set an animal's
+`status` to an arbitrary string and bypass the quarantine-field side effects that
+`UpdateAnimalAdmin`/`UpdateAnimal` apply (e.g., leaving a stale `quarantine_approval_status`
+after a bulk move out of `bite_quarantine`). This is only reachable by admins already
+authorized to manage those animals — not a privilege escalation or injection. Recommend
+reusing the same status whitelist and quarantine-field reset logic in `BulkUpdateAnimals` for
+consistency.
+
+**Next Review:** December 2026 (or sooner if new auth/permission-sensitive features ship).
+
+---
+
+## December 31, 2025 Review (superseded, retained for history)
 
 This comprehensive security review evaluates the frontend, backend, and external configurations of the go-volunteer-media application. The application demonstrates strong security practices overall, with a few areas requiring immediate attention.
 
