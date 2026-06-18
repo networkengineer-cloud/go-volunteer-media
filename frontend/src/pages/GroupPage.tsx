@@ -372,10 +372,13 @@ const GroupPage: React.FC = () => {
 
   // Track whether the tab bar has hidden tabs to the right. `group` is null
   // while the page is still loading, so tabsRef isn't attached to a DOM node
-  // yet on first mount; re-running once group loads lets the effect attach
-  // to the now-rendered tab bar. A ResizeObserver also catches tabs that
-  // appear later (e.g. once membership/has_protocols resolve) without
-  // depending on a window resize.
+  // yet on first mount; depending on [group, membership] re-runs the effect
+  // once both land (loadGroupData sets them together) and the membership-
+  // gated tabs (Members/Documents) are actually in the DOM. The
+  // ResizeObserver only catches the container's own box resizing (e.g.
+  // viewport/layout changes) — it does not fire when scrollWidth grows from
+  // added children — so it's a supplement to, not a replacement for, the
+  // dependency array.
   useEffect(() => {
     const el = tabsRef.current;
     if (!el) return;
@@ -397,7 +400,7 @@ const GroupPage: React.FC = () => {
       window.removeEventListener('resize', update);
       resizeObserver?.disconnect();
     };
-  }, [group]);
+  }, [group, membership]);
 
   // Close animal dropdown when clicking outside
   useEffect(() => {
