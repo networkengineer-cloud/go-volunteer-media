@@ -4,6 +4,7 @@ import { animalsApi, updatesApi, animalTagsApi, commentTagsApi, animalCommentsAp
 import type { AnimalTag, Animal, DuplicateNameInfo, AnimalImage } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import { calculateQuarantineEndDate, calculateAge, computeEstimatedBirthDate } from '../utils/dateUtils';
+import { formatAnimalStatus } from '../utils/animalUtils';
 import FormField from '../components/FormField';
 import AgePicker from '../components/AgePicker';
 import Button from '../components/Button';
@@ -627,7 +628,7 @@ const AnimalForm: React.FC = () => {
                         {animal.name} (ID: {animal.id})
                       </span>
                       <span className="duplicate-animal-details">
-                        {animal.breed || 'Unknown breed'} • {dupAgeLabel} • {animal.status}
+                        {animal.breed || 'Unknown breed'} • {dupAgeLabel} • {formatAnimalStatus(animal.status)}
                       </span>
                     </div>
                   );

@@ -1078,12 +1078,30 @@
   margin-top: 0.5rem;
 }
 
+.quarantine-permission-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.quarantine-permission-label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
 [data-theme='dark'] .quarantine-info {
   background: rgba(239, 68, 68, 0.2);
   border-color: var(--danger);
 }
 
 [data-theme='dark'] .quarantine-dates {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .quarantine-permission-label {
   color: var(--text-secondary);
 }
 

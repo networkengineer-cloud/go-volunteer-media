@@ -589,6 +589,11 @@
   font-weight: 600;
 }
 
+.quarantine-permission-value {
+  display: flex;
+  align-items: center;
+}
+
 .info-select {
   padding: 0.5rem 0.625rem;
   border: 1px solid var(--border);

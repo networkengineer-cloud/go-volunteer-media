@@ -4,6 +4,8 @@ import { animalsApi, groupsApi } from '../api/client';
 import type { Animal, Group } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import { formatDateShort, calculateQuarantineEndDate, calculateDaysSince, calculateAge, formatAge } from '../utils/dateUtils';
+import { formatAnimalStatus } from '../utils/animalUtils';
+import QuarantineApprovalBadge from '../components/QuarantineApprovalBadge';
 import { useDebounce } from '../hooks/useDebounce';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
@@ -636,7 +638,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                       disabled={isUpdating}
                     />
                     <span className={`status-badge status-${animal.status}`}>
-                      {animal.status.replace('_', ' ')}
+                      {formatAnimalStatus(animal.status)}
                     </span>
                   </div>
 
@@ -702,39 +704,20 @@ const BulkEditAnimalsPage: React.FC = () => {
                       </div>
 
                       {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
-                        <>
-                          <div className="info-item full-width">
-                            <div className="info-label">Quarantine End</div>
-                            <div className="info-value quarantine-date">
-                              {calculateQuarantineEndDate(animal.quarantine_start_date)}
-                            </div>
+                        <div className="info-item full-width">
+                          <div className="info-label">Quarantine End</div>
+                          <div className="info-value quarantine-date">
+                            {calculateQuarantineEndDate(animal.quarantine_start_date)}
                           </div>
-                          <div className="info-item full-width">
-                            <div className="info-label">Approval</div>
-                            <div className="info-value">
-                              <span
-                                className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}
-                                aria-label={
-                                  animal.quarantine_approval_status === 'granted' ? 'Bite Quarantine Permission: Granted' :
-                                  animal.quarantine_approval_status === 'requested' ? 'Bite Quarantine Permission: Requested' :
-                                  'Bite Quarantine Permission: Not Requested'
-                                }
-                              >
-                                <span aria-hidden="true">{
-                                  animal.quarantine_approval_status === 'granted' ? '✅' :
-                                  animal.quarantine_approval_status === 'requested' ? '🕐' : '⬜'
-                                }</span>
-                                {' '}{
-                                  animal.quarantine_approval_status === 'granted'
-                                    ? 'Permission Granted'
-                                    : animal.quarantine_approval_status === 'requested'
-                                    ? 'Permission Requested'
-                                    : 'Not Requested'
-                                }
-                              </span>
-                            </div>
+                        </div>
+                      )}
+                      {animal.status === 'bite_quarantine' && (
+                        <div className="info-item full-width">
+                          <div className="info-label" aria-hidden="true">Permission</div>
+                          <div className="info-value quarantine-permission-value">
+                            <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
                           </div>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>

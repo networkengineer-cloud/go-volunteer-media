@@ -6,6 +6,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { calculateQuarantineEndDate, calculateAge, formatAge } from '../utils/dateUtils';
 import { formatDisplayName } from '../utils/formatName';
+import { formatAnimalStatus } from '../utils/animalUtils';
+import QuarantineApprovalBadge from '../components/QuarantineApprovalBadge';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
@@ -462,7 +464,7 @@ const AnimalDetailPage: React.FC = () => {
                 {animal.breed && `${animal.breed} \u2022 `}{animalAgeLabel} {'\u2022'} ID: {animal.id}
               </p>
               <div className="status-badges">
-                <span className={`status ${animal.status}`}>{animal.status}</span>
+                <span className={`status ${animal.status}`}>{formatAnimalStatus(animal.status)}</span>
               </div>
               {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
                 <div className="quarantine-info">
@@ -475,38 +477,12 @@ const AnimalDetailPage: React.FC = () => {
                   <p className="quarantine-dates">
                     End: {calculateQuarantineEndDate(animal.quarantine_start_date, 'long')}
                   </p>
-                  {animal.quarantine_approval_status ? (
-                    <p className="quarantine-approval-status">
-                      <span
-                        className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status}`}
-                        aria-label={
-                          animal.quarantine_approval_status === 'granted'
-                            ? 'Bite Quarantine Permission: Granted — Cleared to Work'
-                            : animal.quarantine_approval_status === 'requested'
-                            ? 'Bite Quarantine Permission: Requested — Awaiting Response'
-                            : 'Bite Quarantine Permission: Not Requested'
-                        }
-                      >
-                        <span aria-hidden="true">{
-                          animal.quarantine_approval_status === 'granted' ? '✅' :
-                          animal.quarantine_approval_status === 'requested' ? '🕐' : '⬜'
-                        }</span>
-                        {' '}{
-                          animal.quarantine_approval_status === 'granted'
-                            ? 'Permission Granted — Cleared to Work'
-                            : animal.quarantine_approval_status === 'requested'
-                            ? 'Permission Requested'
-                            : 'Not Requested'
-                        }
-                      </span>
-                    </p>
-                  ) : (
-                    <p className="quarantine-approval-status">
-                      <span className="quarantine-approval-badge quarantine-approval-none" aria-label="No approval requested">
-                        <span aria-hidden="true">⬜</span>{' '}Not Requested
-                      </span>
-                    </p>
-                  )}
+                </div>
+              )}
+              {animal.status === 'bite_quarantine' && (
+                <div className="quarantine-permission-row">
+                  <span className="quarantine-permission-label" aria-hidden="true">Permission:</span>
+                  <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
                 </div>
               )}
               {animal.description && (
