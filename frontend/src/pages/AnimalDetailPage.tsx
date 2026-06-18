@@ -477,10 +477,12 @@ const AnimalDetailPage: React.FC = () => {
                   <p className="quarantine-dates">
                     End: {calculateQuarantineEndDate(animal.quarantine_start_date, 'long')}
                   </p>
-                  <div className="quarantine-permission-row">
-                    <span className="quarantine-permission-label">Permission:</span>
-                    <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
-                  </div>
+                </div>
+              )}
+              {animal.status === 'bite_quarantine' && (
+                <div className="quarantine-permission-row">
+                  <span className="quarantine-permission-label">Permission:</span>
+                  <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
                 </div>
               )}
               {animal.description && (

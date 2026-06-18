@@ -704,20 +704,20 @@ const BulkEditAnimalsPage: React.FC = () => {
                       </div>
 
                       {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
-                        <>
-                          <div className="info-item full-width">
-                            <div className="info-label">Quarantine End</div>
-                            <div className="info-value quarantine-date">
-                              {calculateQuarantineEndDate(animal.quarantine_start_date)}
-                            </div>
+                        <div className="info-item full-width">
+                          <div className="info-label">Quarantine End</div>
+                          <div className="info-value quarantine-date">
+                            {calculateQuarantineEndDate(animal.quarantine_start_date)}
                           </div>
-                          <div className="info-item full-width">
-                            <div className="info-label">Permission</div>
-                            <div className="info-value quarantine-permission-value">
-                              <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
-                            </div>
+                        </div>
+                      )}
+                      {animal.status === 'bite_quarantine' && (
+                        <div className="info-item full-width">
+                          <div className="info-label">Permission</div>
+                          <div className="info-value quarantine-permission-value">
+                            <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
                           </div>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
