@@ -12,7 +12,9 @@ import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import Modal from '../components/Modal';
 import ScriptsList from '../components/ScriptsList';
-import { calculateAge, formatAge } from '../utils/dateUtils';
+import { calculateAge, formatAge, calculateQuarantineEndDate } from '../utils/dateUtils';
+import { formatAnimalStatus } from '../utils/animalUtils';
+import QuarantineApprovalBadge from '../components/QuarantineApprovalBadge';
 import { formatDisplayName } from '../utils/formatName';
 import './GroupPage.css';
 
@@ -995,7 +997,7 @@ const GroupPage: React.FC = () => {
                         </div>
                         {animal.breed && <p className="breed">{animal.breed}</p>}
                         <p className="age">{formatAge(cardAgeYears, cardAgeMonths)}</p>
-                        <span className={`status ${animal.status}`}>{animal.status}</span>
+                        <span className={`status ${animal.status}`}>{formatAnimalStatus(animal.status)}</span>
                         {showLengthOfStay && animal.arrival_date && (
                           <p className="length-of-stay">
                             {(() => {
@@ -1026,42 +1028,15 @@ const GroupPage: React.FC = () => {
                           </div>
                         )}
                         {animal.status === 'bite_quarantine' && animal.quarantine_start_date && (
-                          <div className="quarantine-summary-card">
-                            <p className="quarantine-end-date">
-                              Ends: {(() => {
-                                const startDate = new Date(animal.quarantine_start_date);
-                                const endDate = new Date(startDate);
-                                endDate.setDate(endDate.getDate() + 10);
-                                while (endDate.getDay() === 0 || endDate.getDay() === 6) {
-                                  endDate.setDate(endDate.getDate() + 1);
-                                }
-                                return endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                              })()}
-                            </p>
-                            <p className="quarantine-approval-inline">
-                              <span className="quarantine-permission-inline-label">Permission:</span>
-                              <span
-                                className={`quarantine-approval-badge quarantine-approval-${animal.quarantine_approval_status || 'none'}`}
-                                aria-label={
-                                  animal.quarantine_approval_status === 'granted' ? 'Bite Quarantine Permission: Granted' :
-                                  animal.quarantine_approval_status === 'requested' ? 'Bite Quarantine Permission: Requested' :
-                                  'Bite Quarantine Permission: Not Requested'
-                                }
-                              >
-                                <span aria-hidden="true">{
-                                  animal.quarantine_approval_status === 'granted' ? '✅' :
-                                  animal.quarantine_approval_status === 'requested' ? '🕐' : '⬜'
-                                }</span>
-                                {' '}{
-                                  animal.quarantine_approval_status === 'granted'
-                                    ? 'Granted'
-                                    : animal.quarantine_approval_status === 'requested'
-                                    ? 'Requested'
-                                    : 'Not Requested'
-                                }
-                              </span>
-                            </p>
-                          </div>
+                          <p className="quarantine-end-date">
+                            Ends: {calculateQuarantineEndDate(animal.quarantine_start_date, 'short')}
+                          </p>
+                        )}
+                        {animal.status === 'bite_quarantine' && (
+                          <p className="quarantine-approval-inline">
+                            <span className="quarantine-permission-inline-label">Permission:</span>
+                            <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
+                          </p>
                         )}
                         {/* Both pills link to /photos — PhotoGallery renders images and videos on the same page */}
                         <div className="media-indicator">
