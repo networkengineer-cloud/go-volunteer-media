@@ -17,6 +17,11 @@
 *.swp
 *.swo
 
+# Git worktrees and dev tool artifacts (can contain large nested checkouts)
+.worktrees
+.claude/worktrees
+.playwright-mcp
+
 # Frontend development
 node_modules
 frontend/node_modules
