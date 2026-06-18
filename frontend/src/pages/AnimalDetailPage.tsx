@@ -481,7 +481,7 @@ const AnimalDetailPage: React.FC = () => {
               )}
               {animal.status === 'bite_quarantine' && (
                 <div className="quarantine-permission-row">
-                  <span className="quarantine-permission-label">Permission:</span>
+                  <span className="quarantine-permission-label" aria-hidden="true">Permission:</span>
                   <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
                 </div>
               )}

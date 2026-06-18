@@ -1034,7 +1034,7 @@ const GroupPage: React.FC = () => {
                         )}
                         {animal.status === 'bite_quarantine' && (
                           <p className="quarantine-approval-inline">
-                            <span className="quarantine-permission-inline-label">Permission:</span>
+                            <span className="quarantine-permission-inline-label" aria-hidden="true">Permission:</span>
                             <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
                           </p>
                         )}
