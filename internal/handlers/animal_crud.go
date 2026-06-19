@@ -48,11 +48,11 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 		// Build query with filters
 		query := db.WithContext(ctx).Where("group_id = ?", groupID)
 
-		// Status filter (default to "available" and "bite_quarantine" if not specified)
+		// Status filter (default to "available", "bite_quarantine", and "under_vet_care" if not specified)
 		status := c.Query("status")
 		if status == "" {
-			// Default: show available and bite_quarantine animals
-			query = query.Where("status IN ?", []string{"available", "bite_quarantine"})
+			// Default: show available, bite_quarantine, and under_vet_care animals
+			query = query.Where("status IN ?", []string{"available", "bite_quarantine", "under_vet_care"})
 		} else if status != "all" {
 			// Support comma-separated statuses for multiple filters
 			if strings.Contains(status, ",") {
@@ -360,6 +360,12 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = &now
+			case "under_vet_care":
+				animal.FosterStartDate = nil
+				animal.QuarantineStartDate = nil
+				animal.QuarantineApprovalStatus = ""
+				animal.QuarantineApprovalDate = nil
+				animal.ArchivedDate = nil
 			}
 			animal.Status = newStatus
 		} else if animal.Status == "bite_quarantine" {

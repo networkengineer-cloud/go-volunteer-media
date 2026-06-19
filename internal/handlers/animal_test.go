@@ -69,15 +69,23 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 	animal3.Status = "bite_quarantine"
 	db.Save(animal3)
 
+	animal4 := createTestAnimal(t, db, group.ID, "Bella", "Cat")
+	animal4.Status = "under_vet_care"
+	db.Save(animal4)
+
+	animal5 := createTestAnimal(t, db, group.ID, "Spot", "Dog")
+	animal5.Status = "archived"
+	db.Save(animal5)
+
 	tests := []struct {
 		name          string
 		statusQuery   string
 		expectedCount int
 	}{
 		{
-			name:          "default filter (available and bite_quarantine)",
+			name:          "default filter (available, bite_quarantine, and under_vet_care)",
 			statusQuery:   "",
-			expectedCount: 2, // available and bite_quarantine
+			expectedCount: 3, // available, bite_quarantine, and under_vet_care
 		},
 		{
 			name:          "filter by available",
@@ -92,12 +100,17 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 		{
 			name:          "filter by all",
 			statusQuery:   "all",
-			expectedCount: 3,
+			expectedCount: 5,
 		},
 		{
 			name:          "filter by multiple statuses",
 			statusQuery:   "available,foster",
 			expectedCount: 2,
+		},
+		{
+			name:          "filter by under_vet_care",
+			statusQuery:   "under_vet_care",
+			expectedCount: 1,
 		},
 	}
 
@@ -799,6 +812,18 @@ func TestUpdateAnimal_StatusTransition(t *testing.T) {
 			},
 			checkClearedField: func(a *models.Animal) bool {
 				return true // archived doesn't clear other fields by default
+			},
+		},
+		{
+			name:      "transition to under_vet_care",
+			newStatus: "under_vet_care",
+			checkDateField: func(a *models.Animal) bool {
+				return true // under_vet_care has no status-specific date field
+			},
+			checkClearedField: func(a *models.Animal) bool {
+				return a.FosterStartDate == nil && a.QuarantineStartDate == nil &&
+					a.QuarantineApprovalStatus == "" && a.QuarantineApprovalDate == nil &&
+					a.ArchivedDate == nil
 			},
 		},
 		{
