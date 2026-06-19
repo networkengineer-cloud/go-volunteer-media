@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -143,6 +144,50 @@ func TestUpdateAnimalAdmin_StatusTransition(t *testing.T) {
 
 	if updatedAnimal.QuarantineStartDate == nil {
 		t.Error("Expected QuarantineStartDate to be set")
+	}
+}
+
+// TestUpdateAnimalAdmin_UnderVetCareTransition tests transitioning to under_vet_care clears other status fields
+func TestUpdateAnimalAdmin_UnderVetCareTransition(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+	now := time.Now()
+	animal.Status = "archived"
+	animal.ArchivedDate = &now
+	db.Save(animal)
+
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "under_vet_care",
+	}
+
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var updatedAnimal models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &updatedAnimal); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if updatedAnimal.Status != "under_vet_care" {
+		t.Errorf("Expected status 'under_vet_care', got '%s'", updatedAnimal.Status)
+	}
+
+	if updatedAnimal.ArchivedDate != nil {
+		t.Error("Expected ArchivedDate to be cleared when transitioning to under_vet_care")
 	}
 }
 

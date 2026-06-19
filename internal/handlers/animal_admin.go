@@ -103,6 +103,12 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				updates["quarantine_approval_status"] = ""
 				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = now
+			case "under_vet_care":
+				updates["foster_start_date"] = nil
+				updates["quarantine_start_date"] = nil
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
+				updates["archived_date"] = nil
 			}
 		} else if animal.Status == "bite_quarantine" {
 			// Update approval status only when explicitly provided (nil = not sent = no change)
