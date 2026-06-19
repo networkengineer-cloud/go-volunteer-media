@@ -706,6 +706,7 @@ const AnimalForm: React.FC = () => {
                 <option value="available">Available</option>
                 <option value="foster">Foster</option>
                 <option value="bite_quarantine">Bite Quarantine</option>
+                <option value="under_vet_care">Under Vet Care</option>
                 <option value="archived">Archived</option>
               </select>
               <p className="form-field__helper">Current status of the animal</p>
@@ -1120,7 +1121,15 @@ const AnimalForm: React.FC = () => {
       >
         <p style={{ marginBottom: '1rem' }}>
           You are changing <strong>{formData.name}</strong> from <strong>Archived</strong> to{' '}
-          <strong>{pendingStatusChange === 'available' ? 'Available' : pendingStatusChange === 'foster' ? 'Foster' : 'Bite Quarantine'}</strong>.
+          <strong>
+            {pendingStatusChange === 'available'
+              ? 'Available'
+              : pendingStatusChange === 'foster'
+              ? 'Foster'
+              : pendingStatusChange === 'under_vet_care'
+              ? 'Under Vet Care'
+              : 'Bite Quarantine'}
+          </strong>.
         </p>
         
         <div className="modal__actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>

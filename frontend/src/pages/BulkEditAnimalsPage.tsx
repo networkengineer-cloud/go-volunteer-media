@@ -69,12 +69,13 @@ const BulkEditAnimalsPage: React.FC = () => {
     const available = animals.filter(a => a.status === 'available').length;
     const foster = animals.filter(a => a.status === 'foster').length;
     const quarantine = animals.filter(a => a.status === 'bite_quarantine').length;
+    const underVetCare = animals.filter(a => a.status === 'under_vet_care').length;
     const archived = animals.filter(a => a.status === 'archived').length;
     const avgStay = total > 0
       ? Math.round(animals.reduce((sum, a) => sum + calculateDaysSince(a.arrival_date), 0) / total)
       : 0;
 
-    return { total, available, foster, quarantine, archived, avgStay };
+    return { total, available, foster, quarantine, underVetCare, archived, avgStay };
   }, [animals]);
 
   const handleSelectAll = () => {
@@ -442,6 +443,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                 <option value="available">Available</option>
                 <option value="foster">Foster</option>
                 <option value="bite_quarantine">Bite Quarantine</option>
+                <option value="under_vet_care">Under Vet Care</option>
                 <option value="archived">Archived</option>
               </select>
             </div>
@@ -575,6 +577,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                     <option value="available">Available</option>
                     <option value="foster">Foster</option>
                     <option value="bite_quarantine">Bite Quarantine</option>
+                    <option value="under_vet_care">Under Vet Care</option>
                     <option value="archived">Archived</option>
                   </select>
                 )}
@@ -689,6 +692,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                           <option value="available">Available</option>
                           <option value="foster">Foster</option>
                           <option value="bite_quarantine">Quarantine</option>
+                          <option value="under_vet_care">Under Vet Care</option>
                           <option value="archived">Archived</option>
                         </select>
                       </div>
@@ -786,6 +790,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                           <option value="available">Available</option>
                           <option value="foster">Foster</option>
                           <option value="bite_quarantine">Bite Quarantine</option>
+                          <option value="under_vet_care">Under Vet Care</option>
                           <option value="archived">Archived</option>
                         </select>
                       </td>

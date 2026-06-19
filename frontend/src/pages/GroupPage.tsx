@@ -930,11 +930,12 @@ const GroupPage: React.FC = () => {
                   onChange={(e) => setStatusFilter(e.target.value)}
                   aria-label="Filter animals by status"
                 >
-                  <option value="">Available & Bite Quarantine (default)</option>
+                  <option value="">Available, Bite Quarantine & Vet Care (default)</option>
                   <option value="all">All Animals</option>
                   <option value="available">Available Only</option>
                   <option value="foster">Foster</option>
                   <option value="bite_quarantine">Bite Quarantine Only</option>
+                  <option value="under_vet_care">Under Vet Care Only</option>
                   <option value="archived">Archived</option>
                 </select>
               </div>
