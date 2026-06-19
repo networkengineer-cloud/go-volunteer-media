@@ -226,6 +226,8 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 			}
 		case "archived":
 			animal.ArchivedDate = &now
+		case "under_vet_care":
+			// No dedicated date field for vet care; LastStatusChange (set elsewhere) is sufficient.
 		}
 
 		if req.IsReturned != nil {

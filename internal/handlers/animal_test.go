@@ -475,6 +475,13 @@ func TestCreateAnimal_StatusSpecificDates(t *testing.T) {
 				return a.ArchivedDate != nil
 			},
 		},
+		{
+			name:   "under_vet_care status sets no special date field",
+			status: "under_vet_care",
+			checkDateFunc: func(a *models.Animal) bool {
+				return a.Status == "under_vet_care"
+			},
+		},
 	}
 
 	for _, tt := range tests {
