@@ -586,6 +586,12 @@
   border: 1px solid var(--danger);
 }
 
+.status.under_vet_care {
+  background: rgba(217, 119, 6, 0.1);
+  color: #b45309;
+  border: 1px solid #d97706;
+}
+
 .quarantine-block {
   display: flex;
   flex-direction: column;

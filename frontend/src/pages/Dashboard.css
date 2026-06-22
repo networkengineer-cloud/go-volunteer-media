@@ -343,6 +343,11 @@
   color: var(--danger-600);
 }
 
+.status-under_vet_care {
+  background-color: rgba(217, 119, 6, 0.2);
+  color: #b45309;
+}
+
 .status-archived {
   background-color: rgba(156, 163, 175, 0.2);
   color: var(--neutral-500);
