@@ -375,8 +375,8 @@ func main() {
 		// These routes check for site admin OR group admin access within the handlers
 		groupAdminAnimals := protected.Group("/groups/:id/animals")
 		{
-			groupAdminAnimals.POST("", handlers.CreateAnimal(db))
-			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db))
+			groupAdminAnimals.POST("", handlers.CreateAnimal(db, emailService))
+			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db, emailService))
 			groupAdminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
 			// Tag assignment for animals
 			groupAdminAnimals.POST("/:animalId/tags", handlers.AssignTagsToAnimal(db))

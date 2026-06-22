@@ -190,7 +190,7 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 }
 
 // CreateAnimal creates a new animal in a group
-func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
+func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		groupID := c.Param("id")
@@ -268,6 +268,9 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.QuarantineApprovalStatus = *req.QuarantineApprovalStatus
 				animal.QuarantineApprovalDate = &now
 			}
+			if req.QuarantineIncidentDetails != nil {
+				animal.QuarantineIncidentDetails = *req.QuarantineIncidentDetails
+			}
 		case "archived":
 			animal.ArchivedDate = &now
 		case "under_vet_care":
@@ -281,6 +284,10 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 		if err := db.WithContext(ctx).Create(&animal).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create animal"})
 			return
+		}
+
+		if animal.Status == "bite_quarantine" {
+			sendQuarantineNotificationEmail(ctx, db, emailService, &animal)
 		}
 
 		// If an image_url was provided, link any unlinked images with this URL to this animal
@@ -306,7 +313,7 @@ func CreateAnimal(db *gorm.DB) gin.HandlerFunc {
 }
 
 // UpdateAnimal updates an existing animal
-func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
+func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		groupID := c.Param("id")
@@ -361,8 +368,10 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 		oldStatus := animal.Status
 		newStatus := req.Status
 		now := time.Now()
+		enteredQuarantine := false
 		if newStatus != "" && newStatus != oldStatus {
 			animal.LastStatusChange = &now
+			enteredQuarantine = newStatus == "bite_quarantine" && oldStatus != "bite_quarantine"
 
 			// Update status-specific dates
 			switch newStatus {
@@ -377,12 +386,14 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
+				animal.QuarantineIncidentDetails = ""
 			case "foster":
 				animal.FosterStartDate = &now
 				animal.QuarantineStartDate = nil
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
+				animal.QuarantineIncidentDetails = ""
 			case "bite_quarantine":
 				// Use provided quarantine start date if available, otherwise use current time
 				if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
@@ -397,6 +408,9 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 					animal.QuarantineApprovalStatus = *req.QuarantineApprovalStatus
 					animal.QuarantineApprovalDate = &now
 				}
+				if req.QuarantineIncidentDetails != nil {
+					animal.QuarantineIncidentDetails = *req.QuarantineIncidentDetails
+				}
 				animal.FosterStartDate = nil
 				animal.ArchivedDate = nil
 			case "archived":
@@ -404,6 +418,7 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = &now
+				animal.QuarantineIncidentDetails = ""
 			case "under_vet_care":
 				// No dedicated date field for vet care, so clear the same fields as "available"
 				animal.FosterStartDate = nil
@@ -411,6 +426,7 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
+				animal.QuarantineIncidentDetails = ""
 			}
 			animal.Status = newStatus
 		} else if animal.Status == "bite_quarantine" {
@@ -427,6 +443,9 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 			// Update quarantine start date independently — both fields can change in one request
 			if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
 				animal.QuarantineStartDate = req.QuarantineStartDate.Time
+			}
+			if req.QuarantineIncidentDetails != nil {
+				animal.QuarantineIncidentDetails = *req.QuarantineIncidentDetails
 			}
 		}
 
@@ -461,6 +480,10 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 		if err := db.WithContext(ctx).Save(&animal).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal"})
 			return
+		}
+
+		if enteredQuarantine {
+			sendQuarantineNotificationEmail(ctx, db, emailService, &animal)
 		}
 
 		// If an image_url was provided, link any unlinked images with this URL to this animal
