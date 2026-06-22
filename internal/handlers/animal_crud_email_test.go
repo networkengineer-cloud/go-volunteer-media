@@ -161,3 +161,46 @@ func TestUpdateAnimal_LeaveQuarantine_ClearsIncident(t *testing.T) {
 		t.Errorf("incident not cleared on leaving BQ: %q", got.QuarantineIncidentDetails)
 	}
 }
+
+// TestCreateAnimal_BiteQuarantine_StoresIncidentDetails verifies that creating
+// an animal directly with status "bite_quarantine" stores the provided
+// incident details.
+func TestCreateAnimal_BiteQuarantine_StoresIncidentDetails(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	details := "Bit a volunteer."
+	animalReq := AnimalRequest{
+		Name:                      "Rex",
+		Species:                   "Dog",
+		Status:                    "bite_quarantine",
+		QuarantineIncidentDetails: &details,
+	}
+
+	jsonData, _ := json.Marshal(animalReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := CreateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	var created models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	var got models.Animal
+	if err := db.First(&got, created.ID).Error; err != nil {
+		t.Fatalf("Failed to reload animal: %v", err)
+	}
+	if got.QuarantineIncidentDetails != "Bit a volunteer." {
+		t.Errorf("incident not stored on create: %q", got.QuarantineIncidentDetails)
+	}
+}

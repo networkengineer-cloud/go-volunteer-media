@@ -76,12 +76,14 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				updates["quarantine_approval_status"] = ""
 				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
+				updates["quarantine_incident_details"] = ""
 			case "foster":
 				updates["foster_start_date"] = now
 				updates["quarantine_start_date"] = nil
 				updates["quarantine_approval_status"] = ""
 				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
+				updates["quarantine_incident_details"] = ""
 			case "bite_quarantine":
 				// Use provided quarantine start date if available, otherwise use current time
 				if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
@@ -96,6 +98,9 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 					updates["quarantine_approval_status"] = *req.QuarantineApprovalStatus
 					updates["quarantine_approval_date"] = now
 				}
+				if req.QuarantineIncidentDetails != nil {
+					updates["quarantine_incident_details"] = *req.QuarantineIncidentDetails
+				}
 				updates["foster_start_date"] = nil
 				updates["archived_date"] = nil
 			case "archived":
@@ -103,6 +108,7 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				updates["quarantine_approval_status"] = ""
 				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = now
+				updates["quarantine_incident_details"] = ""
 			case "under_vet_care":
 				// No dedicated date field for vet care, so clear the same fields as "available"
 				updates["foster_start_date"] = nil
@@ -110,6 +116,7 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				updates["quarantine_approval_status"] = ""
 				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
+				updates["quarantine_incident_details"] = ""
 			}
 		} else if animal.Status == "bite_quarantine" {
 			// Update approval status only when explicitly provided (nil = not sent = no change)
@@ -125,6 +132,9 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 			// Update quarantine start date independently — both fields can change in one request
 			if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
 				updates["quarantine_start_date"] = *req.QuarantineStartDate.Time
+			}
+			if req.QuarantineIncidentDetails != nil {
+				updates["quarantine_incident_details"] = *req.QuarantineIncidentDetails
 			}
 		}
 		if req.GroupID != 0 {
