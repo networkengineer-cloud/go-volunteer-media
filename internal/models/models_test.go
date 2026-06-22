@@ -1,6 +1,8 @@
 package models
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -357,4 +359,15 @@ func TestAnimal_MethodsWithRealData(t *testing.T) {
 			t.Error("Quarantine end date should not be on a weekend")
 		}
 	})
+}
+
+func TestAnimal_QuarantineIncidentDetails_JSONTag(t *testing.T) {
+	a := Animal{QuarantineIncidentDetails: "bit a volunteer on the hand"}
+	b, err := json.Marshal(a)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if !strings.Contains(string(b), `"quarantine_incident_details":"bit a volunteer on the hand"`) {
+		t.Errorf("expected quarantine_incident_details in JSON, got %s", string(b))
+	}
 }
