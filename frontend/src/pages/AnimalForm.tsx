@@ -1121,15 +1121,7 @@ const AnimalForm: React.FC = () => {
       >
         <p style={{ marginBottom: '1rem' }}>
           You are changing <strong>{formData.name}</strong> from <strong>Archived</strong> to{' '}
-          <strong>
-            {pendingStatusChange === 'available'
-              ? 'Available'
-              : pendingStatusChange === 'foster'
-              ? 'Foster'
-              : pendingStatusChange === 'under_vet_care'
-              ? 'Under Vet Care'
-              : 'Bite Quarantine'}
-          </strong>.
+          <strong>{formatAnimalStatus(pendingStatusChange)}</strong>.
         </p>
         
         <div className="modal__actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>

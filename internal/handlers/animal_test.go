@@ -145,6 +145,67 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 	}
 }
 
+// TestGetAnimals_DefaultFilterExcludesFosterAndArchived verifies by name (not just count)
+// that the default filter excludes foster and archived animals while including
+// available, bite_quarantine, and under_vet_care animals.
+func TestGetAnimals_DefaultFilterExcludesFosterAndArchived(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	available := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+	available.Status = "available"
+	db.Save(available)
+
+	foster := createTestAnimal(t, db, group.ID, "Fluffy", "Cat")
+	foster.Status = "foster"
+	db.Save(foster)
+
+	quarantine := createTestAnimal(t, db, group.ID, "Max", "Dog")
+	quarantine.Status = "bite_quarantine"
+	db.Save(quarantine)
+
+	vetCare := createTestAnimal(t, db, group.ID, "Bella", "Cat")
+	vetCare.Status = "under_vet_care"
+	db.Save(vetCare)
+
+	archived := createTestAnimal(t, db, group.ID, "Spot", "Dog")
+	archived.Status = "archived"
+	db.Save(archived)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), nil)
+
+	handler := GetAnimals(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var animals []animalListItem
+	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	names := make(map[string]bool, len(animals))
+	for _, a := range animals {
+		names[a.Name] = true
+	}
+
+	for _, expectedIncluded := range []string{"Rex", "Max", "Bella"} {
+		if !names[expectedIncluded] {
+			t.Errorf("Expected %q to be included in the default filter, but it was missing", expectedIncluded)
+		}
+	}
+
+	for _, expectedExcluded := range []string{"Fluffy", "Spot"} {
+		if names[expectedExcluded] {
+			t.Errorf("Expected %q (foster/archived) to be excluded from the default filter, but it was present", expectedExcluded)
+		}
+	}
+}
+
 // TestGetAnimals_NameSearch tests searching animals by name
 func TestGetAnimals_NameSearch(t *testing.T) {
 	db := setupAnimalTestDB(t)

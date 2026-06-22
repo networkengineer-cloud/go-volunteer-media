@@ -361,6 +361,7 @@ func UpdateAnimal(db *gorm.DB) gin.HandlerFunc {
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = &now
 			case "under_vet_care":
+				// No dedicated date field for vet care, so clear the same fields as "available"
 				animal.FosterStartDate = nil
 				animal.QuarantineStartDate = nil
 				animal.QuarantineApprovalStatus = ""
