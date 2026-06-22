@@ -1079,6 +1079,23 @@
   margin: 0.25rem 0;
 }
 
+.quarantine-incident {
+  margin-top: 0.75rem;
+}
+
+.quarantine-incident-label {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  margin: 0 0 0.25rem 0;
+}
+
+.quarantine-incident-text {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 .quarantine-approval-status {
   margin-top: 0.5rem;
 }
