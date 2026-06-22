@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -8,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -29,6 +33,46 @@ type animalWithCounts struct {
 	models.Animal
 	ImageCount int `json:"image_count"`
 	VideoCount int `json:"video_count"`
+}
+
+// buildQuarantineEmail returns the subject and body for a bite-quarantine
+// notification email for the given animal.
+func buildQuarantineEmail(animal *models.Animal) (string, string) {
+	const dateLayout = "January 2, 2006"
+	start := ""
+	if animal.QuarantineStartDate != nil {
+		start = animal.QuarantineStartDate.Format(dateLayout)
+	}
+	end := ""
+	if e := animal.QuarantineEndDate(); e != nil {
+		end = e.Format(dateLayout)
+	}
+	title := fmt.Sprintf("🚨 Bite Quarantine: %s", animal.Name)
+	body := fmt.Sprintf(
+		"%s has been placed in bite quarantine.\n\nQuarantine Start: %s\nQuarantine End: %s\n\nIncident Details:\n%s",
+		animal.Name, start, end, animal.QuarantineIncidentDetails,
+	)
+	return title, body
+}
+
+// sendQuarantineNotificationEmail asynchronously emails group members about a
+// new bite-quarantine incident. It is a no-op when the email service is
+// unavailable or there are no incident details to report.
+func sendQuarantineNotificationEmail(ctx context.Context, db *gorm.DB, emailService *email.Service, animal *models.Animal) {
+	if emailService == nil || !emailService.IsConfigured() {
+		return
+	}
+	if strings.TrimSpace(animal.QuarantineIncidentDetails) == "" {
+		return
+	}
+	title, content := buildQuarantineEmail(animal)
+	groupID := animal.GroupID
+	go func() {
+		bgCtx := context.Background()
+		if err := sendGroupAnnouncementEmails(bgCtx, db, emailService, groupID, title, content); err != nil {
+			logging.WithContext(bgCtx).Error("Error sending bite quarantine notification emails", err)
+		}
+	}()
 }
 
 // GetAnimals returns all animals in a group with optional filtering
