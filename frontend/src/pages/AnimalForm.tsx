@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { animalsApi, updatesApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
+import { animalsApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
 import type { AnimalTag, Animal, DuplicateNameInfo, AnimalImage } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import { calculateQuarantineEndDate, calculateAge, computeEstimatedBirthDate } from '../utils/dateUtils';
@@ -483,6 +483,7 @@ const AnimalForm: React.FC = () => {
     const updatedFormData = {
       ...formData,
       quarantine_start_date: quarantineDate,
+      quarantine_incident_details: quarantineContext,
     };
 
     setLoading(true);
@@ -541,19 +542,7 @@ const AnimalForm: React.FC = () => {
         console.warn('Missing animalId or groupId, skipping comment creation:', { animalId, groupId });
       }
 
-      // Create group update (post) with behavior tag context for activity feed
-      const updateTitle = `🚨 Bite Quarantine: ${formData.name}`;
-      const updateContent = `${formData.name} has been placed in bite quarantine.\n\n` +
-        `Quarantine Start: ${new Date(quarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
-        `Quarantine End: ${endDate}\n\n` +
-        `Details:\n${quarantineContext}\n\n` +
-        `#behavior`;
-
-      // Create group update (shows in activity feed) with email and GroupMe notification
-      // Parameters: (groupId, title, content, send_email, send_groupme, image_url?)
-      await updatesApi.create(parseInt(groupId), updateTitle, updateContent, true, true);
-
-      toast.showSuccess('Animal updated, comment added, and announcement posted successfully!');
+      toast.showSuccess('Animal placed in bite quarantine. Comment added and email notification sent.');
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
@@ -1045,7 +1034,7 @@ const AnimalForm: React.FC = () => {
         size="medium"
       >
         <p style={{ marginBottom: '1rem' }}>
-          Please provide details about the bite incident. This information will be posted as an announcement with the #behavior tag.
+          Please provide details about the bite incident. This information will be shown on the animal's page while in quarantine, saved as a behavior comment, and emailed to the group.
         </p>
         
         <div style={{ marginBottom: '1rem' }}>
@@ -1107,7 +1096,7 @@ const AnimalForm: React.FC = () => {
             loading={loading}
             disabled={loading || !quarantineContext.trim()}
           >
-            Save & Post Announcement
+            Save & Notify
           </Button>
         </div>
       </Modal>
