@@ -491,8 +491,8 @@
 }
 
 .status-badge.status-under_vet_care {
-  background: #fde68a;
-  color: #92400e;
+  background: #fef08a;
+  color: #854d0e;
 }
 
 .status-badge.status-archived {
@@ -516,8 +516,8 @@
 }
 
 [data-theme='dark'] .status-badge.status-under_vet_care {
-  background: #92400e;
-  color: #fde68a;
+  background: #854d0e;
+  color: #fef08a;
 }
 
 .animal-card-image {
