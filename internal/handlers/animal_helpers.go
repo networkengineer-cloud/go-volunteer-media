@@ -82,6 +82,7 @@ type AnimalRequest struct {
 	ArrivalDate              NullableTime `json:"arrival_date,omitempty"` // Date animal entered shelter
 	QuarantineStartDate      NullableTime `json:"quarantine_start_date,omitempty"`
 	QuarantineApprovalStatus *string      `json:"quarantine_approval_status,omitempty"` // nil = not provided; "" | "requested" | "granted" when set
+	QuarantineIncidentDetails *string     `json:"quarantine_incident_details,omitempty"` // nil = not provided; set when entering bite quarantine
 	IsReturned               *bool        `json:"is_returned,omitempty"`                // Pointer to distinguish null from false
 }
 
