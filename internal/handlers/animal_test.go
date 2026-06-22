@@ -69,15 +69,23 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 	animal3.Status = "bite_quarantine"
 	db.Save(animal3)
 
+	animal4 := createTestAnimal(t, db, group.ID, "Bella", "Cat")
+	animal4.Status = "under_vet_care"
+	db.Save(animal4)
+
+	animal5 := createTestAnimal(t, db, group.ID, "Spot", "Dog")
+	animal5.Status = "archived"
+	db.Save(animal5)
+
 	tests := []struct {
 		name          string
 		statusQuery   string
 		expectedCount int
 	}{
 		{
-			name:          "default filter (available and bite_quarantine)",
+			name:          "default filter (available, bite_quarantine, and under_vet_care)",
 			statusQuery:   "",
-			expectedCount: 2, // available and bite_quarantine
+			expectedCount: 3, // available, bite_quarantine, and under_vet_care
 		},
 		{
 			name:          "filter by available",
@@ -92,12 +100,17 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 		{
 			name:          "filter by all",
 			statusQuery:   "all",
-			expectedCount: 3,
+			expectedCount: 5,
 		},
 		{
 			name:          "filter by multiple statuses",
 			statusQuery:   "available,foster",
 			expectedCount: 2,
+		},
+		{
+			name:          "filter by under_vet_care",
+			statusQuery:   "under_vet_care",
+			expectedCount: 1,
 		},
 	}
 
@@ -129,6 +142,67 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 				t.Errorf("Expected %d animals, got %d", tt.expectedCount, len(animals))
 			}
 		})
+	}
+}
+
+// TestGetAnimals_DefaultFilterExcludesFosterAndArchived verifies by name (not just count)
+// that the default filter excludes foster and archived animals while including
+// available, bite_quarantine, and under_vet_care animals.
+func TestGetAnimals_DefaultFilterExcludesFosterAndArchived(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	available := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+	available.Status = "available"
+	db.Save(available)
+
+	foster := createTestAnimal(t, db, group.ID, "Fluffy", "Cat")
+	foster.Status = "foster"
+	db.Save(foster)
+
+	quarantine := createTestAnimal(t, db, group.ID, "Max", "Dog")
+	quarantine.Status = "bite_quarantine"
+	db.Save(quarantine)
+
+	vetCare := createTestAnimal(t, db, group.ID, "Bella", "Cat")
+	vetCare.Status = "under_vet_care"
+	db.Save(vetCare)
+
+	archived := createTestAnimal(t, db, group.ID, "Spot", "Dog")
+	archived.Status = "archived"
+	db.Save(archived)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), nil)
+
+	handler := GetAnimals(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var animals []animalListItem
+	if err := json.Unmarshal(w.Body.Bytes(), &animals); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	names := make(map[string]bool, len(animals))
+	for _, a := range animals {
+		names[a.Name] = true
+	}
+
+	for _, expectedIncluded := range []string{"Rex", "Max", "Bella"} {
+		if !names[expectedIncluded] {
+			t.Errorf("Expected %q to be included in the default filter, but it was missing", expectedIncluded)
+		}
+	}
+
+	for _, expectedExcluded := range []string{"Fluffy", "Spot"} {
+		if names[expectedExcluded] {
+			t.Errorf("Expected %q (foster/archived) to be excluded from the default filter, but it was present", expectedExcluded)
+		}
 	}
 }
 
@@ -475,6 +549,13 @@ func TestCreateAnimal_StatusSpecificDates(t *testing.T) {
 				return a.ArchivedDate != nil
 			},
 		},
+		{
+			name:   "under_vet_care status sets no special date field",
+			status: "under_vet_care",
+			checkDateFunc: func(a *models.Animal) bool {
+				return a.Status == "under_vet_care"
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -792,6 +873,18 @@ func TestUpdateAnimal_StatusTransition(t *testing.T) {
 			},
 			checkClearedField: func(a *models.Animal) bool {
 				return true // archived doesn't clear other fields by default
+			},
+		},
+		{
+			name:      "transition to under_vet_care",
+			newStatus: "under_vet_care",
+			checkDateField: func(a *models.Animal) bool {
+				return true // under_vet_care has no status-specific date field
+			},
+			checkClearedField: func(a *models.Animal) bool {
+				return a.FosterStartDate == nil && a.QuarantineStartDate == nil &&
+					a.QuarantineApprovalStatus == "" && a.QuarantineApprovalDate == nil &&
+					a.ArchivedDate == nil
 			},
 		},
 		{

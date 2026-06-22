@@ -490,6 +490,11 @@
   color: #991b1b;
 }
 
+.status-badge.status-under_vet_care {
+  background: #fef08a;
+  color: #854d0e;
+}
+
 .status-badge.status-archived {
   background: var(--neutral-200);
   color: var(--neutral-700);
@@ -508,6 +513,11 @@
 [data-theme='dark'] .status-badge.status-bite_quarantine {
   background: #991b1b;
   color: #fee2e2;
+}
+
+[data-theme='dark'] .status-badge.status-under_vet_care {
+  background: #854d0e;
+  color: #fef08a;
 }
 
 .animal-card-image {

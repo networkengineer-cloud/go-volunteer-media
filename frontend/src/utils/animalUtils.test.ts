@@ -14,6 +14,10 @@ describe('formatAnimalStatus', () => {
     expect(formatAnimalStatus('long_term_foster')).toBe('Long Term Foster');
   });
 
+  it('formats under_vet_care as Under Vet Care', () => {
+    expect(formatAnimalStatus('under_vet_care')).toBe('Under Vet Care');
+  });
+
   it('returns an already-uppercase string unchanged', () => {
     expect(formatAnimalStatus('ARCHIVED')).toBe('ARCHIVED');
   });

@@ -83,7 +83,7 @@ type Animal struct {
 	Description                    string              `json:"description"`
 	TrainerNotes                   string              `json:"trainer_notes"` // Optional notes for trainer meetings
 	ImageURL                       string              `json:"image_url"`
-	Status                         string              `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, foster, bite_quarantine, archived
+	Status                         string              `gorm:"default:'available';index:idx_animal_group_status" json:"status"` // available, foster, bite_quarantine, under_vet_care, archived
 	ArrivalDate                    *time.Time          `json:"arrival_date"`                                                    // When animal first became available
 	FosterStartDate                *time.Time          `json:"foster_start_date"`                                               // When animal went to foster
 	QuarantineStartDate            *time.Time          `json:"quarantine_start_date"`                                           // When bite quarantine started
