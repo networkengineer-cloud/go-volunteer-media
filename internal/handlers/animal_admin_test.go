@@ -37,7 +37,7 @@ func TestUpdateAnimalAdmin_Success(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db)
+	handler := UpdateAnimalAdmin(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -86,7 +86,7 @@ func TestUpdateAnimalAdmin_PartialUpdate(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db)
+	handler := UpdateAnimalAdmin(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -126,7 +126,7 @@ func TestUpdateAnimalAdmin_StatusTransition(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db)
+	handler := UpdateAnimalAdmin(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -169,7 +169,7 @@ func TestUpdateAnimalAdmin_EnterQuarantine_StoresIncidentDetails(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db)
+	handler := UpdateAnimalAdmin(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -213,7 +213,7 @@ func TestUpdateAnimalAdmin_LeaveQuarantine_ClearsIncidentDetails(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db)
+	handler := UpdateAnimalAdmin(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -252,7 +252,7 @@ func TestUpdateAnimalAdmin_UnderVetCareTransition(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db)
+	handler := UpdateAnimalAdmin(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -299,7 +299,7 @@ func TestUpdateAnimalAdmin_MoveGroup(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db)
+	handler := UpdateAnimalAdmin(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -332,7 +332,7 @@ func TestUpdateAnimalAdmin_NotFound(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/api/v1/admin/animals/99999", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db)
+	handler := UpdateAnimalAdmin(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusNotFound {
@@ -360,7 +360,7 @@ func TestUpdateAnimalAdmin_NoUpdates(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db)
+	handler := UpdateAnimalAdmin(db, nil)
 	handler(c)
 
 	// The handler will accept this as an update (even though the value is the same)
@@ -387,7 +387,7 @@ func TestUpdateAnimalAdmin_ValidationError(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db)
+	handler := UpdateAnimalAdmin(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusBadRequest {
@@ -584,7 +584,7 @@ func TestUpdateAnimalAdmin_ApprovalStatusSet(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateAnimalAdmin(db)(c)
+	UpdateAnimalAdmin(db, nil)(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -620,7 +620,7 @@ func TestUpdateAnimalAdmin_ApprovalClearedOnTransitionToAvailable(t *testing.T) 
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateAnimalAdmin(db)(c)
+	UpdateAnimalAdmin(db, nil)(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())

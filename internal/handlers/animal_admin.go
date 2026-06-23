@@ -7,14 +7,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
 
 // UpdateAnimalAdmin updates an existing animal by ID (admin only, no group check needed)
-func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
+func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 		animalID := c.Param("animalId")
 
@@ -63,6 +65,7 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 			updates["image_url"] = req.ImageURL
 		}
 		now := time.Now()
+		enteredQuarantine := false
 		if req.Status != "" && req.Status != animal.Status {
 			// Track status change
 			updates["status"] = req.Status
@@ -85,6 +88,7 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 				updates["archived_date"] = nil
 				updates["quarantine_incident_details"] = ""
 			case "bite_quarantine":
+				enteredQuarantine = true
 				// Use provided quarantine start date if available, otherwise use current time
 				if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
 					updates["quarantine_start_date"] = *req.QuarantineStartDate.Time
@@ -156,6 +160,10 @@ func UpdateAnimalAdmin(db *gorm.DB) gin.HandlerFunc {
 		if err := db.Preload("Tags").First(&animal, animalID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload animal"})
 			return
+		}
+
+		if enteredQuarantine {
+			sendQuarantineNotificationEmail(ctx, db, emailService, &animal)
 		}
 
 		logger.WithFields(map[string]interface{}{

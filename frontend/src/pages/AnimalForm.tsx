@@ -542,7 +542,7 @@ const AnimalForm: React.FC = () => {
         console.warn('Missing animalId or groupId, skipping comment creation:', { animalId, groupId });
       }
 
-      toast.showSuccess('Animal placed in bite quarantine. Comment added and email notification sent.');
+      toast.showSuccess('Animal placed in bite quarantine. Comment added.');
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {

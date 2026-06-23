@@ -264,7 +264,7 @@ func main() {
 			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db))
 			admin.POST("/animals/export-csv", handlers.ExportAnimalsCSV(db))
 			admin.GET("/animals/export-comments-csv", handlers.ExportAnimalCommentsCSV(db))
-			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db))
+			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db, emailService))
 
 			// Animal image management (admin only)
 			admin.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePicture(db))
