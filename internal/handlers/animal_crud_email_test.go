@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -39,7 +38,7 @@ func TestBuildQuarantineEmailBody(t *testing.T) {
 
 func TestSendQuarantineNotificationEmail_NilServiceNoPanic(t *testing.T) {
 	// nil email service must be a safe no-op
-	sendQuarantineNotificationEmail(context.Background(), nil, nil, &models.Animal{Name: "Rex"})
+	sendQuarantineNotificationEmail(nil, nil, &models.Animal{Name: "Rex"})
 }
 
 // TestUpdateAnimal_EnterQuarantine_StoresIncidentAndKeepsItOnEdit verifies that

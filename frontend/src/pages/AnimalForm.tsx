@@ -484,9 +484,15 @@ const AnimalForm: React.FC = () => {
       return;
     }
 
+    // Compute birth date the same way saveAnimal does
+    const finalBirthDate = formData.estimated_birth_date ||
+      (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
+
     // Update formData with the quarantine date
     const updatedFormData = {
       ...formData,
+      estimated_birth_date: finalBirthDate || undefined,
+      age: birthYears,
       quarantine_start_date: quarantineDate,
       quarantine_incident_details: quarantineContext,
     };
@@ -497,15 +503,9 @@ const AnimalForm: React.FC = () => {
       let animalId: number | null = null;
       if (id && groupId) {
         const response = await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
-        console.log('Update response:', response);
-        console.log('Response data:', response.data);
-        console.log('Animal ID from response:', response.data.id);
         animalId = response.data.id;
       } else if (groupId) {
         const response = await animalsApi.create(parseInt(groupId), updatedFormData);
-        console.log('Create response:', response);
-        console.log('Response data:', response.data);
-        console.log('Animal ID from response:', response.data.id);
         animalId = response.data.id;
       }
 
@@ -525,10 +525,6 @@ const AnimalForm: React.FC = () => {
             `Quarantine End: ${endDate}\n\n` +
             `Incident Details:\n${quarantineContext}`;
           
-          console.log('Creating comment for animal ID:', animalId, 'in group:', groupId);
-          console.log('Comment tags:', commentTags);
-          console.log('Behavior tag:', behaviorTag);
-          
           await animalCommentsApi.create(
             parseInt(groupId),
             animalId,
@@ -536,15 +532,13 @@ const AnimalForm: React.FC = () => {
             undefined, // no image
             behaviorTag ? [behaviorTag.id] : [] // attach behavior tag if found
           );
-          
-          console.log('Comment created successfully');
         } catch (commentError) {
           console.error('Failed to create comment:', commentError);
-          // Don't fail the whole operation if comment creation fails
           toast.showWarning('Animal updated but comment creation failed');
+          setShowQuarantineModal(false);
+          navigate(`/groups/${groupId}`);
+          return;
         }
-      } else {
-        console.warn('Missing animalId or groupId, skipping comment creation:', { animalId, groupId });
       }
 
       toast.showSuccess('Animal placed in bite quarantine. Comment added.');

@@ -16,7 +16,6 @@ import (
 // UpdateAnimalAdmin updates an existing animal by ID (admin only, no group check needed)
 func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		logger := middleware.GetLogger(c)
 		animalID := c.Param("animalId")
 
@@ -163,7 +162,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		}
 
 		if enteredQuarantine {
-			sendQuarantineNotificationEmail(ctx, db, emailService, &animal)
+			sendQuarantineNotificationEmail(db, emailService, &animal)
 		}
 
 		logger.WithFields(map[string]interface{}{

@@ -58,7 +58,7 @@ func buildQuarantineEmail(animal *models.Animal) (string, string) {
 // sendQuarantineNotificationEmail asynchronously emails group members about a
 // new bite-quarantine incident. It is a no-op when the email service is
 // unavailable or there are no incident details to report.
-func sendQuarantineNotificationEmail(ctx context.Context, db *gorm.DB, emailService *email.Service, animal *models.Animal) {
+func sendQuarantineNotificationEmail(db *gorm.DB, emailService *email.Service, animal *models.Animal) {
 	if emailService == nil || !emailService.IsConfigured() {
 		return
 	}
@@ -287,7 +287,7 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		}
 
 		if animal.Status == "bite_quarantine" {
-			sendQuarantineNotificationEmail(ctx, db, emailService, &animal)
+			sendQuarantineNotificationEmail(db, emailService, &animal)
 		}
 
 		// If an image_url was provided, link any unlinked images with this URL to this animal
@@ -483,7 +483,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		}
 
 		if enteredQuarantine {
-			sendQuarantineNotificationEmail(ctx, db, emailService, &animal)
+			sendQuarantineNotificationEmail(db, emailService, &animal)
 		}
 
 		// If an image_url was provided, link any unlinked images with this URL to this animal
