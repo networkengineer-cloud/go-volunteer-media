@@ -509,8 +509,11 @@ const AnimalForm: React.FC = () => {
         animalId = response.data.id;
       }
 
+      const normalisedQuarantineDate = /^\d{4}-\d{2}-\d{2}$/.test(quarantineDate)
+        ? quarantineDate + 'T00:00:00'
+        : quarantineDate;
       const endDate = calculateQuarantineEndDate(quarantineDate, 'long');
-      
+
       // Create a comment on the animal with behavior tag
       if (animalId && groupId) {
         try {
@@ -518,10 +521,10 @@ const AnimalForm: React.FC = () => {
           const commentTagsResponse = await commentTagsApi.getAll(parseInt(groupId));
           const commentTags = commentTagsResponse.data;
           const behaviorTag = commentTags.find(tag => tag.name.toLowerCase() === 'behavior');
-          
+
           // Create comment with bite quarantine details
           const commentContent = `🚨 BITE QUARANTINE\n\n` +
-            `Quarantine Start: ${new Date(quarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
+            `Quarantine Start: ${new Date(normalisedQuarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
             `Quarantine End: ${endDate}\n\n` +
             `Incident Details:\n${quarantineContext}`;
           

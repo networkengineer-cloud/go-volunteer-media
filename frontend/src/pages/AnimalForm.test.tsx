@@ -4,7 +4,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import AnimalForm from './AnimalForm';
-import { animalsApi, updatesApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
+import { animalsApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
 import type { AxiosResponse } from 'axios';
 import { ToastProvider } from '../contexts/ToastContext';
 
@@ -16,9 +16,6 @@ vi.mock('../api/client', () => ({
     create: vi.fn(),
     update: vi.fn(),
     getImages: vi.fn(),
-  },
-  updatesApi: {
-    create: vi.fn(),
   },
   animalTagsApi: {
     getAll: vi.fn(),
@@ -144,7 +141,6 @@ describe('AnimalForm', () => {
     const payload = (animalsApi.update as Mock).mock.calls[0][2];
     expect(payload.quarantine_incident_details).toBe('Bit a volunteer.');
     expect(animalCommentsApi.create).toHaveBeenCalled();
-    expect(updatesApi.create).not.toHaveBeenCalled();
   });
 
   it('loads existing incident details and start date for an animal already in quarantine', async () => {
@@ -191,6 +187,5 @@ describe('AnimalForm', () => {
     const payload = (animalsApi.update as Mock).mock.calls[0][2];
     expect(payload.quarantine_incident_details).toBe('Corrected: bit a staff member, not a volunteer.');
     expect(animalCommentsApi.create).not.toHaveBeenCalled();
-    expect(updatesApi.create).not.toHaveBeenCalled();
   });
 });
