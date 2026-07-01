@@ -56,6 +56,22 @@ const existingAnimal = {
   is_returned: false,
 };
 
+const existingQuarantinedAnimal = {
+  id: 1,
+  group_id: 1,
+  name: 'Rex',
+  species: 'Dog',
+  breed: 'Mixed',
+  age: 3,
+  description: '',
+  image_url: '',
+  status: 'bite_quarantine',
+  quarantine_start_date: '2026-06-01T00:00:00Z',
+  quarantine_approval_status: 'requested',
+  quarantine_incident_details: 'Bit a volunteer on the hand.',
+  is_returned: false,
+};
+
 describe('AnimalForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -128,6 +144,53 @@ describe('AnimalForm', () => {
     const payload = (animalsApi.update as Mock).mock.calls[0][2];
     expect(payload.quarantine_incident_details).toBe('Bit a volunteer.');
     expect(animalCommentsApi.create).toHaveBeenCalled();
+    expect(updatesApi.create).not.toHaveBeenCalled();
+  });
+
+  it('loads existing incident details and start date for an animal already in quarantine', async () => {
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: existingQuarantinedAnimal,
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const incidentTextarea = document.getElementById('quarantine_incident_details') as HTMLTextAreaElement;
+    const dateInput = document.getElementById('quarantine_start_date') as HTMLInputElement;
+
+    expect(incidentTextarea.value).toBe('Bit a volunteer on the hand.');
+    expect(dateInput.value).toBe('2026-06-01');
+  });
+
+  it('saves edited incident details/date for an already-quarantined animal via the normal save flow', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: existingQuarantinedAnimal,
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const incidentTextarea = document.getElementById('quarantine_incident_details') as HTMLTextAreaElement;
+    await user.clear(incidentTextarea);
+    await user.type(incidentTextarea, 'Corrected: bit a staff member, not a volunteer.');
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    await waitFor(() => expect(animalsApi.update).toHaveBeenCalled());
+
+    const payload = (animalsApi.update as Mock).mock.calls[0][2];
+    expect(payload.quarantine_incident_details).toBe('Corrected: bit a staff member, not a volunteer.');
+    expect(animalCommentsApi.create).not.toHaveBeenCalled();
     expect(updatesApi.create).not.toHaveBeenCalled();
   });
 });

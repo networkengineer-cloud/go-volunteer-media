@@ -45,6 +45,7 @@ const AnimalForm: React.FC = () => {
     status: 'available',
     arrival_date: '',
     quarantine_start_date: '',
+    quarantine_incident_details: '',
     quarantine_approval_status: 'requested',
     is_returned: false,
     protocol_document_url: '',
@@ -114,6 +115,7 @@ const AnimalForm: React.FC = () => {
         trainer_notes: animal.trainer_notes || '',
         arrival_date: animal.arrival_date ? animal.arrival_date.split('T')[0] : '',
         quarantine_start_date: animal.quarantine_start_date ? animal.quarantine_start_date.split('T')[0] : '',
+        quarantine_incident_details: animal.quarantine_incident_details || '',
         quarantine_approval_status: animal.quarantine_approval_status || 'requested',
         protocol_document_url: animal.protocol_document_url || '',
         protocol_document_name: animal.protocol_document_name || '',
@@ -430,6 +432,9 @@ const AnimalForm: React.FC = () => {
         quarantine_approval_status: formData.status === 'bite_quarantine'
           ? formData.quarantine_approval_status
           : undefined,
+        quarantine_incident_details: formData.status === 'bite_quarantine'
+          ? formData.quarantine_incident_details
+          : undefined,
       };
       
       if (id && groupId) {
@@ -721,6 +726,28 @@ const AnimalForm: React.FC = () => {
                 Track whether permission has been requested or granted to resume working with this animal.
               </p>
             </div>
+          )}
+
+          {formData.status === 'bite_quarantine' && originalStatus === 'bite_quarantine' && (
+            <>
+              <FormField
+                label="Quarantine Start Date"
+                id="quarantine_start_date"
+                type="date"
+                value={formData.quarantine_start_date}
+                onChange={(value) => setFormData({ ...formData, quarantine_start_date: value })}
+                helperText={`Quarantine will end: ${calculateQuarantineEndDate(formData.quarantine_start_date, 'long')}`}
+              />
+              <FormField
+                label="Incident Details"
+                id="quarantine_incident_details"
+                type="textarea"
+                value={formData.quarantine_incident_details}
+                onChange={(value) => setFormData({ ...formData, quarantine_incident_details: value })}
+                helperText="Shown on the animal's page for as long as it's in bite quarantine. Correcting this does not re-notify the group."
+                rows={4}
+              />
+            </>
           )}
 
           <div className="form-row">
