@@ -1050,7 +1050,9 @@ const GroupPage: React.FC = () => {
                             <div className="quarantine-meta">
                               {animal.quarantine_start_date && (
                                 <span className="quarantine-end-text">
-                                  Ends: {calculateQuarantineEndDate(animal.quarantine_start_date, 'short')}
+                                  Ends: {animal.quarantine_end_date
+                                    ? new Date(animal.quarantine_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                    : calculateQuarantineEndDate(animal.quarantine_start_date, 'short')}
                                 </span>
                               )}
                               <QuarantineApprovalBadge status={animal.quarantine_approval_status} />

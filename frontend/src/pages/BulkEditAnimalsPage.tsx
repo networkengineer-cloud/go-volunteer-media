@@ -711,7 +711,9 @@ const BulkEditAnimalsPage: React.FC = () => {
                         <div className="info-item full-width">
                           <div className="info-label">Quarantine End</div>
                           <div className="info-value quarantine-date">
-                            {calculateQuarantineEndDate(animal.quarantine_start_date)}
+                            {animal.quarantine_end_date
+                              ? new Date(animal.quarantine_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                              : calculateQuarantineEndDate(animal.quarantine_start_date)}
                           </div>
                         </div>
                       )}
@@ -813,7 +815,9 @@ const BulkEditAnimalsPage: React.FC = () => {
                       <td>{calculateDaysSince(animal.last_status_change)}</td>
                       <td>
                         {animal.status === 'bite_quarantine'
-                          ? calculateQuarantineEndDate(animal.quarantine_start_date)
+                          ? (animal.quarantine_end_date
+                              ? new Date(animal.quarantine_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                              : calculateQuarantineEndDate(animal.quarantine_start_date))
                           : '-'
                         }
                       </td>
