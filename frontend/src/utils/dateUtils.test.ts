@@ -4,6 +4,7 @@ import {
   formatDateLong,
   formatRelativeTime,
   calculateQuarantineEndDate,
+  calculateQuarantineEndDateISO,
   calculateDaysSince,
   calculateAge,
   formatAge,
@@ -124,6 +125,28 @@ describe('dateUtils', () => {
     it('returns long format when requested', () => {
       const result = calculateQuarantineEndDate('2024-06-03T12:00:00Z', 'long');
       expect(result).toMatch(/June\s+13,\s+2024/);
+    });
+  });
+
+  describe('calculateQuarantineEndDateISO', () => {
+    it('returns "" for undefined', () => {
+      expect(calculateQuarantineEndDateISO(undefined)).toBe('');
+    });
+
+    it('returns "" for invalid date string', () => {
+      expect(calculateQuarantineEndDateISO('bad-date')).toBe('');
+    });
+
+    it('adds 10 days to a start date that lands on a weekday', () => {
+      expect(calculateQuarantineEndDateISO('2024-06-03')).toBe('2024-06-13');
+    });
+
+    it('skips Saturday and returns Monday', () => {
+      expect(calculateQuarantineEndDateISO('2024-05-15')).toBe('2024-05-27');
+    });
+
+    it('skips Sunday and returns Monday', () => {
+      expect(calculateQuarantineEndDateISO('2024-05-16')).toBe('2024-05-27');
     });
   });
 

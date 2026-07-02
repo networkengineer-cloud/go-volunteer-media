@@ -31,16 +31,16 @@ export function formatRelativeTime(dateString: string, cutoffDays = 30): string 
   return formatDateShort(dateString);
 }
 
-// Calculates the quarantine end date: 10 days after the start date,
-// shifted forward if it falls on a weekend.
-export function calculateQuarantineEndDate(startDateString?: string, format: 'short' | 'long' = 'short'): string {
-  if (!startDateString) return '-';
+// Shared computation for calculateQuarantineEndDate / calculateQuarantineEndDateISO:
+// 10 days after the start date, shifted forward if it falls on a weekend.
+function addQuarantineDays(startDateString?: string): Date | null {
+  if (!startDateString) return null;
 
   const normalised = /^\d{4}-\d{2}-\d{2}$/.test(startDateString)
     ? startDateString + 'T00:00:00'
     : startDateString;
   const startDate = new Date(normalised);
-  if (isNaN(startDate.getTime())) return '-';
+  if (isNaN(startDate.getTime())) return null;
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + 10);
 
@@ -48,9 +48,30 @@ export function calculateQuarantineEndDate(startDateString?: string, format: 'sh
     endDate.setDate(endDate.getDate() + 1);
   }
 
+  return endDate;
+}
+
+// Calculates the quarantine end date: 10 days after the start date,
+// shifted forward if it falls on a weekend.
+export function calculateQuarantineEndDate(startDateString?: string, format: 'short' | 'long' = 'short'): string {
+  const endDate = addQuarantineDays(startDateString);
+  if (!endDate) return '-';
+
   return endDate.toLocaleDateString('en-US', format === 'long'
     ? { year: 'numeric', month: 'long', day: 'numeric' }
     : { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Same computation as calculateQuarantineEndDate, but returns YYYY-MM-DD for use as the
+// value of an <input type="date"> (e.g. pre-filling the editable quarantine end date field).
+export function calculateQuarantineEndDateISO(startDateString?: string): string {
+  const endDate = addQuarantineDays(startDateString);
+  if (!endDate) return '';
+
+  const y = endDate.getFullYear();
+  const m = String(endDate.getMonth() + 1).padStart(2, '0');
+  const d = String(endDate.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 export function calculateDaysSince(dateString?: string): number {
