@@ -266,6 +266,8 @@ describe('AnimalForm', () => {
     fireEvent.change(endDateInput, { target: { value: '2026-05-01' } }); // before start date 2026-06-01
 
     const submitButton = screen.getByRole('button', { name: /update animal/i });
+    expect(submitButton).toBeDisabled();
+
     await user.click(submitButton);
 
     expect(animalsApi.update).not.toHaveBeenCalled();

@@ -207,7 +207,8 @@ const AnimalForm: React.FC = () => {
   const isFormValid = () => {
     return formData.name.trim().length >= 2 &&
            !errors.name &&
-           !errors.age;
+           !errors.age &&
+           !quarantineEndDateError;
   };
 
   const quarantineEndDateError = (

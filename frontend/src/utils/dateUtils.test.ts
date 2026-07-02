@@ -9,6 +9,8 @@ import {
   calculateAge,
   formatAge,
   computeEstimatedBirthDate,
+  formatCalendarDate,
+  formatQuarantineEndDate,
 } from './dateUtils';
 
 describe('dateUtils', () => {
@@ -147,6 +149,52 @@ describe('dateUtils', () => {
 
     it('skips Sunday and returns Monday', () => {
       expect(calculateQuarantineEndDateISO('2024-05-16')).toBe('2024-05-27');
+    });
+  });
+
+  describe('formatCalendarDate', () => {
+    it('returns "-" for undefined', () => {
+      expect(formatCalendarDate(undefined)).toBe('-');
+    });
+
+    it('returns "-" for invalid date string', () => {
+      expect(formatCalendarDate('not-a-date')).toBe('-');
+    });
+
+    it('formats a bare YYYY-MM-DD string', () => {
+      expect(formatCalendarDate('2026-07-15', 'long')).toBe('July 15, 2026');
+    });
+
+    it('formats a UTC-midnight ISO timestamp without shifting to the previous day', () => {
+      // Regression guard: new Date('2026-07-15T00:00:00Z').toLocaleDateString()
+      // renders 'July 14' in any timezone behind UTC. formatCalendarDate must
+      // treat the date portion as the calendar date regardless of timezone.
+      expect(formatCalendarDate('2026-07-15T00:00:00Z', 'long')).toBe('July 15, 2026');
+    });
+
+    it('formats in short form by default', () => {
+      expect(formatCalendarDate('2026-07-15T00:00:00Z')).toMatch(/Jul\s+15,\s+2026/);
+    });
+  });
+
+  describe('formatQuarantineEndDate', () => {
+    it('shows the stored end date when present, not a recomputed one', () => {
+      const result = formatQuarantineEndDate({
+        quarantine_start_date: '2026-06-22T00:00:00Z',
+        quarantine_end_date: '2026-07-15T00:00:00Z',
+      }, 'long');
+      expect(result).toBe('July 15, 2026');
+    });
+
+    it('falls back to the computed default when no end date is stored', () => {
+      const result = formatQuarantineEndDate({
+        quarantine_start_date: '2024-06-03T12:00:00Z', // Monday
+      }, 'long');
+      expect(result).toBe('June 13, 2024');
+    });
+
+    it('returns "-" when neither date is present', () => {
+      expect(formatQuarantineEndDate({})).toBe('-');
     });
   });
 
