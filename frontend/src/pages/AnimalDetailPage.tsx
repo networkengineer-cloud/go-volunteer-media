@@ -477,6 +477,12 @@ const AnimalDetailPage: React.FC = () => {
                   <p className="quarantine-dates">
                     End: {calculateQuarantineEndDate(animal.quarantine_start_date, 'long')}
                   </p>
+                  {animal.status === 'bite_quarantine' && animal.quarantine_incident_details && (
+                    <div className="quarantine-incident">
+                      <p className="quarantine-incident-label"><strong>Incident Details</strong></p>
+                      <p className="quarantine-incident-text">{animal.quarantine_incident_details}</p>
+                    </div>
+                  )}
                 </div>
               )}
               {animal.status === 'bite_quarantine' && (

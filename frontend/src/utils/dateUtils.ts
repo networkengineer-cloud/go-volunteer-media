@@ -36,7 +36,10 @@ export function formatRelativeTime(dateString: string, cutoffDays = 30): string 
 export function calculateQuarantineEndDate(startDateString?: string, format: 'short' | 'long' = 'short'): string {
   if (!startDateString) return '-';
 
-  const startDate = new Date(startDateString);
+  const normalised = /^\d{4}-\d{2}-\d{2}$/.test(startDateString)
+    ? startDateString + 'T00:00:00'
+    : startDateString;
+  const startDate = new Date(normalised);
   if (isNaN(startDate.getTime())) return '-';
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + 10);

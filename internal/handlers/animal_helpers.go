@@ -69,20 +69,21 @@ func (nt NullableTime) MarshalJSON() ([]byte, error) {
 
 // AnimalRequest represents the request structure for creating/updating animals
 type AnimalRequest struct {
-	Name                     string       `json:"name" binding:"required"`
-	Species                  string       `json:"species"`
-	Breed                    string       `json:"breed"`
-	Age                      int          `json:"age"`
-	EstimatedBirthDate       NullableTime `json:"estimated_birth_date,omitempty"` // Estimated date of birth for real-time age
-	Description              string       `json:"description"`
-	TrainerNotes             string       `json:"trainer_notes"`
-	ImageURL                 string       `json:"image_url,omitempty"`
-	Status                   string       `json:"status"`
-	GroupID                  uint         `json:"group_id,omitempty"`
-	ArrivalDate              NullableTime `json:"arrival_date,omitempty"` // Date animal entered shelter
-	QuarantineStartDate      NullableTime `json:"quarantine_start_date,omitempty"`
-	QuarantineApprovalStatus *string      `json:"quarantine_approval_status,omitempty"` // nil = not provided; "" | "requested" | "granted" when set
-	IsReturned               *bool        `json:"is_returned,omitempty"`                // Pointer to distinguish null from false
+	Name                      string       `json:"name" binding:"required"`
+	Species                   string       `json:"species"`
+	Breed                     string       `json:"breed"`
+	Age                       int          `json:"age"`
+	EstimatedBirthDate        NullableTime `json:"estimated_birth_date,omitempty"` // Estimated date of birth for real-time age
+	Description               string       `json:"description"`
+	TrainerNotes              string       `json:"trainer_notes"`
+	ImageURL                  string       `json:"image_url,omitempty"`
+	Status                    string       `json:"status"`
+	GroupID                   uint         `json:"group_id,omitempty"`
+	ArrivalDate               NullableTime `json:"arrival_date,omitempty"` // Date animal entered shelter
+	QuarantineStartDate       NullableTime `json:"quarantine_start_date,omitempty"`
+	QuarantineApprovalStatus  *string      `json:"quarantine_approval_status,omitempty"`  // nil = not provided; "" | "requested" | "granted" when set
+	QuarantineIncidentDetails *string      `json:"quarantine_incident_details,omitempty"` // nil = not provided; set when entering bite quarantine
+	IsReturned                *bool        `json:"is_returned,omitempty"`                 // Pointer to distinguish null from false
 }
 
 // DuplicateNameInfo represents information about animals with duplicate names

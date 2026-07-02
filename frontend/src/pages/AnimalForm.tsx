@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { animalsApi, updatesApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
+import { animalsApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
 import type { AnimalTag, Animal, DuplicateNameInfo, AnimalImage } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import { calculateQuarantineEndDate, calculateAge, computeEstimatedBirthDate } from '../utils/dateUtils';
@@ -45,6 +45,7 @@ const AnimalForm: React.FC = () => {
     status: 'available',
     arrival_date: '',
     quarantine_start_date: '',
+    quarantine_incident_details: '',
     quarantine_approval_status: 'requested',
     is_returned: false,
     protocol_document_url: '',
@@ -114,6 +115,7 @@ const AnimalForm: React.FC = () => {
         trainer_notes: animal.trainer_notes || '',
         arrival_date: animal.arrival_date ? animal.arrival_date.split('T')[0] : '',
         quarantine_start_date: animal.quarantine_start_date ? animal.quarantine_start_date.split('T')[0] : '',
+        quarantine_incident_details: animal.quarantine_incident_details || '',
         quarantine_approval_status: animal.quarantine_approval_status || 'requested',
         protocol_document_url: animal.protocol_document_url || '',
         protocol_document_name: animal.protocol_document_name || '',
@@ -430,6 +432,9 @@ const AnimalForm: React.FC = () => {
         quarantine_approval_status: formData.status === 'bite_quarantine'
           ? formData.quarantine_approval_status
           : undefined,
+        quarantine_incident_details: formData.status === 'bite_quarantine'
+          ? formData.quarantine_incident_details
+          : undefined,
       };
       
       if (id && groupId) {
@@ -479,10 +484,17 @@ const AnimalForm: React.FC = () => {
       return;
     }
 
+    // Compute birth date the same way saveAnimal does
+    const finalBirthDate = formData.estimated_birth_date ||
+      (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
+
     // Update formData with the quarantine date
     const updatedFormData = {
       ...formData,
+      estimated_birth_date: finalBirthDate || undefined,
+      age: birthYears,
       quarantine_start_date: quarantineDate,
+      quarantine_incident_details: quarantineContext,
     };
 
     setLoading(true);
@@ -491,20 +503,17 @@ const AnimalForm: React.FC = () => {
       let animalId: number | null = null;
       if (id && groupId) {
         const response = await animalsApi.update(parseInt(groupId), parseInt(id), updatedFormData);
-        console.log('Update response:', response);
-        console.log('Response data:', response.data);
-        console.log('Animal ID from response:', response.data.id);
         animalId = response.data.id;
       } else if (groupId) {
         const response = await animalsApi.create(parseInt(groupId), updatedFormData);
-        console.log('Create response:', response);
-        console.log('Response data:', response.data);
-        console.log('Animal ID from response:', response.data.id);
         animalId = response.data.id;
       }
 
+      const normalisedQuarantineDate = /^\d{4}-\d{2}-\d{2}$/.test(quarantineDate)
+        ? quarantineDate + 'T00:00:00'
+        : quarantineDate;
       const endDate = calculateQuarantineEndDate(quarantineDate, 'long');
-      
+
       // Create a comment on the animal with behavior tag
       if (animalId && groupId) {
         try {
@@ -512,16 +521,12 @@ const AnimalForm: React.FC = () => {
           const commentTagsResponse = await commentTagsApi.getAll(parseInt(groupId));
           const commentTags = commentTagsResponse.data;
           const behaviorTag = commentTags.find(tag => tag.name.toLowerCase() === 'behavior');
-          
+
           // Create comment with bite quarantine details
           const commentContent = `🚨 BITE QUARANTINE\n\n` +
-            `Quarantine Start: ${new Date(quarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
+            `Quarantine Start: ${new Date(normalisedQuarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
             `Quarantine End: ${endDate}\n\n` +
             `Incident Details:\n${quarantineContext}`;
-          
-          console.log('Creating comment for animal ID:', animalId, 'in group:', groupId);
-          console.log('Comment tags:', commentTags);
-          console.log('Behavior tag:', behaviorTag);
           
           await animalCommentsApi.create(
             parseInt(groupId),
@@ -530,30 +535,16 @@ const AnimalForm: React.FC = () => {
             undefined, // no image
             behaviorTag ? [behaviorTag.id] : [] // attach behavior tag if found
           );
-          
-          console.log('Comment created successfully');
         } catch (commentError) {
           console.error('Failed to create comment:', commentError);
-          // Don't fail the whole operation if comment creation fails
           toast.showWarning('Animal updated but comment creation failed');
+          setShowQuarantineModal(false);
+          navigate(`/groups/${groupId}`);
+          return;
         }
-      } else {
-        console.warn('Missing animalId or groupId, skipping comment creation:', { animalId, groupId });
       }
 
-      // Create group update (post) with behavior tag context for activity feed
-      const updateTitle = `🚨 Bite Quarantine: ${formData.name}`;
-      const updateContent = `${formData.name} has been placed in bite quarantine.\n\n` +
-        `Quarantine Start: ${new Date(quarantineDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\n` +
-        `Quarantine End: ${endDate}\n\n` +
-        `Details:\n${quarantineContext}\n\n` +
-        `#behavior`;
-
-      // Create group update (shows in activity feed) with email and GroupMe notification
-      // Parameters: (groupId, title, content, send_email, send_groupme, image_url?)
-      await updatesApi.create(parseInt(groupId), updateTitle, updateContent, true, true);
-
-      toast.showSuccess('Animal updated, comment added, and announcement posted successfully!');
+      toast.showSuccess('Animal placed in bite quarantine. Comment added.');
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
@@ -732,6 +723,28 @@ const AnimalForm: React.FC = () => {
                 Track whether permission has been requested or granted to resume working with this animal.
               </p>
             </div>
+          )}
+
+          {formData.status === 'bite_quarantine' && originalStatus === 'bite_quarantine' && (
+            <>
+              <FormField
+                label="Quarantine Start Date"
+                id="quarantine_start_date"
+                type="date"
+                value={formData.quarantine_start_date}
+                onChange={(value) => setFormData({ ...formData, quarantine_start_date: value })}
+                helperText={`Quarantine will end: ${calculateQuarantineEndDate(formData.quarantine_start_date, 'long')}`}
+              />
+              <FormField
+                label="Incident Details"
+                id="quarantine_incident_details"
+                type="textarea"
+                value={formData.quarantine_incident_details}
+                onChange={(value) => setFormData({ ...formData, quarantine_incident_details: value })}
+                helperText="Shown on the animal's page for as long as it's in bite quarantine. Correcting this does not re-notify the group."
+                rows={4}
+              />
+            </>
           )}
 
           <div className="form-row">
@@ -1045,7 +1058,7 @@ const AnimalForm: React.FC = () => {
         size="medium"
       >
         <p style={{ marginBottom: '1rem' }}>
-          Please provide details about the bite incident. This information will be posted as an announcement with the #behavior tag.
+          Please provide details about the bite incident. This information will be shown on the animal's page while in quarantine, saved as a behavior comment, and emailed to the group.
         </p>
         
         <div style={{ marginBottom: '1rem' }}>
@@ -1107,7 +1120,7 @@ const AnimalForm: React.FC = () => {
             loading={loading}
             disabled={loading || !quarantineContext.trim()}
           >
-            Save & Post Announcement
+            Save & Notify
           </Button>
         </div>
       </Modal>

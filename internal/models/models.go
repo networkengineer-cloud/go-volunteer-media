@@ -89,6 +89,7 @@ type Animal struct {
 	QuarantineStartDate            *time.Time          `json:"quarantine_start_date"`                                           // When bite quarantine started
 	QuarantineApprovalStatus       string              `gorm:"default:'requested'" json:"quarantine_approval_status"`           // Bite quarantine permission: "requested" (default), "granted", or "" (legacy — displayed as Not Requested)
 	QuarantineApprovalDate         *time.Time          `json:"quarantine_approval_date"`                                        // When approval status last changed (nil when not requested)
+	QuarantineIncidentDetails      string              `json:"quarantine_incident_details"`                                     // Bite incident context; set on entering BQ, cleared on leaving. Shown atop the detail page.
 	ArchivedDate                   *time.Time          `json:"archived_date"`                                                   // When animal was archived
 	LastStatusChange               *time.Time          `json:"last_status_change"`                                              // Timestamp of last status change
 	IsReturned                     bool                `gorm:"default:false" json:"is_returned"`                                // Manually set by admins to indicate this animal was previously adopted and returned

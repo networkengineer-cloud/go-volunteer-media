@@ -205,6 +205,7 @@ export interface Animal {
   foster_start_date?: string;
   quarantine_start_date?: string;
   quarantine_approval_status?: '' | 'requested' | 'granted';
+  quarantine_incident_details?: string;
   quarantine_approval_date?: string;
   archived_date?: string;
   last_status_change?: string;

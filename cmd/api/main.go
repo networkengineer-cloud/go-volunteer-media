@@ -264,7 +264,7 @@ func main() {
 			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db))
 			admin.POST("/animals/export-csv", handlers.ExportAnimalsCSV(db))
 			admin.GET("/animals/export-comments-csv", handlers.ExportAnimalCommentsCSV(db))
-			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db))
+			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db, emailService))
 
 			// Animal image management (admin only)
 			admin.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePicture(db))
@@ -375,8 +375,8 @@ func main() {
 		// These routes check for site admin OR group admin access within the handlers
 		groupAdminAnimals := protected.Group("/groups/:id/animals")
 		{
-			groupAdminAnimals.POST("", handlers.CreateAnimal(db))
-			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db))
+			groupAdminAnimals.POST("", handlers.CreateAnimal(db, emailService))
+			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db, emailService))
 			groupAdminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
 			// Tag assignment for animals
 			groupAdminAnimals.POST("/:animalId/tags", handlers.AssignTagsToAnimal(db))

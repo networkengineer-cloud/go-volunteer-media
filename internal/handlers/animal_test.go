@@ -420,7 +420,7 @@ func TestCreateAnimal_Success(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := CreateAnimal(db)
+	handler := CreateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusCreated {
@@ -473,7 +473,7 @@ func TestCreateAnimal_ValidationError(t *testing.T) {
 			c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
 			c.Request.Header.Set("Content-Type", "application/json")
 
-			handler := CreateAnimal(db)
+			handler := CreateAnimal(db, nil)
 			handler(c)
 
 			if w.Code != http.StatusBadRequest {
@@ -501,7 +501,7 @@ func TestCreateAnimal_DefaultStatus(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := CreateAnimal(db)
+	handler := CreateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusCreated {
@@ -573,7 +573,7 @@ func TestCreateAnimal_StatusSpecificDates(t *testing.T) {
 			c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
 			c.Request.Header.Set("Content-Type", "application/json")
 
-			handler := CreateAnimal(db)
+			handler := CreateAnimal(db, nil)
 			handler(c)
 
 			if w.Code != http.StatusCreated {
@@ -611,7 +611,7 @@ func TestCreateAnimal_AccessDenied(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group1.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := CreateAnimal(db)
+	handler := CreateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusForbidden {
@@ -636,7 +636,7 @@ func TestCreateAnimal_InvalidGroupID(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/api/v1/groups/invalid/animals", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := CreateAnimal(db)
+	handler := CreateAnimal(db, nil)
 	handler(c)
 
 	// Invalid group ID causes checkGroupAccess to fail (returns 403) or parsing fails (returns 400)
@@ -774,7 +774,7 @@ func TestUpdateAnimal_Success(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db)
+	handler := UpdateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -820,7 +820,7 @@ func TestUpdateAnimal_NotFound(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/99999", group.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db)
+	handler := UpdateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusNotFound {
@@ -917,7 +917,7 @@ func TestUpdateAnimal_StatusTransition(t *testing.T) {
 			c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
 			c.Request.Header.Set("Content-Type", "application/json")
 
-			handler := UpdateAnimal(db)
+			handler := UpdateAnimal(db, nil)
 			handler(c)
 
 			if w.Code != http.StatusOK {
@@ -984,7 +984,7 @@ func TestUpdateAnimal_NoStatusChange(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db)
+	handler := UpdateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -1034,7 +1034,7 @@ func TestUpdateAnimal_ValidationError(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db)
+	handler := UpdateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusBadRequest {
@@ -1066,7 +1066,7 @@ func TestUpdateAnimal_AccessDenied(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group1.ID, animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db)
+	handler := UpdateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusForbidden {
@@ -1109,7 +1109,7 @@ func TestUpdateAnimal_CustomQuarantineDate(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db)
+	handler := UpdateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -1470,7 +1470,7 @@ func TestUpdateAnimal_EmptyQuarantineDateString(t *testing.T) {
 			c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBufferString(tt.jsonBody))
 			c.Request.Header.Set("Content-Type", "application/json")
 
-			handler := UpdateAnimal(db)
+			handler := UpdateAnimal(db, nil)
 			handler(c)
 
 			if w.Code != tt.wantStatus {
@@ -1518,7 +1518,7 @@ func TestUpdateAnimal_NameHistory(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db)
+	handler := UpdateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -1608,7 +1608,7 @@ func TestUpdateAnimal_IsReturned(t *testing.T) {
 			c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 
-			handler := UpdateAnimal(db)
+			handler := UpdateAnimal(db, nil)
 			handler(c)
 
 			if w.Code != http.StatusOK {
@@ -1723,7 +1723,7 @@ func TestCreateAnimal_IsReturned(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := CreateAnimal(db)
+	handler := CreateAnimal(db, nil)
 	handler(c)
 
 	if w.Code != http.StatusCreated {
@@ -1796,7 +1796,7 @@ func TestCreateAnimal_WithApprovalStatus(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	CreateAnimal(db)(c)
+	CreateAnimal(db, nil)(c)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
@@ -1832,7 +1832,7 @@ func TestUpdateAnimal_InvalidApprovalStatus(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateAnimal(db)(c)
+	UpdateAnimal(db, nil)(c)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
@@ -1872,7 +1872,7 @@ func TestUpdateAnimal_ApprovalStatusSet(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateAnimal(db)(c)
+	UpdateAnimal(db, nil)(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -1922,7 +1922,7 @@ func TestUpdateAnimal_ApprovalStatusCleared(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateAnimal(db)(c)
+	UpdateAnimal(db, nil)(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -1973,7 +1973,7 @@ func TestUpdateAnimal_ApprovalNotClearedWhenOmitted(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateAnimal(db)(c)
+	UpdateAnimal(db, nil)(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -2018,7 +2018,7 @@ func TestUpdateAnimal_ApprovalClearedOnTransitionToAvailable(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateAnimal(db)(c)
+	UpdateAnimal(db, nil)(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -2066,7 +2066,7 @@ func TestUpdateAnimal_ApprovalClearedOnTransitionToFoster(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateAnimal(db)(c)
+	UpdateAnimal(db, nil)(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -2101,7 +2101,7 @@ func TestCreateAnimal_DefaultApprovalStatusWhenOmitted(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	CreateAnimal(db)(c)
+	CreateAnimal(db, nil)(c)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
