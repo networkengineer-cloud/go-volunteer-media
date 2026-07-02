@@ -475,7 +475,9 @@ const AnimalDetailPage: React.FC = () => {
                     Start: {new Date(animal.quarantine_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                   </p>
                   <p className="quarantine-dates">
-                    End: {calculateQuarantineEndDate(animal.quarantine_start_date, 'long')}
+                    End: {animal.quarantine_end_date
+                      ? new Date(animal.quarantine_end_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                      : calculateQuarantineEndDate(animal.quarantine_start_date, 'long')}
                   </p>
                   {animal.status === 'bite_quarantine' && animal.quarantine_incident_details && (
                     <div className="quarantine-incident">
