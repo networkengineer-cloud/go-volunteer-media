@@ -87,6 +87,7 @@ type Animal struct {
 	ArrivalDate                    *time.Time          `json:"arrival_date"`                                                    // When animal first became available
 	FosterStartDate                *time.Time          `json:"foster_start_date"`                                               // When animal went to foster
 	QuarantineStartDate            *time.Time          `json:"quarantine_start_date"`                                           // When bite quarantine started
+	QuarantineEndDate              *time.Time          `json:"quarantine_end_date"`                                             // Computed default (start + 10 days, weekend-adjusted), or manually overridden by staff
 	QuarantineApprovalStatus       string              `gorm:"default:'requested'" json:"quarantine_approval_status"`           // Bite quarantine permission: "requested" (default), "granted", or "" (legacy — displayed as Not Requested)
 	QuarantineApprovalDate         *time.Time          `json:"quarantine_approval_date"`                                        // When approval status last changed (nil when not requested)
 	QuarantineIncidentDetails      string              `json:"quarantine_incident_details"`                                     // Bite incident context; set on entering BQ, cleared on leaving. Shown atop the detail page.
@@ -171,15 +172,17 @@ func (a *Animal) CurrentStatusDuration() int {
 	return calendarDaysSince(*a.LastStatusChange)
 }
 
-// QuarantineEndDate calculates when the 10-day bite quarantine ends
-// The quarantine cannot end on Saturday or Sunday, so it adjusts forward to Monday
-func (a *Animal) QuarantineEndDate() *time.Time {
-	if a.QuarantineStartDate == nil {
+// ComputeQuarantineEndDate calculates the default 10-day bite quarantine end date from a
+// start date. The quarantine cannot end on Saturday or Sunday, so it adjusts forward to
+// Monday. Returns nil when start is nil. This produces the *default* QuarantineEndDate
+// value — staff can override the stored field afterward.
+func ComputeQuarantineEndDate(start *time.Time) *time.Time {
+	if start == nil {
 		return nil
 	}
 
 	// Calculate 10 days from start date
-	endDate := a.QuarantineStartDate.AddDate(0, 0, 10)
+	endDate := start.AddDate(0, 0, 10)
 
 	// Check if end date falls on weekend and adjust to next Monday
 	for endDate.Weekday() == time.Saturday || endDate.Weekday() == time.Sunday {
