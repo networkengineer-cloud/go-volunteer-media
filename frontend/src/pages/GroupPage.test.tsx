@@ -124,8 +124,8 @@ describe('GroupPage', () => {
   it('shows the stored quarantine end date, not a recomputed one, on the animals tab', async () => {
     renderGroupPage();
 
-    // Computed default from a 2026-06-22 Monday start would be Jul 6, 2026 (10 days,
-    // no weekend roll needed) — very different from the stored override below, so this
+    // The computed default (10 days after the 2026-06-22 start, rolled forward past any
+    // weekend) lands in early July — different from the stored override below, so this
     // assertion would fail if the code still computed the fallback instead of reading
     // the stored field.
     expect(await screen.findByText(/Ends: Jul 15, 2026/)).toBeInTheDocument();
