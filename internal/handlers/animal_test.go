@@ -2238,3 +2238,334 @@ func TestCreateAnimal_BiteQuarantine_EndDateBeforeStartDate(t *testing.T) {
 		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusBadRequest, w.Code, w.Body.String())
 	}
 }
+
+func TestUpdateAnimal_BiteQuarantine_DefaultEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC) // Monday
+	updateReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &startDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var updated models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	expectedEnd := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+	if updated.QuarantineEndDate == nil {
+		t.Fatal("Expected QuarantineEndDate to be set")
+	} else if !updated.QuarantineEndDate.Equal(expectedEnd) {
+		t.Errorf("Expected QuarantineEndDate %v, got %v", expectedEnd, *updated.QuarantineEndDate)
+	}
+}
+
+func TestUpdateAnimal_BiteQuarantine_ExplicitEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2025, 11, 20, 0, 0, 0, 0, time.UTC)
+	updateReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &startDate,
+			Valid: true,
+		},
+		QuarantineEndDate: NullableTime{
+			Time:  &endDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var updated models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if updated.QuarantineEndDate == nil {
+		t.Fatal("Expected QuarantineEndDate to be set")
+	} else if !updated.QuarantineEndDate.Equal(endDate) {
+		t.Errorf("Expected QuarantineEndDate %v, got %v", endDate, *updated.QuarantineEndDate)
+	}
+}
+
+func TestUpdateAnimal_BiteQuarantine_EndDateBeforeStartDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 10, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2025, 11, 5, 0, 0, 0, 0, time.UTC)
+	updateReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &startDate,
+			Valid: true,
+		},
+		QuarantineEndDate: NullableTime{
+			Time:  &endDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusBadRequest, w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateAnimal_EditEndDateOnly_WhileInQuarantine(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	defaultEnd := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   defaultEnd,
+	}).Error; err != nil {
+		t.Fatalf("Failed to seed animal into quarantine: %v", err)
+	}
+
+	overrideEnd := time.Date(2025, 11, 24, 0, 0, 0, 0, time.UTC) // vet extended quarantine
+	updateReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "bite_quarantine",
+		QuarantineEndDate: NullableTime{
+			Time:  &overrideEnd,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var got models.Animal
+	if err := db.First(&got, animal.ID).Error; err != nil {
+		t.Fatalf("Failed to reload animal: %v", err)
+	}
+	if got.QuarantineEndDate == nil || !got.QuarantineEndDate.Equal(overrideEnd) {
+		t.Errorf("Expected QuarantineEndDate override %v, got %v", overrideEnd, got.QuarantineEndDate)
+	}
+	if got.QuarantineStartDate == nil || !got.QuarantineStartDate.Equal(startDate) {
+		t.Errorf("Expected QuarantineStartDate to remain %v, got %v", startDate, got.QuarantineStartDate)
+	}
+}
+
+func TestUpdateAnimal_ChangeStartDate_RecomputesEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	originalStart := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	overrideEnd := time.Date(2025, 11, 24, 0, 0, 0, 0, time.UTC) // previously overridden
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": originalStart,
+		"quarantine_end_date":   overrideEnd,
+	}).Error; err != nil {
+		t.Fatalf("Failed to seed animal into quarantine: %v", err)
+	}
+
+	newStart := time.Date(2025, 11, 10, 0, 0, 0, 0, time.UTC) // Monday, one week later
+	updateReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &newStart,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var got models.Animal
+	if err := db.First(&got, animal.ID).Error; err != nil {
+		t.Fatalf("Failed to reload animal: %v", err)
+	}
+	expectedEnd := time.Date(2025, 11, 20, 0, 0, 0, 0, time.UTC) // 10 days after new start (Thursday)
+	if got.QuarantineEndDate == nil || !got.QuarantineEndDate.Equal(expectedEnd) {
+		t.Errorf("Expected recomputed QuarantineEndDate %v, got %v", expectedEnd, got.QuarantineEndDate)
+	}
+}
+
+func TestUpdateAnimal_EditUnrelatedField_KeepsEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	overrideEnd := time.Date(2025, 11, 24, 0, 0, 0, 0, time.UTC)
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   overrideEnd,
+	}).Error; err != nil {
+		t.Fatalf("Failed to seed animal into quarantine: %v", err)
+	}
+
+	updateReq := AnimalRequest{
+		Name:         "Rex",
+		Species:      "Dog",
+		Status:       "bite_quarantine",
+		TrainerNotes: "Needs a muzzle for vet visits.",
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var got models.Animal
+	if err := db.First(&got, animal.ID).Error; err != nil {
+		t.Fatalf("Failed to reload animal: %v", err)
+	}
+	if got.QuarantineEndDate == nil || !got.QuarantineEndDate.Equal(overrideEnd) {
+		t.Errorf("Expected QuarantineEndDate to remain %v, got %v", overrideEnd, got.QuarantineEndDate)
+	}
+}
+
+func TestUpdateAnimal_LeaveQuarantine_ClearsEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   endDate,
+	}).Error; err != nil {
+		t.Fatalf("Failed to seed animal into quarantine: %v", err)
+	}
+
+	updateReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "available",
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var got models.Animal
+	if err := db.First(&got, animal.ID).Error; err != nil {
+		t.Fatalf("Failed to reload animal: %v", err)
+	}
+	if got.QuarantineEndDate != nil {
+		t.Errorf("Expected QuarantineEndDate to be cleared, got %v", got.QuarantineEndDate)
+	}
+}

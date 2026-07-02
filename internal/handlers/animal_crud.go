@@ -393,6 +393,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// Clear specific status dates and approval when leaving quarantine
 				animal.FosterStartDate = nil
 				animal.QuarantineStartDate = nil
+				animal.QuarantineEndDate = nil
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
@@ -400,6 +401,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			case "foster":
 				animal.FosterStartDate = &now
 				animal.QuarantineStartDate = nil
+				animal.QuarantineEndDate = nil
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
@@ -410,6 +412,16 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 					animal.QuarantineStartDate = req.QuarantineStartDate.Time
 				} else {
 					animal.QuarantineStartDate = &now
+				}
+				// Use provided quarantine end date if available and valid, otherwise compute the default
+				if req.QuarantineEndDate.Valid && req.QuarantineEndDate.Time != nil {
+					if req.QuarantineEndDate.Time.Before(*animal.QuarantineStartDate) {
+						c.JSON(http.StatusBadRequest, gin.H{"error": "quarantine end date cannot be before start date"})
+						return
+					}
+					animal.QuarantineEndDate = req.QuarantineEndDate.Time
+				} else {
+					animal.QuarantineEndDate = models.ComputeQuarantineEndDate(animal.QuarantineStartDate)
 				}
 				// Always start clean, then apply provided value if any
 				animal.QuarantineApprovalStatus = ""
@@ -433,6 +445,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// No dedicated date field for vet care, so clear the same fields as "available"
 				animal.FosterStartDate = nil
 				animal.QuarantineStartDate = nil
+				animal.QuarantineEndDate = nil
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
@@ -451,8 +464,21 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				}
 			}
 			// Update quarantine start date independently — both fields can change in one request
+			startChanged := false
 			if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
 				animal.QuarantineStartDate = req.QuarantineStartDate.Time
+				startChanged = true
+			}
+			// An explicit end date is honored (validated against the resolved start date);
+			// otherwise a start-date change recomputes the default, discarding any prior override.
+			if req.QuarantineEndDate.Valid && req.QuarantineEndDate.Time != nil {
+				if animal.QuarantineStartDate != nil && req.QuarantineEndDate.Time.Before(*animal.QuarantineStartDate) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "quarantine end date cannot be before start date"})
+					return
+				}
+				animal.QuarantineEndDate = req.QuarantineEndDate.Time
+			} else if startChanged {
+				animal.QuarantineEndDate = models.ComputeQuarantineEndDate(animal.QuarantineStartDate)
 			}
 			if req.QuarantineIncidentDetails != nil {
 				animal.QuarantineIncidentDetails = *req.QuarantineIncidentDetails
