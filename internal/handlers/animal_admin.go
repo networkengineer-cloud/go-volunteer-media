@@ -97,15 +97,12 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 				}
 				updates["quarantine_start_date"] = startDate
 				// Use provided quarantine end date if available and valid, otherwise compute the default
-				if req.QuarantineEndDate.Valid && req.QuarantineEndDate.Time != nil {
-					if req.QuarantineEndDate.Time.Before(startDate) {
-						c.JSON(http.StatusBadRequest, gin.H{"error": "quarantine end date cannot be before start date"})
-						return
-					}
-					updates["quarantine_end_date"] = *req.QuarantineEndDate.Time
-				} else {
-					updates["quarantine_end_date"] = *models.ComputeQuarantineEndDate(&startDate)
+				endDate, err := resolveQuarantineEndDate(&startDate, req.QuarantineEndDate)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
 				}
+				updates["quarantine_end_date"] = *endDate
 				// Always start clean, then apply provided value if any
 				updates["quarantine_approval_status"] = ""
 				updates["quarantine_approval_date"] = nil
@@ -147,22 +144,24 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 			}
 			// Update quarantine start date independently — both fields can change in one request
 			resolvedStart := animal.QuarantineStartDate
-			startChanged := false
-			if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
+			startChanged := req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil
+			if startChanged {
 				updates["quarantine_start_date"] = *req.QuarantineStartDate.Time
 				resolvedStart = req.QuarantineStartDate.Time
-				startChanged = true
 			}
 			// An explicit end date is honored (validated against the resolved start date);
 			// otherwise a start-date change recomputes the default, discarding any prior override.
-			if req.QuarantineEndDate.Valid && req.QuarantineEndDate.Time != nil {
-				if resolvedStart != nil && req.QuarantineEndDate.Time.Before(*resolvedStart) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "quarantine end date cannot be before start date"})
+			// Neither provided: leave the stored end date untouched.
+			endExplicit := req.QuarantineEndDate.Valid && req.QuarantineEndDate.Time != nil
+			if endExplicit || startChanged {
+				endDate, err := resolveQuarantineEndDate(resolvedStart, req.QuarantineEndDate)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 					return
 				}
-				updates["quarantine_end_date"] = *req.QuarantineEndDate.Time
-			} else if startChanged && resolvedStart != nil {
-				updates["quarantine_end_date"] = *models.ComputeQuarantineEndDate(resolvedStart)
+				if endDate != nil {
+					updates["quarantine_end_date"] = *endDate
+				}
 			}
 			if req.QuarantineIncidentDetails != nil {
 				updates["quarantine_incident_details"] = *req.QuarantineIncidentDetails

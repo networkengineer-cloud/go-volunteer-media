@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -101,6 +102,35 @@ func isValidApprovalStatus(s *string) bool {
 		return true
 	}
 	return *s == "" || *s == "requested" || *s == "granted"
+}
+
+// resolveQuarantineEndDate returns the quarantine end date to store: an explicit
+// override from reqEnd when provided (validated against start), otherwise the
+// computed default (models.ComputeQuarantineEndDate). Used by CreateAnimal,
+// UpdateAnimal, and UpdateAnimalAdmin so the resolution rule stays identical
+// across all three write paths.
+func resolveQuarantineEndDate(start *time.Time, reqEnd NullableTime) (*time.Time, error) {
+	if reqEnd.Valid && reqEnd.Time != nil {
+		if start != nil && quarantineEndBeforeStart(*reqEnd.Time, *start) {
+			return nil, fmt.Errorf("quarantine end date cannot be before start date")
+		}
+		return reqEnd.Time, nil
+	}
+	return models.ComputeQuarantineEndDate(start), nil
+}
+
+// quarantineEndBeforeStart compares end and start by calendar day (UTC), not by
+// exact instant. Start defaults to time.Now() (a real timestamp) when omitted,
+// while a date-only end date parses to UTC midnight — comparing exact instants
+// would wrongly reject a same-day end date submitted alongside a defaulted start.
+func quarantineEndBeforeStart(end, start time.Time) bool {
+	end = end.UTC()
+	start = start.UTC()
+	ey, em, ed := end.Date()
+	sy, sm, sd := start.Date()
+	endDay := time.Date(ey, em, ed, 0, 0, 0, 0, time.UTC)
+	startDay := time.Date(sy, sm, sd, 0, 0, 0, 0, time.UTC)
+	return endDay.Before(startDay)
 }
 
 // checkGroupAccess verifies if the user has access to a specific group
