@@ -2118,3 +2118,123 @@ func TestCreateAnimal_DefaultApprovalStatusWhenOmitted(t *testing.T) {
 		t.Error("Expected approval_date to be nil when status defaulted via GORM, got non-nil")
 	}
 }
+
+func TestCreateAnimal_BiteQuarantine_DefaultEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC) // Monday
+	animalReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &startDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(animalReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := CreateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	var created models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	expectedEnd := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC) // Thursday, 10 days later
+	if created.QuarantineEndDate == nil {
+		t.Fatal("Expected QuarantineEndDate to be set")
+	} else if !created.QuarantineEndDate.Equal(expectedEnd) {
+		t.Errorf("Expected QuarantineEndDate %v, got %v", expectedEnd, *created.QuarantineEndDate)
+	}
+}
+
+func TestCreateAnimal_BiteQuarantine_ExplicitEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2025, 11, 20, 0, 0, 0, 0, time.UTC) // vet-extended end date
+	animalReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &startDate,
+			Valid: true,
+		},
+		QuarantineEndDate: NullableTime{
+			Time:  &endDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(animalReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := CreateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	var created models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if created.QuarantineEndDate == nil {
+		t.Fatal("Expected QuarantineEndDate to be set")
+	} else if !created.QuarantineEndDate.Equal(endDate) {
+		t.Errorf("Expected QuarantineEndDate %v, got %v", endDate, *created.QuarantineEndDate)
+	}
+}
+
+func TestCreateAnimal_BiteQuarantine_EndDateBeforeStartDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	startDate := time.Date(2025, 11, 10, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2025, 11, 5, 0, 0, 0, 0, time.UTC) // before start
+	animalReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &startDate,
+			Valid: true,
+		},
+		QuarantineEndDate: NullableTime{
+			Time:  &endDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(animalReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := CreateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusBadRequest, w.Code, w.Body.String())
+	}
+}

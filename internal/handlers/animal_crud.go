@@ -44,8 +44,8 @@ func buildQuarantineEmail(animal *models.Animal) (string, string) {
 		start = animal.QuarantineStartDate.Format(dateLayout)
 	}
 	end := ""
-	if e := animal.QuarantineEndDate(); e != nil {
-		end = e.Format(dateLayout)
+	if animal.QuarantineEndDate != nil {
+		end = animal.QuarantineEndDate.Format(dateLayout)
 	}
 	title := fmt.Sprintf("🚨 Bite Quarantine: %s", animal.Name)
 	body := fmt.Sprintf(
@@ -262,6 +262,16 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				animal.QuarantineStartDate = req.QuarantineStartDate.Time
 			} else {
 				animal.QuarantineStartDate = &now
+			}
+			// Use provided quarantine end date if available and valid, otherwise compute the default
+			if req.QuarantineEndDate.Valid && req.QuarantineEndDate.Time != nil {
+				if req.QuarantineEndDate.Time.Before(*animal.QuarantineStartDate) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "quarantine end date cannot be before start date"})
+					return
+				}
+				animal.QuarantineEndDate = req.QuarantineEndDate.Time
+			} else {
+				animal.QuarantineEndDate = models.ComputeQuarantineEndDate(animal.QuarantineStartDate)
 			}
 			// Set bite quarantine permission status if provided
 			if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != "" {
