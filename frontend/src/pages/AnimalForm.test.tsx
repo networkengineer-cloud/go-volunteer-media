@@ -188,4 +188,88 @@ describe('AnimalForm', () => {
     expect(payload.quarantine_incident_details).toBe('Corrected: bit a staff member, not a volunteer.');
     expect(animalCommentsApi.create).not.toHaveBeenCalled();
   });
+
+  it('loads the stored quarantine end date for an animal already in quarantine', async () => {
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-15T00:00:00Z' },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const endDateInput = document.getElementById('quarantine_end_date') as HTMLInputElement;
+    expect(endDateInput.value).toBe('2026-06-15');
+  });
+
+  it('recomputes the end date field when the start date changes', async () => {
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-15T00:00:00Z' },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const startDateInput = document.getElementById('quarantine_start_date') as HTMLInputElement;
+    fireEvent.change(startDateInput, { target: { value: '2024-06-03' } }); // Monday
+
+    const endDateInput = document.getElementById('quarantine_end_date') as HTMLInputElement;
+    expect(endDateInput.value).toBe('2024-06-13'); // 10 days later (Thursday)
+  });
+
+  it('keeps a manually edited end date on submit instead of recomputing it', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-11T00:00:00Z' },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const endDateInput = document.getElementById('quarantine_end_date') as HTMLInputElement;
+    fireEvent.change(endDateInput, { target: { value: '2026-06-20' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    await waitFor(() => expect(animalsApi.update).toHaveBeenCalled());
+
+    const payload = (animalsApi.update as Mock).mock.calls[0][2];
+    expect(payload.quarantine_end_date).toBe('2026-06-20');
+  });
+
+  it('blocks submit with a validation error when the end date is before the start date', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-11T00:00:00Z' },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const endDateInput = document.getElementById('quarantine_end_date') as HTMLInputElement;
+    fireEvent.change(endDateInput, { target: { value: '2026-05-01' } }); // before start date 2026-06-01
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    expect(submitButton).toBeDisabled();
+
+    await user.click(submitButton);
+
+    expect(animalsApi.update).not.toHaveBeenCalled();
+  });
 });

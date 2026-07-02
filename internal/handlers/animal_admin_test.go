@@ -634,3 +634,167 @@ func TestUpdateAnimalAdmin_ApprovalClearedOnTransitionToAvailable(t *testing.T) 
 		t.Error("Expected approval_date to be nil after leaving quarantine, got non-nil")
 	}
 }
+
+func TestUpdateAnimalAdmin_BiteQuarantine_DefaultEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC) // Monday
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &startDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var got models.Animal
+	if err := db.First(&got, animal.ID).Error; err != nil {
+		t.Fatalf("Failed to reload animal: %v", err)
+	}
+	expectedEnd := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+	if got.QuarantineEndDate == nil || !got.QuarantineEndDate.Equal(expectedEnd) {
+		t.Errorf("Expected QuarantineEndDate %v, got %v", expectedEnd, got.QuarantineEndDate)
+	}
+}
+
+func TestUpdateAnimalAdmin_BiteQuarantine_EndDateBeforeStartDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 10, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2025, 11, 5, 0, 0, 0, 0, time.UTC)
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &startDate,
+			Valid: true,
+		},
+		QuarantineEndDate: NullableTime{
+			Time:  &endDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusBadRequest, w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateAnimalAdmin_EditEndDateOnly_WhileInQuarantine(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	defaultEnd := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   defaultEnd,
+	}).Error; err != nil {
+		t.Fatalf("Failed to seed animal into quarantine: %v", err)
+	}
+
+	overrideEnd := time.Date(2025, 11, 24, 0, 0, 0, 0, time.UTC)
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "bite_quarantine",
+		QuarantineEndDate: NullableTime{
+			Time:  &overrideEnd,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var got models.Animal
+	if err := db.First(&got, animal.ID).Error; err != nil {
+		t.Fatalf("Failed to reload animal: %v", err)
+	}
+	if got.QuarantineEndDate == nil || !got.QuarantineEndDate.Equal(overrideEnd) {
+		t.Errorf("Expected QuarantineEndDate override %v, got %v", overrideEnd, got.QuarantineEndDate)
+	}
+	if got.QuarantineStartDate == nil || !got.QuarantineStartDate.Equal(startDate) {
+		t.Errorf("Expected QuarantineStartDate to remain %v, got %v", startDate, got.QuarantineStartDate)
+	}
+}
+
+func TestUpdateAnimalAdmin_LeaveQuarantine_ClearsEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   endDate,
+	}).Error; err != nil {
+		t.Fatalf("Failed to seed animal into quarantine: %v", err)
+	}
+
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "available",
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var got models.Animal
+	if err := db.First(&got, animal.ID).Error; err != nil {
+		t.Fatalf("Failed to reload animal: %v", err)
+	}
+	if got.QuarantineEndDate != nil {
+		t.Errorf("Expected QuarantineEndDate to be cleared, got %v", got.QuarantineEndDate)
+	}
+}

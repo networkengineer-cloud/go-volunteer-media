@@ -16,9 +16,11 @@ import (
 
 func TestBuildQuarantineEmailBody(t *testing.T) {
 	start := time.Date(2026, 6, 22, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)
 	a := &models.Animal{
 		Name:                      "Rex",
 		QuarantineStartDate:       &start,
+		QuarantineEndDate:         &end,
 		QuarantineIncidentDetails: "Bit a volunteer on the hand during leashing.",
 	}
 	title, body := buildQuarantineEmail(a)
@@ -30,6 +32,9 @@ func TestBuildQuarantineEmailBody(t *testing.T) {
 	}
 	if !strings.Contains(body, "June 22, 2026") {
 		t.Errorf("body missing formatted start date: %q", body)
+	}
+	if !strings.Contains(body, "July 2, 2026") {
+		t.Errorf("body missing formatted end date: %q", body)
 	}
 	if !strings.Contains(body, "Bit a volunteer on the hand during leashing.") {
 		t.Errorf("body missing incident details: %q", body)

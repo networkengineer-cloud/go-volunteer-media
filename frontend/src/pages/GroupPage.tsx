@@ -12,7 +12,7 @@ import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
 import Modal from '../components/Modal';
 import ScriptsList from '../components/ScriptsList';
-import { calculateAge, formatAge, calculateQuarantineEndDate } from '../utils/dateUtils';
+import { calculateAge, formatAge, formatQuarantineEndDate } from '../utils/dateUtils';
 import { formatAnimalStatus } from '../utils/animalUtils';
 import QuarantineApprovalBadge from '../components/QuarantineApprovalBadge';
 import { formatDisplayName } from '../utils/formatName';
@@ -1050,7 +1050,7 @@ const GroupPage: React.FC = () => {
                             <div className="quarantine-meta">
                               {animal.quarantine_start_date && (
                                 <span className="quarantine-end-text">
-                                  Ends: {calculateQuarantineEndDate(animal.quarantine_start_date, 'short')}
+                                  Ends: {formatQuarantineEndDate(animal, 'short')}
                                 </span>
                               )}
                               <QuarantineApprovalBadge status={animal.quarantine_approval_status} />

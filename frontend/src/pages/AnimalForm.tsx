@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { animalsApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
 import type { AnimalTag, Animal, DuplicateNameInfo, AnimalImage } from '../api/client';
 import { useToast } from '../hooks/useToast';
-import { calculateQuarantineEndDate, calculateAge, computeEstimatedBirthDate } from '../utils/dateUtils';
+import { calculateQuarantineEndDate, calculateQuarantineEndDateISO, calculateAge, computeEstimatedBirthDate } from '../utils/dateUtils';
 import { formatAnimalStatus } from '../utils/animalUtils';
 import FormField from '../components/FormField';
 import AgePicker from '../components/AgePicker';
@@ -45,6 +45,7 @@ const AnimalForm: React.FC = () => {
     status: 'available',
     arrival_date: '',
     quarantine_start_date: '',
+    quarantine_end_date: '',
     quarantine_incident_details: '',
     quarantine_approval_status: 'requested',
     is_returned: false,
@@ -115,6 +116,9 @@ const AnimalForm: React.FC = () => {
         trainer_notes: animal.trainer_notes || '',
         arrival_date: animal.arrival_date ? animal.arrival_date.split('T')[0] : '',
         quarantine_start_date: animal.quarantine_start_date ? animal.quarantine_start_date.split('T')[0] : '',
+        quarantine_end_date: animal.quarantine_end_date
+          ? animal.quarantine_end_date.split('T')[0]
+          : calculateQuarantineEndDateISO(animal.quarantine_start_date),
         quarantine_incident_details: animal.quarantine_incident_details || '',
         quarantine_approval_status: animal.quarantine_approval_status || 'requested',
         protocol_document_url: animal.protocol_document_url || '',
@@ -201,10 +205,18 @@ const AnimalForm: React.FC = () => {
   };
 
   const isFormValid = () => {
-    return formData.name.trim().length >= 2 && 
-           !errors.name && 
-           !errors.age;
+    return formData.name.trim().length >= 2 &&
+           !errors.name &&
+           !errors.age &&
+           !quarantineEndDateError;
   };
+
+  const quarantineEndDateError = (
+    formData.status === 'bite_quarantine' &&
+    !!formData.quarantine_start_date &&
+    !!formData.quarantine_end_date &&
+    formData.quarantine_end_date < formData.quarantine_start_date
+  ) ? 'End date cannot be before start date' : '';
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -399,6 +411,11 @@ const AnimalForm: React.FC = () => {
       return;
     }
 
+    if (quarantineEndDateError) {
+      toast.showError(quarantineEndDateError);
+      return;
+    }
+
     // Check if status changed to bite_quarantine
     if (formData.status === 'bite_quarantine' && originalStatus !== 'bite_quarantine') {
       // Show modal to get context and date
@@ -434,6 +451,9 @@ const AnimalForm: React.FC = () => {
           : undefined,
         quarantine_incident_details: formData.status === 'bite_quarantine'
           ? formData.quarantine_incident_details
+          : undefined,
+        quarantine_end_date: formData.status === 'bite_quarantine'
+          ? (formData.quarantine_end_date || undefined)
           : undefined,
       };
       
@@ -732,8 +752,20 @@ const AnimalForm: React.FC = () => {
                 id="quarantine_start_date"
                 type="date"
                 value={formData.quarantine_start_date}
-                onChange={(value) => setFormData({ ...formData, quarantine_start_date: value })}
-                helperText={`Quarantine will end: ${calculateQuarantineEndDate(formData.quarantine_start_date, 'long')}`}
+                onChange={(value) => setFormData({
+                  ...formData,
+                  quarantine_start_date: value,
+                  quarantine_end_date: calculateQuarantineEndDateISO(value),
+                })}
+              />
+              <FormField
+                label="Quarantine End Date"
+                id="quarantine_end_date"
+                type="date"
+                value={formData.quarantine_end_date}
+                onChange={(value) => setFormData({ ...formData, quarantine_end_date: value })}
+                error={quarantineEndDateError}
+                helperText="Defaults to 10 days after the start date (skipping weekends). Adjust if a vet or authority specifies a different date."
               />
               <FormField
                 label="Incident Details"

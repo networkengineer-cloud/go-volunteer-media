@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { animalsApi, groupsApi } from '../api/client';
 import type { Animal, Group } from '../api/client';
 import { useToast } from '../hooks/useToast';
-import { formatDateShort, calculateQuarantineEndDate, calculateDaysSince, calculateAge, formatAge } from '../utils/dateUtils';
+import { formatDateShort, formatQuarantineEndDate, calculateDaysSince, calculateAge, formatAge } from '../utils/dateUtils';
 import { formatAnimalStatus } from '../utils/animalUtils';
 import QuarantineApprovalBadge from '../components/QuarantineApprovalBadge';
 import { useDebounce } from '../hooks/useDebounce';
@@ -711,7 +711,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                         <div className="info-item full-width">
                           <div className="info-label">Quarantine End</div>
                           <div className="info-value quarantine-date">
-                            {calculateQuarantineEndDate(animal.quarantine_start_date)}
+                            {formatQuarantineEndDate(animal)}
                           </div>
                         </div>
                       )}
@@ -812,10 +812,7 @@ const BulkEditAnimalsPage: React.FC = () => {
                       <td>{calculateDaysSince(animal.arrival_date)}</td>
                       <td>{calculateDaysSince(animal.last_status_change)}</td>
                       <td>
-                        {animal.status === 'bite_quarantine'
-                          ? calculateQuarantineEndDate(animal.quarantine_start_date)
-                          : '-'
-                        }
+                        {animal.status === 'bite_quarantine' ? formatQuarantineEndDate(animal) : '-'}
                       </td>
                     </tr>
                   );

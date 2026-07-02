@@ -126,4 +126,27 @@ describe('AnimalDetailPage', () => {
     await screen.findByRole('heading', { name: 'Rex' });
     expect(screen.queryByText(/Incident Details/i)).not.toBeInTheDocument();
   });
+
+  it('shows the stored quarantine end date rather than a recomputed one', async () => {
+    mockAnimal({
+      status: 'bite_quarantine',
+      quarantine_start_date: '2026-06-22T00:00:00Z',
+      quarantine_end_date: '2026-07-15T12:00:00Z', // manually overridden by staff (noon UTC avoids timezone-shift to previous day)
+    });
+
+    renderDetailPage();
+
+    expect(await screen.findByText(/End: July 15, 2026/)).toBeInTheDocument();
+  });
+
+  it('falls back to a computed end date when no stored end date is present yet', async () => {
+    mockAnimal({
+      status: 'bite_quarantine',
+      quarantine_start_date: '2024-06-03T12:00:00Z', // Monday
+    });
+
+    renderDetailPage();
+
+    expect(await screen.findByText(/End: June 13, 2024/)).toBeInTheDocument();
+  });
 });

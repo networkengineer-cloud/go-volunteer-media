@@ -131,7 +131,7 @@ func TestAnimal_CurrentStatusDuration(t *testing.T) {
 	}
 }
 
-func TestAnimal_QuarantineEndDate(t *testing.T) {
+func TestComputeQuarantineEndDate(t *testing.T) {
 	tests := []struct {
 		name                string
 		quarantineStartDate *time.Time
@@ -232,10 +232,7 @@ func TestAnimal_QuarantineEndDate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			animal := &Animal{
-				QuarantineStartDate: tt.quarantineStartDate,
-			}
-			result := animal.QuarantineEndDate()
+			result := ComputeQuarantineEndDate(tt.quarantineStartDate)
 			tt.checkResult(t, result)
 		})
 	}
@@ -351,7 +348,7 @@ func TestAnimal_MethodsWithRealData(t *testing.T) {
 			t.Errorf("Expected status duration to be 5 days, got %d", statusDuration)
 		}
 
-		endDate := animal.QuarantineEndDate()
+		endDate := ComputeQuarantineEndDate(animal.QuarantineStartDate)
 		if endDate == nil {
 			t.Fatal("Expected quarantine end date to be set")
 		}
