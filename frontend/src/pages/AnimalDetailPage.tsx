@@ -512,6 +512,31 @@ const AnimalDetailPage: React.FC = () => {
                 </div>
               )}
 
+              {/* BQ History Section */}
+              {animal.bq_incidents && animal.bq_incidents.length > 0 && (
+                <details className="bq-history-section">
+                  <summary className="bq-history-summary">
+                    <strong>Bite Quarantine History</strong>
+                    <span className="bq-history-count">({animal.bq_incidents.length})</span>
+                  </summary>
+                  <div className="bq-history-list">
+                    {[...animal.bq_incidents]
+                      .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
+                      .map((episode) => (
+                        <div key={episode.id} className="bq-history-item">
+                          <p className="bq-history-dates">
+                            {formatCalendarDate(episode.start_date, 'long')}
+                            {episode.end_date && ` – ${formatCalendarDate(episode.end_date, 'long')}`}
+                          </p>
+                          {episode.incident_details && (
+                            <p className="bq-history-details">{episode.incident_details}</p>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                </details>
+              )}
+
               {/* Name History Section */}
               {animal.name_history && animal.name_history.length > 0 && (
                 <div className="name-history-section">

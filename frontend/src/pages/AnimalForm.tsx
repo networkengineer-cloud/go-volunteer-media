@@ -1176,7 +1176,7 @@ const AnimalForm: React.FC = () => {
         size="medium"
       >
         <p style={{ marginBottom: '1rem' }}>
-          Please provide details about the bite incident. This information will be shown on the animal's page while in quarantine, saved as a behavior comment, and emailed to the group.
+          Please provide details about the bite incident. This information will be shown on the animal's page while in quarantine, saved to the animal's BQ history, and emailed to the group.
         </p>
         
         <div style={{ marginBottom: '1rem' }}>
