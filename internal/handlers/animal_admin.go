@@ -65,6 +65,8 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		}
 		now := time.Now()
 		enteredQuarantine := false
+		leftQuarantine := req.Status != "" && req.Status != animal.Status && animal.Status == "bite_quarantine"
+		var bqStartDate time.Time
 		if req.Status != "" && req.Status != animal.Status {
 			// Track status change
 			updates["status"] = req.Status
@@ -95,6 +97,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 					return
 				}
+				bqStartDate = startDate
 				updates["quarantine_start_date"] = startDate
 				updates["quarantine_end_date"] = *endDate
 				// Always start clean, then apply provided value if any
@@ -174,7 +177,26 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		}
 
 		if enteredQuarantine {
+			incidentDetails := ""
+			if req.QuarantineIncidentDetails != nil {
+				incidentDetails = *req.QuarantineIncidentDetails
+			}
+			db.Create(&models.AnimalBQIncident{
+				AnimalID:        animal.ID,
+				IncidentDetails: incidentDetails,
+				StartDate:       bqStartDate,
+			})
 			sendQuarantineNotificationEmail(db, emailService, &animal)
+		}
+		if leftQuarantine {
+			db.Model(&models.AnimalBQIncident{}).
+				Where("animal_id = ? AND end_date IS NULL", animal.ID).
+				Update("end_date", now)
+		}
+		if !enteredQuarantine && !leftQuarantine && animal.Status == "bite_quarantine" && req.QuarantineIncidentDetails != nil {
+			db.Model(&models.AnimalBQIncident{}).
+				Where("animal_id = ? AND end_date IS NULL", animal.ID).
+				Update("incident_details", *req.QuarantineIncidentDetails)
 		}
 
 		logger.WithFields(map[string]interface{}{
