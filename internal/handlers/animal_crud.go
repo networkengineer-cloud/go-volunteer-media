@@ -288,6 +288,11 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		}
 
 		if animal.Status == "bite_quarantine" {
+			db.WithContext(ctx).Create(&models.AnimalBQIncident{
+				AnimalID:        animal.ID,
+				IncidentDetails: animal.QuarantineIncidentDetails,
+				StartDate:       *animal.QuarantineStartDate,
+			})
 			sendQuarantineNotificationEmail(db, emailService, &animal)
 		}
 
@@ -370,6 +375,8 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		newStatus := req.Status
 		now := time.Now()
 		enteredQuarantine := false
+		leftQuarantine := newStatus != "" && newStatus != oldStatus && oldStatus == "bite_quarantine"
+		midBQEdit := false
 		if newStatus != "" && newStatus != oldStatus {
 			animal.LastStatusChange = &now
 			enteredQuarantine = newStatus == "bite_quarantine" && oldStatus != "bite_quarantine"
@@ -435,6 +442,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			}
 			animal.Status = newStatus
 		} else if animal.Status == "bite_quarantine" {
+			midBQEdit = true
 			// Update approval status only when explicitly provided (nil = not sent = no change)
 			if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != animal.QuarantineApprovalStatus {
 				if *req.QuarantineApprovalStatus == "" {
@@ -496,7 +504,22 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		}
 
 		if enteredQuarantine {
+			db.WithContext(ctx).Create(&models.AnimalBQIncident{
+				AnimalID:        animal.ID,
+				IncidentDetails: animal.QuarantineIncidentDetails,
+				StartDate:       *animal.QuarantineStartDate,
+			})
 			sendQuarantineNotificationEmail(db, emailService, &animal)
+		}
+		if leftQuarantine {
+			db.WithContext(ctx).Model(&models.AnimalBQIncident{}).
+				Where("animal_id = ? AND end_date IS NULL", animal.ID).
+				Update("end_date", now)
+		}
+		if midBQEdit && req.QuarantineIncidentDetails != nil {
+			db.WithContext(ctx).Model(&models.AnimalBQIncident{}).
+				Where("animal_id = ? AND end_date IS NULL", animal.ID).
+				Update("incident_details", *req.QuarantineIncidentDetails)
 		}
 
 		// If an image_url was provided, link any unlinked images with this URL to this animal

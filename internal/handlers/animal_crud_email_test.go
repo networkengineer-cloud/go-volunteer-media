@@ -166,6 +166,184 @@ func TestUpdateAnimal_LeaveQuarantine_ClearsIncident(t *testing.T) {
 	}
 }
 
+// TestCreateAnimal_BQEntry_CreatesIncidentRow verifies that creating an animal
+// directly in bite_quarantine writes an AnimalBQIncident row.
+func TestCreateAnimal_BQEntry_CreatesIncidentRow(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+
+	details := "Bit a volunteer."
+	reqBody := AnimalRequest{
+		Name:                      "Rex",
+		Species:                   "Dog",
+		Status:                    "bite_quarantine",
+		QuarantineIncidentDetails: &details,
+	}
+	jsonData, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := CreateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("end_date IS NULL").First(&incident).Error; err != nil {
+		t.Fatalf("Expected an active AnimalBQIncident row, got none: %v", err)
+	}
+	if incident.IncidentDetails != "Bit a volunteer." {
+		t.Errorf("IncidentDetails = %q, want %q", incident.IncidentDetails, "Bit a volunteer.")
+	}
+}
+
+// TestUpdateAnimal_BQEntry_CreatesIncidentRow verifies that transitioning an
+// animal to bite_quarantine writes an AnimalBQIncident row.
+func TestUpdateAnimal_BQEntry_CreatesIncidentRow(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	details := "Bit a volunteer."
+	reqBody := AnimalRequest{
+		Name:                      "Rex",
+		Status:                    "bite_quarantine",
+		QuarantineIncidentDetails: &details,
+	}
+	jsonData, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ? AND end_date IS NULL", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("Expected an active AnimalBQIncident row: %v", err)
+	}
+	if incident.IncidentDetails != "Bit a volunteer." {
+		t.Errorf("IncidentDetails = %q, want %q", incident.IncidentDetails, "Bit a volunteer.")
+	}
+}
+
+// TestUpdateAnimal_BQExit_StampsEndDate verifies that leaving bite_quarantine
+// stamps EndDate on the active AnimalBQIncident row.
+func TestUpdateAnimal_BQExit_StampsEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	// Seed animal in BQ with an active incident row.
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                      "bite_quarantine",
+		"quarantine_incident_details": "Bit a volunteer.",
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:        animal.ID,
+		IncidentDetails: "Bit a volunteer.",
+		StartDate:       animal.CreatedAt,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	reqBody := AnimalRequest{Name: "Rex", Status: "available"}
+	jsonData, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ?", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.EndDate == nil {
+		t.Error("Expected EndDate to be stamped after leaving BQ, got nil")
+	}
+}
+
+// TestUpdateAnimal_MidBQ_UpdatesIncidentDetails verifies that editing incident
+// details while already in bite_quarantine updates the active incident row.
+func TestUpdateAnimal_MidBQ_UpdatesIncidentDetails(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	// Seed animal in BQ with an active incident row.
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                      "bite_quarantine",
+		"quarantine_incident_details": "Original details.",
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:        animal.ID,
+		IncidentDetails: "Original details.",
+		StartDate:       animal.CreatedAt,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	updated := "Updated details."
+	reqBody := AnimalRequest{
+		Name:                      "Rex",
+		Status:                    "bite_quarantine",
+		QuarantineIncidentDetails: &updated,
+	}
+	jsonData, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ? AND end_date IS NULL", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.IncidentDetails != "Updated details." {
+		t.Errorf("IncidentDetails = %q, want %q", incident.IncidentDetails, "Updated details.")
+	}
+}
+
 // TestCreateAnimal_BiteQuarantine_StoresIncidentDetails verifies that creating
 // an animal directly with status "bite_quarantine" stores the provided
 // incident details.
