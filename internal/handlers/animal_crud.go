@@ -180,7 +180,7 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animal models.Animal
-		if err := db.WithContext(ctx).Preload("Tags").Preload("NameHistory").Preload("Scripts").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+		if err := db.WithContext(ctx).Preload("Tags").Preload("NameHistory").Preload("Scripts").Preload("BQIncidents", "end_date IS NOT NULL").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}

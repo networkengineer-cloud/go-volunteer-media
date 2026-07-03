@@ -386,3 +386,55 @@ func TestCreateAnimal_BiteQuarantine_StoresIncidentDetails(t *testing.T) {
 		t.Errorf("incident not stored on create: %q", got.QuarantineIncidentDetails)
 	}
 }
+
+// TestGetAnimal_ReturnsBQHistory verifies that ended BQ episodes are
+// returned in the bq_incidents field of the animal detail response.
+func TestGetAnimal_ReturnsBQHistory(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	// Create an ended BQ incident.
+	endDate := animal.CreatedAt.Add(10 * 24 * time.Hour)
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:        animal.ID,
+		IncidentDetails: "Bit a volunteer.",
+		StartDate:       animal.CreatedAt,
+		EndDate:         &endDate,
+	}).Error; err != nil {
+		t.Fatalf("seed ended incident: %v", err)
+	}
+	// Also create an active one that must NOT appear.
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:        animal.ID,
+		IncidentDetails: "Active, no end.",
+		StartDate:       endDate,
+	}).Error; err != nil {
+		t.Fatalf("seed active incident: %v", err)
+	}
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("GET", "/", nil)
+
+	handler := GetAnimal(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var got models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(got.BQIncidents) != 1 {
+		t.Fatalf("Expected 1 ended BQ incident in response, got %d", len(got.BQIncidents))
+	}
+	if got.BQIncidents[0].IncidentDetails != "Bit a volunteer." {
+		t.Errorf("IncidentDetails = %q, want %q", got.BQIncidents[0].IncidentDetails, "Bit a volunteer.")
+	}
+}
