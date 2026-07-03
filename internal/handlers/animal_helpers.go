@@ -109,9 +109,17 @@ func isValidApprovalStatus(s *string) bool {
 // computed default (models.ComputeQuarantineEndDate). Used by CreateAnimal,
 // UpdateAnimal, and UpdateAnimalAdmin so the resolution rule stays identical
 // across all three write paths.
+//
+// An explicit end date requires a known start date to validate against — a nil
+// start (e.g. a CSV-imported animal that reached bite_quarantine status without
+// ever setting a quarantine start date) is rejected rather than silently stored
+// unvalidated.
 func resolveQuarantineEndDate(start *time.Time, reqEnd NullableTime) (*time.Time, error) {
 	if reqEnd.Valid && reqEnd.Time != nil {
-		if start != nil && quarantineEndBeforeStart(*reqEnd.Time, *start) {
+		if start == nil {
+			return nil, fmt.Errorf("quarantine end date requires a quarantine start date")
+		}
+		if quarantineEndBeforeStart(*reqEnd.Time, *start) {
 			return nil, fmt.Errorf("quarantine end date cannot be before start date")
 		}
 		return reqEnd.Time, nil

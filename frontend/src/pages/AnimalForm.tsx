@@ -211,12 +211,18 @@ const AnimalForm: React.FC = () => {
            !quarantineEndDateError;
   };
 
-  const quarantineEndDateError = (
-    formData.status === 'bite_quarantine' &&
-    !!formData.quarantine_start_date &&
-    !!formData.quarantine_end_date &&
-    formData.quarantine_end_date < formData.quarantine_start_date
-  ) ? 'End date cannot be before start date' : '';
+  const quarantineEndDateError = (() => {
+    if (formData.status !== 'bite_quarantine' || !formData.quarantine_end_date) {
+      return '';
+    }
+    if (!formData.quarantine_start_date) {
+      return 'Quarantine end date requires a start date';
+    }
+    if (formData.quarantine_end_date < formData.quarantine_start_date) {
+      return 'End date cannot be before start date';
+    }
+    return '';
+  })();
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
