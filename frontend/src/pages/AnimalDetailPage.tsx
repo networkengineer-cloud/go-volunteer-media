@@ -4,7 +4,7 @@ import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi, scriptsApi } 
 import type { Animal, AnimalComment, CommentTag, CommentHistory, Group, GroupMembership, SessionMetadata, Script } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { calculateQuarantineEndDate, calculateAge, formatAge } from '../utils/dateUtils';
+import { formatCalendarDate, formatQuarantineEndDate, calculateAge, formatAge } from '../utils/dateUtils';
 import { formatDisplayName } from '../utils/formatName';
 import { formatAnimalStatus } from '../utils/animalUtils';
 import QuarantineApprovalBadge from '../components/QuarantineApprovalBadge';
@@ -472,10 +472,10 @@ const AnimalDetailPage: React.FC = () => {
                     <strong>⚠️ Bite Quarantine</strong>
                   </p>
                   <p className="quarantine-dates">
-                    Start: {new Date(animal.quarantine_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    Start: {formatCalendarDate(animal.quarantine_start_date, 'long')}
                   </p>
                   <p className="quarantine-dates">
-                    End: {calculateQuarantineEndDate(animal.quarantine_start_date, 'long')}
+                    End: {formatQuarantineEndDate(animal, 'long')}
                   </p>
                   {animal.status === 'bite_quarantine' && animal.quarantine_incident_details && (
                     <div className="quarantine-incident">

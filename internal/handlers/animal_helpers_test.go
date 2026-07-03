@@ -224,3 +224,92 @@ func TestNullableTime_UnmarshalJSON(t *testing.T) {
 		})
 	}
 }
+
+// TestResolveQuarantineEndDate covers the shared "explicit override, validated
+// against start; else computed default" rule used by CreateAnimal, UpdateAnimal,
+// and UpdateAnimalAdmin.
+func TestResolveQuarantineEndDate(t *testing.T) {
+	t.Run("no explicit end date returns the computed default", func(t *testing.T) {
+		start := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC) // Monday
+		result, err := resolveQuarantineEndDate(&start, NullableTime{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC) // Thursday, 10 days later
+		if result == nil || !result.Equal(expected) {
+			t.Errorf("expected %v, got %v", expected, result)
+		}
+	})
+
+	t.Run("explicit end date after start is honored verbatim", func(t *testing.T) {
+		start := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+		end := time.Date(2025, 11, 20, 0, 0, 0, 0, time.UTC)
+		result, err := resolveQuarantineEndDate(&start, NullableTime{Time: &end, Valid: true})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result == nil || !result.Equal(end) {
+			t.Errorf("expected %v, got %v", end, result)
+		}
+	})
+
+	t.Run("explicit end date before start's calendar day is rejected", func(t *testing.T) {
+		start := time.Date(2025, 11, 10, 0, 0, 0, 0, time.UTC)
+		end := time.Date(2025, 11, 5, 0, 0, 0, 0, time.UTC)
+		_, err := resolveQuarantineEndDate(&start, NullableTime{Time: &end, Valid: true})
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if err.Error() != "quarantine end date cannot be before start date" {
+			t.Errorf("unexpected error message: %q", err.Error())
+		}
+	})
+
+	t.Run("explicit end date same calendar day as start is accepted even with a later time-of-day start", func(t *testing.T) {
+		// Regression: start defaults to time.Now() (a real timestamp), while a
+		// date-only end date parses to UTC midnight. Comparing exact instants
+		// would wrongly reject a same-day end date; comparison must be by
+		// calendar day.
+		start := time.Date(2026, 7, 2, 14, 30, 0, 0, time.UTC) // 2:30pm
+		end := time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)     // midnight, same day
+		result, err := resolveQuarantineEndDate(&start, NullableTime{Time: &end, Valid: true})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result == nil || !result.Equal(end) {
+			t.Errorf("expected %v, got %v", end, result)
+		}
+	})
+
+	t.Run("explicit end date on the calendar day before start, even with an earlier time-of-day, is rejected", func(t *testing.T) {
+		start := time.Date(2026, 7, 2, 23, 0, 0, 0, time.UTC)  // 11pm
+		end := time.Date(2026, 7, 1, 1, 0, 0, 0, time.UTC)     // 1am, previous calendar day
+		_, err := resolveQuarantineEndDate(&start, NullableTime{Time: &end, Valid: true})
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+	})
+
+	t.Run("nil start with no explicit end date returns nil", func(t *testing.T) {
+		result, err := resolveQuarantineEndDate(nil, NullableTime{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result != nil {
+			t.Errorf("expected nil, got %v", result)
+		}
+	})
+
+	t.Run("nil start with an explicit end date is rejected rather than stored unvalidated", func(t *testing.T) {
+		// Reachable today via CSV-imported animals that land in bite_quarantine
+		// status without ever setting a quarantine start date.
+		end := time.Date(2025, 11, 20, 0, 0, 0, 0, time.UTC)
+		_, err := resolveQuarantineEndDate(nil, NullableTime{Time: &end, Valid: true})
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if err.Error() != "quarantine end date requires a quarantine start date" {
+			t.Errorf("unexpected error message: %q", err.Error())
+		}
+	})
+}

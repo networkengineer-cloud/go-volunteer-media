@@ -44,8 +44,8 @@ func buildQuarantineEmail(animal *models.Animal) (string, string) {
 		start = animal.QuarantineStartDate.Format(dateLayout)
 	}
 	end := ""
-	if e := animal.QuarantineEndDate(); e != nil {
-		end = e.Format(dateLayout)
+	if animal.QuarantineEndDate != nil {
+		end = animal.QuarantineEndDate.Format(dateLayout)
 	}
 	title := fmt.Sprintf("🚨 Bite Quarantine: %s", animal.Name)
 	body := fmt.Sprintf(
@@ -263,6 +263,13 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			} else {
 				animal.QuarantineStartDate = &now
 			}
+			// Use provided quarantine end date if available and valid, otherwise compute the default
+			endDate, err := resolveQuarantineEndDate(animal.QuarantineStartDate, req.QuarantineEndDate)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			animal.QuarantineEndDate = endDate
 			// Set bite quarantine permission status if provided
 			if req.QuarantineApprovalStatus != nil && *req.QuarantineApprovalStatus != "" {
 				animal.QuarantineApprovalStatus = *req.QuarantineApprovalStatus
@@ -383,6 +390,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// Clear specific status dates and approval when leaving quarantine
 				animal.FosterStartDate = nil
 				animal.QuarantineStartDate = nil
+				animal.QuarantineEndDate = nil
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
@@ -390,6 +398,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			case "foster":
 				animal.FosterStartDate = &now
 				animal.QuarantineStartDate = nil
+				animal.QuarantineEndDate = nil
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
@@ -401,6 +410,13 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				} else {
 					animal.QuarantineStartDate = &now
 				}
+				// Use provided quarantine end date if available and valid, otherwise compute the default
+				endDate, err := resolveQuarantineEndDate(animal.QuarantineStartDate, req.QuarantineEndDate)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				animal.QuarantineEndDate = endDate
 				// Always start clean, then apply provided value if any
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
@@ -423,6 +439,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// No dedicated date field for vet care, so clear the same fields as "available"
 				animal.FosterStartDate = nil
 				animal.QuarantineStartDate = nil
+				animal.QuarantineEndDate = nil
 				animal.QuarantineApprovalStatus = ""
 				animal.QuarantineApprovalDate = nil
 				animal.ArchivedDate = nil
@@ -441,8 +458,21 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				}
 			}
 			// Update quarantine start date independently — both fields can change in one request
-			if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
+			startChanged := req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil
+			if startChanged {
 				animal.QuarantineStartDate = req.QuarantineStartDate.Time
+			}
+			// An explicit end date is honored (validated against the resolved start date);
+			// otherwise a start-date change recomputes the default, discarding any prior override.
+			// Neither provided: leave the stored end date untouched.
+			endExplicit := req.QuarantineEndDate.Valid && req.QuarantineEndDate.Time != nil
+			if endExplicit || startChanged {
+				endDate, err := resolveQuarantineEndDate(animal.QuarantineStartDate, req.QuarantineEndDate)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				animal.QuarantineEndDate = endDate
 			}
 			if req.QuarantineIncidentDetails != nil {
 				animal.QuarantineIncidentDetails = *req.QuarantineIncidentDetails

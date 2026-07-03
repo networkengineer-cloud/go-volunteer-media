@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -81,6 +82,7 @@ type AnimalRequest struct {
 	GroupID                   uint         `json:"group_id,omitempty"`
 	ArrivalDate               NullableTime `json:"arrival_date,omitempty"` // Date animal entered shelter
 	QuarantineStartDate       NullableTime `json:"quarantine_start_date,omitempty"`
+	QuarantineEndDate         NullableTime `json:"quarantine_end_date,omitempty"`
 	QuarantineApprovalStatus  *string      `json:"quarantine_approval_status,omitempty"`  // nil = not provided; "" | "requested" | "granted" when set
 	QuarantineIncidentDetails *string      `json:"quarantine_incident_details,omitempty"` // nil = not provided; set when entering bite quarantine
 	IsReturned                *bool        `json:"is_returned,omitempty"`                 // Pointer to distinguish null from false
@@ -100,6 +102,43 @@ func isValidApprovalStatus(s *string) bool {
 		return true
 	}
 	return *s == "" || *s == "requested" || *s == "granted"
+}
+
+// resolveQuarantineEndDate returns the quarantine end date to store: an explicit
+// override from reqEnd when provided (validated against start), otherwise the
+// computed default (models.ComputeQuarantineEndDate). Used by CreateAnimal,
+// UpdateAnimal, and UpdateAnimalAdmin so the resolution rule stays identical
+// across all three write paths.
+//
+// An explicit end date requires a known start date to validate against — a nil
+// start (e.g. a CSV-imported animal that reached bite_quarantine status without
+// ever setting a quarantine start date) is rejected rather than silently stored
+// unvalidated.
+func resolveQuarantineEndDate(start *time.Time, reqEnd NullableTime) (*time.Time, error) {
+	if reqEnd.Valid && reqEnd.Time != nil {
+		if start == nil {
+			return nil, fmt.Errorf("quarantine end date requires a quarantine start date")
+		}
+		if quarantineEndBeforeStart(*reqEnd.Time, *start) {
+			return nil, fmt.Errorf("quarantine end date cannot be before start date")
+		}
+		return reqEnd.Time, nil
+	}
+	return models.ComputeQuarantineEndDate(start), nil
+}
+
+// quarantineEndBeforeStart compares end and start by calendar day (UTC), not by
+// exact instant. Start defaults to time.Now() (a real timestamp) when omitted,
+// while a date-only end date parses to UTC midnight — comparing exact instants
+// would wrongly reject a same-day end date submitted alongside a defaulted start.
+func quarantineEndBeforeStart(end, start time.Time) bool {
+	end = end.UTC()
+	start = start.UTC()
+	ey, em, ed := end.Date()
+	sy, sm, sd := start.Date()
+	endDay := time.Date(ey, em, ed, 0, 0, 0, 0, time.UTC)
+	startDay := time.Date(sy, sm, sd, 0, 0, 0, 0, time.UTC)
+	return endDay.Before(startDay)
 }
 
 // checkGroupAccess verifies if the user has access to a specific group

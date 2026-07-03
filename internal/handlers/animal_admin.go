@@ -75,6 +75,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 			case "available":
 				updates["foster_start_date"] = nil
 				updates["quarantine_start_date"] = nil
+				updates["quarantine_end_date"] = nil
 				updates["quarantine_approval_status"] = ""
 				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
@@ -82,6 +83,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 			case "foster":
 				updates["foster_start_date"] = now
 				updates["quarantine_start_date"] = nil
+				updates["quarantine_end_date"] = nil
 				updates["quarantine_approval_status"] = ""
 				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
@@ -89,11 +91,18 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 			case "bite_quarantine":
 				enteredQuarantine = true
 				// Use provided quarantine start date if available, otherwise use current time
+				startDate := now
 				if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
-					updates["quarantine_start_date"] = *req.QuarantineStartDate.Time
-				} else {
-					updates["quarantine_start_date"] = now
+					startDate = *req.QuarantineStartDate.Time
 				}
+				updates["quarantine_start_date"] = startDate
+				// Use provided quarantine end date if available and valid, otherwise compute the default
+				endDate, err := resolveQuarantineEndDate(&startDate, req.QuarantineEndDate)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				updates["quarantine_end_date"] = *endDate
 				// Always start clean, then apply provided value if any
 				updates["quarantine_approval_status"] = ""
 				updates["quarantine_approval_date"] = nil
@@ -116,6 +125,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 				// No dedicated date field for vet care, so clear the same fields as "available"
 				updates["foster_start_date"] = nil
 				updates["quarantine_start_date"] = nil
+				updates["quarantine_end_date"] = nil
 				updates["quarantine_approval_status"] = ""
 				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
@@ -133,8 +143,25 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 				}
 			}
 			// Update quarantine start date independently — both fields can change in one request
-			if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
+			resolvedStart := animal.QuarantineStartDate
+			startChanged := req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil
+			if startChanged {
 				updates["quarantine_start_date"] = *req.QuarantineStartDate.Time
+				resolvedStart = req.QuarantineStartDate.Time
+			}
+			// An explicit end date is honored (validated against the resolved start date);
+			// otherwise a start-date change recomputes the default, discarding any prior override.
+			// Neither provided: leave the stored end date untouched.
+			endExplicit := req.QuarantineEndDate.Valid && req.QuarantineEndDate.Time != nil
+			if endExplicit || startChanged {
+				endDate, err := resolveQuarantineEndDate(resolvedStart, req.QuarantineEndDate)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				if endDate != nil {
+					updates["quarantine_end_date"] = *endDate
+				}
 			}
 			if req.QuarantineIncidentDetails != nil {
 				updates["quarantine_incident_details"] = *req.QuarantineIncidentDetails

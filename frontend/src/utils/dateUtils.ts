@@ -31,16 +31,25 @@ export function formatRelativeTime(dateString: string, cutoffDays = 30): string 
   return formatDateShort(dateString);
 }
 
-// Calculates the quarantine end date: 10 days after the start date,
-// shifted forward if it falls on a weekend.
-export function calculateQuarantineEndDate(startDateString?: string, format: 'short' | 'long' = 'short'): string {
-  if (!startDateString) return '-';
+// Parses a calendar-date string as local midnight for that date, ignoring any
+// time-of-day/timezone component. Accepts a bare YYYY-MM-DD string or a full
+// ISO timestamp (e.g. the UTC-midnight timestamps the backend stores quarantine
+// dates as) — either way, only the date portion is meaningful, so a UTC-midnight
+// timestamp isn't shifted to the previous calendar day for users in timezones
+// west of UTC.
+function parseDateOnly(dateString?: string): Date | null {
+  if (!dateString) return null;
+  const dateOnlyMatch = dateString.match(/^(\d{4}-\d{2}-\d{2})/);
+  const normalised = dateOnlyMatch ? `${dateOnlyMatch[1]}T00:00:00` : dateString;
+  const date = new Date(normalised);
+  return isNaN(date.getTime()) ? null : date;
+}
 
-  const normalised = /^\d{4}-\d{2}-\d{2}$/.test(startDateString)
-    ? startDateString + 'T00:00:00'
-    : startDateString;
-  const startDate = new Date(normalised);
-  if (isNaN(startDate.getTime())) return '-';
+// Shared computation for calculateQuarantineEndDate / calculateQuarantineEndDateISO:
+// 10 days after the start date, shifted forward if it falls on a weekend.
+function addQuarantineDays(startDateString?: string): Date | null {
+  const startDate = parseDateOnly(startDateString);
+  if (!startDate) return null;
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + 10);
 
@@ -48,9 +57,56 @@ export function calculateQuarantineEndDate(startDateString?: string, format: 'sh
     endDate.setDate(endDate.getDate() + 1);
   }
 
+  return endDate;
+}
+
+// Calculates the quarantine end date: 10 days after the start date,
+// shifted forward if it falls on a weekend.
+export function calculateQuarantineEndDate(startDateString?: string, format: 'short' | 'long' = 'short'): string {
+  const endDate = addQuarantineDays(startDateString);
+  if (!endDate) return '-';
+
   return endDate.toLocaleDateString('en-US', format === 'long'
     ? { year: 'numeric', month: 'long', day: 'numeric' }
     : { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Same computation as calculateQuarantineEndDate, but returns YYYY-MM-DD for use as the
+// value of an <input type="date"> (e.g. pre-filling the editable quarantine end date field).
+export function calculateQuarantineEndDateISO(startDateString?: string): string {
+  const endDate = addQuarantineDays(startDateString);
+  if (!endDate) return '';
+
+  const y = endDate.getFullYear();
+  const m = String(endDate.getMonth() + 1).padStart(2, '0');
+  const d = String(endDate.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Formats a calendar-date string (see parseDateOnly) for display. Use for dates
+// that represent a day rather than a precise instant — e.g. quarantine
+// start/end dates — so they never appear shifted to the previous day.
+export function formatCalendarDate(dateString?: string, format: 'short' | 'long' = 'short'): string {
+  const date = parseDateOnly(dateString);
+  if (!date) return '-';
+  return date.toLocaleDateString('en-US', format === 'long'
+    ? { year: 'numeric', month: 'long', day: 'numeric' }
+    : { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Returns the quarantine end date to display for an animal: the stored
+// quarantine_end_date (a staff override, or a previously-computed default) when
+// present, else the default computed from quarantine_start_date. Every page
+// that shows the quarantine end date should use this so a staff override is
+// shown consistently everywhere, not just on the pages that read the field.
+export function formatQuarantineEndDate(
+  animal: { quarantine_start_date?: string; quarantine_end_date?: string },
+  format: 'short' | 'long' = 'short'
+): string {
+  if (animal.quarantine_end_date) {
+    return formatCalendarDate(animal.quarantine_end_date, format);
+  }
+  return calculateQuarantineEndDate(animal.quarantine_start_date, format);
 }
 
 export function calculateDaysSince(dateString?: string): number {
