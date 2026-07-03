@@ -477,18 +477,16 @@ const AnimalDetailPage: React.FC = () => {
                   <p className="quarantine-dates">
                     End: {formatQuarantineEndDate(animal, 'long')}
                   </p>
-                  {animal.status === 'bite_quarantine' && animal.quarantine_incident_details && (
+                  {animal.quarantine_incident_details && (
                     <div className="quarantine-incident">
                       <p className="quarantine-incident-label"><strong>Incident Details</strong></p>
                       <p className="quarantine-incident-text">{animal.quarantine_incident_details}</p>
                     </div>
                   )}
-                </div>
-              )}
-              {animal.status === 'bite_quarantine' && (
-                <div className="quarantine-permission-row">
-                  <span className="quarantine-permission-label" aria-hidden="true">Permission:</span>
-                  <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
+                  <div className="quarantine-permission-row">
+                    <span className="quarantine-permission-label" aria-hidden="true">Permission:</span>
+                    <QuarantineApprovalBadge status={animal.quarantine_approval_status} />
+                  </div>
                 </div>
               )}
               {animal.description && (
