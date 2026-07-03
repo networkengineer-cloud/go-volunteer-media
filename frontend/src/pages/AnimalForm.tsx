@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { animalsApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
 import type { AnimalTag, Animal, DuplicateNameInfo, AnimalImage } from '../api/client';
 import { useToast } from '../hooks/useToast';
-import { calculateQuarantineEndDate, calculateQuarantineEndDateISO, calculateAge, computeEstimatedBirthDate } from '../utils/dateUtils';
+import { calculateQuarantineEndDateISO, calculateAge, computeEstimatedBirthDate, formatCalendarDate } from '../utils/dateUtils';
 import { formatAnimalStatus } from '../utils/animalUtils';
 import FormField from '../components/FormField';
 import AgePicker from '../components/AgePicker';
@@ -29,6 +29,7 @@ const AnimalForm: React.FC = () => {
   const [pendingStatusChange, setPendingStatusChange] = useState<string>('');
   const [quarantineContext, setQuarantineContext] = useState('');
   const [quarantineDate, setQuarantineDate] = useState('');
+  const [quarantineEndDateInput, setQuarantineEndDateInput] = useState('');
   const [originalStatus, setOriginalStatus] = useState('');
   const [availableTags, setAvailableTags] = useState<AnimalTag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
@@ -216,6 +217,12 @@ const AnimalForm: React.FC = () => {
     !!formData.quarantine_start_date &&
     !!formData.quarantine_end_date &&
     formData.quarantine_end_date < formData.quarantine_start_date
+  ) ? 'End date cannot be before start date' : '';
+
+  const quarantineModalEndDateError = (
+    !!quarantineDate &&
+    !!quarantineEndDateInput &&
+    quarantineEndDateInput < quarantineDate
   ) ? 'End date cannot be before start date' : '';
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -419,7 +426,9 @@ const AnimalForm: React.FC = () => {
     // Check if status changed to bite_quarantine
     if (formData.status === 'bite_quarantine' && originalStatus !== 'bite_quarantine') {
       // Show modal to get context and date
-      setQuarantineDate(formData.quarantine_start_date || new Date().toISOString().split('T')[0]);
+      const initialQuarantineDate = formData.quarantine_start_date || new Date().toISOString().split('T')[0];
+      setQuarantineDate(initialQuarantineDate);
+      setQuarantineEndDateInput(calculateQuarantineEndDateISO(initialQuarantineDate));
       setShowQuarantineModal(true);
       return;
     }
@@ -452,8 +461,10 @@ const AnimalForm: React.FC = () => {
         quarantine_incident_details: formData.status === 'bite_quarantine'
           ? formData.quarantine_incident_details
           : undefined,
+        // A blanked end date means "revert to the computed default", not "no change" —
+        // send the recomputed default explicitly so clearing the field actually saves.
         quarantine_end_date: formData.status === 'bite_quarantine'
-          ? (formData.quarantine_end_date || undefined)
+          ? (formData.quarantine_end_date || calculateQuarantineEndDateISO(formData.quarantine_start_date) || undefined)
           : undefined,
       };
       
@@ -503,17 +514,26 @@ const AnimalForm: React.FC = () => {
       toast.showError('Please provide context about the bite incident');
       return;
     }
+    if (quarantineModalEndDateError) {
+      toast.showError(quarantineModalEndDateError);
+      return;
+    }
 
     // Compute birth date the same way saveAnimal does
     const finalBirthDate = formData.estimated_birth_date ||
       (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
 
-    // Update formData with the quarantine date
+    // Update formData with the quarantine dates entered in this modal — formData may
+    // still carry a stale quarantine_end_date left over from a previous quarantine
+    // stint (e.g. an animal that was quarantined, then archived, and is now being
+    // re-quarantined), which would otherwise be submitted verbatim and could predate
+    // the new start date.
     const updatedFormData = {
       ...formData,
       estimated_birth_date: finalBirthDate || undefined,
       age: birthYears,
       quarantine_start_date: quarantineDate,
+      quarantine_end_date: quarantineEndDateInput || calculateQuarantineEndDateISO(quarantineDate),
       quarantine_incident_details: quarantineContext,
     };
 
@@ -532,7 +552,7 @@ const AnimalForm: React.FC = () => {
       const normalisedQuarantineDate = /^\d{4}-\d{2}-\d{2}$/.test(quarantineDate)
         ? quarantineDate + 'T00:00:00'
         : quarantineDate;
-      const endDate = calculateQuarantineEndDate(quarantineDate, 'long');
+      const endDate = formatCalendarDate(quarantineEndDateInput || calculateQuarantineEndDateISO(quarantineDate), 'long');
 
       // Create a comment on the animal with behavior tag
       if (animalId && groupId) {
@@ -708,6 +728,18 @@ const AnimalForm: React.FC = () => {
                   if (originalStatus === 'archived' && newStatus !== 'archived' && id) {
                     setPendingStatusChange(newStatus);
                     setShowUnarchiveModal(true);
+                  } else if (formData.status === 'bite_quarantine' && newStatus !== 'bite_quarantine') {
+                    // Leaving bite_quarantine: clear quarantine-specific fields so that
+                    // toggling back to bite_quarantine later in the same session (before
+                    // saving) starts fresh instead of silently resubmitting stale dates
+                    // or incident details left over from this quarantine stint.
+                    setFormData({
+                      ...formData,
+                      status: newStatus,
+                      quarantine_start_date: '',
+                      quarantine_end_date: '',
+                      quarantine_incident_details: '',
+                    });
                   } else {
                     setFormData({ ...formData, status: newStatus });
                   }
@@ -1101,7 +1133,30 @@ const AnimalForm: React.FC = () => {
             id="quarantine-date"
             type="date"
             value={quarantineDate}
-            onChange={(e) => setQuarantineDate(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setQuarantineDate(value);
+              setQuarantineEndDateInput(calculateQuarantineEndDateISO(value));
+            }}
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              border: '1px solid var(--neutral-300)',
+              borderRadius: '4px',
+              fontSize: '1rem'
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <label htmlFor="quarantine-end-date" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+            Quarantine End Date:
+          </label>
+          <input
+            id="quarantine-end-date"
+            type="date"
+            value={quarantineEndDateInput}
+            onChange={(e) => setQuarantineEndDateInput(e.target.value)}
             style={{
               width: '100%',
               padding: '0.5rem',
@@ -1111,7 +1166,9 @@ const AnimalForm: React.FC = () => {
             }}
           />
           <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Quarantine will end: {calculateQuarantineEndDate(quarantineDate, 'long')}
+            {quarantineModalEndDateError
+              ? <span style={{ color: 'var(--color-danger, #c0392b)' }}>{quarantineModalEndDateError}</span>
+              : <>Defaults to 10 days after the bite date (skipping weekends). Adjust if a vet or authority specifies a different date.</>}
           </p>
         </div>
 
@@ -1150,7 +1207,7 @@ const AnimalForm: React.FC = () => {
             variant="primary"
             onClick={handleQuarantineSubmit}
             loading={loading}
-            disabled={loading || !quarantineContext.trim()}
+            disabled={loading || !quarantineContext.trim() || !!quarantineModalEndDateError}
           >
             Save & Notify
           </Button>

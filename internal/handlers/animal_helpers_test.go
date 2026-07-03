@@ -299,4 +299,20 @@ func TestResolveQuarantineEndDate(t *testing.T) {
 			t.Errorf("expected nil, got %v", result)
 		}
 	})
+
+	t.Run("explicit end date with nil start is rejected", func(t *testing.T) {
+		// Reachable for an animal whose status is bite_quarantine but whose
+		// QuarantineStartDate is nil (e.g. set via CSV import, which validates the
+		// status value but never touches quarantine dates) — an explicit end date
+		// can't be validated against a start that doesn't exist, so it must be
+		// rejected rather than silently stored.
+		end := time.Date(2025, 11, 20, 0, 0, 0, 0, time.UTC)
+		_, err := resolveQuarantineEndDate(nil, NullableTime{Time: &end, Valid: true})
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if err.Error() != "quarantine end date cannot be set without a quarantine start date" {
+			t.Errorf("unexpected error message: %q", err.Error())
+		}
+	})
 }
