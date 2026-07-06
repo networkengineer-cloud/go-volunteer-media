@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi, scriptsApi } from '../api/client';
 import type { Animal, AnimalComment, CommentTag, CommentHistory, Group, GroupMembership, SessionMetadata, Script } from '../api/client';
@@ -36,6 +36,10 @@ const AnimalDetailPage: React.FC = () => {
   const [comments, setComments] = useState<AnimalComment[]>([]);
   const [deletedComments, setDeletedComments] = useState<AnimalComment[]>([]);
   const [showDeleted, setShowDeleted] = useState(false);
+  const animalDeletedComments = useMemo(
+    () => deletedComments.filter(dc => dc.animal_id === Number(id)),
+    [deletedComments, id]
+  );
   const [availableTags, setAvailableTags] = useState<CommentTag[]>([]);
   const [filterTags, setFilterTags] = useState<string[]>([]); // Tags selected for filtering
   const [loading, setLoading] = useState(true);
@@ -751,7 +755,7 @@ const AnimalDetailPage: React.FC = () => {
           )}
 
           {/* Admin: Show Deleted Comments Toggle - HIGH VISIBILITY */}
-          {isAdmin && deletedComments && deletedComments.length > 0 && (
+          {isAdmin && animalDeletedComments.length > 0 && (
             <div style={{
               background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.04) 100%)',
               border: '2px solid #ef4444',
@@ -769,17 +773,17 @@ const AnimalDetailPage: React.FC = () => {
                   style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#ef4444' }}
                 />
                 <span style={{ fontWeight: 700, color: '#ef4444', fontSize: '1.05rem' }}>
-                  🗑️ Show Deleted Comments ({deletedComments.length})
+                  🗑️ Show Deleted Comments ({animalDeletedComments.length})
                 </span>
               </label>
             </div>
           )}
 
           {/* Deleted Comments Section */}
-          {showDeleted && deletedComments && deletedComments.length > 0 && (
+          {showDeleted && animalDeletedComments.length > 0 && (
             <div className="deleted-comments-section">
               <h3>🗑️ Deleted Comments (Admin Review)</h3>
-              {deletedComments.filter(dc => dc.animal_id === Number(id)).map((comment) => (
+              {animalDeletedComments.map((comment) => (
                 <div key={comment.id} className="comment-card deleted-comment">
                   <div className="deleted-badge">🗑️ DELETED</div>
                   <div className="comment-header">
