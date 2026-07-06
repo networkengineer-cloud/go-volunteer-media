@@ -1171,6 +1171,55 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
+/* Bite Quarantine History Section */
+.bq-history-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.bq-history-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.bq-history-count {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.bq-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.bq-history-item {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.bq-history-dates {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.bq-history-details {
+  margin: 0.35rem 0 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
 /* Name History Section */
 .name-history-section {
   margin-top: 1.5rem;

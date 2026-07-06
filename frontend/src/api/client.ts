@@ -189,6 +189,15 @@ export interface AnimalNameHistory {
   changed_by: number;
 }
 
+export interface AnimalBQIncident {
+  id: number;
+  animal_id: number;
+  incident_details: string;
+  start_date: string;
+  end_date: string | null;
+  created_at: string;
+}
+
 export interface Animal {
   id: number;
   group_id: number;
@@ -220,6 +229,7 @@ export interface Animal {
   protocol_document_user_id?: number;
   tags?: AnimalTag[];
   name_history?: AnimalNameHistory[];
+  bq_incidents?: AnimalBQIncident[];
   scripts?: Script[];
 }
 

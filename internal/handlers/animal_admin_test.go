@@ -798,3 +798,188 @@ func TestUpdateAnimalAdmin_LeaveQuarantine_ClearsEndDate(t *testing.T) {
 		t.Errorf("Expected QuarantineEndDate to be cleared, got %v", got.QuarantineEndDate)
 	}
 }
+
+// TestUpdateAnimalAdmin_BQEntry_CreatesIncidentRow verifies that the admin
+// handler creates an AnimalBQIncident row when transitioning to bite_quarantine.
+func TestUpdateAnimalAdmin_BQEntry_CreatesIncidentRow(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	details := "Bit a volunteer."
+	updateReq := AnimalRequest{
+		Name:                      "Rex",
+		Status:                    "bite_quarantine",
+		QuarantineIncidentDetails: &details,
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ? AND end_date IS NULL", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("Expected active AnimalBQIncident row: %v", err)
+	}
+	if incident.IncidentDetails != "Bit a volunteer." {
+		t.Errorf("IncidentDetails = %q, want %q", incident.IncidentDetails, "Bit a volunteer.")
+	}
+}
+
+// TestUpdateAnimalAdmin_BQExit_StampsEndDate verifies that the admin handler
+// stamps EndDate on the active incident row when the animal leaves BQ.
+func TestUpdateAnimalAdmin_BQExit_StampsEndDate(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                      "bite_quarantine",
+		"quarantine_incident_details": "Bit a volunteer.",
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:        animal.ID,
+		IncidentDetails: "Bit a volunteer.",
+		StartDate:       animal.CreatedAt,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	updateReq := AnimalRequest{Name: "Rex", Status: "available"}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ?", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.EndDate == nil {
+		t.Error("Expected EndDate to be stamped, got nil")
+	}
+}
+
+// TestUpdateAnimalAdmin_MidBQ_UpdatesIncidentDetails verifies that editing
+// incident details while in BQ via the admin handler updates the incident row.
+func TestUpdateAnimalAdmin_MidBQ_UpdatesIncidentDetails(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                      "bite_quarantine",
+		"quarantine_incident_details": "Original details.",
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:        animal.ID,
+		IncidentDetails: "Original details.",
+		StartDate:       animal.CreatedAt,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	updated := "Updated details."
+	updateReq := AnimalRequest{
+		Name:                      "Rex",
+		QuarantineIncidentDetails: &updated,
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ? AND end_date IS NULL", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.IncidentDetails != "Updated details." {
+		t.Errorf("IncidentDetails = %q, want %q", incident.IncidentDetails, "Updated details.")
+	}
+}
+
+// TestUpdateAnimalAdmin_MidBQ_EditStartDate_SyncsIncidentRow verifies that
+// editing the quarantine start date while still in BQ updates the active
+// incident row's StartDate, so the permanent history stays accurate.
+func TestUpdateAnimalAdmin_MidBQ_EditStartDate_SyncsIncidentRow(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	originalStart := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": originalStart,
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:        animal.ID,
+		IncidentDetails: "Original details.",
+		StartDate:       originalStart,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	correctedStart := time.Date(2025, 11, 1, 0, 0, 0, 0, time.UTC)
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &correctedStart,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ? AND end_date IS NULL", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if !incident.StartDate.Equal(correctedStart) {
+		t.Errorf("StartDate = %v, want %v", incident.StartDate, correctedStart)
+	}
+}

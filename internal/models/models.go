@@ -105,6 +105,7 @@ type Animal struct {
 	ProtocolDocumentBlobExtension  string              `json:"-"`                                                               // File extension (e.g., ".pdf", ".docx") for blob storage
 	Tags                           []AnimalTag         `gorm:"many2many:animal_animal_tags;" json:"tags,omitempty"`             // Tags associated with this animal
 	NameHistory                    []AnimalNameHistory `gorm:"foreignKey:AnimalID" json:"name_history,omitempty"`               // History of name changes for this animal
+	BQIncidents                    []AnimalBQIncident  `gorm:"foreignKey:AnimalID" json:"bq_incidents,omitempty"`               // Bite-quarantine incidents for this animal
 	Images                         []AnimalImage       `gorm:"foreignKey:AnimalID" json:"images,omitempty"`                     // Images uploaded for this animal
 	Scripts                        []Script            `gorm:"many2many:animal_scripts;" json:"scripts,omitempty"`              // Scripts linked to this animal's protocol
 }
@@ -439,6 +440,17 @@ type AnimalNameHistory struct {
 	OldName   string    `gorm:"not null" json:"old_name"`
 	NewName   string    `gorm:"not null" json:"new_name"`
 	ChangedBy uint      `gorm:"not null" json:"changed_by"` // User ID who made the change
+}
+
+// AnimalBQIncident records one bite-quarantine episode for an animal.
+// EndDate is nil while the episode is active; it is stamped when the animal leaves BQ.
+type AnimalBQIncident struct {
+	ID              uint       `gorm:"primaryKey" json:"id"`
+	CreatedAt       time.Time  `json:"created_at"`
+	AnimalID        uint       `gorm:"not null;index" json:"animal_id"`
+	IncidentDetails string     `json:"incident_details"`
+	StartDate       time.Time  `gorm:"not null" json:"start_date"`
+	EndDate         *time.Time `json:"end_date"`
 }
 
 // UserGroup represents the many-to-many relationship between users and groups

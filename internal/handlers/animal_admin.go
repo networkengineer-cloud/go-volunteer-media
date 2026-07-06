@@ -65,6 +65,9 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		}
 		now := time.Now()
 		enteredQuarantine := false
+		leftQuarantine := req.Status != "" && req.Status != animal.Status && animal.Status == "bite_quarantine"
+		var bqStartDate time.Time
+		var bqStartDateEdit *time.Time
 		if req.Status != "" && req.Status != animal.Status {
 			// Track status change
 			updates["status"] = req.Status
@@ -95,6 +98,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 					return
 				}
+				bqStartDate = startDate
 				updates["quarantine_start_date"] = startDate
 				updates["quarantine_end_date"] = *endDate
 				// Always start clean, then apply provided value if any
@@ -144,6 +148,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 			}
 			if newStart != nil {
 				updates["quarantine_start_date"] = *newStart
+				bqStartDateEdit = newStart
 			}
 			if newEnd != nil {
 				updates["quarantine_end_date"] = *newEnd
@@ -174,7 +179,41 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		}
 
 		if enteredQuarantine {
+			incidentDetails := ""
+			if req.QuarantineIncidentDetails != nil {
+				incidentDetails = *req.QuarantineIncidentDetails
+			}
+			if err := db.Create(&models.AnimalBQIncident{
+				AnimalID:        animal.ID,
+				IncidentDetails: incidentDetails,
+				StartDate:       bqStartDate,
+			}).Error; err != nil {
+				logger.Error("Failed to record BQ incident", err)
+			}
 			sendQuarantineNotificationEmail(db, emailService, &animal)
+		}
+		if leftQuarantine {
+			if err := db.Model(&models.AnimalBQIncident{}).
+				Where("animal_id = ? AND end_date IS NULL", animal.ID).
+				Update("end_date", now).Error; err != nil {
+				logger.Error("Failed to close BQ incident", err)
+			}
+		}
+		if !enteredQuarantine && !leftQuarantine && animal.Status == "bite_quarantine" {
+			incidentUpdates := map[string]interface{}{}
+			if req.QuarantineIncidentDetails != nil {
+				incidentUpdates["incident_details"] = *req.QuarantineIncidentDetails
+			}
+			if bqStartDateEdit != nil {
+				incidentUpdates["start_date"] = *bqStartDateEdit
+			}
+			if len(incidentUpdates) > 0 {
+				if err := db.Model(&models.AnimalBQIncident{}).
+					Where("animal_id = ? AND end_date IS NULL", animal.ID).
+					Updates(incidentUpdates).Error; err != nil {
+					logger.Error("Failed to update BQ incident", err)
+				}
+			}
 		}
 
 		logger.WithFields(map[string]interface{}{

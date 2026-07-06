@@ -40,6 +40,7 @@ func setupAnimalTestDB(t *testing.T) *gorm.DB {
 		&models.Animal{},
 		&models.AnimalTag{},
 		&models.AnimalNameHistory{},
+		&models.AnimalBQIncident{},
 		&models.AnimalImage{},
 		&models.AnimalVideo{},
 	)

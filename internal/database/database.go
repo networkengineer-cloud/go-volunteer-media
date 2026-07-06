@@ -167,6 +167,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.AnimalImage{},
 		&models.AnimalVideo{},
 		&models.AnimalNameHistory{},
+		&models.AnimalBQIncident{},
 		&models.GroupDocument{},
 	)
 	if err != nil {
