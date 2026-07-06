@@ -290,6 +290,27 @@ func TestResolveQuarantineEndDate(t *testing.T) {
 		}
 	})
 
+	t.Run("explicit end date matches start's own-location calendar day even when the UTC calendar day differs", func(t *testing.T) {
+		// Regression: quarantineEndBeforeStart used to force both values to UTC
+		// before comparing calendar days. If start represents a real server
+		// time.Now() in a non-UTC location, that forced conversion could shift it
+		// onto the next UTC calendar day near local midnight, wrongly rejecting an
+		// end date that matches what the server's own local clock actually reads.
+		// This test fails under the old .UTC()-forcing behavior (UTC day of start
+		// would be July 3, UTC day of end is July 2) and passes now that each
+		// value's calendar day is read in its own location.
+		est := time.FixedZone("EST", -5*3600)
+		start := time.Date(2026, 7, 2, 23, 30, 0, 0, est)  // 11:30pm EST on July 2 (04:30 UTC on July 3)
+		end := time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC) // date-only end date: July 2
+		result, err := resolveQuarantineEndDate(&start, NullableTime{Time: &end, Valid: true})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result == nil || !result.Equal(end) {
+			t.Errorf("expected %v, got %v", end, result)
+		}
+	})
+
 	t.Run("nil start with no explicit end date returns nil", func(t *testing.T) {
 		result, err := resolveQuarantineEndDate(nil, NullableTime{})
 		if err != nil {
@@ -300,15 +321,18 @@ func TestResolveQuarantineEndDate(t *testing.T) {
 		}
 	})
 
-	t.Run("nil start with an explicit end date is rejected rather than stored unvalidated", func(t *testing.T) {
-		// Reachable today via CSV-imported animals that land in bite_quarantine
-		// status without ever setting a quarantine start date.
+	t.Run("explicit end date with nil start is rejected", func(t *testing.T) {
+		// Reachable for an animal whose status is bite_quarantine but whose
+		// QuarantineStartDate is nil (e.g. set via CSV import, which validates the
+		// status value but never touches quarantine dates) — an explicit end date
+		// can't be validated against a start that doesn't exist, so it must be
+		// rejected rather than silently stored.
 		end := time.Date(2025, 11, 20, 0, 0, 0, 0, time.UTC)
 		_, err := resolveQuarantineEndDate(nil, NullableTime{Time: &end, Valid: true})
 		if err == nil {
 			t.Fatal("expected an error, got nil")
 		}
-		if err.Error() != "quarantine end date requires a quarantine start date" {
+		if err.Error() != "quarantine end date cannot be set without a quarantine start date" {
 			t.Errorf("unexpected error message: %q", err.Error())
 		}
 	})

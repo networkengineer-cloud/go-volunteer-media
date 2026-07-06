@@ -109,15 +109,10 @@ func isValidApprovalStatus(s *string) bool {
 // computed default (models.ComputeQuarantineEndDate). Used by CreateAnimal,
 // UpdateAnimal, and UpdateAnimalAdmin so the resolution rule stays identical
 // across all three write paths.
-//
-// An explicit end date requires a known start date to validate against — a nil
-// start (e.g. a CSV-imported animal that reached bite_quarantine status without
-// ever setting a quarantine start date) is rejected rather than silently stored
-// unvalidated.
 func resolveQuarantineEndDate(start *time.Time, reqEnd NullableTime) (*time.Time, error) {
 	if reqEnd.Valid && reqEnd.Time != nil {
 		if start == nil {
-			return nil, fmt.Errorf("quarantine end date requires a quarantine start date")
+			return nil, fmt.Errorf("quarantine end date cannot be set without a quarantine start date")
 		}
 		if quarantineEndBeforeStart(*reqEnd.Time, *start) {
 			return nil, fmt.Errorf("quarantine end date cannot be before start date")
@@ -127,13 +122,55 @@ func resolveQuarantineEndDate(start *time.Time, reqEnd NullableTime) (*time.Time
 	return models.ComputeQuarantineEndDate(start), nil
 }
 
-// quarantineEndBeforeStart compares end and start by calendar day (UTC), not by
-// exact instant. Start defaults to time.Now() (a real timestamp) when omitted,
-// while a date-only end date parses to UTC midnight — comparing exact instants
-// would wrongly reject a same-day end date submitted alongside a defaulted start.
+// resolveNewQuarantineDates determines the start and end dates to store when an
+// animal enters bite_quarantine — via CreateAnimal, or a status transition into it
+// in UpdateAnimal/UpdateAnimalAdmin. Start defaults to now when not provided in the
+// request; end is resolved by resolveQuarantineEndDate (explicit override,
+// validated against start, or the computed default). Used by all three write
+// paths so the "entering quarantine" resolution rule stays identical everywhere.
+func resolveNewQuarantineDates(now time.Time, req AnimalRequest) (start time.Time, end *time.Time, err error) {
+	start = now
+	if req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil {
+		start = *req.QuarantineStartDate.Time
+	}
+	end, err = resolveQuarantineEndDate(&start, req.QuarantineEndDate)
+	return start, end, err
+}
+
+// resolveQuarantineDateEdits determines the start/end date updates to apply when
+// editing an animal that's already in bite_quarantine (both fields can change
+// independently in one request). Returns the new start date (nil if the request
+// didn't change it) and the new end date (nil if it should be left untouched):
+// an explicit end date is honored (validated against the resolved start date);
+// otherwise a start-date change recomputes the default, discarding any prior
+// override; if neither is provided, the stored end date is left alone. Used by
+// UpdateAnimal and UpdateAnimalAdmin so the in-place edit rule stays identical.
+func resolveQuarantineDateEdits(currentStart *time.Time, req AnimalRequest) (newStart, newEnd *time.Time, err error) {
+	resolvedStart := currentStart
+	startChanged := req.QuarantineStartDate.Valid && req.QuarantineStartDate.Time != nil
+	if startChanged {
+		newStart = req.QuarantineStartDate.Time
+		resolvedStart = req.QuarantineStartDate.Time
+	}
+
+	endExplicit := req.QuarantineEndDate.Valid && req.QuarantineEndDate.Time != nil
+	if endExplicit || startChanged {
+		newEnd, err = resolveQuarantineEndDate(resolvedStart, req.QuarantineEndDate)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return newStart, newEnd, nil
+}
+
+// quarantineEndBeforeStart compares end and start by calendar day, not by exact
+// instant. Start defaults to time.Now() (a real timestamp, in the server's local
+// location) when omitted, while a date-only end date parses to UTC midnight —
+// comparing exact instants would wrongly reject a same-day end date submitted
+// alongside a defaulted start. Each value's calendar day is read in its own
+// location rather than forced to UTC, so a local time.Now() near a UTC day
+// boundary isn't shifted onto the wrong day.
 func quarantineEndBeforeStart(end, start time.Time) bool {
-	end = end.UTC()
-	start = start.UTC()
 	ey, em, ed := end.Date()
 	sy, sm, sd := start.Date()
 	endDay := time.Date(ey, em, ed, 0, 0, 0, 0, time.UTC)
