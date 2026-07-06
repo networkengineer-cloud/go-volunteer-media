@@ -225,11 +225,33 @@ const AnimalForm: React.FC = () => {
     return '';
   })();
 
-  const quarantineModalEndDateError = (
-    !!quarantineDate &&
-    !!quarantineEndDateInput &&
-    quarantineEndDateInput < quarantineDate
-  ) ? 'End date cannot be before start date' : '';
+  // Clearing the Bite Date recomputes quarantineEndDateInput back to '' too (see
+  // the Bite Date onChange), so both fields end up blank together rather than
+  // leaving a stale non-blank end date behind — but it's still validated and
+  // displayed separately so the message shows next to the field it's actually about.
+  const quarantineModalStartDateError = !quarantineDate ? 'Bite date is required' : '';
+
+  const quarantineModalEndDateError = (() => {
+    if (!quarantineDate || !quarantineEndDateInput) {
+      return '';
+    }
+    if (quarantineEndDateInput < quarantineDate) {
+      return 'End date cannot be before start date';
+    }
+    return '';
+  })();
+
+  // Resets every quarantine-specific field to its default. Used both when leaving
+  // bite_quarantine (so re-entering it later in the same session starts fresh
+  // instead of resubmitting stale data) and when confirming a status change away
+  // from archived (an archived animal can still carry quarantine fields from
+  // before it was archived, since archiving doesn't clear them server-side).
+  const quarantineFieldReset = {
+    quarantine_start_date: '',
+    quarantine_end_date: '',
+    quarantine_incident_details: '',
+    quarantine_approval_status: 'requested' as const,
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -450,13 +472,20 @@ const AnimalForm: React.FC = () => {
       
       // Clean up formData: convert empty quarantine_start_date to null
       // Ensure estimated_birth_date is computed from years/months if in approximate mode
-      const finalBirthDate = formData.estimated_birth_date || 
+      const finalBirthDate = formData.estimated_birth_date ||
         (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
-      
+
       const cleanedFormData = {
         ...formData,
         estimated_birth_date: finalBirthDate || undefined,
         age: birthYears,
+        // A blank start date here means "leave the stored value untouched," not
+        // "clear it" — this also covers a user directly blanking the inline Start
+        // Date field on an already-quarantined animal, where the safe behavior is
+        // to leave the real stored quarantine window alone rather than fabricate a
+        // new one. The re-entering-bite_quarantine branch in the status <select>'s
+        // onChange is responsible for populating fresh, non-blank defaults so this
+        // never has to guess when someone toggles away and back within a session.
         quarantine_start_date: formData.quarantine_start_date || undefined,
         // Only include quarantine_approval_status when in bite_quarantine so non-quarantine saves
         // don't accidentally send "" and trigger the "not provided" vs "clear" ambiguity.
@@ -520,8 +549,8 @@ const AnimalForm: React.FC = () => {
       toast.showError('Please provide context about the bite incident');
       return;
     }
-    if (quarantineModalEndDateError) {
-      toast.showError(quarantineModalEndDateError);
+    if (quarantineModalStartDateError || quarantineModalEndDateError) {
+      toast.showError(quarantineModalStartDateError || quarantineModalEndDateError);
       return;
     }
 
@@ -534,12 +563,13 @@ const AnimalForm: React.FC = () => {
     // stint (e.g. an animal that was quarantined, then archived, and is now being
     // re-quarantined), which would otherwise be submitted verbatim and could predate
     // the new start date.
+    const resolvedQuarantineEndDate = quarantineEndDateInput || calculateQuarantineEndDateISO(quarantineDate);
     const updatedFormData = {
       ...formData,
       estimated_birth_date: finalBirthDate || undefined,
       age: birthYears,
       quarantine_start_date: quarantineDate,
-      quarantine_end_date: quarantineEndDateInput || calculateQuarantineEndDateISO(quarantineDate),
+      quarantine_end_date: resolvedQuarantineEndDate,
       quarantine_incident_details: quarantineContext,
     };
 
@@ -558,7 +588,7 @@ const AnimalForm: React.FC = () => {
       const normalisedQuarantineDate = /^\d{4}-\d{2}-\d{2}$/.test(quarantineDate)
         ? quarantineDate + 'T00:00:00'
         : quarantineDate;
-      const endDate = formatCalendarDate(quarantineEndDateInput || calculateQuarantineEndDateISO(quarantineDate), 'long');
+      const endDate = formatCalendarDate(resolvedQuarantineEndDate, 'long');
 
       // Create a comment on the animal with behavior tag
       if (animalId && groupId) {
@@ -742,9 +772,27 @@ const AnimalForm: React.FC = () => {
                     setFormData({
                       ...formData,
                       status: newStatus,
-                      quarantine_start_date: '',
-                      quarantine_end_date: '',
+                      ...quarantineFieldReset,
+                    });
+                  } else if (newStatus === 'bite_quarantine' && formData.status !== 'bite_quarantine' && originalStatus === 'bite_quarantine') {
+                    // Re-entering bite_quarantine within the same session for an animal
+                    // that was already in quarantine at load: since originalStatus is
+                    // 'bite_quarantine', handleSubmit's "show the new-incident modal"
+                    // check won't fire, so saving would otherwise go straight through
+                    // with blank quarantine fields (left blank by the branch above).
+                    // Populate fresh defaults right away rather than relying on
+                    // saveAnimal to paper over a blank start date — a blanket fallback
+                    // there would also kick in when a user directly clears the inline
+                    // Start/End Date fields on an already-quarantined animal, silently
+                    // replacing a real stored quarantine window with a fabricated one.
+                    const today = new Date().toISOString().split('T')[0];
+                    setFormData({
+                      ...formData,
+                      status: newStatus,
+                      quarantine_start_date: today,
+                      quarantine_end_date: calculateQuarantineEndDateISO(today),
                       quarantine_incident_details: '',
+                      quarantine_approval_status: 'requested',
                     });
                   } else {
                     setFormData({ ...formData, status: newStatus });
@@ -1152,6 +1200,11 @@ const AnimalForm: React.FC = () => {
               fontSize: '1rem'
             }}
           />
+          {quarantineModalStartDateError && (
+            <p style={{ fontSize: '0.875rem', color: 'var(--color-danger, #c0392b)', marginTop: '0.25rem' }}>
+              {quarantineModalStartDateError}
+            </p>
+          )}
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
@@ -1213,7 +1266,7 @@ const AnimalForm: React.FC = () => {
             variant="primary"
             onClick={handleQuarantineSubmit}
             loading={loading}
-            disabled={loading || !quarantineContext.trim() || !!quarantineModalEndDateError}
+            disabled={loading || !quarantineContext.trim() || !!quarantineModalStartDateError || !!quarantineModalEndDateError}
           >
             Save & Notify
           </Button>
@@ -1245,7 +1298,11 @@ const AnimalForm: React.FC = () => {
           <Button
             variant="primary"
             onClick={() => {
-              setFormData({ ...formData, status: pendingStatusChange });
+              // An archived animal can still carry quarantine fields from before it
+              // was archived (archiving doesn't clear them server-side), so reset
+              // them here too — otherwise re-entering bite_quarantine would prefill
+              // the incident modal with a stale date from the prior stint.
+              setFormData({ ...formData, status: pendingStatusChange, ...quarantineFieldReset });
               setShowUnarchiveModal(false);
               setPendingStatusChange('');
             }}

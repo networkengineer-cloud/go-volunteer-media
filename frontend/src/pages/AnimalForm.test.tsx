@@ -7,6 +7,7 @@ import AnimalForm from './AnimalForm';
 import { animalsApi, animalTagsApi, commentTagsApi, animalCommentsApi } from '../api/client';
 import type { AxiosResponse } from 'axios';
 import { ToastProvider } from '../contexts/ToastContext';
+import { calculateQuarantineEndDateISO } from '../utils/dateUtils';
 
 // Mock the API client
 vi.mock('../api/client', () => ({
@@ -368,7 +369,35 @@ describe('AnimalForm', () => {
     expect(animalsApi.update).not.toHaveBeenCalled();
   });
 
-  it('clears stale quarantine dates and incident details when toggling away from bite_quarantine', async () => {
+  it('disables Save & Notify in the new-incident modal when the bite date is cleared', async () => {
+    const user = userEvent.setup();
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'bite_quarantine' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    const biteDateInput = await screen.findByLabelText(/bite date/i) as HTMLInputElement;
+    fireEvent.change(biteDateInput, { target: { value: '' } });
+
+    const incidentTextarea = screen.getByLabelText(/incident details/i);
+    await user.type(incidentTextarea, 'Bit a volunteer.');
+
+    const modalSubmitButton = screen.getByRole('button', { name: /save & notify/i });
+    expect(modalSubmitButton).toBeDisabled();
+
+    await user.click(modalSubmitButton);
+    expect(animalsApi.update).not.toHaveBeenCalled();
+  });
+
+  it('re-populates fresh quarantine dates and clears incident details when toggling away from and back to bite_quarantine', async () => {
     vi.mocked(animalsApi.getById).mockResolvedValue({
       data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-11T00:00:00Z' },
     } as AxiosResponse);
@@ -382,8 +411,9 @@ describe('AnimalForm', () => {
 
     const statusSelect = document.getElementById('status') as HTMLSelectElement;
     // Toggle away from bite_quarantine, then back to it within the same session
-    // (without saving in between) — the fields should reset rather than silently
-    // retaining the previous incident's stale dates/details.
+    // (without saving in between) — re-entering should populate fresh, today-based
+    // defaults rather than either silently retaining the previous incident's stale
+    // dates or leaving the fields blank for saveAnimal to guess at.
     fireEvent.change(statusSelect, { target: { value: 'available' } });
     fireEvent.change(statusSelect, { target: { value: 'bite_quarantine' } });
 
@@ -391,8 +421,115 @@ describe('AnimalForm', () => {
     const endDateInput = document.getElementById('quarantine_end_date') as HTMLInputElement;
     const incidentTextarea = document.getElementById('quarantine_incident_details') as HTMLTextAreaElement;
 
-    expect(startDateInput.value).toBe('');
-    expect(endDateInput.value).toBe('');
+    const today = new Date().toISOString().split('T')[0];
+    expect(startDateInput.value).toBe(today);
+    expect(endDateInput.value).toBe(calculateQuarantineEndDateISO(today));
     expect(incidentTextarea.value).toBe('');
+  });
+
+  it('saving right after toggling away and back from bite_quarantine sends fresh dates instead of silently keeping stale ones', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: {
+        ...existingQuarantinedAnimal,
+        quarantine_end_date: '2026-06-11T00:00:00Z',
+        quarantine_approval_status: 'granted',
+      },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    // Toggle away and back without saving in between, then submit immediately
+    // without refilling anything — the save should not silently keep the old
+    // (2026-06-01/2026-06-11) dates or the stale 'granted' approval status
+    // while wiping incident details out from under them.
+    fireEvent.change(statusSelect, { target: { value: 'available' } });
+    fireEvent.change(statusSelect, { target: { value: 'bite_quarantine' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    await waitFor(() => expect(animalsApi.update).toHaveBeenCalled());
+
+    const today = new Date().toISOString().split('T')[0];
+    const payload = (animalsApi.update as Mock).mock.calls[0][2];
+    expect(payload.quarantine_start_date).toBe(today);
+    expect(payload.quarantine_end_date).toBe(calculateQuarantineEndDateISO(today));
+    expect(payload.quarantine_incident_details).toBe('');
+    expect(payload.quarantine_approval_status).toBe('requested');
+  });
+
+  it('re-quarantining a previously-archived animal prefills the incident modal with today, not the stale prior incident date', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: {
+        ...existingQuarantinedAnimal,
+        status: 'archived',
+        // Archiving doesn't clear these server-side, so a previously-quarantined,
+        // now-archived animal still carries its old quarantine stint's data.
+        quarantine_start_date: '2024-01-01T00:00:00Z',
+        quarantine_end_date: '2024-01-13T00:00:00Z',
+        quarantine_approval_status: 'granted',
+      },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'bite_quarantine' } });
+
+    const confirmButton = await screen.findByRole('button', { name: /confirm change/i });
+    await user.click(confirmButton);
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    const today = new Date().toISOString().split('T')[0];
+    const biteDateInput = await screen.findByLabelText(/bite date/i) as HTMLInputElement;
+    expect(biteDateInput.value).toBe(today);
+
+    const modalEndDateInput = screen.getByLabelText(/quarantine end date/i) as HTMLInputElement;
+    expect(modalEndDateInput.value).toBe(calculateQuarantineEndDateISO(today));
+  });
+
+  it('directly clearing the inline Start/End Date fields on an already-quarantined animal leaves the stored dates untouched instead of fabricating new ones', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-11T00:00:00Z' },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    // Directly blank the inline Start Date field (status stays bite_quarantine the
+    // whole time — no toggling involved). Its own onChange recomputes End Date to
+    // '' too. Saving here must NOT silently substitute today's date for the real,
+    // previously-recorded quarantine window.
+    const startDateInput = document.getElementById('quarantine_start_date') as HTMLInputElement;
+    fireEvent.change(startDateInput, { target: { value: '' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    await waitFor(() => expect(animalsApi.update).toHaveBeenCalled());
+
+    const payload = (animalsApi.update as Mock).mock.calls[0][2];
+    expect(payload.quarantine_start_date).toBeUndefined();
+    expect(payload.quarantine_end_date).toBeUndefined();
   });
 });
