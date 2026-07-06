@@ -288,11 +288,14 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		}
 
 		if animal.Status == "bite_quarantine" {
-			db.WithContext(ctx).Create(&models.AnimalBQIncident{
+			if err := db.WithContext(ctx).Create(&models.AnimalBQIncident{
 				AnimalID:        animal.ID,
 				IncidentDetails: animal.QuarantineIncidentDetails,
 				StartDate:       *animal.QuarantineStartDate,
-			})
+			}).Error; err != nil {
+				// Log error but don't fail the create
+				c.Error(err)
+			}
 			sendQuarantineNotificationEmail(db, emailService, &animal)
 		}
 
