@@ -180,6 +180,10 @@ const AnimalDetailPage: React.FC = () => {
   }, [groupId, id, loadAnimalData, loadGroupData, loadTags, isAdmin, loadDeletedComments]);
 
   useEffect(() => {
+    setShowDeleted(false);
+  }, [id]);
+
+  useEffect(() => {
     if (groupId && id) {
       const tagFilterString = filterTags.join(',');
       loadComments(Number(groupId), Number(id), tagFilterString, 0, sortOrder);
