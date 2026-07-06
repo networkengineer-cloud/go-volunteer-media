@@ -438,3 +438,61 @@ func TestGetAnimal_ReturnsBQHistory(t *testing.T) {
 		t.Errorf("IncidentDetails = %q, want %q", got.BQIncidents[0].IncidentDetails, "Bit a volunteer.")
 	}
 }
+
+// TestUpdateAnimal_MidBQ_EditStartDate_SyncsIncidentRow verifies that editing
+// the quarantine start date while still in BQ updates the active incident
+// row's StartDate, so the permanent history stays accurate.
+func TestUpdateAnimal_MidBQ_EditStartDate_SyncsIncidentRow(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	originalStart := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": originalStart,
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:        animal.ID,
+		IncidentDetails: "Original details.",
+		StartDate:       originalStart,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	correctedStart := time.Date(2025, 11, 1, 0, 0, 0, 0, time.UTC)
+	reqBody := AnimalRequest{
+		Name:   "Rex",
+		Status: "bite_quarantine",
+		QuarantineStartDate: NullableTime{
+			Time:  &correctedStart,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ? AND end_date IS NULL", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if !incident.StartDate.Equal(correctedStart) {
+		t.Errorf("StartDate = %v, want %v", incident.StartDate, correctedStart)
+	}
+}

@@ -377,6 +377,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		enteredQuarantine := false
 		leftQuarantine := newStatus != "" && newStatus != oldStatus && oldStatus == "bite_quarantine"
 		midBQEdit := false
+		var midBQStartDate *time.Time
 		if newStatus != "" && newStatus != oldStatus {
 			animal.LastStatusChange = &now
 			enteredQuarantine = newStatus == "bite_quarantine" && oldStatus != "bite_quarantine"
@@ -461,6 +462,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			}
 			if newStart != nil {
 				animal.QuarantineStartDate = newStart
+				midBQStartDate = newStart
 			}
 			if newEnd != nil {
 				animal.QuarantineEndDate = newEnd
@@ -504,22 +506,40 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		}
 
 		if enteredQuarantine {
-			db.WithContext(ctx).Create(&models.AnimalBQIncident{
+			if err := db.WithContext(ctx).Create(&models.AnimalBQIncident{
 				AnimalID:        animal.ID,
 				IncidentDetails: animal.QuarantineIncidentDetails,
 				StartDate:       *animal.QuarantineStartDate,
-			})
+			}).Error; err != nil {
+				// Log error but don't fail the update
+				c.Error(err)
+			}
 			sendQuarantineNotificationEmail(db, emailService, &animal)
 		}
 		if leftQuarantine {
-			db.WithContext(ctx).Model(&models.AnimalBQIncident{}).
+			if err := db.WithContext(ctx).Model(&models.AnimalBQIncident{}).
 				Where("animal_id = ? AND end_date IS NULL", animal.ID).
-				Update("end_date", now)
+				Update("end_date", now).Error; err != nil {
+				// Log error but don't fail the update
+				c.Error(err)
+			}
 		}
-		if midBQEdit && req.QuarantineIncidentDetails != nil {
-			db.WithContext(ctx).Model(&models.AnimalBQIncident{}).
-				Where("animal_id = ? AND end_date IS NULL", animal.ID).
-				Update("incident_details", *req.QuarantineIncidentDetails)
+		if midBQEdit {
+			incidentUpdates := map[string]interface{}{}
+			if req.QuarantineIncidentDetails != nil {
+				incidentUpdates["incident_details"] = *req.QuarantineIncidentDetails
+			}
+			if midBQStartDate != nil {
+				incidentUpdates["start_date"] = *midBQStartDate
+			}
+			if len(incidentUpdates) > 0 {
+				if err := db.WithContext(ctx).Model(&models.AnimalBQIncident{}).
+					Where("animal_id = ? AND end_date IS NULL", animal.ID).
+					Updates(incidentUpdates).Error; err != nil {
+					// Log error but don't fail the update
+					c.Error(err)
+				}
+			}
 		}
 
 		// If an image_url was provided, link any unlinked images with this URL to this animal
