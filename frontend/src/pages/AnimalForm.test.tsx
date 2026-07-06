@@ -272,4 +272,127 @@ describe('AnimalForm', () => {
 
     expect(animalsApi.update).not.toHaveBeenCalled();
   });
+
+  it('defaults the quarantine end date in the new-incident modal and submits it', async () => {
+    const user = userEvent.setup();
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'bite_quarantine' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    const biteDateInput = await screen.findByLabelText(/bite date/i) as HTMLInputElement;
+    fireEvent.change(biteDateInput, { target: { value: '2024-06-03' } }); // Monday
+
+    const modalEndDateInput = screen.getByLabelText(/quarantine end date/i) as HTMLInputElement;
+    expect(modalEndDateInput.value).toBe('2024-06-13'); // 10 days later (Thursday)
+
+    const incidentTextarea = screen.getByLabelText(/incident details/i);
+    await user.type(incidentTextarea, 'Bit a volunteer.');
+
+    const modalSubmitButton = screen.getByRole('button', { name: /save & notify/i });
+    await user.click(modalSubmitButton);
+
+    await waitFor(() => expect(animalsApi.update).toHaveBeenCalled());
+
+    const payload = (animalsApi.update as Mock).mock.calls[0][2];
+    expect(payload.quarantine_start_date).toBe('2024-06-03');
+    expect(payload.quarantine_end_date).toBe('2024-06-13');
+  });
+
+  it('submits a vet-overridden end date entered directly in the new-incident modal', async () => {
+    const user = userEvent.setup();
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'bite_quarantine' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    const modalEndDateInput = await screen.findByLabelText(/quarantine end date/i) as HTMLInputElement;
+    fireEvent.change(modalEndDateInput, { target: { value: '2026-08-01' } }); // vet-extended
+
+    const incidentTextarea = screen.getByLabelText(/incident details/i);
+    await user.type(incidentTextarea, 'Bit a volunteer.');
+
+    const modalSubmitButton = screen.getByRole('button', { name: /save & notify/i });
+    await user.click(modalSubmitButton);
+
+    await waitFor(() => expect(animalsApi.update).toHaveBeenCalled());
+
+    const payload = (animalsApi.update as Mock).mock.calls[0][2];
+    expect(payload.quarantine_end_date).toBe('2026-08-01');
+  });
+
+  it('disables Save & Notify in the new-incident modal when the end date precedes the bite date', async () => {
+    const user = userEvent.setup();
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'bite_quarantine' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    const biteDateInput = await screen.findByLabelText(/bite date/i) as HTMLInputElement;
+    fireEvent.change(biteDateInput, { target: { value: '2026-06-10' } });
+
+    const modalEndDateInput = screen.getByLabelText(/quarantine end date/i) as HTMLInputElement;
+    fireEvent.change(modalEndDateInput, { target: { value: '2026-06-01' } }); // before bite date
+
+    const incidentTextarea = screen.getByLabelText(/incident details/i);
+    await user.type(incidentTextarea, 'Bit a volunteer.');
+
+    const modalSubmitButton = screen.getByRole('button', { name: /save & notify/i });
+    expect(modalSubmitButton).toBeDisabled();
+
+    await user.click(modalSubmitButton);
+    expect(animalsApi.update).not.toHaveBeenCalled();
+  });
+
+  it('clears stale quarantine dates and incident details when toggling away from bite_quarantine', async () => {
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-11T00:00:00Z' },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    // Toggle away from bite_quarantine, then back to it within the same session
+    // (without saving in between) — the fields should reset rather than silently
+    // retaining the previous incident's stale dates/details.
+    fireEvent.change(statusSelect, { target: { value: 'available' } });
+    fireEvent.change(statusSelect, { target: { value: 'bite_quarantine' } });
+
+    const startDateInput = document.getElementById('quarantine_start_date') as HTMLInputElement;
+    const endDateInput = document.getElementById('quarantine_end_date') as HTMLInputElement;
+    const incidentTextarea = document.getElementById('quarantine_incident_details') as HTMLTextAreaElement;
+
+    expect(startDateInput.value).toBe('');
+    expect(endDateInput.value).toBe('');
+    expect(incidentTextarea.value).toBe('');
+  });
 });
