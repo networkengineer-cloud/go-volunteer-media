@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import AnimalForm from './AnimalForm';
@@ -531,5 +531,170 @@ describe('AnimalForm', () => {
     const payload = (animalsApi.update as Mock).mock.calls[0][2];
     expect(payload.quarantine_start_date).toBeUndefined();
     expect(payload.quarantine_end_date).toBeUndefined();
+  });
+
+  it('shows the BQ exit confirmation modal instead of saving immediately when leaving bite_quarantine', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-15T00:00:00Z' },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'available' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    expect(await screen.findByText(/confirm bite quarantine exit/i)).toBeInTheDocument();
+    expect(animalsApi.update).not.toHaveBeenCalled();
+  });
+
+  it('defaults the BQ exit modal to the stored end date when closing out late', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2020-01-13T00:00:00Z' }, // long past
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'available' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    const exitEndDateInput = await screen.findByLabelText(/quarantine end date/i) as HTMLInputElement;
+    expect(exitEndDateInput.value).toBe('2020-01-13');
+  });
+
+  it('defaults the BQ exit modal to today when leaving quarantine early', async () => {
+    const user = userEvent.setup();
+    const farFutureEndDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: farFutureEndDate },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'available' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    const today = new Date().toISOString().split('T')[0];
+    const exitEndDateInput = await screen.findByLabelText(/quarantine end date/i) as HTMLInputElement;
+    expect(exitEndDateInput.value).toBe(today);
+  });
+
+  it('confirming the BQ exit modal submits the status change with the confirmed end date', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-15T00:00:00Z' },
+    } as AxiosResponse);
+    vi.mocked(animalsApi.update).mockResolvedValue({ data: { id: 1 } } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'available' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    const exitEndDateInput = await screen.findByLabelText(/quarantine end date/i) as HTMLInputElement;
+    fireEvent.change(exitEndDateInput, { target: { value: '2026-06-10' } });
+
+    const confirmButton = screen.getByRole('button', { name: /confirm & save/i });
+    await user.click(confirmButton);
+
+    await waitFor(() => expect(animalsApi.update).toHaveBeenCalled());
+
+    const payload = (animalsApi.update as Mock).mock.calls[0][2];
+    expect(payload.status).toBe('available');
+    expect(payload.quarantine_end_date).toBe('2026-06-10');
+  });
+
+  it('cancelling the BQ exit modal does not save and leaves the form open', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-15T00:00:00Z' },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'available' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    await screen.findByText(/confirm bite quarantine exit/i);
+
+    // Scoped to the modal dialog: the form's own "Cancel" (navigate away) button
+    // is also present in the DOM while the modal is open and shares the same name.
+    const dialog = screen.getByRole('dialog', { name: /confirm bite quarantine exit/i });
+    const cancelButton = within(dialog).getByRole('button', { name: /^cancel$/i });
+    await user.click(cancelButton);
+
+    expect(screen.queryByText(/confirm bite quarantine exit/i)).not.toBeInTheDocument();
+    expect(animalsApi.update).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('blocks confirming the BQ exit modal when the end date precedes the quarantine start date', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_start_date: '2026-06-01T00:00:00Z', quarantine_end_date: '2026-06-15T00:00:00Z' },
+    } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'available' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    const exitEndDateInput = await screen.findByLabelText(/quarantine end date/i) as HTMLInputElement;
+    fireEvent.change(exitEndDateInput, { target: { value: '2026-05-01' } }); // before start date
+
+    const confirmButton = screen.getByRole('button', { name: /confirm & save/i });
+    expect(confirmButton).toBeDisabled();
+
+    await user.click(confirmButton);
+    expect(animalsApi.update).not.toHaveBeenCalled();
   });
 });
