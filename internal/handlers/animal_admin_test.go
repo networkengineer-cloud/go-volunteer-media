@@ -938,6 +938,63 @@ func TestUpdateAnimalAdmin_BQExit_ExplicitEndDate_UsesProvidedValue(t *testing.T
 	}
 }
 
+// TestUpdateAnimalAdmin_BQExit_ExplicitEndDate_NoStoredStartDate_Succeeds verifies
+// that an animal which reached bite_quarantine status without a QuarantineStartDate
+// on record (e.g. via CSV import, which sets status directly without touching
+// quarantine dates) can still leave bite_quarantine when the exit modal sends an
+// explicit confirmed end date — there's no start date to validate against, so the
+// exit must not be blocked.
+func TestUpdateAnimalAdmin_BQExit_ExplicitEndDate_NoStoredStartDate_Succeeds(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	confirmedEndDate := time.Date(2025, 11, 6, 0, 0, 0, 0, time.UTC)
+
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status": "bite_quarantine",
+		// quarantine_start_date intentionally left unset, matching an animal
+		// imported via CSV directly into bite_quarantine status.
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID: animal.ID,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "available",
+		QuarantineEndDate: NullableTime{
+			Time:  &confirmedEndDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ?", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.EndDate == nil || !incident.EndDate.Equal(confirmedEndDate) {
+		t.Errorf("Expected EndDate %v, got %v", confirmedEndDate, incident.EndDate)
+	}
+}
+
 // TestUpdateAnimalAdmin_BQExit_InvalidExplicitEndDate_RejectsBeforeSaving verifies
 // that an explicit exit end date before the quarantine start date is rejected with a
 // 400 and that the animal's status is NOT changed — validation must happen before

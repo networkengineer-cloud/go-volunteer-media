@@ -637,6 +637,35 @@ describe('AnimalForm', () => {
     expect(payload.quarantine_end_date).toBe('2026-06-10');
   });
 
+  it('confirming the BQ exit modal also syncs tag assignments, matching the normal save path', async () => {
+    const user = userEvent.setup();
+    vi.mocked(animalsApi.getById).mockResolvedValue({
+      data: { ...existingQuarantinedAnimal, quarantine_end_date: '2026-06-15T00:00:00Z' },
+    } as AxiosResponse);
+    vi.mocked(animalsApi.update).mockResolvedValue({ data: { id: 1 } } as AxiosResponse);
+
+    renderAnimalForm();
+
+    await waitFor(() => {
+      const nameInput = document.getElementById('name') as HTMLInputElement;
+      expect(nameInput.value).toBe('Rex');
+    });
+
+    const statusSelect = document.getElementById('status') as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: 'available' } });
+
+    const submitButton = screen.getByRole('button', { name: /update animal/i });
+    await user.click(submitButton);
+
+    await screen.findByLabelText(/quarantine end date/i);
+
+    const confirmButton = screen.getByRole('button', { name: /confirm & save/i });
+    await user.click(confirmButton);
+
+    await waitFor(() => expect(animalsApi.update).toHaveBeenCalled());
+    expect(animalTagsApi.assignToAnimal).toHaveBeenCalled();
+  });
+
   it('cancelling the BQ exit modal does not save and leaves the form open', async () => {
     const user = userEvent.setup();
     vi.mocked(animalsApi.getById).mockResolvedValue({

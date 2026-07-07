@@ -12,6 +12,24 @@ import Modal from '../components/Modal';
 import ImageEditor from '../components/ImageEditor';
 import './Form.css';
 
+// Resolves the birth date to submit: an explicitly-set estimated_birth_date wins,
+// otherwise it's computed from the years/months picker (when in approximate mode).
+// Shared by every save path (normal save, quarantine-entry modal, BQ-exit modal) so
+// the same animal edit always resolves birth date the same way regardless of which
+// path it's saved through.
+function resolveFinalBirthDate(estimatedBirthDate: string, birthYears: number, birthMonths: number): string | undefined {
+  return estimatedBirthDate ||
+    (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined) ||
+    undefined;
+}
+
+// Extracts a user-facing message from a failed animal-save request, falling back to
+// a generic message when the API didn't return one. Shared by every save path so a
+// future change to the API's error response shape only needs updating here.
+function extractSaveErrorMessage(error: unknown, fallback: string): string {
+  return (error as { response?: { data?: { error?: string } } }).response?.data?.error || fallback;
+}
+
 const AnimalForm: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
@@ -256,7 +274,14 @@ const AnimalForm: React.FC = () => {
   // if it's still in the future, the quarantine was cut short and today is the
   // real closing date. ISO YYYY-MM-DD strings compare correctly as plain strings.
   const bqExitDefaultEndDate = (() => {
-    const today = new Date().toISOString().split('T')[0];
+    // Local calendar date, not new Date().toISOString() (UTC) — this modal's
+    // whole purpose is getting the closing date right, so a UTC-vs-local
+    // mismatch near midnight would defeat the point for non-UTC staff.
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const today = `${y}-${m}-${d}`;
     if (originalQuarantineEndDate && originalQuarantineEndDate <= today) {
       return originalQuarantineEndDate;
     }
@@ -515,13 +540,11 @@ const AnimalForm: React.FC = () => {
       let animalId = id ? parseInt(id) : null;
       
       // Clean up formData: convert empty quarantine_start_date to null
-      // Ensure estimated_birth_date is computed from years/months if in approximate mode
-      const finalBirthDate = formData.estimated_birth_date ||
-        (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
+      const finalBirthDate = resolveFinalBirthDate(formData.estimated_birth_date, birthYears, birthMonths);
 
       const cleanedFormData = {
         ...formData,
-        estimated_birth_date: finalBirthDate || undefined,
+        estimated_birth_date: finalBirthDate,
         age: birthYears,
         // A blank start date here means "leave the stored value untouched," not
         // "clear it" — this also covers a user directly blanking the inline Start
@@ -580,7 +603,7 @@ const AnimalForm: React.FC = () => {
       
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
-      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to save animal. Please try again.';
+      const errorMsg = extractSaveErrorMessage(error, 'Failed to save animal. Please try again.');
       toast.showError(errorMsg);
     } finally {
       setLoading(false);
@@ -598,9 +621,7 @@ const AnimalForm: React.FC = () => {
       return;
     }
 
-    // Compute birth date the same way saveAnimal does
-    const finalBirthDate = formData.estimated_birth_date ||
-      (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
+    const finalBirthDate = resolveFinalBirthDate(formData.estimated_birth_date, birthYears, birthMonths);
 
     // Update formData with the quarantine dates entered in this modal — formData may
     // still carry a stale quarantine_end_date left over from a previous quarantine
@@ -610,7 +631,7 @@ const AnimalForm: React.FC = () => {
     const resolvedQuarantineEndDate = quarantineEndDateInput || calculateQuarantineEndDateISO(quarantineDate);
     const updatedFormData = {
       ...formData,
-      estimated_birth_date: finalBirthDate || undefined,
+      estimated_birth_date: finalBirthDate,
       age: birthYears,
       quarantine_start_date: quarantineDate,
       quarantine_end_date: resolvedQuarantineEndDate,
@@ -668,7 +689,7 @@ const AnimalForm: React.FC = () => {
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
-      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to save animal. Please try again.';
+      const errorMsg = extractSaveErrorMessage(error, 'Failed to save animal. Please try again.');
       toast.showError(errorMsg);
     } finally {
       setLoading(false);
@@ -683,12 +704,11 @@ const AnimalForm: React.FC = () => {
       return;
     }
 
-    const finalBirthDate = formData.estimated_birth_date ||
-      (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
+    const finalBirthDate = resolveFinalBirthDate(formData.estimated_birth_date, birthYears, birthMonths);
 
     const payload = {
       ...formData,
-      estimated_birth_date: finalBirthDate || undefined,
+      estimated_birth_date: finalBirthDate,
       age: birthYears,
       quarantine_start_date: undefined,
       quarantine_incident_details: undefined,
@@ -699,11 +719,23 @@ const AnimalForm: React.FC = () => {
     setLoading(true);
     try {
       await animalsApi.update(parseInt(groupId), parseInt(id), payload);
+
+      // Assign tags to the animal, same as the normal save path — a user may
+      // have edited tags in the same session as confirming the BQ exit.
+      if (selectedTagIds.length >= 0) {
+        try {
+          await animalTagsApi.assignToAnimal(parseInt(groupId), parseInt(id), selectedTagIds);
+        } catch (error) {
+          console.error('Failed to assign tags:', error);
+          toast.showWarning('Animal saved but failed to update tags');
+        }
+      }
+
       toast.showSuccess('Animal updated successfully!');
       setShowBQExitModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
-      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to save animal. Please try again.';
+      const errorMsg = extractSaveErrorMessage(error, 'Failed to save animal. Please try again.');
       toast.showError(errorMsg);
     } finally {
       setLoading(false);

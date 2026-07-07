@@ -368,15 +368,19 @@ func TestResolveBQExitEndDate(t *testing.T) {
 		}
 	})
 
-	t.Run("explicit end date with nil stored start is rejected", func(t *testing.T) {
+	t.Run("explicit end date with nil stored start is accepted verbatim", func(t *testing.T) {
+		// Some animals reach bite_quarantine without a QuarantineStartDate on
+		// record (e.g. CSV import). There's no start date to validate against,
+		// but that must not block the exit — an animal in this state would
+		// otherwise have no way to ever leave bite_quarantine status.
 		explicit := time.Date(2025, 11, 20, 0, 0, 0, 0, time.UTC)
 		now := time.Date(2025, 11, 10, 12, 0, 0, 0, time.UTC)
-		_, err := resolveBQExitEndDate(NullableTime{Time: &explicit, Valid: true}, nil, nil, now)
-		if err == nil {
-			t.Fatal("expected an error, got nil")
+		result, err := resolveBQExitEndDate(NullableTime{Time: &explicit, Valid: true}, nil, nil, now)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-		if err.Error() != "quarantine end date cannot be set without a quarantine start date" {
-			t.Errorf("unexpected error message: %q", err.Error())
+		if result == nil || !result.Equal(explicit) {
+			t.Errorf("expected %v, got %v", explicit, result)
 		}
 	})
 
