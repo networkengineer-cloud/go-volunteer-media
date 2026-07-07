@@ -599,7 +599,12 @@ describe('AnimalForm', () => {
     const submitButton = screen.getByRole('button', { name: /update animal/i });
     await user.click(submitButton);
 
-    const today = new Date().toISOString().split('T')[0];
+    // Computed via local Date getters, not toISOString() (UTC) — matching
+    // production's bqExitDefaultEndDate. Using toISOString() here would make
+    // this test pass even if the local-date fix in production regressed back
+    // to UTC, since the two only diverge for non-UTC callers.
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const exitEndDateInput = await screen.findByLabelText(/quarantine end date/i) as HTMLInputElement;
     expect(exitEndDateInput.value).toBe(today);
   });

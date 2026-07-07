@@ -19,14 +19,14 @@ import './Form.css';
 // path it's saved through.
 function resolveFinalBirthDate(estimatedBirthDate: string, birthYears: number, birthMonths: number): string | undefined {
   return estimatedBirthDate ||
-    (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined) ||
-    undefined;
+    (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
 }
 
-// Extracts a user-facing message from a failed animal-save request, falling back to
-// a generic message when the API didn't return one. Shared by every save path so a
-// future change to the API's error response shape only needs updating here.
-function extractSaveErrorMessage(error: unknown, fallback: string): string {
+// Extracts a user-facing message from a failed API request, falling back to a
+// generic message when the API didn't return one. Shared across every request in
+// this form (save, image/document upload, delete) so a future change to the API's
+// error response shape only needs updating here.
+function extractApiErrorMessage(error: unknown, fallback: string): string {
   return (error as { response?: { data?: { error?: string } } }).response?.data?.error || fallback;
 }
 
@@ -366,7 +366,7 @@ const AnimalForm: React.FC = () => {
       }, 100);
     } catch (err: unknown) {
       console.error('Upload error:', err);
-      const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload image. Please try again.';
+      const errorMsg = extractApiErrorMessage(err, 'Failed to upload image. Please try again.');
       toast.showError(errorMsg);
     } finally {
       setUploading(false);
@@ -414,7 +414,7 @@ const AnimalForm: React.FC = () => {
         toast.showSuccess('Protocol document uploaded successfully!');
       } catch (error: unknown) {
         console.error('Upload error:', error);
-        const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload document. Please try again.';
+        const errorMsg = extractApiErrorMessage(error, 'Failed to upload document. Please try again.');
         toast.showError(errorMsg);
       } finally {
         setUploadingDocument(false);
@@ -603,7 +603,7 @@ const AnimalForm: React.FC = () => {
       
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
-      const errorMsg = extractSaveErrorMessage(error, 'Failed to save animal. Please try again.');
+      const errorMsg = extractApiErrorMessage(error, 'Failed to save animal. Please try again.');
       toast.showError(errorMsg);
     } finally {
       setLoading(false);
@@ -689,7 +689,7 @@ const AnimalForm: React.FC = () => {
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
-      const errorMsg = extractSaveErrorMessage(error, 'Failed to save animal. Please try again.');
+      const errorMsg = extractApiErrorMessage(error, 'Failed to save animal. Please try again.');
       toast.showError(errorMsg);
     } finally {
       setLoading(false);
@@ -716,15 +716,17 @@ const AnimalForm: React.FC = () => {
       quarantine_end_date: bqExitEndDate,
     };
 
+    const animalId = parseInt(id);
+
     setLoading(true);
     try {
-      await animalsApi.update(parseInt(groupId), parseInt(id), payload);
+      await animalsApi.update(parseInt(groupId), animalId, payload);
 
       // Assign tags to the animal, same as the normal save path — a user may
       // have edited tags in the same session as confirming the BQ exit.
-      if (selectedTagIds.length >= 0) {
+      if (animalId && selectedTagIds.length >= 0) {
         try {
-          await animalTagsApi.assignToAnimal(parseInt(groupId), parseInt(id), selectedTagIds);
+          await animalTagsApi.assignToAnimal(parseInt(groupId), animalId, selectedTagIds);
         } catch (error) {
           console.error('Failed to assign tags:', error);
           toast.showWarning('Animal saved but failed to update tags');
@@ -735,7 +737,7 @@ const AnimalForm: React.FC = () => {
       setShowBQExitModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
-      const errorMsg = extractSaveErrorMessage(error, 'Failed to save animal. Please try again.');
+      const errorMsg = extractApiErrorMessage(error, 'Failed to save animal. Please try again.');
       toast.showError(errorMsg);
     } finally {
       setLoading(false);
@@ -750,7 +752,7 @@ const AnimalForm: React.FC = () => {
         navigate(`/groups/${groupId}`);
       }
     } catch (error: unknown) {
-      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete animal. Please try again.';
+      const errorMsg = extractApiErrorMessage(error, 'Failed to delete animal. Please try again.');
       toast.showError(errorMsg);
     }
     setShowDeleteModal(false);

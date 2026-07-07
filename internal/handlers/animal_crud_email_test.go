@@ -353,9 +353,13 @@ func TestUpdateAnimal_BQExit_ExplicitEndDate_UsesProvidedValue(t *testing.T) {
 
 // TestUpdateAnimal_BQExit_ExplicitEndDate_NoStoredStartDate_Succeeds verifies that an
 // animal which reached bite_quarantine status without a QuarantineStartDate on record
-// (e.g. via CSV import, which sets status directly without touching quarantine dates)
 // can still leave bite_quarantine when the exit modal sends an explicit confirmed end
 // date — there's no start date to validate against, so the exit must not be blocked.
+// Deliberately seeds no AnimalBQIncident row: a real CSV-imported animal (the actual
+// motivating case for a nil start date — see animal_import_export.go, which sets
+// status directly without ever creating an incident row) has none, so this asserts
+// the request succeeds even when there's no incident to close, not just that a
+// pre-existing incident's EndDate resolves correctly.
 func TestUpdateAnimal_BQExit_ExplicitEndDate_NoStoredStartDate_Succeeds(t *testing.T) {
 	db := setupAnimalTestDB(t)
 	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
@@ -369,11 +373,6 @@ func TestUpdateAnimal_BQExit_ExplicitEndDate_NoStoredStartDate_Succeeds(t *testi
 		// imported via CSV directly into bite_quarantine status.
 	}).Error; err != nil {
 		t.Fatalf("seed BQ status: %v", err)
-	}
-	if err := db.Create(&models.AnimalBQIncident{
-		AnimalID: animal.ID,
-	}).Error; err != nil {
-		t.Fatalf("seed incident row: %v", err)
 	}
 
 	reqBody := AnimalRequest{
@@ -401,12 +400,12 @@ func TestUpdateAnimal_BQExit_ExplicitEndDate_NoStoredStartDate_Succeeds(t *testi
 		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
 	}
 
-	var incident models.AnimalBQIncident
-	if err := db.Where("animal_id = ?", animal.ID).First(&incident).Error; err != nil {
-		t.Fatalf("reload incident row: %v", err)
+	var reloaded models.Animal
+	if err := db.First(&reloaded, animal.ID).Error; err != nil {
+		t.Fatalf("reload animal: %v", err)
 	}
-	if incident.EndDate == nil || !incident.EndDate.Equal(confirmedEndDate) {
-		t.Errorf("Expected EndDate %v, got %v", confirmedEndDate, incident.EndDate)
+	if reloaded.Status != "available" {
+		t.Errorf("Expected status to change to available, got %q", reloaded.Status)
 	}
 }
 
