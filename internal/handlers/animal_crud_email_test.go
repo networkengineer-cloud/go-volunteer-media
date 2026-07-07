@@ -290,6 +290,136 @@ func TestUpdateAnimal_BQExit_StampsEndDate(t *testing.T) {
 	}
 }
 
+// TestUpdateAnimal_BQExit_ExplicitEndDate_UsesProvidedValue verifies that when the
+// request provides an explicit quarantine_end_date while leaving bite_quarantine
+// (the modal-confirmed path), it's used to close the incident verbatim instead of
+// the animal's previously stored end date.
+func TestUpdateAnimal_BQExit_ExplicitEndDate_UsesProvidedValue(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	storedEndDate := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+	confirmedEndDate := time.Date(2025, 11, 6, 0, 0, 0, 0, time.UTC) // vet-cleared early
+
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   storedEndDate,
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:  animal.ID,
+		StartDate: startDate,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	reqBody := AnimalRequest{
+		Name:   "Rex",
+		Status: "available",
+		QuarantineEndDate: NullableTime{
+			Time:  &confirmedEndDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ?", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.EndDate == nil || !incident.EndDate.Equal(confirmedEndDate) {
+		t.Errorf("Expected EndDate %v, got %v", confirmedEndDate, incident.EndDate)
+	}
+}
+
+// TestUpdateAnimal_BQExit_InvalidExplicitEndDate_RejectsBeforeSaving verifies that
+// an explicit exit end date before the quarantine start date is rejected with a 400
+// and that the animal's status is NOT changed — validation must happen before the
+// animal record is saved, not after.
+func TestUpdateAnimal_BQExit_InvalidExplicitEndDate_RejectsBeforeSaving(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	storedEndDate := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+	invalidEndDate := time.Date(2025, 11, 1, 0, 0, 0, 0, time.UTC) // before start date
+
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   storedEndDate,
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:  animal.ID,
+		StartDate: startDate,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	reqBody := AnimalRequest{
+		Name:   "Rex",
+		Status: "available",
+		QuarantineEndDate: NullableTime{
+			Time:  &invalidEndDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(reqBody)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("Expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var reloaded models.Animal
+	if err := db.First(&reloaded, animal.ID).Error; err != nil {
+		t.Fatalf("reload animal: %v", err)
+	}
+	if reloaded.Status != "bite_quarantine" {
+		t.Errorf("Expected status to remain bite_quarantine after a rejected request, got %q", reloaded.Status)
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ?", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.EndDate != nil {
+		t.Errorf("Expected incident to remain open after a rejected request, got EndDate %v", incident.EndDate)
+	}
+}
+
 // TestUpdateAnimal_MidBQ_UpdatesIncidentDetails verifies that editing incident
 // details while already in bite_quarantine updates the active incident row.
 func TestUpdateAnimal_MidBQ_UpdatesIncidentDetails(t *testing.T) {

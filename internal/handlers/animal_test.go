@@ -2569,3 +2569,64 @@ func TestUpdateAnimal_LeaveQuarantine_ClearsEndDate(t *testing.T) {
 		t.Errorf("Expected QuarantineEndDate to be cleared, got %v", got.QuarantineEndDate)
 	}
 }
+
+// TestUpdateAnimal_LeaveQuarantine_EarlyExit_CapsEndDateAtNow verifies that when an
+// animal leaves bite_quarantine before its stored end date has arrived (no explicit
+// end date provided), the closed incident is stamped with now, not the future stored
+// date.
+func TestUpdateAnimal_LeaveQuarantine_EarlyExit_CapsEndDateAtNow(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Now().Add(-2 * 24 * time.Hour)
+	futureEndDate := time.Now().Add(7 * 24 * time.Hour) // stored end date still a week out
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   futureEndDate,
+	}).Error; err != nil {
+		t.Fatalf("Failed to seed animal into quarantine: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:  animal.ID,
+		StartDate: startDate,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	beforeRequest := time.Now()
+	updateReq := AnimalRequest{
+		Name:    "Rex",
+		Species: "Dog",
+		Status:  "available",
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimal(db, nil)
+	handler(c)
+	afterRequest := time.Now()
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ?", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.EndDate == nil {
+		t.Fatal("Expected EndDate to be stamped, got nil")
+	}
+	if incident.EndDate.Before(beforeRequest) || incident.EndDate.After(afterRequest) {
+		t.Errorf("Expected EndDate to be capped at now (between %v and %v), got %v (stored future end date was %v)", beforeRequest, afterRequest, *incident.EndDate, futureEndDate)
+	}
+}
