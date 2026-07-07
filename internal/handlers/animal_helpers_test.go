@@ -338,3 +338,83 @@ func TestResolveQuarantineEndDate(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveBQExitEndDate(t *testing.T) {
+	t.Run("explicit end date after start is honored verbatim", func(t *testing.T) {
+		start := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+		stored := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+		explicit := time.Date(2025, 11, 6, 0, 0, 0, 0, time.UTC) // early exit, confirmed by staff
+		now := time.Date(2025, 11, 6, 12, 0, 0, 0, time.UTC)
+		result, err := resolveBQExitEndDate(NullableTime{Time: &explicit, Valid: true}, &stored, &start, now)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result == nil || !result.Equal(explicit) {
+			t.Errorf("expected %v, got %v", explicit, result)
+		}
+	})
+
+	t.Run("explicit end date before start's calendar day is rejected", func(t *testing.T) {
+		start := time.Date(2025, 11, 10, 0, 0, 0, 0, time.UTC)
+		stored := time.Date(2025, 11, 20, 0, 0, 0, 0, time.UTC)
+		explicit := time.Date(2025, 11, 5, 0, 0, 0, 0, time.UTC)
+		now := time.Date(2025, 11, 10, 12, 0, 0, 0, time.UTC)
+		_, err := resolveBQExitEndDate(NullableTime{Time: &explicit, Valid: true}, &stored, &start, now)
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if err.Error() != "quarantine end date cannot be before start date" {
+			t.Errorf("unexpected error message: %q", err.Error())
+		}
+	})
+
+	t.Run("explicit end date with nil stored start is rejected", func(t *testing.T) {
+		explicit := time.Date(2025, 11, 20, 0, 0, 0, 0, time.UTC)
+		now := time.Date(2025, 11, 10, 12, 0, 0, 0, time.UTC)
+		_, err := resolveBQExitEndDate(NullableTime{Time: &explicit, Valid: true}, nil, nil, now)
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if err.Error() != "quarantine end date cannot be set without a quarantine start date" {
+			t.Errorf("unexpected error message: %q", err.Error())
+		}
+	})
+
+	t.Run("no explicit end date, stored end date already passed, returns the stored date", func(t *testing.T) {
+		start := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+		stored := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+		now := time.Date(2025, 11, 16, 9, 0, 0, 0, time.UTC) // 3 days after the stored end date — closing out late
+		result, err := resolveBQExitEndDate(NullableTime{}, &stored, &start, now)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result == nil || !result.Equal(stored) {
+			t.Errorf("expected %v, got %v", stored, result)
+		}
+	})
+
+	t.Run("no explicit end date, stored end date still in the future, returns now", func(t *testing.T) {
+		start := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+		stored := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+		now := time.Date(2025, 11, 6, 9, 0, 0, 0, time.UTC) // exiting 7 days early
+		result, err := resolveBQExitEndDate(NullableTime{}, &stored, &start, now)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result == nil || !result.Equal(now) {
+			t.Errorf("expected %v, got %v", now, result)
+		}
+	})
+
+	t.Run("no explicit end date, no stored end date, returns now", func(t *testing.T) {
+		start := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+		now := time.Date(2025, 11, 6, 9, 0, 0, 0, time.UTC)
+		result, err := resolveBQExitEndDate(NullableTime{}, nil, &start, now)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result == nil || !result.Equal(now) {
+			t.Errorf("expected %v, got %v", now, result)
+		}
+	})
+}

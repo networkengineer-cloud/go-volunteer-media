@@ -163,6 +163,33 @@ func resolveQuarantineDateEdits(currentStart *time.Time, req AnimalRequest) (new
 	return newStart, newEnd, nil
 }
 
+// resolveBQExitEndDate determines the end date to stamp on the AnimalBQIncident row
+// being closed when an animal exits bite_quarantine. An explicit end date from the
+// request — typically confirmed by staff via the exit-confirmation modal — is
+// validated against the quarantine's start date (same rule as resolveQuarantineEndDate)
+// and used verbatim. Otherwise, the animal's stored/computed QuarantineEndDate is used,
+// capped at now: an early exit (before that date arrives) stamps the incident with
+// the real closing moment instead of a future date, while a late closure (after that
+// date has already passed) stamps it with the originally-intended date rather than
+// the moment someone got around to closing it out. If there was no stored end date
+// either, now is used. Used by UpdateAnimal and UpdateAnimalAdmin so the "closing"
+// rule for a BQ incident stays identical across both write paths.
+func resolveBQExitEndDate(explicitEnd NullableTime, storedEnd *time.Time, storedStart *time.Time, now time.Time) (*time.Time, error) {
+	if explicitEnd.Valid && explicitEnd.Time != nil {
+		if storedStart == nil {
+			return nil, fmt.Errorf("quarantine end date cannot be set without a quarantine start date")
+		}
+		if quarantineEndBeforeStart(*explicitEnd.Time, *storedStart) {
+			return nil, fmt.Errorf("quarantine end date cannot be before start date")
+		}
+		return explicitEnd.Time, nil
+	}
+	if storedEnd != nil && !storedEnd.After(now) {
+		return storedEnd, nil
+	}
+	return &now, nil
+}
+
 // quarantineEndBeforeStart compares end and start by calendar day, not by exact
 // instant. Start defaults to time.Now() (a real timestamp, in the server's local
 // location) when omitted, while a date-only end date parses to UTC midnight —
