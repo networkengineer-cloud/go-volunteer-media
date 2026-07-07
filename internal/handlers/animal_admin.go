@@ -66,6 +66,15 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		now := time.Now()
 		enteredQuarantine := false
 		leftQuarantine := req.Status != "" && req.Status != animal.Status && animal.Status == "bite_quarantine"
+		var incidentEndDateAtExit *time.Time
+		if leftQuarantine {
+			resolvedEndDate, err := resolveBQExitEndDate(req.QuarantineEndDate, animal.QuarantineEndDate, animal.QuarantineStartDate, now)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			incidentEndDateAtExit = resolvedEndDate
+		}
 		var bqStartDate time.Time
 		var bqStartDateEdit *time.Time
 		if req.Status != "" && req.Status != animal.Status {
@@ -195,7 +204,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		if leftQuarantine {
 			if err := db.Model(&models.AnimalBQIncident{}).
 				Where("animal_id = ? AND end_date IS NULL", animal.ID).
-				Update("end_date", now).Error; err != nil {
+				Update("end_date", incidentEndDateAtExit).Error; err != nil {
 				logger.Error("Failed to close BQ incident", err)
 			}
 		}

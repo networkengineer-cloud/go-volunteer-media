@@ -880,6 +880,240 @@ func TestUpdateAnimalAdmin_BQExit_StampsEndDate(t *testing.T) {
 	}
 }
 
+// TestUpdateAnimalAdmin_BQExit_ExplicitEndDate_UsesProvidedValue verifies that when
+// the request provides an explicit quarantine_end_date while leaving bite_quarantine
+// (the modal-confirmed path), it's used to close the incident verbatim instead of
+// the animal's previously stored end date.
+func TestUpdateAnimalAdmin_BQExit_ExplicitEndDate_UsesProvidedValue(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	storedEndDate := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+	confirmedEndDate := time.Date(2025, 11, 6, 0, 0, 0, 0, time.UTC) // vet-cleared early
+
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   storedEndDate,
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:  animal.ID,
+		StartDate: startDate,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "available",
+		QuarantineEndDate: NullableTime{
+			Time:  &confirmedEndDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ?", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.EndDate == nil || !incident.EndDate.Equal(confirmedEndDate) {
+		t.Errorf("Expected EndDate %v, got %v", confirmedEndDate, incident.EndDate)
+	}
+}
+
+// TestUpdateAnimalAdmin_BQExit_ExplicitEndDate_NoStoredStartDate_Succeeds verifies
+// that an animal which reached bite_quarantine status without a QuarantineStartDate
+// on record can still leave bite_quarantine when the exit modal sends an explicit
+// confirmed end date — there's no start date to validate against, so the exit must
+// not be blocked. Deliberately seeds no AnimalBQIncident row: a real CSV-imported
+// animal (the actual motivating case for a nil start date — see
+// animal_import_export.go, which sets status directly without ever creating an
+// incident row) has none, so this asserts the request succeeds even when there's no
+// incident to close, not just that a pre-existing incident's EndDate resolves
+// correctly.
+func TestUpdateAnimalAdmin_BQExit_ExplicitEndDate_NoStoredStartDate_Succeeds(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	confirmedEndDate := time.Date(2025, 11, 6, 0, 0, 0, 0, time.UTC)
+
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status": "bite_quarantine",
+		// quarantine_start_date intentionally left unset, matching an animal
+		// imported via CSV directly into bite_quarantine status.
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "available",
+		QuarantineEndDate: NullableTime{
+			Time:  &confirmedEndDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var reloaded models.Animal
+	if err := db.First(&reloaded, animal.ID).Error; err != nil {
+		t.Fatalf("reload animal: %v", err)
+	}
+	if reloaded.Status != "available" {
+		t.Errorf("Expected status to change to available, got %q", reloaded.Status)
+	}
+}
+
+// TestUpdateAnimalAdmin_BQExit_InvalidExplicitEndDate_RejectsBeforeSaving verifies
+// that an explicit exit end date before the quarantine start date is rejected with a
+// 400 and that the animal's status is NOT changed — validation must happen before
+// the animal record is updated, not after.
+func TestUpdateAnimalAdmin_BQExit_InvalidExplicitEndDate_RejectsBeforeSaving(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Date(2025, 11, 3, 0, 0, 0, 0, time.UTC)
+	storedEndDate := time.Date(2025, 11, 13, 0, 0, 0, 0, time.UTC)
+	invalidEndDate := time.Date(2025, 11, 1, 0, 0, 0, 0, time.UTC) // before start date
+
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   storedEndDate,
+	}).Error; err != nil {
+		t.Fatalf("seed BQ status: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:  animal.ID,
+		StartDate: startDate,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "available",
+		QuarantineEndDate: NullableTime{
+			Time:  &invalidEndDate,
+			Valid: true,
+		},
+	}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("Expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var reloaded models.Animal
+	if err := db.First(&reloaded, animal.ID).Error; err != nil {
+		t.Fatalf("reload animal: %v", err)
+	}
+	if reloaded.Status != "bite_quarantine" {
+		t.Errorf("Expected status to remain bite_quarantine after a rejected request, got %q", reloaded.Status)
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ?", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.EndDate != nil {
+		t.Errorf("Expected incident to remain open after a rejected request, got EndDate %v", incident.EndDate)
+	}
+}
+
+// TestUpdateAnimalAdmin_LeaveQuarantine_EarlyExit_CapsEndDateAtNow verifies that when
+// an animal leaves bite_quarantine before its stored end date has arrived (no
+// explicit end date provided), the closed incident is stamped with now, not the
+// future stored date.
+func TestUpdateAnimalAdmin_LeaveQuarantine_EarlyExit_CapsEndDateAtNow(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+
+	startDate := time.Now().Add(-2 * 24 * time.Hour)
+	futureEndDate := time.Now().Add(7 * 24 * time.Hour) // stored end date still a week out
+	if err := db.Model(animal).Updates(map[string]interface{}{
+		"status":                "bite_quarantine",
+		"quarantine_start_date": startDate,
+		"quarantine_end_date":   futureEndDate,
+	}).Error; err != nil {
+		t.Fatalf("Failed to seed animal into quarantine: %v", err)
+	}
+	if err := db.Create(&models.AnimalBQIncident{
+		AnimalID:  animal.ID,
+		StartDate: startDate,
+	}).Error; err != nil {
+		t.Fatalf("seed incident row: %v", err)
+	}
+
+	beforeRequest := time.Now()
+	updateReq := AnimalRequest{Name: "Rex", Status: "available"}
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil)
+	handler(c)
+	afterRequest := time.Now()
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var incident models.AnimalBQIncident
+	if err := db.Where("animal_id = ?", animal.ID).First(&incident).Error; err != nil {
+		t.Fatalf("reload incident row: %v", err)
+	}
+	if incident.EndDate == nil {
+		t.Fatal("Expected EndDate to be stamped, got nil")
+	}
+	if incident.EndDate.Before(beforeRequest) || incident.EndDate.After(afterRequest) {
+		t.Errorf("Expected EndDate to be capped at now (between %v and %v), got %v (stored future end date was %v)", beforeRequest, afterRequest, *incident.EndDate, futureEndDate)
+	}
+}
+
 // TestUpdateAnimalAdmin_MidBQ_UpdatesIncidentDetails verifies that editing
 // incident details while in BQ via the admin handler updates the incident row.
 func TestUpdateAnimalAdmin_MidBQ_UpdatesIncidentDetails(t *testing.T) {

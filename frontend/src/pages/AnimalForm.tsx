@@ -12,6 +12,24 @@ import Modal from '../components/Modal';
 import ImageEditor from '../components/ImageEditor';
 import './Form.css';
 
+// Resolves the birth date to submit: an explicitly-set estimated_birth_date wins,
+// otherwise it's computed from the years/months picker (when in approximate mode).
+// Shared by every save path (normal save, quarantine-entry modal, BQ-exit modal) so
+// the same animal edit always resolves birth date the same way regardless of which
+// path it's saved through.
+function resolveFinalBirthDate(estimatedBirthDate: string, birthYears: number, birthMonths: number): string | undefined {
+  return estimatedBirthDate ||
+    (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
+}
+
+// Extracts a user-facing message from a failed API request, falling back to a
+// generic message when the API didn't return one. Shared across every request in
+// this form (save, image/document upload, delete) so a future change to the API's
+// error response shape only needs updating here.
+function extractApiErrorMessage(error: unknown, fallback: string): string {
+  return (error as { response?: { data?: { error?: string } } }).response?.data?.error || fallback;
+}
+
 const AnimalForm: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
@@ -31,6 +49,10 @@ const AnimalForm: React.FC = () => {
   const [quarantineDate, setQuarantineDate] = useState('');
   const [quarantineEndDateInput, setQuarantineEndDateInput] = useState('');
   const [originalStatus, setOriginalStatus] = useState('');
+  const [originalQuarantineStartDate, setOriginalQuarantineStartDate] = useState('');
+  const [originalQuarantineEndDate, setOriginalQuarantineEndDate] = useState('');
+  const [showBQExitModal, setShowBQExitModal] = useState(false);
+  const [bqExitEndDate, setBqExitEndDate] = useState('');
   const [availableTags, setAvailableTags] = useState<AnimalTag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [duplicateInfo, setDuplicateInfo] = useState<DuplicateNameInfo | null>(null);
@@ -75,6 +97,10 @@ const AnimalForm: React.FC = () => {
   const handleQuarantineModalClose = useCallback(() => {
     setShowQuarantineModal(false);
     setQuarantineContext('');
+  }, []);
+
+  const handleBQExitModalClose = useCallback(() => {
+    setShowBQExitModal(false);
   }, []);
 
   const handleUnarchiveModalClose = useCallback(() => {
@@ -135,6 +161,8 @@ const AnimalForm: React.FC = () => {
         setBirthMonths(0);
       }
       setOriginalStatus(animal.status);
+      setOriginalQuarantineStartDate(animal.quarantine_start_date ? animal.quarantine_start_date.split('T')[0] : '');
+      setOriginalQuarantineEndDate(animal.quarantine_end_date ? animal.quarantine_end_date.split('T')[0] : '');
       // Set selected tags
       if (animal.tags) {
         setSelectedTagIds(animal.tags.map(tag => tag.id));
@@ -241,6 +269,40 @@ const AnimalForm: React.FC = () => {
     return '';
   })();
 
+  // Smart default for the BQ exit modal: if the stored end date has already
+  // passed, staff are closing out late and that stored date is still correct;
+  // if it's still in the future, the quarantine was cut short and today is the
+  // real closing date. ISO YYYY-MM-DD strings compare correctly as plain strings.
+  const bqExitDefaultEndDate = (() => {
+    // Local calendar date, not new Date().toISOString() (UTC) — this modal's
+    // whole purpose is getting the closing date right, so a UTC-vs-local
+    // mismatch near midnight would defeat the point for non-UTC staff.
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const today = `${y}-${m}-${d}`;
+    if (originalQuarantineEndDate && originalQuarantineEndDate <= today) {
+      return originalQuarantineEndDate;
+    }
+    return today;
+  })();
+
+  // Compares against originalQuarantineStartDate (captured at load) rather than
+  // formData.quarantine_start_date: leaving bite_quarantine already clears
+  // formData.quarantine_start_date via quarantineFieldReset in the status
+  // <select>'s onChange (so a later re-entry into bite_quarantine starts fresh),
+  // so by the time this modal is open that field is blank and can't be used here.
+  const bqExitEndDateError = (() => {
+    if (!bqExitEndDate || !originalQuarantineStartDate) {
+      return '';
+    }
+    if (bqExitEndDate < originalQuarantineStartDate) {
+      return 'End date cannot be before start date';
+    }
+    return '';
+  })();
+
   // Resets every quarantine-specific field to its default. Used both when leaving
   // bite_quarantine (so re-entering it later in the same session starts fresh
   // instead of resubmitting stale data) and when confirming a status change away
@@ -304,7 +366,7 @@ const AnimalForm: React.FC = () => {
       }, 100);
     } catch (err: unknown) {
       console.error('Upload error:', err);
-      const errorMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload image. Please try again.';
+      const errorMsg = extractApiErrorMessage(err, 'Failed to upload image. Please try again.');
       toast.showError(errorMsg);
     } finally {
       setUploading(false);
@@ -352,7 +414,7 @@ const AnimalForm: React.FC = () => {
         toast.showSuccess('Protocol document uploaded successfully!');
       } catch (error: unknown) {
         console.error('Upload error:', error);
-        const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to upload document. Please try again.';
+        const errorMsg = extractApiErrorMessage(error, 'Failed to upload document. Please try again.');
         toast.showError(errorMsg);
       } finally {
         setUploadingDocument(false);
@@ -451,6 +513,13 @@ const AnimalForm: React.FC = () => {
       return;
     }
 
+    // Check if status changed away from bite_quarantine
+    if (originalStatus === 'bite_quarantine' && formData.status !== 'bite_quarantine') {
+      setBqExitEndDate(bqExitDefaultEndDate);
+      setShowBQExitModal(true);
+      return;
+    }
+
     // Check if status changed to bite_quarantine
     if (formData.status === 'bite_quarantine' && originalStatus !== 'bite_quarantine') {
       // Show modal to get context and date
@@ -471,13 +540,11 @@ const AnimalForm: React.FC = () => {
       let animalId = id ? parseInt(id) : null;
       
       // Clean up formData: convert empty quarantine_start_date to null
-      // Ensure estimated_birth_date is computed from years/months if in approximate mode
-      const finalBirthDate = formData.estimated_birth_date ||
-        (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
+      const finalBirthDate = resolveFinalBirthDate(formData.estimated_birth_date, birthYears, birthMonths);
 
       const cleanedFormData = {
         ...formData,
-        estimated_birth_date: finalBirthDate || undefined,
+        estimated_birth_date: finalBirthDate,
         age: birthYears,
         // A blank start date here means "leave the stored value untouched," not
         // "clear it" — this also covers a user directly blanking the inline Start
@@ -536,7 +603,7 @@ const AnimalForm: React.FC = () => {
       
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
-      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to save animal. Please try again.';
+      const errorMsg = extractApiErrorMessage(error, 'Failed to save animal. Please try again.');
       toast.showError(errorMsg);
     } finally {
       setLoading(false);
@@ -554,9 +621,7 @@ const AnimalForm: React.FC = () => {
       return;
     }
 
-    // Compute birth date the same way saveAnimal does
-    const finalBirthDate = formData.estimated_birth_date ||
-      (birthYears > 0 || birthMonths > 0 ? computeEstimatedBirthDate(birthYears, birthMonths) : undefined);
+    const finalBirthDate = resolveFinalBirthDate(formData.estimated_birth_date, birthYears, birthMonths);
 
     // Update formData with the quarantine dates entered in this modal — formData may
     // still carry a stale quarantine_end_date left over from a previous quarantine
@@ -566,7 +631,7 @@ const AnimalForm: React.FC = () => {
     const resolvedQuarantineEndDate = quarantineEndDateInput || calculateQuarantineEndDateISO(quarantineDate);
     const updatedFormData = {
       ...formData,
-      estimated_birth_date: finalBirthDate || undefined,
+      estimated_birth_date: finalBirthDate,
       age: birthYears,
       quarantine_start_date: quarantineDate,
       quarantine_end_date: resolvedQuarantineEndDate,
@@ -624,13 +689,60 @@ const AnimalForm: React.FC = () => {
       setShowQuarantineModal(false);
       navigate(`/groups/${groupId}`);
     } catch (error: unknown) {
-      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to save animal. Please try again.';
+      const errorMsg = extractApiErrorMessage(error, 'Failed to save animal. Please try again.');
       toast.showError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
+
+  const handleBQExitSubmit = async () => {
+    if (!groupId || !id) return;
+    if (bqExitEndDateError) {
+      toast.showError(bqExitEndDateError);
+      return;
+    }
+
+    const finalBirthDate = resolveFinalBirthDate(formData.estimated_birth_date, birthYears, birthMonths);
+
+    const payload = {
+      ...formData,
+      estimated_birth_date: finalBirthDate,
+      age: birthYears,
+      quarantine_start_date: undefined,
+      quarantine_incident_details: undefined,
+      quarantine_approval_status: undefined,
+      quarantine_end_date: bqExitEndDate,
+    };
+
+    const animalId = parseInt(id);
+
+    setLoading(true);
+    try {
+      await animalsApi.update(parseInt(groupId), animalId, payload);
+
+      // Assign tags to the animal, same as the normal save path — a user may
+      // have edited tags in the same session as confirming the BQ exit.
+      if (animalId && selectedTagIds.length >= 0) {
+        try {
+          await animalTagsApi.assignToAnimal(parseInt(groupId), animalId, selectedTagIds);
+        } catch (error) {
+          console.error('Failed to assign tags:', error);
+          toast.showWarning('Animal saved but failed to update tags');
+        }
+      }
+
+      toast.showSuccess('Animal updated successfully!');
+      setShowBQExitModal(false);
+      navigate(`/groups/${groupId}`);
+    } catch (error: unknown) {
+      const errorMsg = extractApiErrorMessage(error, 'Failed to save animal. Please try again.');
+      toast.showError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleDelete = async () => {
     try {
@@ -640,7 +752,7 @@ const AnimalForm: React.FC = () => {
         navigate(`/groups/${groupId}`);
       }
     } catch (error: unknown) {
-      const errorMsg = (error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to delete animal. Please try again.';
+      const errorMsg = extractApiErrorMessage(error, 'Failed to delete animal. Please try again.');
       toast.showError(errorMsg);
     }
     setShowDeleteModal(false);
@@ -1269,6 +1381,60 @@ const AnimalForm: React.FC = () => {
             disabled={loading || !quarantineContext.trim() || !!quarantineModalStartDateError || !!quarantineModalEndDateError}
           >
             Save & Notify
+          </Button>
+        </div>
+      </Modal>
+
+      {/* BQ Exit Confirmation Modal */}
+      <Modal
+        isOpen={showBQExitModal}
+        onClose={handleBQExitModalClose}
+        title="Confirm Bite Quarantine Exit"
+        size="medium"
+      >
+        <p style={{ marginBottom: '1rem' }}>
+          Confirm the date this bite-quarantine episode actually ended. This is saved to the animal's BQ history.
+        </p>
+
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label htmlFor="bq-exit-end-date" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+            Quarantine End Date:
+          </label>
+          <input
+            id="bq-exit-end-date"
+            type="date"
+            value={bqExitEndDate}
+            onChange={(e) => setBqExitEndDate(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              border: '1px solid var(--neutral-300)',
+              borderRadius: '4px',
+              fontSize: '1rem'
+            }}
+          />
+          {bqExitEndDateError && (
+            <p style={{ fontSize: '0.875rem', color: 'var(--color-danger, #c0392b)', marginTop: '0.25rem' }}>
+              {bqExitEndDateError}
+            </p>
+          )}
+        </div>
+
+        <div className="modal__actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+          <Button
+            variant="secondary"
+            onClick={handleBQExitModalClose}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleBQExitSubmit}
+            loading={loading}
+            disabled={loading || !bqExitEndDate || !!bqExitEndDateError}
+          >
+            Confirm & Save
           </Button>
         </div>
       </Modal>

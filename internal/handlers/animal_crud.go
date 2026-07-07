@@ -379,6 +379,15 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		now := time.Now()
 		enteredQuarantine := false
 		leftQuarantine := newStatus != "" && newStatus != oldStatus && oldStatus == "bite_quarantine"
+		var incidentEndDateAtExit *time.Time
+		if leftQuarantine {
+			resolvedEndDate, err := resolveBQExitEndDate(req.QuarantineEndDate, animal.QuarantineEndDate, animal.QuarantineStartDate, now)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			incidentEndDateAtExit = resolvedEndDate
+		}
 		midBQEdit := false
 		var midBQStartDate *time.Time
 		if newStatus != "" && newStatus != oldStatus {
@@ -522,7 +531,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		if leftQuarantine {
 			if err := db.WithContext(ctx).Model(&models.AnimalBQIncident{}).
 				Where("animal_id = ? AND end_date IS NULL", animal.ID).
-				Update("end_date", now).Error; err != nil {
+				Update("end_date", incidentEndDateAtExit).Error; err != nil {
 				// Log error but don't fail the update
 				c.Error(err)
 			}
