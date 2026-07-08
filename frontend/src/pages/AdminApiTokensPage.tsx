@@ -176,7 +176,7 @@ const AdminApiTokensPage: React.FC = () => {
       {error && <div className="error-message">{error}</div>}
 
       {revealedToken && (
-        <div className="token-secret-reveal">
+        <div className="token-secret-reveal" role="status">
           <p>
             <strong>Copy this token now — it won&apos;t be shown again.</strong>
           </p>
