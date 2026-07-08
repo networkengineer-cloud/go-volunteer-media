@@ -5,47 +5,47 @@ import (
 	"testing"
 )
 
-func TestGenerateApiToken(t *testing.T) {
-	got, err := GenerateApiToken()
+func TestGenerateAPIToken(t *testing.T) {
+	got, err := GenerateAPIToken()
 	if err != nil {
-		t.Fatalf("GenerateApiToken() error = %v", err)
+		t.Fatalf("GenerateAPIToken() error = %v", err)
 	}
 
-	if !strings.HasPrefix(got.Token, ApiTokenPrefix) {
-		t.Errorf("Token = %q, want prefix %q", got.Token, ApiTokenPrefix)
+	if !strings.HasPrefix(got.Token, APITokenPrefix) {
+		t.Errorf("Token = %q, want prefix %q", got.Token, APITokenPrefix)
 	}
 
-	wantLen := len(ApiTokenPrefix) + 64 // 32 random bytes, hex-encoded
+	wantLen := len(APITokenPrefix) + 64 // 32 random bytes, hex-encoded
 	if len(got.Token) != wantLen {
 		t.Errorf("len(Token) = %d, want %d", len(got.Token), wantLen)
 	}
 
-	if got.Hash != HashApiToken(got.Token) {
-		t.Errorf("Hash = %q, want %q", got.Hash, HashApiToken(got.Token))
+	if got.Hash != HashAPIToken(got.Token) {
+		t.Errorf("Hash = %q, want %q", got.Hash, HashAPIToken(got.Token))
 	}
 
-	wantPrefix := ApiTokenPrefix + got.Token[len(ApiTokenPrefix):len(ApiTokenPrefix)+8]
+	wantPrefix := APITokenPrefix + got.Token[len(APITokenPrefix):len(APITokenPrefix)+8]
 	if got.DisplayPrefix != wantPrefix {
 		t.Errorf("DisplayPrefix = %q, want %q", got.DisplayPrefix, wantPrefix)
 	}
 }
 
-func TestGenerateApiToken_Unique(t *testing.T) {
-	first, err := GenerateApiToken()
+func TestGenerateAPIToken_Unique(t *testing.T) {
+	first, err := GenerateAPIToken()
 	if err != nil {
-		t.Fatalf("GenerateApiToken() error = %v", err)
+		t.Fatalf("GenerateAPIToken() error = %v", err)
 	}
-	second, err := GenerateApiToken()
+	second, err := GenerateAPIToken()
 	if err != nil {
-		t.Fatalf("GenerateApiToken() error = %v", err)
+		t.Fatalf("GenerateAPIToken() error = %v", err)
 	}
 
 	if first.Token == second.Token {
-		t.Error("GenerateApiToken() produced the same token twice")
+		t.Error("GenerateAPIToken() produced the same token twice")
 	}
 }
 
-func TestHashApiToken(t *testing.T) {
+func TestHashAPIToken(t *testing.T) {
 	tests := []struct {
 		name  string
 		a, b  string
@@ -57,20 +57,20 @@ func TestHashApiToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotEqual := HashApiToken(tt.a) == HashApiToken(tt.b)
+			gotEqual := HashAPIToken(tt.a) == HashAPIToken(tt.b)
 			if gotEqual != tt.equal {
-				t.Errorf("HashApiToken(%q) == HashApiToken(%q) = %v, want %v", tt.a, tt.b, gotEqual, tt.equal)
+				t.Errorf("HashAPIToken(%q) == HashAPIToken(%q) = %v, want %v", tt.a, tt.b, gotEqual, tt.equal)
 			}
 		})
 	}
 
-	hash := HashApiToken("pat_abc123")
+	hash := HashAPIToken("pat_abc123")
 	if len(hash) != 64 { // sha256 hex-encoded
-		t.Errorf("len(HashApiToken(...)) = %d, want 64", len(hash))
+		t.Errorf("len(HashAPIToken(...)) = %d, want 64", len(hash))
 	}
 }
 
-func TestIsApiToken(t *testing.T) {
+func TestIsAPIToken(t *testing.T) {
 	tests := []struct {
 		name  string
 		token string
@@ -84,8 +84,8 @@ func TestIsApiToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsApiToken(tt.token); got != tt.want {
-				t.Errorf("IsApiToken(%q) = %v, want %v", tt.token, got, tt.want)
+			if got := IsAPIToken(tt.token); got != tt.want {
+				t.Errorf("IsAPIToken(%q) = %v, want %v", tt.token, got, tt.want)
 			}
 		})
 	}
