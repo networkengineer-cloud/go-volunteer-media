@@ -1,0 +1,38 @@
+.admin-api-tokens-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.token-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.token-table th,
+.token-table td {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.token-secret-reveal {
+  background: var(--surface-alt, #f3f4f6);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.token-secret-value {
+  font-family: monospace;
+  word-break: break-all;
+  user-select: all;
+}
+
+.token-empty-state {
+  padding: 2rem 0;
+  text-align: center;
+  color: var(--text-muted, #6b7280);
+}

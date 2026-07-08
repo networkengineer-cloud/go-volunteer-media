@@ -18,6 +18,14 @@ export const usersApi = {
   unlock: (userId: number) => api.post<{ message: string; user: User }>(`/users/${userId}/unlock`),
 };
 
+// API Tokens (admin, self-service — each admin manages only their own)
+export const apiTokensApi = {
+  list: () => api.get<ApiToken[]>('/admin/api-tokens'),
+  create: (data: { name: string; expires_at: string }) =>
+    api.post<CreatedApiToken>('/admin/api-tokens', data),
+  revoke: (tokenId: number) => api.delete(`/admin/api-tokens/${tokenId}`),
+};
+
 // Group Admin API (accessible by site admins and group admins)
 export const groupAdminApi = {
   // Promote a user to group admin (site admins and group admins can do this for their groups)
@@ -101,6 +109,19 @@ export interface User {
   // Lockout fields — only present in admin-scoped responses
   locked_until?: string | null;
   failed_login_attempts?: number;
+}
+
+export interface ApiToken {
+  id: number;
+  name: string;
+  token_prefix: string;
+  created_at: string;
+  expires_at: string;
+  last_used_at: string | null;
+}
+
+export interface CreatedApiToken extends ApiToken {
+  token: string; // one-time plaintext value — only present on the create response
 }
 
 // User creation response - backend returns different formats depending on setup email

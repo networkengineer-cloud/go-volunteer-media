@@ -26,6 +26,7 @@ import SetupPassword from './pages/SetupPassword';
 import Settings from './pages/Settings';
 import UserProfilePage from './pages/UserProfilePage';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminApiTokensPage from './pages/AdminApiTokensPage';
 import ActivityFeedPage from './pages/ActivityFeedPage';
 import './App.css';
 
@@ -257,6 +258,14 @@ function App() {
             element={
               <AdminRoute>
                 <AdminSettingsPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/api-tokens"
+            element={
+              <AdminRoute>
+                <AdminApiTokensPage />
               </AdminRoute>
             }
           />
