@@ -68,6 +68,22 @@ describe('AdminApiTokensPage', () => {
     expect(screen.getByText(/won.t be shown again/i)).toBeInTheDocument();
   });
 
+  it('shows an inline error and keeps the modal open when token creation fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiTokensApi.create).mockRejectedValue(new Error('network error'));
+
+    renderPage();
+    await waitFor(() => expect(apiTokensApi.list).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /generate token/i }));
+    await user.type(screen.getByLabelText(/name/i), 'Zapier integration');
+    await user.click(screen.getByRole('button', { name: /^create$/i }));
+
+    expect(await screen.findByText(/failed to create api token/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^create$/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
+  });
+
   it('revokes a token after confirmation', async () => {
     const user = userEvent.setup();
     vi.mocked(apiTokensApi.list).mockResolvedValue({ data: [mockToken] } as AxiosResponse);

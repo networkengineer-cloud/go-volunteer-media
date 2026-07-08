@@ -22,11 +22,13 @@ const CreateTokenModal: React.FC<CreateTokenModalProps> = ({ isOpen, onClose, on
   const [name, setName] = useState('');
   const [presetDays, setPresetDays] = useState(90);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setName('');
       setPresetDays(90);
+      setFormError(null);
     }
   }, [isOpen]);
 
@@ -36,8 +38,12 @@ const CreateTokenModal: React.FC<CreateTokenModalProps> = ({ isOpen, onClose, on
 
     const expiresAt = new Date(Date.now() + presetDays * 24 * 60 * 60 * 1000).toISOString();
     setIsSubmitting(true);
+    setFormError(null);
     try {
       await onSubmit({ name: name.trim(), expires_at: expiresAt });
+    } catch (err) {
+      console.error('Error creating API token:', err);
+      setFormError('Failed to create API token. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -75,6 +81,8 @@ const CreateTokenModal: React.FC<CreateTokenModalProps> = ({ isOpen, onClose, on
           </select>
         </div>
 
+        {formError && <div className="error-message">{formError}</div>}
+
         <div className="form-actions">
           <button type="button" className="btn-secondary" onClick={onClose}>
             Cancel
@@ -96,9 +104,9 @@ const AdminApiTokensPage: React.FC = () => {
   const [revealedToken, setRevealedToken] = useState<CreatedApiToken | null>(null);
   const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
 
-  const fetchTokens = useCallback(async () => {
+  const fetchTokens = useCallback(async (options: { silent?: boolean } = {}) => {
     try {
-      setIsLoading(true);
+      if (!options.silent) setIsLoading(true);
       const response = await apiTokensApi.list();
       setTokens(response.data);
       setError(null);
@@ -106,7 +114,7 @@ const AdminApiTokensPage: React.FC = () => {
       setError('Failed to load API tokens');
       console.error('Error fetching API tokens:', err);
     } finally {
-      setIsLoading(false);
+      if (!options.silent) setIsLoading(false);
     }
   }, []);
 
@@ -119,7 +127,7 @@ const AdminApiTokensPage: React.FC = () => {
       const response = await apiTokensApi.create(data);
       setRevealedToken(response.data);
       setIsCreateModalOpen(false);
-      await fetchTokens();
+      await fetchTokens({ silent: true });
     } catch (err) {
       console.error('Error creating API token:', err);
       throw err;
@@ -133,7 +141,7 @@ const AdminApiTokensPage: React.FC = () => {
       async () => {
         try {
           await apiTokensApi.revoke(token.id);
-          await fetchTokens();
+          await fetchTokens({ silent: true });
         } catch (err) {
           console.error('Error revoking API token:', err);
           setError('Failed to revoke API token');
