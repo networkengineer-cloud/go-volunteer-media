@@ -186,7 +186,7 @@ func main() {
 
 	// Protected routes
 	protected := api.Group("/")
-	protected.Use(middleware.AuthRequired())
+	protected.Use(middleware.AuthRequired(db))
 	{
 		// Environment info (authenticated users can check environment)
 		protected.GET("/environment", handlers.GetEnvironment())
