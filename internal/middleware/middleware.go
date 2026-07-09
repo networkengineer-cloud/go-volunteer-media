@@ -1,13 +1,17 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"gorm.io/gorm"
 )
 
 // CORS middleware to handle cross-origin requests
@@ -52,8 +56,10 @@ func contains(slice []string, str string) bool {
 	return false
 }
 
-// AuthRequired middleware to protect routes
-func AuthRequired() gin.HandlerFunc {
+// AuthRequired middleware to protect routes. Accepts either a JWT (issued at
+// login) or an API token (prefixed "pat_", generated via the admin API
+// tokens endpoints) in the Authorization header.
+func AuthRequired(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		authHeader := c.GetHeader("Authorization")
@@ -85,6 +91,30 @@ func AuthRequired() gin.HandlerFunc {
 		}
 
 		token := parts[1]
+
+		if auth.IsAPIToken(token) {
+			userID, isAdmin, ok := authenticateAPIToken(ctx, db, token)
+			if !ok {
+				logger := GetLogger(c)
+				logger.WithFields(map[string]interface{}{
+					"ip":       c.ClientIP(),
+					"endpoint": c.Request.URL.Path,
+					"method":   c.Request.Method,
+				}).Warn("Invalid or expired API token")
+
+				logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "invalid_api_token")
+
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+				c.Abort()
+				return
+			}
+
+			c.Set("user_id", userID)
+			c.Set("is_admin", isAdmin)
+			c.Next()
+			return
+		}
+
 		claims, err := auth.ValidateToken(token)
 		if err != nil {
 			// Log invalid token attempt
@@ -109,6 +139,32 @@ func AuthRequired() gin.HandlerFunc {
 		c.Set("is_admin", claims.IsAdmin)
 		c.Next()
 	}
+}
+
+// authenticateAPIToken looks up a presented API token, verifying it is
+// unexpired and unrevoked, and returns the owning user's *current* identity.
+// is_admin is read fresh from the User row (not cached on the token) so
+// demoting or deleting the admin immediately invalidates their tokens.
+// LastUsedAt is updated best-effort; a failure to record it does not fail auth.
+func authenticateAPIToken(ctx context.Context, db *gorm.DB, token string) (userID uint, isAdmin bool, ok bool) {
+	hash := auth.HashAPIToken(token)
+
+	var apiToken models.APIToken
+	if err := db.WithContext(ctx).
+		Where("token_hash = ? AND expires_at > ?", hash, time.Now()).
+		First(&apiToken).Error; err != nil {
+		return 0, false, false
+	}
+
+	var user models.User
+	if err := db.WithContext(ctx).First(&user, apiToken.UserID).Error; err != nil {
+		return 0, false, false
+	}
+
+	now := time.Now()
+	db.WithContext(ctx).Model(&apiToken).Update("last_used_at", &now)
+
+	return user.ID, user.IsAdmin, true
 }
 
 // AdminRequired middleware to restrict access to admin users only

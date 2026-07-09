@@ -186,7 +186,7 @@ func main() {
 
 	// Protected routes
 	protected := api.Group("/")
-	protected.Use(middleware.AuthRequired())
+	protected.Use(middleware.AuthRequired(db))
 	{
 		// Environment info (authenticated users can check environment)
 		protected.GET("/environment", handlers.GetEnvironment())
@@ -282,6 +282,11 @@ func main() {
 			// Admin content moderation - view deleted content
 			admin.GET("/groups/:id/deleted-comments", handlers.GetDeletedComments(db))
 			admin.GET("/groups/:id/deleted-images", handlers.GetDeletedImages(db))
+
+			// API tokens (admin only, self-service — each admin manages only their own)
+			admin.GET("/api-tokens", handlers.ListMyAPITokens(db))
+			admin.POST("/api-tokens", handlers.CreateAPIToken(db))
+			admin.DELETE("/api-tokens/:tokenId", handlers.RevokeAPIToken(db))
 		}
 
 		// Group-specific routes

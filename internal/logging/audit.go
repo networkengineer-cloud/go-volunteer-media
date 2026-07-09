@@ -29,6 +29,8 @@ const (
 	AuditEventGroupDeleted         AuditEvent = "group_deleted"
 	AuditEventUserAddedToGroup     AuditEvent = "user_added_to_group"
 	AuditEventUserRemovedFromGroup AuditEvent = "user_removed_from_group"
+	AuditEventAPITokenCreated      AuditEvent = "api_token_created"
+	AuditEventAPITokenRevoked      AuditEvent = "api_token_revoked"
 
 	// Data events
 	AuditEventAnimalCreated       AuditEvent = "animal_created"

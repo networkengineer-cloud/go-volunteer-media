@@ -1,15 +1,34 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
+
+// newMiddlewareTestDB creates an in-memory SQLite database migrated with the
+// models AuthRequired's API-token path needs.
+func newMiddlewareTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open test db: %v", err)
+	}
+	if err := db.AutoMigrate(&models.User{}, &models.APIToken{}); err != nil {
+		t.Fatalf("failed to migrate test db: %v", err)
+	}
+	return db
+}
 
 func init() {
 	// Set Gin to test mode
@@ -242,7 +261,7 @@ func TestAuthRequired(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create test server
 			router := gin.New()
-			router.Use(AuthRequired())
+			router.Use(AuthRequired(newMiddlewareTestDB(t)))
 			router.GET("/protected", func(c *gin.Context) {
 				if tt.checkContext {
 					userID, exists := c.Get("user_id")
@@ -394,7 +413,7 @@ func TestAuthRequiredAndAdminRequiredChained(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create test server with both middleware chained
 			router := gin.New()
-			router.Use(AuthRequired())
+			router.Use(AuthRequired(newMiddlewareTestDB(t)))
 			router.Use(AdminRequired())
 			router.GET("/admin-only", func(c *gin.Context) {
 				c.JSON(200, gin.H{"message": "admin only area"})
@@ -811,6 +830,179 @@ func TestRequestID(t *testing.T) {
 		requestID := w.Header().Get(RequestIDKey)
 		if requestID != "test-request-id-123" {
 			t.Errorf("Expected X-Request-ID to be test-request-id-123, got %s", requestID)
+		}
+	})
+}
+
+func TestAuthRequired_APIToken(t *testing.T) {
+	buildRouter := func(db *gorm.DB) *gin.Engine {
+		router := gin.New()
+		router.Use(AuthRequired(db))
+		router.GET("/protected", func(c *gin.Context) {
+			userID, _ := c.Get("user_id")
+			isAdmin, _ := c.Get("is_admin")
+			c.JSON(200, gin.H{"user_id": userID, "is_admin": isAdmin})
+		})
+		return router
+	}
+
+	callWithToken := func(router *gin.Engine, token string) *httptest.ResponseRecorder {
+		req, _ := http.NewRequest("GET", "/protected", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	t.Run("valid token authenticates as the owning admin", func(t *testing.T) {
+		db := newMiddlewareTestDB(t)
+		user := &models.User{Username: "admin1", Email: "admin1@example.com", Password: "x", IsAdmin: true}
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to create user: %v", err)
+		}
+		generated, err := auth.GenerateAPIToken()
+		if err != nil {
+			t.Fatalf("GenerateAPIToken() error = %v", err)
+		}
+		apiToken := &models.APIToken{
+			UserID:      user.ID,
+			Name:        "test token",
+			TokenHash:   generated.Hash,
+			TokenPrefix: generated.DisplayPrefix,
+			ExpiresAt:   time.Now().Add(24 * time.Hour),
+		}
+		if err := db.Create(apiToken).Error; err != nil {
+			t.Fatalf("failed to create api token: %v", err)
+		}
+
+		w := callWithToken(buildRouter(db), generated.Token)
+
+		if w.Code != 200 {
+			t.Fatalf("status = %d, want 200, body = %s", w.Code, w.Body.String())
+		}
+		if !containsSubstring(w.Body.String(), fmt.Sprintf(`"user_id":%d`, user.ID)) {
+			t.Errorf("body = %s, want user_id %d", w.Body.String(), user.ID)
+		}
+		if !containsSubstring(w.Body.String(), `"is_admin":true`) {
+			t.Errorf("body = %s, want is_admin true", w.Body.String())
+		}
+	})
+
+	t.Run("unknown token is rejected", func(t *testing.T) {
+		db := newMiddlewareTestDB(t)
+		w := callWithToken(buildRouter(db), "pat_"+strings.Repeat("a", 64))
+		if w.Code != 401 {
+			t.Errorf("status = %d, want 401", w.Code)
+		}
+	})
+
+	t.Run("expired token is rejected", func(t *testing.T) {
+		db := newMiddlewareTestDB(t)
+		user := &models.User{Username: "admin2", Email: "admin2@example.com", Password: "x", IsAdmin: true}
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to create user: %v", err)
+		}
+		generated, _ := auth.GenerateAPIToken()
+		apiToken := &models.APIToken{
+			UserID:      user.ID,
+			Name:        "expired token",
+			TokenHash:   generated.Hash,
+			TokenPrefix: generated.DisplayPrefix,
+			ExpiresAt:   time.Now().Add(-1 * time.Hour),
+		}
+		if err := db.Create(apiToken).Error; err != nil {
+			t.Fatalf("failed to create api token: %v", err)
+		}
+
+		w := callWithToken(buildRouter(db), generated.Token)
+		if w.Code != 401 {
+			t.Errorf("status = %d, want 401", w.Code)
+		}
+	})
+
+	t.Run("revoked (soft-deleted) token is rejected", func(t *testing.T) {
+		db := newMiddlewareTestDB(t)
+		user := &models.User{Username: "admin3", Email: "admin3@example.com", Password: "x", IsAdmin: true}
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to create user: %v", err)
+		}
+		generated, _ := auth.GenerateAPIToken()
+		apiToken := &models.APIToken{
+			UserID:      user.ID,
+			Name:        "revoked token",
+			TokenHash:   generated.Hash,
+			TokenPrefix: generated.DisplayPrefix,
+			ExpiresAt:   time.Now().Add(24 * time.Hour),
+		}
+		if err := db.Create(apiToken).Error; err != nil {
+			t.Fatalf("failed to create api token: %v", err)
+		}
+		if err := db.Delete(apiToken).Error; err != nil {
+			t.Fatalf("failed to revoke api token: %v", err)
+		}
+
+		w := callWithToken(buildRouter(db), generated.Token)
+		if w.Code != 401 {
+			t.Errorf("status = %d, want 401", w.Code)
+		}
+	})
+
+	t.Run("token for a deleted user is rejected", func(t *testing.T) {
+		db := newMiddlewareTestDB(t)
+		user := &models.User{Username: "admin4", Email: "admin4@example.com", Password: "x", IsAdmin: true}
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to create user: %v", err)
+		}
+		generated, _ := auth.GenerateAPIToken()
+		apiToken := &models.APIToken{
+			UserID:      user.ID,
+			Name:        "orphaned token",
+			TokenHash:   generated.Hash,
+			TokenPrefix: generated.DisplayPrefix,
+			ExpiresAt:   time.Now().Add(24 * time.Hour),
+		}
+		if err := db.Create(apiToken).Error; err != nil {
+			t.Fatalf("failed to create api token: %v", err)
+		}
+		if err := db.Delete(user).Error; err != nil {
+			t.Fatalf("failed to delete user: %v", err)
+		}
+
+		w := callWithToken(buildRouter(db), generated.Token)
+		if w.Code != 401 {
+			t.Errorf("status = %d, want 401", w.Code)
+		}
+	})
+
+	t.Run("is_admin reflects the user's current state, not a cached value", func(t *testing.T) {
+		db := newMiddlewareTestDB(t)
+		user := &models.User{Username: "admin5", Email: "admin5@example.com", Password: "x", IsAdmin: true}
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to create user: %v", err)
+		}
+		generated, _ := auth.GenerateAPIToken()
+		apiToken := &models.APIToken{
+			UserID:      user.ID,
+			Name:        "demoted-admin token",
+			TokenHash:   generated.Hash,
+			TokenPrefix: generated.DisplayPrefix,
+			ExpiresAt:   time.Now().Add(24 * time.Hour),
+		}
+		if err := db.Create(apiToken).Error; err != nil {
+			t.Fatalf("failed to create api token: %v", err)
+		}
+
+		// Demote after the token was created.
+		if err := db.Model(user).Update("is_admin", false).Error; err != nil {
+			t.Fatalf("failed to demote user: %v", err)
+		}
+
+		w := callWithToken(buildRouter(db), generated.Token)
+		if w.Code != 200 {
+			t.Fatalf("status = %d, want 200, body = %s", w.Code, w.Body.String())
+		}
+		if !containsSubstring(w.Body.String(), `"is_admin":false`) {
+			t.Errorf("body = %s, want is_admin false (reflecting the demotion)", w.Body.String())
 		}
 	})
 }

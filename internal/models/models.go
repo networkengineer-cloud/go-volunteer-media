@@ -47,6 +47,22 @@ type User struct {
 	ShowLengthOfStay          bool           `gorm:"default:false" json:"show_length_of_stay"`
 }
 
+// APIToken represents a personal access token that authenticates API
+// requests as its owning User. Presence of DeletedAt (soft-delete) means the
+// token has been revoked.
+type APIToken struct {
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	UserID      uint           `gorm:"index;not null" json:"user_id"`
+	Name        string         `gorm:"not null" json:"name"`
+	TokenHash   string         `gorm:"uniqueIndex;not null" json:"-"`
+	TokenPrefix string         `gorm:"not null" json:"token_prefix"`
+	ExpiresAt   time.Time      `gorm:"not null" json:"expires_at"`
+	LastUsedAt  *time.Time     `json:"last_used_at"`
+}
+
 // Group represents a volunteer group (dogs, cats, modsquad, etc.)
 type Group struct {
 	ID             uint            `gorm:"primaryKey" json:"id"`
