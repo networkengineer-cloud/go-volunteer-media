@@ -87,7 +87,7 @@ const Navigation: React.FC = () => {
               {isAdmin && (
                 <>
                   <Link to="/admin/groups" className="nav-admin-groups" onClick={closeMobileMenu}>Groups</Link>
-                  <Link to="/admin/site-settings" className="nav-admin-settings" onClick={closeMobileMenu}>Admin</Link>
+                  <Link to="/admin/dashboard" className="nav-admin-settings" onClick={closeMobileMenu}>Admin</Link>
                 </>
               )}
               {(isAdmin || isGroupAdmin) && (
