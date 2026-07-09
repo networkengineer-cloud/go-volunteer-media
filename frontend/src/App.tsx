@@ -14,7 +14,6 @@ import GroupPage from './pages/GroupPage';
 import AnimalForm from './pages/AnimalForm';
 import AnimalDetailPage from './pages/AnimalDetailPage';
 import PhotoGallery from './pages/PhotoGallery';
-import UpdateForm from './pages/UpdateForm';
 import Home from './pages/Home';
 import UsersPage from './pages/UsersPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
@@ -198,14 +197,6 @@ function App() {
             element={
               <PrivateRoute>
                 <PhotoGallery />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/groups/:groupId/updates/new"
-            element={
-              <PrivateRoute>
-                <UpdateForm />
               </PrivateRoute>
             }
           />
