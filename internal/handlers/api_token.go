@@ -17,6 +17,10 @@ import (
 // so "required expiration" can't be defeated with an effectively-infinite date.
 const maxAPITokenLifetime = 365 * 24 * time.Hour
 
+// maxAPITokensPerUser caps how many live (non-revoked) tokens a single admin
+// can hold at once, so an admin can't accumulate an unbounded number of tokens.
+const maxAPITokensPerUser = 20
+
 // apiTokenResponse is what ListMyAPITokens/CreateAPIToken return — it never
 // includes the token hash or, after creation, the plaintext secret.
 type apiTokenResponse struct {
@@ -64,7 +68,7 @@ func ListMyAPITokens(db *gorm.DB) gin.HandlerFunc {
 
 // createAPITokenRequest is the CreateAPIToken request body.
 type createAPITokenRequest struct {
-	Name      string    `json:"name" binding:"required"`
+	Name      string    `json:"name" binding:"required,max=100"`
 	ExpiresAt time.Time `json:"expires_at" binding:"required"`
 }
 
@@ -88,6 +92,18 @@ func CreateAPIToken(db *gorm.DB) gin.HandlerFunc {
 		}
 		if req.ExpiresAt.After(now.Add(maxAPITokenLifetime)) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "expires_at cannot be more than 1 year out"})
+			return
+		}
+
+		var tokenCount int64
+		if err := db.WithContext(ctx).Model(&models.APIToken{}).
+			Where("user_id = ?", userID).
+			Count(&tokenCount).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create API token"})
+			return
+		}
+		if tokenCount >= maxAPITokensPerUser {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "You have reached the maximum number of API tokens (20). Revoke an existing token before creating a new one."})
 			return
 		}
 

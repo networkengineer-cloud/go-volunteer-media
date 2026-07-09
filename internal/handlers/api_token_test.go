@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,6 +61,22 @@ func TestCreateAPIToken(t *testing.T) {
 				"expires_at": time.Now().Add(400 * 24 * time.Hour).Format(time.RFC3339),
 			},
 			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "name over 100 characters is rejected",
+			body: map[string]interface{}{
+				"name":       strings.Repeat("a", 101),
+				"expires_at": time.Now().Add(30 * 24 * time.Hour).Format(time.RFC3339),
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "name at exactly 100 characters is accepted",
+			body: map[string]interface{}{
+				"name":       strings.Repeat("a", 100),
+				"expires_at": time.Now().Add(30 * 24 * time.Hour).Format(time.RFC3339),
+			},
+			expectedStatus: http.StatusCreated,
 		},
 	}
 
@@ -199,6 +216,62 @@ func TestRevokeAPIToken(t *testing.T) {
 
 		if w.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want 404, body = %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestCreateAPIToken_MaxTokensPerUser(t *testing.T) {
+	db := SetupTestDB(t)
+	admin := CreateTestUser(t, db, "admin", "admin@example.com", "password123", true)
+	otherAdmin := CreateTestUser(t, db, "other-admin", "other@example.com", "password123", true)
+
+	for i := 0; i < maxAPITokensPerUser; i++ {
+		token := &models.APIToken{
+			UserID:      admin.ID,
+			Name:        fmt.Sprintf("token-%d", i),
+			TokenHash:   fmt.Sprintf("hash-%d", i),
+			TokenPrefix: "pat_aaaaaaaa",
+			ExpiresAt:   time.Now().Add(24 * time.Hour),
+		}
+		if err := db.Create(token).Error; err != nil {
+			t.Fatalf("failed to create token %d: %v", i, err)
+		}
+	}
+
+	t.Run("creating one more than the cap is rejected", func(t *testing.T) {
+		body, _ := json.Marshal(map[string]interface{}{
+			"name":       "one too many",
+			"expires_at": time.Now().Add(30 * 24 * time.Hour).Format(time.RFC3339),
+		})
+		c, w := setupAPITokenTestContext(admin.ID, true)
+		c.Request = httptest.NewRequest("POST", "/api/admin/api-tokens", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		CreateAPIToken(db)(c)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400, body = %s", w.Code, w.Body.String())
+		}
+		var count int64
+		db.Model(&models.APIToken{}).Where("user_id = ?", admin.ID).Count(&count)
+		if count != maxAPITokensPerUser {
+			t.Errorf("token count = %d, want unchanged at %d", count, maxAPITokensPerUser)
+		}
+	})
+
+	t.Run("the cap is scoped per user, not global", func(t *testing.T) {
+		body, _ := json.Marshal(map[string]interface{}{
+			"name":       "other admin's first token",
+			"expires_at": time.Now().Add(30 * 24 * time.Hour).Format(time.RFC3339),
+		})
+		c, w := setupAPITokenTestContext(otherAdmin.ID, true)
+		c.Request = httptest.NewRequest("POST", "/api/admin/api-tokens", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		CreateAPIToken(db)(c)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201, body = %s", w.Code, w.Body.String())
 		}
 	})
 }
