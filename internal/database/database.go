@@ -9,6 +9,7 @@ import (
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -83,6 +84,10 @@ func Initialize() (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
+	if err := configureTracing(db); err != nil {
+		return nil, fmt.Errorf("failed to configure database tracing: %w", err)
+	}
+
 	// Get underlying SQL database for connection pool configuration
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -124,6 +129,14 @@ func Initialize() (*gorm.DB, error) {
 	}).Info("Database connection established with pool configuration")
 
 	return db, nil
+}
+
+// configureTracing registers the OTel GORM plugin so each query gets a child
+// span under the request's trace. Query parameter values are intentionally
+// excluded (WithoutQueryVariables) — this app stores volunteer/animal PII
+// and query arguments must never leave the process as span attributes.
+func configureTracing(db *gorm.DB) error {
+	return db.Use(otelgorm.NewPlugin(otelgorm.WithoutQueryVariables()))
 }
 
 // getEnvAsInt retrieves an environment variable as an integer with a default value

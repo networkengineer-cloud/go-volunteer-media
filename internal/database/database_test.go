@@ -187,3 +187,16 @@ func TestDBLogLevel_Parsing(t *testing.T) {
 	}
 }
 
+func TestConfigureTracing_RegistersPluginWithoutError(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		t.Fatalf("failed to open in-memory sqlite db: %v", err)
+	}
+
+	if err := configureTracing(db); err != nil {
+		t.Fatalf("configureTracing returned error: %v", err)
+	}
+}
+
