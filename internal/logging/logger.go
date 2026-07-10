@@ -10,6 +10,10 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Level represents log level
@@ -52,6 +56,7 @@ type Logger struct {
 	output     io.Writer
 	jsonFormat bool
 	fields     map[string]interface{}
+	ctx        context.Context
 }
 
 // LogEntry represents a structured log entry
@@ -62,6 +67,8 @@ type LogEntry struct {
 	Fields    map[string]interface{} `json:"fields,omitempty"`
 	RequestID string                 `json:"request_id,omitempty"`
 	UserID    string                 `json:"user_id,omitempty"`
+	TraceID   string                 `json:"trace_id,omitempty"`
+	SpanID    string                 `json:"span_id,omitempty"`
 	File      string                 `json:"file,omitempty"`
 	Line      int                    `json:"line,omitempty"`
 	Function  string                 `json:"function,omitempty"`
@@ -92,6 +99,7 @@ func (l *Logger) WithFields(fields map[string]interface{}) *Logger {
 		output:     l.output,
 		jsonFormat: l.jsonFormat,
 		fields:     make(map[string]interface{}),
+		ctx:        l.ctx,
 	}
 	// Copy existing fields
 	for k, v := range l.fields {
@@ -123,7 +131,15 @@ func (l *Logger) WithContext(ctx context.Context) *Logger {
 		fields["user_id"] = fmt.Sprintf("%d", userID)
 	}
 
-	return l.WithFields(fields)
+	// Extract OTel trace/span IDs, if there's an active sampled span
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		fields["trace_id"] = sc.TraceID().String()
+		fields["span_id"] = sc.SpanID().String()
+	}
+
+	newLogger := l.WithFields(fields)
+	newLogger.ctx = ctx
+	return newLogger
 }
 
 // log is the internal logging method
@@ -162,6 +178,12 @@ func (l *Logger) log(level Level, msg string, err error) {
 	if userID, ok := l.fields["user_id"].(string); ok {
 		entry.UserID = userID
 	}
+	if traceID, ok := l.fields["trace_id"].(string); ok {
+		entry.TraceID = traceID
+	}
+	if spanID, ok := l.fields["span_id"].(string); ok {
+		entry.SpanID = spanID
+	}
 
 	var output string
 	if l.jsonFormat {
@@ -182,6 +204,8 @@ func (l *Logger) log(level Level, msg string, err error) {
 			output += fmt.Sprintf(" error=%s", entry.Error)
 		}
 	}
+
+	emitOtelRecord(l.ctx, level, msg, err, l.fields)
 
 	fmt.Fprintln(l.output, output)
 
@@ -339,4 +363,50 @@ type stdLogAdapter struct {
 func (a *stdLogAdapter) Write(p []byte) (n int, err error) {
 	a.logger.Info(strings.TrimSpace(string(p)))
 	return len(p), nil
+}
+
+// otelLoggerName identifies this logger to the OTel log pipeline.
+const otelLoggerName = "go-volunteer-media"
+
+// emitOtelRecord emits the log line through the global OTel log bridge.
+// global.Logger returns a no-op implementation when no LoggerProvider has
+// been configured (telemetry.Init was never called, or the endpoint was
+// unset), so this is always safe to call — it does nothing in that case.
+func emitOtelRecord(ctx context.Context, level Level, msg string, err error, fields map[string]interface{}) {
+	if ctx == nil {
+		return
+	}
+
+	var record otellog.Record
+	record.SetTimestamp(time.Now().UTC())
+	record.SetSeverity(otelSeverity(level))
+	record.SetBody(otellog.StringValue(msg))
+	if err != nil {
+		record.SetErr(err)
+	}
+
+	attrs := make([]otellog.KeyValue, 0, len(fields))
+	for k, v := range fields {
+		attrs = append(attrs, otellog.String(k, fmt.Sprintf("%v", v)))
+	}
+	record.AddAttributes(attrs...)
+
+	global.Logger(otelLoggerName).Emit(ctx, record)
+}
+
+func otelSeverity(level Level) otellog.Severity {
+	switch level {
+	case DEBUG:
+		return otellog.SeverityDebug1
+	case INFO:
+		return otellog.SeverityInfo1
+	case WARN:
+		return otellog.SeverityWarn1
+	case ERROR:
+		return otellog.SeverityError1
+	case FATAL:
+		return otellog.SeverityFatal1
+	default:
+		return otellog.SeverityUndefined
+	}
 }
