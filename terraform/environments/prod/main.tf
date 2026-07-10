@@ -62,25 +62,6 @@ resource "azurerm_log_analytics_workspace" "main" {
   tags = azurerm_resource_group.main.tags
 }
 
-# Application Insights for monitoring
-resource "azurerm_application_insights" "main" {
-  name                = "appi-${var.project_name}-${var.environment}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  workspace_id        = azurerm_log_analytics_workspace.main.id
-  application_type    = "web"
-  sampling_percentage = 100 # Full sampling for production monitoring
-
-  tags = azurerm_resource_group.main.tags
-
-  # Prevent reading billing features API that may not be immediately available
-  lifecycle {
-    ignore_changes = [
-      sampling_percentage, # Prevent drift from Azure portal changes
-    ]
-  }
-}
-
 # Key Vault for storing secrets (using RBAC model)
 resource "azurerm_key_vault" "main" {
   name                = "kv-vm-${var.environment}-${random_string.kv_suffix.result}"
@@ -171,8 +152,8 @@ resource "azurerm_postgresql_flexible_server" "main" {
   # Lifecycle protection
   lifecycle {
     prevent_destroy = true # Prevent accidental deletion
-    ignore_changes  = [
-      zone  # Azure may assign zone automatically, ignore changes to prevent errors
+    ignore_changes = [
+      zone # Azure may assign zone automatically, ignore changes to prevent errors
     ]
   }
 
@@ -389,10 +370,20 @@ resource "azurerm_container_app" "main" {
         value = azurerm_storage_container.uploads.name
       }
 
-      # Monitoring
+      # Monitoring — OpenTelemetry exported to Axiom
       env {
-        name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
-        value = azurerm_application_insights.main.connection_string
+        name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+        value = "https://api.axiom.co"
+      }
+
+      env {
+        name        = "OTEL_EXPORTER_OTLP_HEADERS"
+        secret_name = "otel-exporter-otlp-headers"
+      }
+
+      env {
+        name  = "OTEL_SERVICE_NAME"
+        value = "go-volunteer-media"
       }
     }
   }
@@ -430,6 +421,11 @@ resource "azurerm_container_app" "main" {
   secret {
     name  = "storage-account-key"
     value = azurerm_storage_account.main.primary_access_key
+  }
+
+  secret {
+    name  = "otel-exporter-otlp-headers"
+    value = "Authorization=Bearer ${var.axiom_api_token},X-Axiom-Dataset=${var.axiom_dataset}"
   }
 
   # Note: No registry configuration needed - GHCR image is public

@@ -86,23 +86,6 @@ output "log_analytics_workspace_id" {
   value       = azurerm_log_analytics_workspace.main.id
 }
 
-output "application_insights_connection_string" {
-  description = "Connection string for Application Insights"
-  value       = azurerm_application_insights.main.connection_string
-  sensitive   = true
-}
-
-output "application_insights_instrumentation_key" {
-  description = "Instrumentation key for Application Insights"
-  value       = azurerm_application_insights.main.instrumentation_key
-  sensitive   = true
-}
-
-output "application_insights_app_id" {
-  description = "App ID for Application Insights"
-  value       = azurerm_application_insights.main.app_id
-}
-
 # Database connection information (for manual verification)
 output "database_connection_info" {
   description = "Database connection information"
@@ -147,19 +130,19 @@ output "custom_domain_setup" {
   description = "Custom domain setup status and guidance"
   sensitive   = true
   value = var.custom_domain != "" ? {
-    step_1_dns = "✅ CNAME and TXT records created in Cloudflare"
+    step_1_dns   = "✅ CNAME and TXT records created in Cloudflare"
     cname_record = "${var.custom_domain} -> ${azurerm_container_app.main.ingress[0].fqdn}"
-    txt_record = "asuid.${var.custom_domain} -> ${azurerm_container_app.main.custom_domain_verification_id}"
+    txt_record   = "asuid.${var.custom_domain} -> ${azurerm_container_app.main.custom_domain_verification_id}"
 
     step_2_verify_dns = "Wait for DNS propagation: dig ${var.custom_domain}"
 
     step_3_managed_cert = "⚠️ Azure Managed Certificate requires CLI (Terraform provider limitation):"
-    cli_command = "az containerapp hostname bind --hostname ${var.custom_domain} --resource-group ${azurerm_resource_group.main.name} --name ${azurerm_container_app.main.name} --environment ${azurerm_container_app_environment.main.name} --validation-method CNAME"
+    cli_command         = "az containerapp hostname bind --hostname ${var.custom_domain} --resource-group ${azurerm_resource_group.main.name} --name ${azurerm_container_app.main.name} --environment ${azurerm_container_app_environment.main.name} --validation-method CNAME"
 
     step_4_refresh = "After CLI binding completes, run: terraform refresh"
 
     note = "Alternative: Provide 'custom_domain_certificate_id' to bind an uploaded certificate via Terraform."
-  } : {
+    } : {
     message = "No custom domain configured. Set 'custom_domain' variable to enable."
   }
 }
