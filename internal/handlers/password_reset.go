@@ -99,7 +99,7 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 		}
 
 		// Send password reset email (use unhashed token in email)
-		if err := emailService.SendPasswordResetEmail(user.Email, user.Username, token); err != nil {
+		if err := emailService.SendPasswordResetEmail(ctx, user.Email, user.Username, token); err != nil {
 			logger := middleware.GetLogger(c)
 			logger.Error("Failed to send password reset email", err)
 			// Still return success to prevent email enumeration

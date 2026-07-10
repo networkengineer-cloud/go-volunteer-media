@@ -9,11 +9,18 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
 	defaultResendAPIURL = "https://api.resend.com/emails"
 )
+
+var tracer = otel.Tracer("internal/email/resend")
 
 // ResendProvider implements the Provider interface using Resend
 type ResendProvider struct {
@@ -74,6 +81,11 @@ func (p *ResendProvider) SendEmail(ctx context.Context, to, subject, htmlBody st
 		return fmt.Errorf("Resend provider is not configured")
 	}
 
+	ctx, span := tracer.Start(ctx, "email.resend.send", trace.WithAttributes(
+		attribute.Int("email.body_size_bytes", len(htmlBody)),
+	))
+	defer span.End()
+
 	// Construct from address
 	from := p.FromEmail
 	if p.FromName != "" {
@@ -105,6 +117,8 @@ func (p *ResendProvider) SendEmail(ctx context.Context, to, subject, htmlBody st
 	// Send request
 	resp, err := p.client.Do(req)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "request failed")
 		return fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -112,6 +126,8 @@ func (p *ResendProvider) SendEmail(ctx context.Context, to, subject, htmlBody st
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to read response")
 		return fmt.Errorf("failed to read response: %w", err)
 	}
 
@@ -119,12 +135,21 @@ func (p *ResendProvider) SendEmail(ctx context.Context, to, subject, htmlBody st
 	if resp.StatusCode != http.StatusOK {
 		var resendResp ResendEmailResponse
 		if err := json.Unmarshal(body, &resendResp); err != nil {
-			return fmt.Errorf("Resend API error: status %d, body: %s", resp.StatusCode, string(body))
+			apiErr := fmt.Errorf("Resend API error: status %d, body: %s", resp.StatusCode, string(body))
+			span.RecordError(apiErr)
+			span.SetStatus(codes.Error, "non-200 response")
+			return apiErr
 		}
 		if resendResp.Error.Message != "" {
-			return fmt.Errorf("Resend API error: %s", resendResp.Error.Message)
+			apiErr := fmt.Errorf("Resend API error: %s", resendResp.Error.Message)
+			span.RecordError(apiErr)
+			span.SetStatus(codes.Error, "non-200 response")
+			return apiErr
 		}
-		return fmt.Errorf("Resend API error: status %d", resp.StatusCode)
+		apiErr := fmt.Errorf("Resend API error: status %d", resp.StatusCode)
+		span.RecordError(apiErr)
+		span.SetStatus(codes.Error, "non-200 response")
+		return apiErr
 	}
 
 	return nil

@@ -332,7 +332,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			}
 
 			// Send setup email (use unhashed token)
-			if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
+			if err := emailService.SendPasswordSetupEmail(ctx, user.Email, user.Username, setupToken); err != nil {
 				// Log error but don't fail the request - user is created
 				logger := middleware.GetLogger(c)
 				logger.Error("Failed to send password setup email", err)
@@ -539,7 +539,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			}
 
 			// Send setup email
-			if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
+			if err := emailService.SendPasswordSetupEmail(ctx, user.Email, user.Username, setupToken); err != nil {
 				logger.Error("Failed to send password setup email", err)
 
 				c.JSON(http.StatusCreated, gin.H{
@@ -1004,7 +1004,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 		}
 
 		// Send email before persisting token so a failed send doesn't invalidate the old token
-		if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
+		if err := emailService.SendPasswordSetupEmail(ctx, user.Email, user.Username, setupToken); err != nil {
 			logger.Error("Failed to send password setup email", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send invitation email. Please try again."})
 			return

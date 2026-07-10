@@ -129,7 +129,7 @@ func sendAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService *emai
 	logger.WithField("user_count", len(users)).Info("Sending announcement emails to users")
 	successCount := 0
 	for _, user := range users {
-		if err := emailService.SendAnnouncementEmail(user.Email, title, content); err != nil {
+		if err := emailService.SendAnnouncementEmail(ctx, user.Email, title, content); err != nil {
 			// Don't log email addresses to prevent PII leakage - just log the error
 			logger.Error("Failed to send announcement email to user", err)
 		} else {
@@ -288,7 +288,7 @@ func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService 
 
 	successCount := 0
 	for _, user := range users {
-		if err := emailService.SendAnnouncementEmail(user.Email, title, content); err != nil {
+		if err := emailService.SendAnnouncementEmail(ctx, user.Email, title, content); err != nil {
 			// Don't log email addresses to prevent PII leakage - just log the error
 			logger.Error("Failed to send announcement email to user", err)
 		} else {
