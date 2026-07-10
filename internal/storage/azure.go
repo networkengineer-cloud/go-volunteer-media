@@ -12,6 +12,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // AzureBlobProvider implements the Provider interface using Azure Blob Storage
@@ -20,6 +24,8 @@ type AzureBlobProvider struct {
 	containerName string
 	baseURL       string
 }
+
+var tracer = otel.Tracer("internal/storage/azure")
 
 // NewAzureBlobProvider creates a new Azure Blob Storage provider
 func NewAzureBlobProvider(accountName, accountKey, containerName, endpoint string, useManagedID bool) (*AzureBlobProvider, error) {
@@ -98,9 +104,15 @@ func (a *AzureBlobProvider) ensureContainer(ctx context.Context) error {
 
 // UploadImage uploads an image to Azure Blob Storage
 func (a *AzureBlobProvider) UploadImage(ctx context.Context, data []byte, mimeType string, metadata map[string]string) (url, identifier, extension string, err error) {
+	ctx, span := tracer.Start(ctx, "storage.azure.upload_image", trace.WithAttributes(
+		attribute.String("blob.mime_type", mimeType),
+		attribute.Int("blob.size_bytes", len(data)),
+	))
+	defer span.End()
+
 	// Generate unique identifier
 	imageUUID := uuid.New().String()
-	
+
 	// Determine file extension from MIME type
 	ext := ".jpg"
 	switch mimeType {
@@ -115,20 +127,20 @@ func (a *AzureBlobProvider) UploadImage(ctx context.Context, data []byte, mimeTy
 	case "video/quicktime":
 		ext = ".mov"
 	}
-	
+
 	// Construct blob path: images/animals/{uuid}{ext}
 	blobPath := path.Join("images", "animals", imageUUID+ext)
-	
+
 	// Upload to Azure Blob Storage
 	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
-	
+
 	// Convert metadata from map[string]string to map[string]*string
 	azureMetadata := make(map[string]*string)
 	for k, v := range metadata {
 		value := v
 		azureMetadata[k] = &value
 	}
-	
+
 	// Prepare options with content type and metadata
 	uploadOptions := &azblob.UploadBufferOptions{
 		HTTPHeaders: &blob.HTTPHeaders{
@@ -136,25 +148,33 @@ func (a *AzureBlobProvider) UploadImage(ctx context.Context, data []byte, mimeTy
 		},
 		Metadata: azureMetadata,
 	}
-	
+
 	// Upload the data
 	_, err = blockBlobClient.UploadBuffer(ctx, data, uploadOptions)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "upload failed")
 		return "", "", "", fmt.Errorf("failed to upload image to Azure: %w", err)
 	}
-	
+
 	// Generate API-proxied URL (not direct blob URL)
 	// This avoids 409 errors when public access is disabled on the storage account
 	url = fmt.Sprintf("/api/images/%s", imageUUID)
-	
+
 	return url, imageUUID, ext, nil
 }
 
 // UploadDocument uploads a document to Azure Blob Storage
 func (a *AzureBlobProvider) UploadDocument(ctx context.Context, data []byte, mimeType, filename string) (url, identifier, extension string, err error) {
+	ctx, span := tracer.Start(ctx, "storage.azure.upload_document", trace.WithAttributes(
+		attribute.String("blob.mime_type", mimeType),
+		attribute.Int("blob.size_bytes", len(data)),
+	))
+	defer span.End()
+
 	// Generate unique identifier
 	docUUID := uuid.New().String()
-	
+
 	// Determine file extension from filename
 	ext := path.Ext(filename)
 	if ext == "" {
@@ -168,16 +188,16 @@ func (a *AzureBlobProvider) UploadDocument(ctx context.Context, data []byte, mim
 			ext = ".bin"
 		}
 	}
-	
+
 	// Construct blob path: documents/protocols/{uuid}{ext}
 	blobPath := path.Join("documents", "protocols", docUUID+ext)
-	
+
 	// Upload to Azure Blob Storage
 	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
-	
+
 	// Prepare filename metadata
 	filenameValue := filename
-	
+
 	// Prepare options with content type
 	uploadOptions := &azblob.UploadBufferOptions{
 		HTTPHeaders: &blob.HTTPHeaders{
@@ -188,107 +208,133 @@ func (a *AzureBlobProvider) UploadDocument(ctx context.Context, data []byte, mim
 			"filename": &filenameValue,
 		},
 	}
-	
+
 	// Upload the data
 	_, err = blockBlobClient.UploadBuffer(ctx, data, uploadOptions)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "upload failed")
 		return "", "", "", fmt.Errorf("failed to upload document to Azure: %w", err)
 	}
-	
+
 	// Generate API-proxied URL (not direct blob URL)
 	// This avoids 409 errors when public access is disabled on the storage account
 	url = fmt.Sprintf("/api/documents/%s", docUUID)
-	
+
 	return url, docUUID, ext, nil
 }
 
 // GetImage retrieves an image from Azure Blob Storage
 // The identifier should include the file extension (e.g., "uuid.jpg")
 func (a *AzureBlobProvider) GetImage(ctx context.Context, identifier string) (data []byte, mimeType string, err error) {
+	ctx, span := tracer.Start(ctx, "storage.azure.get_image")
+	defer span.End()
+
 	// Construct blob path using identifier with extension
 	blobPath := path.Join("images", "animals", identifier)
 	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
-	
+
 	// Download blob
 	downloadResponse, err := blockBlobClient.DownloadStream(ctx, nil)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "download failed")
 		return nil, "", ErrNotFound
 	}
 	defer downloadResponse.Body.Close()
-	
+
 	// Read all data
 	data, err = io.ReadAll(downloadResponse.Body)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "read failed")
 		return nil, "", fmt.Errorf("failed to read blob data: %w", err)
 	}
-	
+
 	// Get content type
 	contentType := ""
 	if downloadResponse.ContentType != nil {
 		contentType = *downloadResponse.ContentType
 	}
-	
+
 	return data, contentType, nil
 }
 
 // GetDocument retrieves a document from Azure Blob Storage
 // The identifier should include the file extension (e.g., "uuid.pdf")
 func (a *AzureBlobProvider) GetDocument(ctx context.Context, identifier string) (data []byte, mimeType string, err error) {
+	ctx, span := tracer.Start(ctx, "storage.azure.get_document")
+	defer span.End()
+
 	// Construct blob path using identifier with extension
 	blobPath := path.Join("documents", "protocols", identifier)
 	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
-	
+
 	// Download blob
 	downloadResponse, err := blockBlobClient.DownloadStream(ctx, nil)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "download failed")
 		return nil, "", ErrNotFound
 	}
 	defer downloadResponse.Body.Close()
-	
+
 	// Read all data
 	data, err = io.ReadAll(downloadResponse.Body)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "read failed")
 		return nil, "", fmt.Errorf("failed to read blob data: %w", err)
 	}
-	
+
 	// Get content type
 	contentType := ""
 	if downloadResponse.ContentType != nil {
 		contentType = *downloadResponse.ContentType
 	}
-	
+
 	return data, contentType, nil
 }
 
 // DeleteImage deletes an image from Azure Blob Storage
 // The identifier should include the file extension (e.g., "uuid.jpg")
 func (a *AzureBlobProvider) DeleteImage(ctx context.Context, identifier string) error {
+	ctx, span := tracer.Start(ctx, "storage.azure.delete_image")
+	defer span.End()
+
 	// Construct blob path using identifier with extension
 	blobPath := path.Join("images", "animals", identifier)
 	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
-	
+
 	// Try to delete
 	_, err := blockBlobClient.Delete(ctx, nil)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "delete failed")
 		return ErrNotFound
 	}
-	
+
 	return nil
 }
 
 // DeleteDocument deletes a document from Azure Blob Storage
 // The identifier should include the file extension (e.g., "uuid.pdf")
 func (a *AzureBlobProvider) DeleteDocument(ctx context.Context, identifier string) error {
+	ctx, span := tracer.Start(ctx, "storage.azure.delete_document")
+	defer span.End()
+
 	// Construct blob path using identifier with extension
 	blobPath := path.Join("documents", "protocols", identifier)
 	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
-	
+
 	// Try to delete
 	_, err := blockBlobClient.Delete(ctx, nil)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "delete failed")
 		return ErrNotFound
 	}
-	
+
 	return nil
 }
 
