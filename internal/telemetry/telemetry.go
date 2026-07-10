@@ -45,20 +45,35 @@ func Init(ctx context.Context, serviceName, environment string) error {
 		),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to build otel resource: %w", err)
+		logging.WithField("error", err.Error()).Warn("failed to build otel resource, falling back to no-op telemetry providers")
+		return nil
 	}
 
 	if err := initTraces(ctx, res); err != nil {
-		return fmt.Errorf("failed to init tracing: %w", err)
+		logging.WithField("error", err.Error()).Warn("failed to init otel tracing, falling back to no-op telemetry providers")
+		return fallback(ctx)
 	}
 	if err := initMetrics(ctx, res); err != nil {
-		return fmt.Errorf("failed to init metrics: %w", err)
+		logging.WithField("error", err.Error()).Warn("failed to init otel metrics, falling back to no-op telemetry providers")
+		return fallback(ctx)
 	}
 	if err := initLogs(ctx, res); err != nil {
-		return fmt.Errorf("failed to init logs: %w", err)
+		logging.WithField("error", err.Error()).Warn("failed to init otel logs, falling back to no-op telemetry providers")
+		return fallback(ctx)
 	}
 
 	logging.WithField("endpoint", endpoint).Info("OpenTelemetry initialized")
+	return nil
+}
+
+// fallback tears down any providers Init already configured before a later
+// step failed, so a partial failure never leaves an inconsistent mix of real
+// and no-op global providers installed. It always returns nil: per Init's
+// contract, telemetry setup failure is never fatal to application startup.
+func fallback(ctx context.Context) error {
+	if err := Shutdown(ctx); err != nil {
+		logging.WithField("error", err.Error()).Warn("failed to clean up partially-initialized telemetry providers")
+	}
 	return nil
 }
 
