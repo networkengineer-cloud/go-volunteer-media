@@ -210,7 +210,7 @@ func sendUpdateToGroupMe(ctx context.Context, db *gorm.DB, groupMeService *group
 	}
 
 	// Send the announcement
-	if err := groupMeService.SendAnnouncement(group.GroupMeBotID, title, content); err != nil {
+	if err := groupMeService.SendAnnouncement(ctx, group.GroupMeBotID, title, content); err != nil {
 		logger.WithFields(map[string]interface{}{
 			"group_id":   groupID,
 			"group_name": group.Name,

@@ -157,7 +157,7 @@ func sendAnnouncementToGroupMe(ctx context.Context, db *gorm.DB, groupMeService 
 	logger.WithField("group_count", len(groups)).Info("Sending announcement to GroupMe groups")
 	successCount := 0
 	for _, group := range groups {
-		if err := groupMeService.SendAnnouncement(group.GroupMeBotID, title, content); err != nil {
+		if err := groupMeService.SendAnnouncement(ctx, group.GroupMeBotID, title, content); err != nil {
 			logger.WithFields(map[string]interface{}{
 				"group_id":   group.ID,
 				"group_name": group.Name,
@@ -254,7 +254,7 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 		if req.SendGroupMe && groupMeService != nil && group.GroupMeEnabled && group.GroupMeBotID != "" {
 			go func() {
 				bgCtx := context.Background()
-				if err := groupMeService.SendAnnouncement(group.GroupMeBotID, announcement.Title, announcement.Content); err != nil {
+				if err := groupMeService.SendAnnouncement(bgCtx, group.GroupMeBotID, announcement.Title, announcement.Content); err != nil {
 					logging.WithContext(bgCtx).WithFields(map[string]interface{}{
 						"group_id":   group.ID,
 						"group_name": group.Name,
