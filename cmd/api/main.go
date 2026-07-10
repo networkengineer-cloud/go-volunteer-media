@@ -28,12 +28,29 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 func main() {
 	// Initialize logging from environment variables
 	logging.InitFromEnv()
 	logger := logging.GetDefaultLogger()
+
+	// Initialize OpenTelemetry (traces, metrics, logs). No-op if
+	// OTEL_EXPORTER_OTLP_ENDPOINT is unset — never blocks startup.
+	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := telemetry.Init(initCtx, "go-volunteer-media", os.Getenv("ENV")); err != nil {
+		logger.Error("Failed to initialize telemetry", err)
+	}
+	initCancel()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := telemetry.Shutdown(shutdownCtx); err != nil {
+			logger.Error("Error shutting down telemetry", err)
+		}
+	}()
 
 	// Register custom validators and use JSON tag names in validation error messages
 	v, ok := binding.Validator.Engine().(*validator.Validate)
@@ -124,6 +141,14 @@ func main() {
 	// Disable Gin's default logger since we're using our own
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
+
+	// otelgin must be registered before gin.Recovery() so that when Recovery
+	// catches a panic and writes a 500 response, otelgin's post-c.Next() code
+	// (which reads c.Writer.Status() to mark the span as errored) still runs
+	// normally instead of being skipped by an unrecovered panic unwinding
+	// through its frame. See docs/superpowers/specs/2026-07-10-otel-axiom-observability-design.md
+	// for the full reasoning.
+	router.Use(otelgin.Middleware("go-volunteer-media"))
 
 	// Add recovery middleware
 	router.Use(gin.Recovery())
