@@ -192,6 +192,12 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 // CreateAnimal creates a new animal in a group
 func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// rawDB is captured before the shadow below so the detached
+		// goroutine spawned by sendQuarantineNotificationEmail gets the
+		// unscoped db, not one bound to this request's context (which is
+		// canceled the instant this handler returns). See the same pattern
+		// documented in animal_admin.go's UpdateAnimalAdmin.
+		rawDB := db
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -296,7 +302,7 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// Log error but don't fail the create
 				c.Error(err)
 			}
-			sendQuarantineNotificationEmail(db, emailService, &animal)
+			sendQuarantineNotificationEmail(rawDB, emailService, &animal)
 		}
 
 		// If an image_url was provided, link any unlinked images with this URL to this animal
@@ -324,6 +330,12 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 // UpdateAnimal updates an existing animal
 func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// rawDB is captured before the shadow below so the detached
+		// goroutine spawned by sendQuarantineNotificationEmail gets the
+		// unscoped db, not one bound to this request's context (which is
+		// canceled the instant this handler returns). See the same pattern
+		// documented in animal_admin.go's UpdateAnimalAdmin.
+		rawDB := db
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -526,7 +538,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// Log error but don't fail the update
 				c.Error(err)
 			}
-			sendQuarantineNotificationEmail(db, emailService, &animal)
+			sendQuarantineNotificationEmail(rawDB, emailService, &animal)
 		}
 		if leftQuarantine {
 			if err := db.Model(&models.AnimalBQIncident{}).

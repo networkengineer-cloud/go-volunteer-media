@@ -3,6 +3,7 @@ package email
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -133,35 +134,52 @@ func (p *SMTPProvider) SendEmail(ctx context.Context, to, subject, htmlBody stri
 	}
 	defer client.Close()
 
-	if err = client.Auth(auth); err != nil {
-		return telemetry.Fail(span, fmt.Errorf("failed to authenticate: %w", err), "authentication failed")
+	if err := runSMTPCommands(client, auth, p.FromEmail, to, msg); err != nil {
+		var stepErr *smtpStepError
+		if errors.As(err, &stepErr) {
+			return telemetry.Fail(span, err, stepErr.step+" failed")
+		}
+		return telemetry.Fail(span, err, "smtp command failed")
 	}
+	return nil
+}
 
-	if err = client.Mail(p.FromEmail); err != nil {
-		return telemetry.Fail(span, fmt.Errorf("failed to set sender: %w", err), "set sender failed")
+// smtpStepError identifies which step of the SMTP client command sequence
+// (see runSMTPCommands) failed, so callers can attribute the failure to a
+// specific step without duplicating the sequence per caller.
+type smtpStepError struct {
+	step string
+	err  error
+}
+
+func (e *smtpStepError) Error() string { return fmt.Sprintf("failed to %s: %v", e.step, e.err) }
+func (e *smtpStepError) Unwrap() error { return e.err }
+
+// runSMTPCommands walks the SMTP client conversation (Auth, Mail, Rcpt,
+// Data, Write, Close, Quit) shared by the direct-TLS (SendEmail) and
+// STARTTLS (sendWithSTARTTLS) send paths.
+func runSMTPCommands(client *smtp.Client, auth smtp.Auth, from, to string, msg []byte) error {
+	if err := client.Auth(auth); err != nil {
+		return &smtpStepError{"authenticate", err}
 	}
-
-	if err = client.Rcpt(to); err != nil {
-		return telemetry.Fail(span, fmt.Errorf("failed to set recipient: %w", err), "set recipient failed")
+	if err := client.Mail(from); err != nil {
+		return &smtpStepError{"set sender", err}
 	}
-
+	if err := client.Rcpt(to); err != nil {
+		return &smtpStepError{"set recipient", err}
+	}
 	w, err := client.Data()
 	if err != nil {
-		return telemetry.Fail(span, fmt.Errorf("failed to get data writer: %w", err), "data writer failed")
+		return &smtpStepError{"get data writer", err}
 	}
-
-	_, err = w.Write(msg)
-	if err != nil {
-		return telemetry.Fail(span, fmt.Errorf("failed to write message: %w", err), "write failed")
+	if _, err := w.Write(msg); err != nil {
+		return &smtpStepError{"write message", err}
 	}
-
-	err = w.Close()
-	if err != nil {
-		return telemetry.Fail(span, fmt.Errorf("failed to close writer: %w", err), "close writer failed")
+	if err := w.Close(); err != nil {
+		return &smtpStepError{"close writer", err}
 	}
-
 	if err := client.Quit(); err != nil {
-		return telemetry.Fail(span, err, "quit failed")
+		return &smtpStepError{"quit", err}
 	}
 	return nil
 }
@@ -196,24 +214,5 @@ func (p *SMTPProvider) sendWithSTARTTLS(ctx context.Context, addr string, auth s
 		}
 	}
 
-	if err := client.Auth(auth); err != nil {
-		return err
-	}
-	if err := client.Mail(from); err != nil {
-		return err
-	}
-	if err := client.Rcpt(to); err != nil {
-		return err
-	}
-	w, err := client.Data()
-	if err != nil {
-		return err
-	}
-	if _, err := w.Write(msg); err != nil {
-		return err
-	}
-	if err := w.Close(); err != nil {
-		return err
-	}
-	return client.Quit()
+	return runSMTPCommands(client, auth, from, to, msg)
 }

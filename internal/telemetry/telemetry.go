@@ -35,11 +35,13 @@ import (
 var mu sync.Mutex
 
 // shutdownFuncs holds cleanup callbacks for whichever providers Init configured.
-// Empty when Init was a no-op (OTEL_EXPORTER_OTLP_ENDPOINT unset).
+// Empty when Init was a no-op (OTEL_EXPORTER_OTLP_ENDPOINT unset) or after a
+// failed Init fell back to no-op providers, so its length doubles as whether
+// telemetry is currently exporting to a real backend — Init runs once,
+// synchronously, at startup before any concurrent reader could observe it
+// mid-loop, so there's no window where a partially-populated shutdownFuncs
+// would misreport this.
 var shutdownFuncs []func(context.Context) error
-
-// enabled reports whether Init last configured real (non-no-op) providers.
-var enabled bool
 
 // Enabled reports whether telemetry is currently exporting to a real
 // backend. False before Init runs, when OTEL_EXPORTER_OTLP_ENDPOINT is
@@ -49,15 +51,7 @@ var enabled bool
 func Enabled() bool {
 	mu.Lock()
 	defer mu.Unlock()
-	return enabled
-}
-
-// initStep names one provider's setup for Init's loop, so the near-identical
-// "run it, log a warning and fall back on error" handling lives in one place
-// instead of being copy-pasted per provider.
-type initStep struct {
-	name string
-	fn   func(context.Context, *resource.Resource) error
+	return len(shutdownFuncs) != 0
 }
 
 // Init configures global OpenTelemetry trace, metric, and log providers from
@@ -95,22 +89,22 @@ func Init(ctx context.Context, serviceName, environment string) {
 		return
 	}
 
-	steps := []initStep{
-		{"tracing", initTraces},
-		{"metrics", initMetrics},
-		{"logs", initLogs},
+	if err := initTraces(ctx, res); err != nil {
+		logging.WithField("error", err.Error()).Warn("failed to init otel tracing, falling back to no-op telemetry providers")
+		fallback(ctx)
+		return
 	}
-	for _, step := range steps {
-		if err := step.fn(ctx, res); err != nil {
-			logging.WithField("error", err.Error()).Warn(fmt.Sprintf("failed to init otel %s, falling back to no-op telemetry providers", step.name))
-			fallback(ctx)
-			return
-		}
+	if err := initMetrics(ctx, res); err != nil {
+		logging.WithField("error", err.Error()).Warn("failed to init otel metrics, falling back to no-op telemetry providers")
+		fallback(ctx)
+		return
+	}
+	if err := initLogs(ctx, res); err != nil {
+		logging.WithField("error", err.Error()).Warn("failed to init otel logs, falling back to no-op telemetry providers")
+		fallback(ctx)
+		return
 	}
 
-	mu.Lock()
-	enabled = true
-	mu.Unlock()
 	logging.WithField("endpoint", endpoint).Info("OpenTelemetry initialized")
 }
 
@@ -206,7 +200,6 @@ func Shutdown(ctx context.Context) error {
 	mu.Lock()
 	fns := shutdownFuncs
 	shutdownFuncs = nil
-	enabled = false
 	mu.Unlock()
 
 	var errs []error

@@ -156,7 +156,6 @@ func (l *Logger) log(level Level, msg string, err error) {
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Level:     level.String(),
 		Message:   msg,
-		Fields:    l.fields,
 	}
 
 	// Add caller information
@@ -175,7 +174,9 @@ func (l *Logger) log(level Level, msg string, err error) {
 		entry.Error = err.Error()
 	}
 
-	// Extract request_id and user_id to top level for easier querying
+	// Extract request_id, user_id, trace_id, and span_id to top level for
+	// easier querying, then exclude them from Fields below so they aren't
+	// shipped to Axiom twice per log line.
 	if reqID, ok := l.fields["request_id"].(string); ok {
 		entry.RequestID = reqID
 	}
@@ -187,6 +188,19 @@ func (l *Logger) log(level Level, msg string, err error) {
 	}
 	if spanID, ok := l.fields["span_id"].(string); ok {
 		entry.SpanID = spanID
+	}
+	if len(l.fields) > 0 {
+		fields := make(map[string]interface{}, len(l.fields))
+		for k, v := range l.fields {
+			switch k {
+			case "request_id", "user_id", "trace_id", "span_id":
+				continue
+			}
+			fields[k] = v
+		}
+		if len(fields) > 0 {
+			entry.Fields = fields
+		}
 	}
 
 	var output string
@@ -217,7 +231,7 @@ func (l *Logger) log(level Level, msg string, err error) {
 	// flush on a fatal error (e.g. telemetry.Shutdown) runs via the
 	// lifecycle package's shutdown hooks instead of relying on `defer`.
 	if level == FATAL {
-		lifecycle.RunShutdownHooks()
+		lifecycle.RunShutdownHook()
 		os.Exit(1)
 	}
 }

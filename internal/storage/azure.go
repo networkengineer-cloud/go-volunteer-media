@@ -251,14 +251,15 @@ func (a *AzureBlobProvider) UploadDocument(ctx context.Context, data []byte, mim
 	return url, docUUID, ext, nil
 }
 
-// GetImage retrieves an image from Azure Blob Storage
-// The identifier should include the file extension (e.g., "uuid.jpg")
-func (a *AzureBlobProvider) GetImage(ctx context.Context, identifier string) (data []byte, mimeType string, err error) {
-	ctx, span := tracer.Start(ctx, "storage.azure.get_image")
+// getBlob downloads the blob at pathPrefix/identifier and returns its bytes
+// and content type, under a span named spanName. Shared by GetImage and
+// GetDocument, which differ only in span name and path prefix.
+func (a *AzureBlobProvider) getBlob(ctx context.Context, spanName, pathPrefix, identifier string) (data []byte, mimeType string, err error) {
+	ctx, span := tracer.Start(ctx, spanName)
 	defer span.End()
 
 	// Construct blob path using identifier with extension
-	blobPath := path.Join("images", "animals", identifier)
+	blobPath := path.Join(pathPrefix, identifier)
 	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
 
 	// Download blob
@@ -281,76 +282,49 @@ func (a *AzureBlobProvider) GetImage(ctx context.Context, identifier string) (da
 	}
 
 	return data, contentType, nil
+}
+
+// deleteBlob deletes the blob at pathPrefix/identifier under a span named
+// spanName. Shared by DeleteImage and DeleteDocument, which differ only in
+// span name and path prefix.
+func (a *AzureBlobProvider) deleteBlob(ctx context.Context, spanName, pathPrefix, identifier string) error {
+	ctx, span := tracer.Start(ctx, spanName)
+	defer span.End()
+
+	// Construct blob path using identifier with extension
+	blobPath := path.Join(pathPrefix, identifier)
+	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
+
+	// Try to delete
+	if _, err := blockBlobClient.Delete(ctx, nil); err != nil {
+		return failBlob(span, err, "delete failed")
+	}
+
+	return nil
+}
+
+// GetImage retrieves an image from Azure Blob Storage
+// The identifier should include the file extension (e.g., "uuid.jpg")
+func (a *AzureBlobProvider) GetImage(ctx context.Context, identifier string) (data []byte, mimeType string, err error) {
+	return a.getBlob(ctx, "storage.azure.get_image", path.Join("images", "animals"), identifier)
 }
 
 // GetDocument retrieves a document from Azure Blob Storage
 // The identifier should include the file extension (e.g., "uuid.pdf")
 func (a *AzureBlobProvider) GetDocument(ctx context.Context, identifier string) (data []byte, mimeType string, err error) {
-	ctx, span := tracer.Start(ctx, "storage.azure.get_document")
-	defer span.End()
-
-	// Construct blob path using identifier with extension
-	blobPath := path.Join("documents", "protocols", identifier)
-	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
-
-	// Download blob
-	downloadResponse, err := blockBlobClient.DownloadStream(ctx, nil)
-	if err != nil {
-		return nil, "", failBlob(span, err, "download failed")
-	}
-	defer downloadResponse.Body.Close()
-
-	// Read all data
-	data, err = io.ReadAll(downloadResponse.Body)
-	if err != nil {
-		return nil, "", telemetry.Fail(span, fmt.Errorf("failed to read blob data: %w", err), "read failed")
-	}
-
-	// Get content type
-	contentType := ""
-	if downloadResponse.ContentType != nil {
-		contentType = *downloadResponse.ContentType
-	}
-
-	return data, contentType, nil
+	return a.getBlob(ctx, "storage.azure.get_document", path.Join("documents", "protocols"), identifier)
 }
 
 // DeleteImage deletes an image from Azure Blob Storage
 // The identifier should include the file extension (e.g., "uuid.jpg")
 func (a *AzureBlobProvider) DeleteImage(ctx context.Context, identifier string) error {
-	ctx, span := tracer.Start(ctx, "storage.azure.delete_image")
-	defer span.End()
-
-	// Construct blob path using identifier with extension
-	blobPath := path.Join("images", "animals", identifier)
-	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
-
-	// Try to delete
-	_, err := blockBlobClient.Delete(ctx, nil)
-	if err != nil {
-		return failBlob(span, err, "delete failed")
-	}
-
-	return nil
+	return a.deleteBlob(ctx, "storage.azure.delete_image", path.Join("images", "animals"), identifier)
 }
 
 // DeleteDocument deletes a document from Azure Blob Storage
 // The identifier should include the file extension (e.g., "uuid.pdf")
 func (a *AzureBlobProvider) DeleteDocument(ctx context.Context, identifier string) error {
-	ctx, span := tracer.Start(ctx, "storage.azure.delete_document")
-	defer span.End()
-
-	// Construct blob path using identifier with extension
-	blobPath := path.Join("documents", "protocols", identifier)
-	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobPath)
-
-	// Try to delete
-	_, err := blockBlobClient.Delete(ctx, nil)
-	if err != nil {
-		return failBlob(span, err, "delete failed")
-	}
-
-	return nil
+	return a.deleteBlob(ctx, "storage.azure.delete_document", path.Join("documents", "protocols"), identifier)
 }
 
 // GetImageURL returns the API URL for an image (proxied through the backend).

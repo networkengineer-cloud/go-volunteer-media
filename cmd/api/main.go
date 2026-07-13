@@ -78,7 +78,7 @@ func main() {
 	// deferred shutdownTelemetry above never runs on a fatal startup/runtime
 	// error. Registering it as a shutdown hook ensures the crash itself (and
 	// any spans/metrics buffered up to that point) still gets flushed.
-	lifecycle.RegisterShutdownHook(shutdownTelemetry)
+	lifecycle.SetShutdownHook(shutdownTelemetry)
 
 	// Register custom validators and use JSON tag names in validation error messages
 	v, ok := binding.Validator.Engine().(*validator.Validate)
