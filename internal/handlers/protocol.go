@@ -94,7 +94,6 @@ func UploadProtocolImage(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 // GetProtocols returns all protocols for a group
 func GetProtocols(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -119,7 +118,7 @@ func GetProtocols(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var protocols []models.Protocol
-		if err := db.WithContext(ctx).
+		if err := db.
 			Where("group_id = ?", groupID).
 			Order("order_index ASC, created_at ASC").
 			Find(&protocols).Error; err != nil {

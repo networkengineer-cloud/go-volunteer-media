@@ -416,7 +416,6 @@ func GetCommentHistory(db *gorm.DB) gin.HandlerFunc {
 // GetGroupLatestComments returns the latest comments across all animals in a group
 func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -441,7 +440,7 @@ func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 
 		// Get animals in this group first
 		var animals []models.Animal
-		if err := db.WithContext(ctx).Where("group_id = ?", groupID).Find(&animals).Error; err != nil {
+		if err := db.Where("group_id = ?", groupID).Find(&animals).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
 			return
 		}
@@ -461,7 +460,7 @@ func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 
 		// Get latest comments from these animals
 		var comments []models.AnimalComment
-		err := db.WithContext(ctx).
+		err := db.
 			Where("animal_id IN ?", animalIDs).
 			Preload("User").
 			Preload("Tags").

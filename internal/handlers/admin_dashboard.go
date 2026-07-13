@@ -64,7 +64,6 @@ type SystemHealthInfo struct {
 // GetAdminDashboardStats returns comprehensive statistics for the admin dashboard
 func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 
 		var stats AdminDashboardStats
@@ -78,7 +77,7 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 		}
 		var counts CountsResult
 
-		err := db.WithContext(ctx).Raw(`
+		err := db.Raw(`
 			SELECT 
 				(SELECT COUNT(*) FROM users WHERE deleted_at IS NULL) as total_users,
 				(SELECT COUNT(*) FROM groups WHERE deleted_at IS NULL) as total_groups,
@@ -97,7 +96,7 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 
 		// Get recent users (last 5)
 		var recentUsers []models.User
-		if err := db.WithContext(ctx).
+		if err := db.
 			Order("created_at DESC").
 			Limit(5).
 			Find(&recentUsers).Error; err != nil {
@@ -129,7 +128,7 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 		thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
 		var groupActivities []GroupActivityQuery
 
-		err = db.WithContext(ctx).Raw(`
+		err = db.Raw(`
 			WITH group_stats AS (
 				SELECT 
 					g.id as group_id,
@@ -179,7 +178,7 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animalAlerts []AnimalAlertQuery
-		if err := db.WithContext(ctx).
+		if err := db.
 			Model(&models.AnimalComment{}).
 			Select(`
 				DISTINCT animals.id as animal_id,
@@ -235,7 +234,7 @@ func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 		}
 		var healthQuery HealthQuery
 
-		err = db.WithContext(ctx).Raw(`
+		err = db.Raw(`
 			SELECT 
 				(SELECT COUNT(DISTINCT user_id) FROM animal_comments 
 				 WHERE deleted_at IS NULL AND created_at > ?) as active_users_last_24h,

@@ -39,7 +39,6 @@ type ActivityFeedSummary struct {
 // GetGroupActivityFeed returns a unified activity feed combining updates/announcements and comments
 func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -96,7 +95,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		// Fetch announcements (Updates) if not filtering for comments only
 		if filterType == "" || filterType == "all" || filterType == "announcements" {
 			var updates []models.Update
-			query := db.WithContext(ctx).Where("group_id = ?", groupID)
+			query := db.Where("group_id = ?", groupID)
 
 			if dateFrom != nil {
 				query = query.Where("created_at >= ?", dateFrom)
@@ -132,7 +131,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		if filterType == "" || filterType == "all" || filterType == "comments" {
 			// First get all animals in this group
 			var animals []models.Animal
-			animalQuery := db.WithContext(ctx).Where("group_id = ?", groupID)
+			animalQuery := db.Where("group_id = ?", groupID)
 
 			// Filter by specific animal if requested
 			if filterAnimal != "" {
@@ -155,7 +154,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			if len(animalIDs) > 0 {
 				// Get comments from these animals
 				var comments []models.AnimalComment
-				commentQuery := db.WithContext(ctx).Where("animal_id IN ?", animalIDs)
+				commentQuery := db.Where("animal_id IN ?", animalIDs)
 
 				// Apply date filters
 				if dateFrom != nil {

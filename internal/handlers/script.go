@@ -20,7 +20,6 @@ import (
 // GetScripts returns all scripts for a group (group members only, group must have has_protocols enabled)
 func GetScripts(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -43,7 +42,7 @@ func GetScripts(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var scripts []models.Script
-		if err := db.WithContext(ctx).
+		if err := db.
 			Select("id, created_at, updated_at, group_id, title, description, order_index, "+
 				"file_url, file_name, file_type, file_size, file_provider, "+
 				"file_blob_identifier, file_blob_extension, file_uploaded_by_user_id").
@@ -453,7 +452,7 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 
 		// Try to look up script by blob identifier (UUID string set at upload time)
 		var script models.Script
-		if err := db.WithContext(ctx).Where("file_blob_identifier = ?", uuidOrID).First(&script).Error; err != nil {
+		if err := db.Where("file_blob_identifier = ?", uuidOrID).First(&script).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Script not found"})
 			return
 		}
@@ -461,7 +460,7 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 		// Authorization: verify user is a member of the script's group or is a site admin
 		if !isAdmin {
 			var count int64
-			if err := db.WithContext(ctx).
+			if err := db.
 				Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id = ?", userID, script.GroupID).
 				Count(&count).Error; err != nil {
@@ -476,7 +475,7 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 
 		// Verify the feature is still enabled for this group
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, script.GroupID).Error; err != nil {
+		if err := db.First(&group, script.GroupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}

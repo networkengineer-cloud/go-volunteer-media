@@ -140,6 +140,8 @@ jobs:
           TF_VAR_resend_api_key: ${{ secrets.DEV_RESEND_API_KEY }}
           TF_VAR_jwt_secret: ${{ secrets.DEV_JWT_SECRET }}
           TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
+          TF_VAR_axiom_api_token: ${{ secrets.DEV_AXIOM_API_TOKEN }}
+          TF_VAR_axiom_dataset: ${{ secrets.DEV_AXIOM_DATASET }}
         continue-on-error: true
       
       - name: Create Plan Summary
@@ -193,7 +195,9 @@ jobs:
           TF_VAR_resend_api_key: ${{ secrets.DEV_RESEND_API_KEY }}
           TF_VAR_jwt_secret: ${{ secrets.DEV_JWT_SECRET }}
           TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
-      
+          TF_VAR_axiom_api_token: ${{ secrets.DEV_AXIOM_API_TOKEN }}
+          TF_VAR_axiom_dataset: ${{ secrets.DEV_AXIOM_DATASET }}
+
       - name: Get Outputs
         id: outputs
         run: |
@@ -267,7 +271,9 @@ jobs:
           TF_VAR_resend_api_key: ${{ secrets.DEV_RESEND_API_KEY }}
           TF_VAR_jwt_secret: ${{ secrets.DEV_JWT_SECRET }}
           TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
-      
+          TF_VAR_axiom_api_token: ${{ secrets.DEV_AXIOM_API_TOKEN }}
+          TF_VAR_axiom_dataset: ${{ secrets.DEV_AXIOM_DATASET }}
+
       - name: Create Destroy Summary
         run: |
           echo "## Development Environment Destroyed 🗑️" >> $GITHUB_STEP_SUMMARY

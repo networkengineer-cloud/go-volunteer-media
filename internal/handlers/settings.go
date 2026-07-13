@@ -189,7 +189,7 @@ func UploadHeroImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 			BlobIdentifier:  blobIdentifier,
 			BlobExtension:   blobExt,
 		}
-		if err := db.WithContext(ctx).Create(&record).Error; err != nil {
+		if err := db.Create(&record).Error; err != nil {
 			logger.Error("Failed to persist hero image record", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
 			return

@@ -50,7 +50,7 @@ func GetUpdates(db *gorm.DB) gin.HandlerFunc {
 // CreateUpdate creates a new update/post in a group
 func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -81,7 +81,7 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 		// This prevents storing send_groupme=true on records where no message will be sent.
 		if req.SendGroupMe {
 			var grp models.Group
-			if err := db.WithContext(ctx).Select("groupme_enabled, groupme_bot_id").First(&grp, gid).Error; err == nil {
+			if err := db.Select("groupme_enabled, groupme_bot_id").First(&grp, gid).Error; err == nil {
 				if !grp.GroupMeEnabled || grp.GroupMeBotID == "" {
 					req.SendGroupMe = false
 				}
@@ -103,13 +103,13 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 			SendGroupMe: req.SendGroupMe,
 		}
 
-		if err := db.WithContext(ctx).Create(&update).Error; err != nil {
+		if err := db.Create(&update).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create update"})
 			return
 		}
 
 		// Reload with user info
-		if err := db.WithContext(ctx).Preload("User").First(&update, update.ID).Error; err != nil {
+		if err := db.Preload("User").First(&update, update.ID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load update"})
 			return
 		}
@@ -141,7 +141,7 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 // DeleteUpdate deletes a group update (group admin or site admin only)
 func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 
 		userIDUint, ok := middleware.GetUserID(c)
@@ -172,7 +172,7 @@ func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify the update belongs to this group
 		var update models.Update
-		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", uint(updateID), uint(gid)).First(&update).Error; err != nil {
+		if err := db.Where("id = ? AND group_id = ?", uint(updateID), uint(gid)).First(&update).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Update not found"})
 			} else {
@@ -181,7 +181,7 @@ func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		if err := db.WithContext(ctx).Delete(&update).Error; err != nil {
+		if err := db.Delete(&update).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete update"})
 			return
 		}

@@ -4,14 +4,32 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/smtp"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 )
+
+// defaultSMTPTimeout bounds the SMTP conversation when ctx carries no
+// deadline of its own (e.g. a caller that didn't wrap ctx with a timeout).
+const defaultSMTPTimeout = 25 * time.Second
+
+// smtpDeadline returns ctx's own deadline if it has one, else a deadline
+// defaultSMTPTimeout from now. net/smtp's Client methods are blocking,
+// context-oblivious I/O — the connection's own deadline is the only thing
+// that can bound a server that accepts the TCP connection but then stalls
+// mid-handshake or mid-conversation.
+func smtpDeadline(ctx context.Context) time.Time {
+	if d, ok := ctx.Deadline(); ok {
+		return d
+	}
+	return time.Now().Add(defaultSMTPTimeout)
+}
 
 // SMTPProvider implements the Provider interface using SMTP
 type SMTPProvider struct {
@@ -93,16 +111,21 @@ func (p *SMTPProvider) SendEmail(ctx context.Context, to, subject, htmlBody stri
 
 	// Try to send with TLS
 	tlsConfig := p.getTLSConfig()
+	deadline := smtpDeadline(ctx)
 
-	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	dialer := &tls.Dialer{NetDialer: &net.Dialer{}, Config: tlsConfig}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		// If TLS connection fails, try STARTTLS
-		if err := p.sendWithSTARTTLS(addr, auth, p.FromEmail, to, msg); err != nil {
+		if err := p.sendWithSTARTTLS(ctx, addr, auth, p.FromEmail, to, msg); err != nil {
 			return telemetry.Fail(span, err, "starttls fallback failed")
 		}
 		return nil
 	}
 	defer conn.Close()
+	if err := conn.SetDeadline(deadline); err != nil {
+		return telemetry.Fail(span, fmt.Errorf("failed to set connection deadline: %w", err), "deadline failed")
+	}
 
 	client, err := smtp.NewClient(conn, p.Host)
 	if err != nil {
@@ -143,7 +166,54 @@ func (p *SMTPProvider) SendEmail(ctx context.Context, to, subject, htmlBody stri
 	return nil
 }
 
-// sendWithSTARTTLS sends email using STARTTLS
-func (p *SMTPProvider) sendWithSTARTTLS(addr string, auth smtp.Auth, from, to string, msg []byte) error {
-	return smtp.SendMail(addr, auth, from, []string{to}, msg)
+// sendWithSTARTTLS sends email using STARTTLS, as a fallback for servers
+// that don't accept a direct TLS connection on the configured port. This
+// walks the same steps net/smtp.SendMail does internally, but dials via ctx
+// (so an attempt to an unreachable host is cancellable) and sets a deadline
+// on the connection (so a server that accepts the TCP connection but then
+// stalls mid-handshake or mid-conversation can't hang the caller
+// indefinitely — net/smtp's blocking Client methods have no ctx-awareness of
+// their own).
+func (p *SMTPProvider) sendWithSTARTTLS(ctx context.Context, addr string, auth smtp.Auth, from, to string, msg []byte) error {
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(smtpDeadline(ctx)); err != nil {
+		return err
+	}
+
+	client, err := smtp.NewClient(conn, p.Host)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: p.Host}); err != nil {
+			return err
+		}
+	}
+
+	if err := client.Auth(auth); err != nil {
+		return err
+	}
+	if err := client.Mail(from); err != nil {
+		return err
+	}
+	if err := client.Rcpt(to); err != nil {
+		return err
+	}
+	w, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
 }

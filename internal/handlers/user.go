@@ -33,7 +33,6 @@ func validateEmailUniqueness(ctx context.Context, db *gorm.DB, email string, cur
 // GetAllUsers returns all users with pagination support (admin only)
 func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 
 		// Get pagination parameters
@@ -56,14 +55,14 @@ func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
 
 		// Get total count
 		var total int64
-		if err := db.WithContext(ctx).Model(&models.User{}).Count(&total).Error; err != nil {
+		if err := db.Model(&models.User{}).Count(&total).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count users"})
 			return
 		}
 
 		// Get users with pagination
 		var users []models.User
-		if err := db.WithContext(ctx).
+		if err := db.
 			Preload("Groups", activeGroupsPreload).
 			Limit(limit).
 			Offset(offset).
@@ -96,7 +95,6 @@ type SetDefaultGroupRequest struct {
 // SetDefaultGroup sets the user's default group
 func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 		userID, exists := c.Get("user_id")
 		if !exists {
@@ -112,7 +110,7 @@ func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify user has access to the group
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -136,13 +134,13 @@ func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify group exists
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, req.GroupID).Error; err != nil {
+		if err := db.First(&group, req.GroupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
 		// Update user's default group
-		if err := db.WithContext(ctx).Model(&user).Update("default_group_id", req.GroupID).Error; err != nil {
+		if err := db.Model(&user).Update("default_group_id", req.GroupID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update default group"})
 			return
 		}
@@ -154,7 +152,6 @@ func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 // GetDefaultGroup returns the user's default group details
 func GetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 		userID, exists := c.Get("user_id")
 		if !exists {
@@ -163,7 +160,7 @@ func GetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userID).Error; err != nil {
+		if err := db.First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -174,7 +171,7 @@ func GetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, *user.DefaultGroupID).Error; err != nil {
+		if err := db.First(&group, *user.DefaultGroupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Default group not found"})
 			return
 		}
@@ -212,7 +209,7 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 
 		// Fetch current user to check if email is being changed
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userIDUint).Error; err != nil {
+		if err := db.First(&user, userIDUint).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -256,13 +253,13 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 		if req.Username != "" {
 			updates["username"] = strings.ToLower(strings.TrimSpace(req.Username))
 		}
-		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
+		if err := db.Model(&user).Updates(updates).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
 			return
 		}
 
 		// Reload user from DB to return actual persisted values
-		if err := db.WithContext(ctx).First(&user, userIDUint).Error; err != nil {
+		if err := db.First(&user, userIDUint).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload profile"})
 			return
 		}
@@ -283,7 +280,6 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 // GetPrivacyPreferences returns the current user's privacy settings
 func GetPrivacyPreferences(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 		userID, exists := c.Get("user_id")
 		if !exists {
@@ -292,7 +288,7 @@ func GetPrivacyPreferences(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userID).Error; err != nil {
+		if err := db.First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}

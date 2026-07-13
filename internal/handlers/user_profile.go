@@ -133,7 +133,6 @@ func fetchSkillTagsForUser(db *gorm.DB, targetUserID uint, restrictToGroupAdminO
 // - Regular group members can view limited profile info (username only) for members in their shared groups
 func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 
 		// Get user ID from URL parameter
@@ -162,7 +161,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 				IsGroupAdmin bool
 			}
 			var sharedGroups []SharedGroupInfo
-			err := db.WithContext(ctx).Raw(`
+			err := db.Raw(`
 				SELECT ug1.group_id, ug1.is_group_admin
 				FROM user_groups ug1
 				JOIN user_groups ug2 ON ug1.group_id = ug2.group_id
@@ -181,7 +180,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 
 		// Fetch user details
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, targetUserID).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).First(&user, targetUserID).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 				return
@@ -272,21 +271,21 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 
 		// Total comments
 		var commentCount int64
-		db.WithContext(ctx).Model(&models.AnimalComment{}).
+		db.Model(&models.AnimalComment{}).
 			Where("user_id = ?", targetUserID).
 			Count(&commentCount)
 		stats.TotalComments = commentCount
 
 		// Total announcements
 		var announcementCount int64
-		db.WithContext(ctx).Model(&models.Announcement{}).
+		db.Model(&models.Announcement{}).
 			Where("user_id = ?", targetUserID).
 			Count(&announcementCount)
 		stats.TotalAnnouncements = announcementCount
 
 		// Animals interacted with
 		var animalCount int64
-		db.WithContext(ctx).Model(&models.AnimalComment{}).
+		db.Model(&models.AnimalComment{}).
 			Select("DISTINCT animal_id").
 			Where("user_id = ?", targetUserID).
 			Count(&animalCount)
@@ -295,7 +294,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 		// Last active date (most recent comment or announcement)
 		var lastCommentDate *string
 		var lastComment models.AnimalComment
-		if err := db.WithContext(ctx).Where("user_id = ?", targetUserID).
+		if err := db.Where("user_id = ?", targetUserID).
 			Order("created_at DESC").First(&lastComment).Error; err == nil {
 			dateStr := lastComment.CreatedAt.Format("2006-01-02T15:04:05Z07:00")
 			lastCommentDate = &dateStr
@@ -309,7 +308,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			CommentCount int64
 		}
 		var groupActivity GroupActivity
-		err = db.WithContext(ctx).
+		err = db.
 			Model(&models.AnimalComment{}).
 			Select("groups.id as group_id, groups.name as group_name, COUNT(*) as comment_count").
 			Joins("JOIN animals ON animals.id = animal_comments.animal_id").
@@ -342,7 +341,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var commentDetails []CommentWithDetails
-		db.WithContext(ctx).
+		db.
 			Model(&models.AnimalComment{}).
 			Select(`
 				animal_comments.id as comment_id,
@@ -380,7 +379,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 		// Note: Announcements are site-wide and don't belong to specific groups
 		if user.IsAdmin {
 			var announcements []models.Announcement
-			db.WithContext(ctx).
+			db.
 				Where("user_id = ?", targetUserID).
 				Order("created_at DESC").
 				Limit(10).
@@ -413,7 +412,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animalInteractions []AnimalInteractionQuery
-		db.WithContext(ctx).
+		db.
 			Model(&models.AnimalComment{}).
 			Select(`
 				animals.id as animal_id,

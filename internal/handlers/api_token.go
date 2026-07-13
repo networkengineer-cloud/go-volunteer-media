@@ -46,12 +46,11 @@ func toAPITokenResponse(t models.APIToken) apiTokenResponse {
 // ListMyAPITokens returns the calling admin's own API tokens.
 func ListMyAPITokens(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 		userID, _ := middleware.GetUserID(c)
 
 		var tokens []models.APIToken
-		if err := db.WithContext(ctx).
+		if err := db.
 			Where("user_id = ?", userID).
 			Order("created_at desc").
 			Find(&tokens).Error; err != nil {
@@ -98,7 +97,7 @@ func CreateAPIToken(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var tokenCount int64
-		if err := db.WithContext(ctx).Model(&models.APIToken{}).
+		if err := db.Model(&models.APIToken{}).
 			Where("user_id = ?", userID).
 			Count(&tokenCount).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create API token"})
@@ -122,7 +121,7 @@ func CreateAPIToken(db *gorm.DB) gin.HandlerFunc {
 			TokenPrefix: generated.DisplayPrefix,
 			ExpiresAt:   req.ExpiresAt,
 		}
-		if err := db.WithContext(ctx).Create(&apiToken).Error; err != nil {
+		if err := db.Create(&apiToken).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create API token"})
 			return
 		}
@@ -159,14 +158,14 @@ func RevokeAPIToken(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var apiToken models.APIToken
-		if err := db.WithContext(ctx).
+		if err := db.
 			Where("id = ? AND user_id = ?", tokenID, userID).
 			First(&apiToken).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "API token not found"})
 			return
 		}
 
-		if err := db.WithContext(ctx).Delete(&apiToken).Error; err != nil {
+		if err := db.Delete(&apiToken).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke API token"})
 			return
 		}

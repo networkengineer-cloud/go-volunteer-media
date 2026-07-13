@@ -74,6 +74,16 @@ func Init(ctx context.Context, serviceName, environment string) {
 		return
 	}
 
+	// Exporter construction above only ever fails synchronously on a
+	// malformed config; a wrong host/token/unreachable endpoint instead
+	// fails later, asynchronously, inside the SDK's background batch
+	// export goroutines. Without this handler those failures vanish
+	// silently — routing them through our own logger is the only way an
+	// operator finds out telemetry stopped exporting.
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+		logging.WithField("error", err.Error()).Warn("opentelemetry reported an internal error")
+	}))
+
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName(serviceName),
