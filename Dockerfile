@@ -18,7 +18,7 @@ RUN if [ -f "package.json" ]; then \
 # Backend build stage
 # Use the builder's native platform so the Go toolchain runs without QEMU emulation.
 # CGO_ENABLED=0 with GOOS/GOARCH lets Go cross-compile natively to linux/amd64.
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
 
 # Install security updates and build dependencies
 RUN apk update && apk upgrade && \

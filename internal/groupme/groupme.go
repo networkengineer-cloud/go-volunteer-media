@@ -8,8 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/codes"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 )
 
 const (
@@ -20,7 +19,7 @@ const (
 	maxMessageLength = 1000
 )
 
-var tracer = otel.Tracer("internal/groupme")
+var tracer = telemetry.Tracer("internal/groupme")
 
 // Service represents a GroupMe messaging service
 type Service struct {
@@ -78,18 +77,13 @@ func (s *Service) SendMessage(ctx context.Context, botID, text string) error {
 	// Send request
 	resp, err := s.client.Do(req)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "request failed")
-		return fmt.Errorf("failed to send GroupMe message: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to send GroupMe message: %w", err), "request failed")
 	}
 	defer resp.Body.Close()
 
 	// Check response status
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("GroupMe API error: status %d", resp.StatusCode)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "non-2xx response")
-		return err
+		return telemetry.Fail(span, fmt.Errorf("GroupMe API error: status %d", resp.StatusCode), "non-2xx response")
 	}
 
 	return nil

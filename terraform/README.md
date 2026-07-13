@@ -9,7 +9,7 @@ This directory contains the Terraform infrastructure as code (IaC) for deploying
 - **Azure Blob Storage**: Image upload storage
 - **SendGrid**: Email service (SMTP - free tier)
 - **GitHub Container Registry**: Container image storage (free)
-- **Application Insights**: Monitoring and observability
+- **Axiom (via OpenTelemetry)**: Monitoring and observability
 - **Key Vault**: Secrets management
 - **HCP Terraform**: Remote state management and collaboration (free tier)
 
@@ -310,8 +310,9 @@ After successful deployment, Terraform will output:
 Access monitoring dashboards:
 
 ```bash
-# Application Insights
-az portal show --resource-id $(terraform output -raw application_insights_id)
+# Traces, metrics, and logs are exported via OpenTelemetry to Axiom (see the
+# OTEL_* app settings this Terraform configures). View them at
+# https://app.axiom.co in the dataset set by the axiom_dataset variable.
 
 # Container App logs
 az containerapp logs show \

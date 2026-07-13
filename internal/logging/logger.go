@@ -14,6 +14,8 @@ import (
 	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/lifecycle"
 )
 
 // Level represents log level
@@ -131,7 +133,9 @@ func (l *Logger) WithContext(ctx context.Context) *Logger {
 		fields["user_id"] = fmt.Sprintf("%d", userID)
 	}
 
-	// Extract OTel trace/span IDs, if there's an active sampled span
+	// Extract OTel trace/span IDs, if there's a valid active span. This
+	// intentionally checks IsValid(), not IsSampled(): even an unsampled
+	// span has a real trace ID worth attaching for correlation in Axiom.
 	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
 		fields["trace_id"] = sc.TraceID().String()
 		fields["span_id"] = sc.SpanID().String()
@@ -209,8 +213,11 @@ func (l *Logger) log(level Level, msg string, err error) {
 
 	fmt.Fprintln(l.output, output)
 
-	// Exit on FATAL
+	// Exit on FATAL. os.Exit skips deferred functions, so anything that must
+	// flush on a fatal error (e.g. telemetry.Shutdown) runs via the
+	// lifecycle package's shutdown hooks instead of relying on `defer`.
 	if level == FATAL {
+		lifecycle.RunShutdownHooks()
 		os.Exit(1)
 	}
 }
@@ -368,30 +375,55 @@ func (a *stdLogAdapter) Write(p []byte) (n int, err error) {
 // otelLoggerName identifies this logger to the OTel log pipeline.
 const otelLoggerName = "go-volunteer-media"
 
+// otelLogger is resolved once at package init. global.Logger's doc comment
+// says the returned Logger is updated in-place when a real LoggerProvider is
+// registered later ("there is no need to call this function again for an
+// updated instance"), so re-resolving it on every log call would just add a
+// global mutex acquisition per log line for no benefit.
+var otelLogger = global.Logger(otelLoggerName)
+
 // emitOtelRecord emits the log line through the global OTel log bridge.
-// global.Logger returns a no-op implementation when no LoggerProvider has
-// been configured (telemetry.Init was never called, or the endpoint was
-// unset), so this is always safe to call — it does nothing in that case.
+// otelLogger is a no-op implementation when no LoggerProvider has been
+// configured (telemetry.Init was never called, or the endpoint was unset),
+// so this is always safe to call — it does nothing in that case.
+//
+// ctx falls back to context.Background() rather than skipping the record:
+// callers like Fatal (which run on the package-level default logger, never
+// WithContext'd) must still have their record considered for export — a
+// crash reported with no active span is still worth sending to Axiom, it
+// just won't carry trace/span correlation.
 func emitOtelRecord(ctx context.Context, level Level, msg string, err error, fields map[string]interface{}) {
 	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	severity := otelSeverity(level)
+	if !otelLogger.Enabled(ctx, otellog.EnabledParameters{Severity: severity}) {
 		return
 	}
 
 	var record otellog.Record
 	record.SetTimestamp(time.Now().UTC())
-	record.SetSeverity(otelSeverity(level))
+	record.SetSeverity(severity)
 	record.SetBody(otellog.StringValue(msg))
 	if err != nil {
 		record.SetErr(err)
 	}
 
+	// trace_id/span_id are omitted here: the SDK logger already extracts them
+	// from ctx (via trace.SpanContextFromContext) into the record's native
+	// TraceID/SpanID fields, so re-adding them as string attributes would
+	// just duplicate the same IDs on every exported record.
 	attrs := make([]otellog.KeyValue, 0, len(fields))
 	for k, v := range fields {
+		if k == "trace_id" || k == "span_id" {
+			continue
+		}
 		attrs = append(attrs, otellog.String(k, fmt.Sprintf("%v", v)))
 	}
 	record.AddAttributes(attrs...)
 
-	global.Logger(otelLoggerName).Emit(ctx, record)
+	otelLogger.Emit(ctx, record)
 }
 
 func otelSeverity(level Level) otellog.Severity {

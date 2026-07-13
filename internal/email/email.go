@@ -150,10 +150,12 @@ func (s *Service) SendEmail(ctx context.Context, to, subject, htmlBody string) e
 		return fmt.Errorf("invalid email address: %s", to)
 	}
 
-	// Bound the send with a timeout, layered on top of whatever the caller's
-	// context already carries (a live request context or a detached
-	// background context for async sends).
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	// Bound the send with its own timeout. context.WithoutCancel detaches
+	// from the caller's cancellation signal — a client disconnecting mid
+	// -request must not abort an in-flight password-reset/invite email send
+	// — while still carrying the caller's values (trace context, request ID)
+	// so the send stays linked to the originating trace/log context.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 
 	return s.provider.SendEmail(ctx, to, subject, htmlBody)

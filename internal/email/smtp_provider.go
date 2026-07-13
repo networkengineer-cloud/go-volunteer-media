@@ -6,6 +6,11 @@ import (
 	"fmt"
 	"net/smtp"
 	"os"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 )
 
 // SMTPProvider implements the Provider interface using SMTP
@@ -61,6 +66,11 @@ func (p *SMTPProvider) SendEmail(ctx context.Context, to, subject, htmlBody stri
 	default:
 	}
 
+	ctx, span := tracer.Start(ctx, "email.smtp.send", trace.WithAttributes(
+		attribute.Int("email.body_size_bytes", len(htmlBody)),
+	))
+	defer span.End()
+
 	from := p.FromEmail
 	if p.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", p.FromName, p.FromEmail)
@@ -87,44 +97,50 @@ func (p *SMTPProvider) SendEmail(ctx context.Context, to, subject, htmlBody stri
 	conn, err := tls.Dial("tcp", addr, tlsConfig)
 	if err != nil {
 		// If TLS connection fails, try STARTTLS
-		return p.sendWithSTARTTLS(addr, auth, p.FromEmail, to, msg)
+		if err := p.sendWithSTARTTLS(addr, auth, p.FromEmail, to, msg); err != nil {
+			return telemetry.Fail(span, err, "starttls fallback failed")
+		}
+		return nil
 	}
 	defer conn.Close()
 
 	client, err := smtp.NewClient(conn, p.Host)
 	if err != nil {
-		return fmt.Errorf("failed to create SMTP client: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to create SMTP client: %w", err), "client creation failed")
 	}
 	defer client.Close()
 
 	if err = client.Auth(auth); err != nil {
-		return fmt.Errorf("failed to authenticate: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to authenticate: %w", err), "authentication failed")
 	}
 
 	if err = client.Mail(p.FromEmail); err != nil {
-		return fmt.Errorf("failed to set sender: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to set sender: %w", err), "set sender failed")
 	}
 
 	if err = client.Rcpt(to); err != nil {
-		return fmt.Errorf("failed to set recipient: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to set recipient: %w", err), "set recipient failed")
 	}
 
 	w, err := client.Data()
 	if err != nil {
-		return fmt.Errorf("failed to get data writer: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to get data writer: %w", err), "data writer failed")
 	}
 
 	_, err = w.Write(msg)
 	if err != nil {
-		return fmt.Errorf("failed to write message: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to write message: %w", err), "write failed")
 	}
 
 	err = w.Close()
 	if err != nil {
-		return fmt.Errorf("failed to close writer: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to close writer: %w", err), "close writer failed")
 	}
 
-	return client.Quit()
+	if err := client.Quit(); err != nil {
+		return telemetry.Fail(span, err, "quit failed")
+	}
+	return nil
 }
 
 // sendWithSTARTTLS sends email using STARTTLS

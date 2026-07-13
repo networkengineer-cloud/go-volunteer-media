@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"go.opentelemetry.io/otel"
 )
 
 // weakTestCertPEM is a throwaway self-signed cert (not a secret; borrowed
@@ -30,9 +32,7 @@ Lhnm4N/QDk5rek0=
 func TestInit_NoEndpoint_IsNoOp(t *testing.T) {
 	os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 
-	if err := Init(context.Background(), "test-service", "test"); err != nil {
-		t.Fatalf("Init returned error with no endpoint configured: %v", err)
-	}
+	Init(context.Background(), "test-service", "test")
 
 	if err := Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown returned error after no-op Init: %v", err)
@@ -48,9 +48,7 @@ func TestInit_WithEndpoint_ConfiguresProviders(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", server.URL)
 	t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "true")
 
-	if err := Init(context.Background(), "test-service", "test"); err != nil {
-		t.Fatalf("Init returned error with valid endpoint: %v", err)
-	}
+	Init(context.Background(), "test-service", "test")
 
 	if err := Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown returned error: %v", err)
@@ -58,10 +56,10 @@ func TestInit_WithEndpoint_ConfiguresProviders(t *testing.T) {
 }
 
 // TestInit_ExporterSetupError_FallsBackToNoOp forces a real, synchronous
-// error out of the OTLP trace exporter's construction and asserts Init
-// swallows it (returns nil) rather than propagating it, per Init's doc
-// comment and the design spec: telemetry setup failure must never be able
-// to fail application startup.
+// error out of the OTLP trace exporter's construction and asserts Init falls
+// back to a fresh no-op tracer provider instead of leaving the global tracer
+// provider pointing at whatever partially-initialized (and now shut-down)
+// real provider Init had configured so far.
 //
 // otlptracehttp.New(ctx) is otherwise "lazy" — a merely unreachable or even
 // malformed OTEL_EXPORTER_OTLP_ENDPOINT does not error synchronously,
@@ -86,8 +84,12 @@ func TestInit_ExporterSetupError_FallsBackToNoOp(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "true")
 	t.Setenv("OTEL_EXPORTER_OTLP_CERTIFICATE", certPath)
 
-	if err := Init(context.Background(), "test-service", "test"); err != nil {
-		t.Fatalf("Init returned a non-nil error on exporter setup failure (should fall back to no-op instead): %v", err)
+	Init(context.Background(), "test-service", "test")
+
+	_, span := otel.Tracer("test").Start(context.Background(), "test-span")
+	defer span.End()
+	if span.IsRecording() {
+		t.Fatal("expected global tracer provider to fall back to a non-recording no-op provider after a failed Init")
 	}
 
 	if err := Shutdown(context.Background()); err != nil {

@@ -10,12 +10,13 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 )
 
 // AzureBlobProvider implements the Provider interface using Azure Blob Storage
@@ -25,7 +26,30 @@ type AzureBlobProvider struct {
 	baseURL       string
 }
 
-var tracer = otel.Tracer("internal/storage/azure")
+var tracer = telemetry.Tracer("internal/storage/azure")
+
+// mapBlobError translates an Azure blob-storage error into the generic
+// ErrNotFound sentinel only when Azure actually reports the blob as missing.
+// Any other failure (auth, throttling, network) is returned as-is instead of
+// being collapsed to ErrNotFound — callers translate ErrNotFound into an
+// HTTP 404, and a real storage error surfacing as "not found" would hide the
+// true cause from both the caller and (now that these call sites are traced)
+// from anyone cross-referencing the span's recorded error against the
+// response the user actually saw.
+func mapBlobError(err error) error {
+	if bloberror.HasCode(err, bloberror.BlobNotFound) {
+		return ErrNotFound
+	}
+	return fmt.Errorf("azure blob storage error: %w", err)
+}
+
+// failBlob records err on span (with msg as the status description) and
+// returns the mapped error, collapsing the record-then-map pair repeated at
+// every blob-storage error path in this file.
+func failBlob(span trace.Span, err error, msg string) error {
+	telemetry.RecordError(span, err, msg)
+	return mapBlobError(err)
+}
 
 // NewAzureBlobProvider creates a new Azure Blob Storage provider
 func NewAzureBlobProvider(accountName, accountKey, containerName, endpoint string, useManagedID bool) (*AzureBlobProvider, error) {
@@ -152,9 +176,7 @@ func (a *AzureBlobProvider) UploadImage(ctx context.Context, data []byte, mimeTy
 	// Upload the data
 	_, err = blockBlobClient.UploadBuffer(ctx, data, uploadOptions)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "upload failed")
-		return "", "", "", fmt.Errorf("failed to upload image to Azure: %w", err)
+		return "", "", "", telemetry.Fail(span, fmt.Errorf("failed to upload image to Azure: %w", err), "upload failed")
 	}
 
 	// Generate API-proxied URL (not direct blob URL)
@@ -212,9 +234,7 @@ func (a *AzureBlobProvider) UploadDocument(ctx context.Context, data []byte, mim
 	// Upload the data
 	_, err = blockBlobClient.UploadBuffer(ctx, data, uploadOptions)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "upload failed")
-		return "", "", "", fmt.Errorf("failed to upload document to Azure: %w", err)
+		return "", "", "", telemetry.Fail(span, fmt.Errorf("failed to upload document to Azure: %w", err), "upload failed")
 	}
 
 	// Generate API-proxied URL (not direct blob URL)
@@ -237,18 +257,14 @@ func (a *AzureBlobProvider) GetImage(ctx context.Context, identifier string) (da
 	// Download blob
 	downloadResponse, err := blockBlobClient.DownloadStream(ctx, nil)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "download failed")
-		return nil, "", ErrNotFound
+		return nil, "", failBlob(span, err, "download failed")
 	}
 	defer downloadResponse.Body.Close()
 
 	// Read all data
 	data, err = io.ReadAll(downloadResponse.Body)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "read failed")
-		return nil, "", fmt.Errorf("failed to read blob data: %w", err)
+		return nil, "", telemetry.Fail(span, fmt.Errorf("failed to read blob data: %w", err), "read failed")
 	}
 
 	// Get content type
@@ -273,18 +289,14 @@ func (a *AzureBlobProvider) GetDocument(ctx context.Context, identifier string) 
 	// Download blob
 	downloadResponse, err := blockBlobClient.DownloadStream(ctx, nil)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "download failed")
-		return nil, "", ErrNotFound
+		return nil, "", failBlob(span, err, "download failed")
 	}
 	defer downloadResponse.Body.Close()
 
 	// Read all data
 	data, err = io.ReadAll(downloadResponse.Body)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "read failed")
-		return nil, "", fmt.Errorf("failed to read blob data: %w", err)
+		return nil, "", telemetry.Fail(span, fmt.Errorf("failed to read blob data: %w", err), "read failed")
 	}
 
 	// Get content type
@@ -309,9 +321,7 @@ func (a *AzureBlobProvider) DeleteImage(ctx context.Context, identifier string) 
 	// Try to delete
 	_, err := blockBlobClient.Delete(ctx, nil)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "delete failed")
-		return ErrNotFound
+		return failBlob(span, err, "delete failed")
 	}
 
 	return nil
@@ -330,9 +340,7 @@ func (a *AzureBlobProvider) DeleteDocument(ctx context.Context, identifier strin
 	// Try to delete
 	_, err := blockBlobClient.Delete(ctx, nil)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "delete failed")
-		return ErrNotFound
+		return failBlob(span, err, "delete failed")
 	}
 
 	return nil
