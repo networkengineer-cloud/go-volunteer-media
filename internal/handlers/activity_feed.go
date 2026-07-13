@@ -8,24 +8,25 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
 
 // ActivityItem represents a unified activity feed item
 type ActivityItem struct {
-	ID        uint                     `json:"id"`
-	Type      string                   `json:"type"` // "comment", "announcement"
-	CreatedAt time.Time                `json:"created_at"`
-	UserID    uint                     `json:"user_id"`
-	User      *models.User             `json:"user,omitempty"`
-	Content   string                   `json:"content"`
-	Title     string                   `json:"title,omitempty"` // For announcements
-	ImageURL  string                   `json:"image_url,omitempty"`
-	AnimalID  *uint                    `json:"animal_id,omitempty"` // For comments
-	Animal    *models.Animal           `json:"animal,omitempty"`    // For comments
-	Tags      []models.CommentTag      `json:"tags,omitempty"`      // For comments
-	Metadata  *models.SessionMetadata  `json:"metadata,omitempty"`  // For session reports
+	ID        uint                    `json:"id"`
+	Type      string                  `json:"type"` // "comment", "announcement"
+	CreatedAt time.Time               `json:"created_at"`
+	UserID    uint                    `json:"user_id"`
+	User      *models.User            `json:"user,omitempty"`
+	Content   string                  `json:"content"`
+	Title     string                  `json:"title,omitempty"` // For announcements
+	ImageURL  string                  `json:"image_url,omitempty"`
+	AnimalID  *uint                   `json:"animal_id,omitempty"` // For comments
+	Animal    *models.Animal          `json:"animal,omitempty"`    // For comments
+	Tags      []models.CommentTag     `json:"tags,omitempty"`      // For comments
+	Metadata  *models.SessionMetadata `json:"metadata,omitempty"`  // For session reports
 }
 
 // ActivityFeedSummary provides quick stats about concerns
@@ -39,7 +40,7 @@ type ActivityFeedSummary struct {
 func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -69,12 +70,12 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Get filter parameters
-		filterType := c.Query("type")       // all, comments, announcements
-		filterAnimal := c.Query("animal")   // animal ID
-		filterTags := c.Query("tags")       // comma-separated tag names
-		filterRating := c.Query("rating")   // 1-5 or "poor" (1-2)
-		filterDateFrom := c.Query("from")   // ISO date
-		filterDateTo := c.Query("to")       // ISO date
+		filterType := c.Query("type")     // all, comments, announcements
+		filterAnimal := c.Query("animal") // animal ID
+		filterTags := c.Query("tags")     // comma-separated tag names
+		filterRating := c.Query("rating") // 1-5 or "poor" (1-2)
+		filterDateFrom := c.Query("from") // ISO date
+		filterDateTo := c.Query("to")     // ISO date
 
 		// Initialize with empty slice to ensure we never return nil
 		activityItems := make([]ActivityItem, 0)
@@ -96,14 +97,14 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		if filterType == "" || filterType == "all" || filterType == "announcements" {
 			var updates []models.Update
 			query := db.WithContext(ctx).Where("group_id = ?", groupID)
-			
+
 			if dateFrom != nil {
 				query = query.Where("created_at >= ?", dateFrom)
 			}
 			if dateTo != nil {
 				query = query.Where("created_at <= ?", dateTo)
 			}
-			
+
 			err := query.Preload("User").
 				Order("created_at DESC").
 				Find(&updates).Error
@@ -132,12 +133,12 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			// First get all animals in this group
 			var animals []models.Animal
 			animalQuery := db.WithContext(ctx).Where("group_id = ?", groupID)
-			
+
 			// Filter by specific animal if requested
 			if filterAnimal != "" {
 				animalQuery = animalQuery.Where("id = ?", filterAnimal)
 			}
-			
+
 			if err := animalQuery.Find(&animals).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
 				return
@@ -155,7 +156,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 				// Get comments from these animals
 				var comments []models.AnimalComment
 				commentQuery := db.WithContext(ctx).Where("animal_id IN ?", animalIDs)
-				
+
 				// Apply date filters
 				if dateFrom != nil {
 					commentQuery = commentQuery.Where("created_at >= ?", dateFrom)
@@ -163,7 +164,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 				if dateTo != nil {
 					commentQuery = commentQuery.Where("created_at <= ?", dateTo)
 				}
-				
+
 				// Apply tag filter if specified
 				if filterTags != "" {
 					tagNames := []string{}
@@ -175,7 +176,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 						Where("comment_tags.name IN ?", tagNames).
 						Group("animal_comments.id")
 				}
-				
+
 				err := commentQuery.Preload("User").
 					Preload("Tags").
 					Order("created_at DESC").
@@ -192,7 +193,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 						if comment.Metadata == nil || comment.Metadata.SessionRating == 0 {
 							continue // Skip if no rating
 						}
-						
+
 						if filterRating == "poor" {
 							if comment.Metadata.SessionRating > 2 {
 								continue // Skip if not poor rating (1-2)
@@ -205,7 +206,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 							}
 						}
 					}
-					
+
 					animal := animalMap[comment.AnimalID]
 					activityItems = append(activityItems, ActivityItem{
 						ID:        comment.ID,

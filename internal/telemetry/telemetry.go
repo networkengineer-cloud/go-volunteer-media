@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -128,12 +129,31 @@ func initTraces(ctx context.Context, res *resource.Resource) error {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
+		sdktrace.WithSampler(traceSampler()),
 	)
 	otel.SetTracerProvider(tp)
 	mu.Lock()
 	shutdownFuncs = append(shutdownFuncs, tp.Shutdown)
 	mu.Unlock()
 	return nil
+}
+
+// traceSampler builds the root sampler from OTEL_TRACES_SAMPLER_ARG, the
+// standard OTel env var for a sampling ratio (see
+// https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/).
+// Unset or invalid falls back to sampling every trace, preserving this
+// package's original behavior — the knob exists so ingest volume/cost can be
+// dialed down later without a code change, once traffic warrants it.
+func traceSampler() sdktrace.Sampler {
+	ratio := 1.0
+	if arg := os.Getenv("OTEL_TRACES_SAMPLER_ARG"); arg != "" {
+		if parsed, err := strconv.ParseFloat(arg, 64); err == nil && parsed >= 0 && parsed <= 1 {
+			ratio = parsed
+		} else {
+			logging.WithField("value", arg).Warn("invalid OTEL_TRACES_SAMPLER_ARG, sampling every trace")
+		}
+	}
+	return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))
 }
 
 func initMetrics(ctx context.Context, res *resource.Resource) error {

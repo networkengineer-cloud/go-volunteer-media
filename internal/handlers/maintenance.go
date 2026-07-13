@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/maintenance"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"gorm.io/gorm"
 )
 
@@ -14,7 +15,7 @@ import (
 func RunOrphanedImageCleanup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 
 		// Get optional days parameter (default 7 days)
 		days := 7
@@ -46,7 +47,7 @@ func RunOrphanedImageCleanup(db *gorm.DB) gin.HandlerFunc {
 func RunSoftDeletedRecordsCleanup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 
 		// Get required table parameter
 		tableName := c.Query("table")

@@ -47,11 +47,10 @@ func toAdminUserResponse(u models.User) adminUserResponse {
 // PromoteUser sets is_admin to true for a user
 func PromoteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userId := c.Param("userId")
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+		if err := db.First(&user, userId).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -59,7 +58,7 @@ func PromoteUser(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already admin"})
 			return
 		}
-		if err := db.WithContext(ctx).Model(&user).Update("is_admin", true).Error; err != nil {
+		if err := db.Model(&user).Update("is_admin", true).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to promote user"})
 			return
 		}
@@ -71,7 +70,7 @@ func PromoteUser(db *gorm.DB) gin.HandlerFunc {
 func DemoteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userId := c.Param("userId")
 		var user models.User
 		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
@@ -94,7 +93,7 @@ func DemoteUser(db *gorm.DB) gin.HandlerFunc {
 func GetDeletedUsers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		var users []models.User
 		if err := db.WithContext(ctx).Unscoped().Preload("Groups", activeGroupsPreload).Where("deleted_at IS NOT NULL").Find(&users).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch deleted users"})
@@ -112,7 +111,7 @@ func GetDeletedUsers(db *gorm.DB) gin.HandlerFunc {
 func RestoreUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userId := c.Param("userId")
 		var user models.User
 		if err := db.WithContext(ctx).Unscoped().First(&user, userId).Error; err != nil {
@@ -133,7 +132,7 @@ func RestoreUser(db *gorm.DB) gin.HandlerFunc {
 func AdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userId := c.Param("userId")
 		var user models.User
 		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
@@ -165,7 +164,7 @@ func isGroupAdminOfAnySharedGroup(ctx context.Context, db *gorm.DB, requesterID,
 func GroupAdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		requesterID := c.GetUint("user_id")
 		isAdmin := c.GetBool("is_admin")
 		userId := c.Param("userId")
@@ -231,7 +230,7 @@ type AdminResetPasswordRequest struct {
 func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		var req AdminCreateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
@@ -411,7 +410,7 @@ type GroupAdminCreateUserRequest struct {
 func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		// Get current user ID
@@ -614,7 +613,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		userId := c.Param("userId")
 
@@ -797,7 +796,7 @@ func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *mod
 func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userId := c.Param("userId")
 
 		// Parse and validate userId
@@ -839,7 +838,7 @@ func isTargetSiteAdmin(user *models.User) bool {
 func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		userId := c.Param("userId")
 
@@ -925,7 +924,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		userIDParam := c.Param("userId")
 
@@ -1052,7 +1051,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		userIDParam := c.Param("userId")
 

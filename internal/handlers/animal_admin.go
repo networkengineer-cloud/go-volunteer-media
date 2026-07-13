@@ -19,13 +19,14 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		logger := middleware.GetLogger(c)
 		animalID := c.Param("animalId")
 
-		// dbCtx carries the request context so DB spans nest under the
-		// request's trace. sendQuarantineNotificationEmail below spawns a
-		// detached goroutine, so it's intentionally passed the original,
-		// unscoped `db` instead — using dbCtx there would tie its background
-		// email send to a context that gets canceled the instant this
-		// handler returns.
-		dbCtx := db.WithContext(c.Request.Context())
+		// dbCtx is the request-scoped DB (set once per request by
+		// middleware.DBMiddleware) so DB spans nest under the request's
+		// trace. sendQuarantineNotificationEmail below spawns a detached
+		// goroutine, so it's intentionally passed the original, unscoped
+		// `db` instead — using dbCtx there would tie its background email
+		// send to a context that gets canceled the instant this handler
+		// returns.
+		dbCtx := middleware.GetDB(c, db)
 
 		var req AnimalRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -252,7 +253,7 @@ type BulkUpdateAnimalsRequest struct {
 // BulkUpdateAnimals updates multiple animals at once (admin or group admin)
 func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		db = db.WithContext(c.Request.Context())
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		// Check if user is site admin or group admin
@@ -343,7 +344,7 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 // GetAllAnimals returns all animals (admin or group admin, for bulk edit page)
 func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		db = db.WithContext(c.Request.Context())
+		db := middleware.GetDB(c, db)
 		// Check if user is site admin or group admin
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {

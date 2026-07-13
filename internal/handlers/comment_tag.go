@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -18,8 +19,7 @@ type CommentTagRequest struct {
 // Route: GET /api/groups/:id/comment-tags
 func GetCommentTags(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -43,8 +43,7 @@ func GetCommentTags(db *gorm.DB) gin.HandlerFunc {
 // Route: POST /api/groups/:id/comment-tags
 func CreateCommentTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -91,8 +90,7 @@ func CreateCommentTag(db *gorm.DB) gin.HandlerFunc {
 // Route: DELETE /api/groups/:id/comment-tags/:tagId
 func DeleteCommentTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
 		userID, _ := c.Get("user_id")

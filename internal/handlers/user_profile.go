@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -133,7 +134,7 @@ func fetchSkillTagsForUser(db *gorm.DB, targetUserID uint, restrictToGroupAdminO
 func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 
 		// Get user ID from URL parameter
 		userIDParam := c.Param("id")

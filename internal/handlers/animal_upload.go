@@ -26,8 +26,7 @@ import (
 // Images are stored in the database for persistence across container restarts
 func UploadAnimalImage(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		// Get animal ID from URL parameter
@@ -160,7 +159,7 @@ func UploadAnimalImage(db *gorm.DB) gin.HandlerFunc {
 func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		imageUUID := c.Param("uuid")
 		imageURL := fmt.Sprintf("/api/images/%s", imageUUID)
 
@@ -248,8 +247,7 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 // GET /api/videos/:uuid
 func ServeVideo(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		videoUUID := c.Param("uuid")
 		videoURL := fmt.Sprintf("/api/videos/%s", videoUUID)
 
@@ -293,7 +291,7 @@ func serveVideoBlob(c *gin.Context, storageProvider storage.Provider, blobIdenti
 func UploadAnimalImageSimple(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		// Get user ID from context

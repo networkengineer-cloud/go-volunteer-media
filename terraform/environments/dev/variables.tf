@@ -208,6 +208,12 @@ variable "axiom_dataset" {
   description = "Axiom dataset name to export OpenTelemetry data into"
 }
 
+variable "axiom_endpoint" {
+  type        = string
+  description = "Axiom OTLP ingest endpoint for OpenTelemetry export"
+  default     = "https://api.axiom.co"
+}
+
 # Monitoring Configuration
 variable "log_retention_days" {
   type        = number

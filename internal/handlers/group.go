@@ -129,7 +129,7 @@ func UploadGroupImage(storageProvider storage.Provider) gin.HandlerFunc {
 func GetGroups(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -175,7 +175,7 @@ func GetGroups(db *gorm.DB) gin.HandlerFunc {
 func GetGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
@@ -214,7 +214,7 @@ func GetGroup(db *gorm.DB) gin.HandlerFunc {
 func CreateGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		var req GroupRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
@@ -256,7 +256,7 @@ func CreateGroup(db *gorm.DB) gin.HandlerFunc {
 func UpdateGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		var req GroupRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -295,11 +295,10 @@ func UpdateGroup(db *gorm.DB) gin.HandlerFunc {
 // DeleteGroup deletes a group (admin only)
 func DeleteGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 
-		if err := db.WithContext(ctx).Delete(&models.Group{}, groupID).Error; err != nil {
+		if err := db.Delete(&models.Group{}, groupID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete group"})
 			return
 		}
@@ -312,7 +311,7 @@ func DeleteGroup(db *gorm.DB) gin.HandlerFunc {
 func AddUserToGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -349,7 +348,7 @@ func AddUserToGroup(db *gorm.DB) gin.HandlerFunc {
 func RemoveUserFromGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -426,7 +425,7 @@ func IsGroupAdminForAnyGroup(db *gorm.DB, userID uint) bool {
 func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
@@ -505,7 +504,7 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
@@ -583,7 +582,7 @@ func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
@@ -709,7 +708,7 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 func GetGroupMembership(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
@@ -758,7 +757,7 @@ func GetGroupMembership(db *gorm.DB) gin.HandlerFunc {
 func AddMemberToGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
@@ -811,7 +810,7 @@ func AddMemberToGroup(db *gorm.DB) gin.HandlerFunc {
 func RemoveMemberFromGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
@@ -863,7 +862,7 @@ func RemoveMemberFromGroup(db *gorm.DB) gin.HandlerFunc {
 func PromoteMemberToGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
@@ -921,7 +920,7 @@ func PromoteMemberToGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 func DemoteMemberFromGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
@@ -980,7 +979,7 @@ func DemoteMemberFromGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 func UpdateGroupSettings(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")

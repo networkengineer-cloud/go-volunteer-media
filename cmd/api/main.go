@@ -177,6 +177,11 @@ func main() {
 	// Structured logging middleware
 	router.Use(middleware.LoggingMiddleware())
 
+	// Request-scoped DB middleware — binds *gorm.DB to the request context
+	// once per request so GORM's OTel plugin nests query spans under the
+	// request's trace. Handlers retrieve it via middleware.GetDB(c).
+	router.Use(middleware.DBMiddleware(db))
+
 	// Max request body size middleware — 10 MB default for most routes.
 	// Document upload routes raise this to 25 MB via per-route middleware.
 	// Per-type limits are enforced by ValidateImageUpload / ValidateDocumentUpload.

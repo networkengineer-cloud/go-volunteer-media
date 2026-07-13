@@ -43,12 +43,19 @@ func mapBlobError(err error) error {
 	return fmt.Errorf("azure blob storage error: %w", err)
 }
 
-// failBlob records err on span (with msg as the status description) and
-// returns the mapped error, collapsing the record-then-map pair repeated at
-// every blob-storage error path in this file.
+// failBlob maps err and returns it, collapsing the record-then-map pair
+// repeated at every blob-storage error path in this file. A "blob not
+// found" result is expected, routine traffic (e.g. a request for an
+// already-deleted image) — callers translate it into a plain 404, so it is
+// not recorded as a span error, which is reserved for the mapped error
+// cases that represent a real storage problem (auth, network, throttling).
 func failBlob(span trace.Span, err error, msg string) error {
-	telemetry.RecordError(span, err, msg)
-	return mapBlobError(err)
+	mapped := mapBlobError(err)
+	if mapped == ErrNotFound {
+		return mapped
+	}
+	telemetry.RecordError(span, mapped, msg)
+	return mapped
 }
 
 // NewAzureBlobProvider creates a new Azure Blob Storage provider

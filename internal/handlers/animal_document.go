@@ -22,7 +22,7 @@ import (
 func UploadAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		// Get animal ID from URL parameter
@@ -178,7 +178,7 @@ func UploadAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider)
 func ServeAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		documentUUID := c.Param("uuid")
 		documentURL := fmt.Sprintf("/api/documents/%s", documentUUID)
 
@@ -256,7 +256,7 @@ func ServeAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) 
 func DeleteAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		// Get animal ID from URL parameter

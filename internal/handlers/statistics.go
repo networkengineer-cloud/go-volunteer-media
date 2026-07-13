@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"gorm.io/gorm"
 )
 
@@ -65,7 +66,7 @@ func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 		// Add explicit timeout for query execution
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 
 		// Get pagination parameters
 		limit := 20 // Default limit
@@ -164,7 +165,7 @@ func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 		// Add explicit timeout for query execution
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 
 		// Get pagination parameters
 		limit := 20 // Default limit
@@ -263,7 +264,7 @@ func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 		// Add explicit timeout for query execution
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 
 		// Get optional group_id filter
 		groupIDStr := c.Query("group_id")

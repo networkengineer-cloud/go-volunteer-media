@@ -379,7 +379,7 @@ resource "azurerm_container_app" "main" {
       # Monitoring — OpenTelemetry exported to Axiom
       env {
         name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
-        value = "https://api.axiom.co"
+        value = var.axiom_endpoint
       }
 
       env {

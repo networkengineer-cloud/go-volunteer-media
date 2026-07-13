@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"gorm.io/gorm"
 )
 
@@ -23,7 +24,7 @@ func HealthCheck() gin.HandlerFunc {
 func ReadinessCheck(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 
 		// Check database connectivity
 		sqlDB, err := db.DB()

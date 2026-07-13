@@ -34,7 +34,7 @@ func validateEmailUniqueness(ctx context.Context, db *gorm.DB, email string, cur
 func GetAllUsers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 
 		// Get pagination parameters
 		limit := 20 // Default limit for users (consistent with statistics endpoints)
@@ -97,7 +97,7 @@ type SetDefaultGroupRequest struct {
 func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -155,7 +155,7 @@ func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 func GetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -197,7 +197,7 @@ type UpdateProfileRequest struct {
 func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
@@ -284,7 +284,7 @@ func UpdateCurrentUserProfile(db *gorm.DB) gin.HandlerFunc {
 func GetPrivacyPreferences(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		db = db.WithContext(ctx)
+		db := middleware.GetDB(c, db)
 		userID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
