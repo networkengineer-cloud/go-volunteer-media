@@ -64,6 +64,7 @@ type SystemHealthInfo struct {
 func GetAdminDashboardStats(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 
 		var stats AdminDashboardStats
 

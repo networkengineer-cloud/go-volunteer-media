@@ -18,6 +18,8 @@ import (
 // ExportAnimalsCSV exports animals to CSV format
 func ExportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 		groupID := c.Query("group_id")
 
@@ -82,6 +84,8 @@ func ExportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
 // ImportAnimalsCSV imports animals from CSV file
 func ImportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 
 		file, err := c.FormFile("file")
@@ -270,6 +274,8 @@ func ImportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
 // ExportAnimalCommentsCSV exports all animal comments with animal details to CSV format (admin only)
 func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 		groupID := c.Query("group_id")
 		animalID := c.Query("animal_id")

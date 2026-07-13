@@ -47,6 +47,7 @@ func toAPITokenResponse(t models.APIToken) apiTokenResponse {
 func ListMyAPITokens(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		userID, _ := middleware.GetUserID(c)
 
 		var tokens []models.APIToken
@@ -77,6 +78,7 @@ type createAPITokenRequest struct {
 func CreateAPIToken(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		userID, _ := middleware.GetUserID(c)
 
 		var req createAPITokenRequest
@@ -148,6 +150,7 @@ func CreateAPIToken(db *gorm.DB) gin.HandlerFunc {
 func RevokeAPIToken(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		userID, _ := middleware.GetUserID(c)
 		tokenID, err := strconv.ParseUint(c.Param("tokenId"), 10, 32)
 		if err != nil {

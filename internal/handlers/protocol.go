@@ -26,6 +26,7 @@ type ProtocolRequest struct {
 func UploadProtocolImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -94,6 +95,7 @@ func UploadProtocolImage(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 func GetProtocols(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -132,6 +134,8 @@ func GetProtocols(db *gorm.DB) gin.HandlerFunc {
 // GetProtocol returns a specific protocol by ID
 func GetProtocol(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		protocolID := c.Param("protocolId")
 		userID, _ := c.Get("user_id")
@@ -156,6 +160,8 @@ func GetProtocol(db *gorm.DB) gin.HandlerFunc {
 // CreateProtocol creates a new protocol (group admin or site admin)
 func CreateProtocol(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -210,6 +216,8 @@ func CreateProtocol(db *gorm.DB) gin.HandlerFunc {
 // UpdateProtocol updates an existing protocol (group admin or site admin)
 func UpdateProtocol(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		protocolID := c.Param("protocolId")
 		userID, _ := c.Get("user_id")
@@ -250,6 +258,8 @@ func UpdateProtocol(db *gorm.DB) gin.HandlerFunc {
 // DeleteProtocol deletes a protocol (group admin or site admin)
 func DeleteProtocol(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		protocolID := c.Param("protocolId")
 		userID, _ := c.Get("user_id")

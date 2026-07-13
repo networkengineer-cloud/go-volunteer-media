@@ -13,6 +13,8 @@ import (
 // SeedDatabase re-seeds the database (admin only, dangerous operation, dev only)
 func SeedDatabase(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := logging.GetDefaultLogger()
 
 		// Only allow in development environment

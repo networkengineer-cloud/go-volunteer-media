@@ -23,6 +23,7 @@ func HealthCheck() gin.HandlerFunc {
 func ReadinessCheck(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 
 		// Check database connectivity
 		sqlDB, err := db.DB()

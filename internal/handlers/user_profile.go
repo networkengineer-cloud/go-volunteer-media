@@ -133,6 +133,7 @@ func fetchSkillTagsForUser(db *gorm.DB, targetUserID uint, restrictToGroupAdminO
 func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 
 		// Get user ID from URL parameter
 		userIDParam := c.Param("id")

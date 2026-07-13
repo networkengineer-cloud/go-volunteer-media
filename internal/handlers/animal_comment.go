@@ -86,6 +86,8 @@ func sanitizeSessionMetadata(m *models.SessionMetadata) {
 // GetAnimalComments returns comments for an animal with pagination support
 func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		userID, _ := c.Get("user_id")
@@ -185,6 +187,8 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 // CreateAnimalComment creates a new comment on an animal
 func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		userID, _ := c.Get("user_id")
@@ -268,6 +272,8 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 // Users can only edit their own comments
 func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
@@ -372,6 +378,8 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 // GetCommentHistory returns the edit history for a comment (admin only)
 func GetCommentHistory(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
@@ -413,6 +421,7 @@ func GetCommentHistory(db *gorm.DB) gin.HandlerFunc {
 func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -493,6 +502,8 @@ func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 // Users can delete their own comments, admins can delete any comment
 func DeleteAnimalComment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
@@ -544,6 +555,8 @@ func DeleteAnimalComment(db *gorm.DB) gin.HandlerFunc {
 // GetDeletedComments returns all soft-deleted comments (group admin or site admin)
 func GetDeletedComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")

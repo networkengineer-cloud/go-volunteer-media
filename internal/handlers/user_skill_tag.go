@@ -24,6 +24,7 @@ type UserSkillTagRequest struct {
 func GetUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -48,6 +49,7 @@ func GetUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 func CreateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -95,6 +97,7 @@ func CreateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 func UpdateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
 		userID, _ := c.Get("user_id")
@@ -142,6 +145,7 @@ func UpdateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 func DeleteUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
 		userID, _ := c.Get("user_id")
@@ -184,6 +188,7 @@ type AssignUserSkillTagsRequest struct {
 func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		targetUserID := c.Param("userId")
 		userID, _ := c.Get("user_id")

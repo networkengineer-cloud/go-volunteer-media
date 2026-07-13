@@ -255,6 +255,8 @@ func checkGroupAdminAccess(db *gorm.DB, userID interface{}, isAdmin interface{},
 // CheckDuplicateNames checks if any animals in a group have duplicate names
 func CheckDuplicateNames(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		name := c.Query("name")
 		userID, _ := c.Get("user_id")

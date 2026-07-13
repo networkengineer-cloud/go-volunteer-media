@@ -21,6 +21,7 @@ import (
 func GetScripts(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -60,6 +61,8 @@ func GetScripts(db *gorm.DB) gin.HandlerFunc {
 // GetScript returns a single script by ID (group members only, group must have has_protocols enabled)
 func GetScript(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		scriptID := c.Param("scriptId")
 		userID, _ := c.Get("user_id")
@@ -94,6 +97,7 @@ func GetScript(db *gorm.DB) gin.HandlerFunc {
 func CreateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 
 		groupIDStr := c.Param("id")
@@ -235,6 +239,7 @@ func CreateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 func UpdateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 
 		groupIDStr := c.Param("id")
@@ -372,6 +377,7 @@ func UpdateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 func DeleteScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 
 		groupIDStr := c.Param("id")
@@ -434,6 +440,7 @@ func DeleteScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		uuidOrID := c.Param("uuid")
 
 		userIDValue, exists := c.Get("user_id")
@@ -512,6 +519,8 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 // Body: { "script_ids": [1, 2, 3] }  — passing an empty array removes all links
 func SetAnimalScripts(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupIDStr := c.Param("id")
 		animalIDStr := c.Param("animalId")
 		userID, _ := c.Get("user_id")

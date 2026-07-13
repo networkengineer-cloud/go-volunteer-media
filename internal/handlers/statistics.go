@@ -65,6 +65,7 @@ func GetGroupStatistics(db *gorm.DB) gin.HandlerFunc {
 		// Add explicit timeout for query execution
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
+		db = db.WithContext(ctx)
 
 		// Get pagination parameters
 		limit := 20 // Default limit
@@ -163,6 +164,7 @@ func GetUserStatistics(db *gorm.DB) gin.HandlerFunc {
 		// Add explicit timeout for query execution
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
+		db = db.WithContext(ctx)
 
 		// Get pagination parameters
 		limit := 20 // Default limit
@@ -261,6 +263,7 @@ func GetCommentTagStatistics(db *gorm.DB) gin.HandlerFunc {
 		// Add explicit timeout for query execution
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
+		db = db.WithContext(ctx)
 
 		// Get optional group_id filter
 		groupIDStr := c.Query("group_id")

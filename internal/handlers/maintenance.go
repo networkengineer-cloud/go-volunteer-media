@@ -14,6 +14,7 @@ import (
 func RunOrphanedImageCleanup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 
 		// Get optional days parameter (default 7 days)
 		days := 7
@@ -45,6 +46,7 @@ func RunOrphanedImageCleanup(db *gorm.DB) gin.HandlerFunc {
 func RunSoftDeletedRecordsCleanup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 
 		// Get required table parameter
 		tableName := c.Query("table")

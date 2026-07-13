@@ -19,6 +19,14 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		logger := middleware.GetLogger(c)
 		animalID := c.Param("animalId")
 
+		// dbCtx carries the request context so DB spans nest under the
+		// request's trace. sendQuarantineNotificationEmail below spawns a
+		// detached goroutine, so it's intentionally passed the original,
+		// unscoped `db` instead — using dbCtx there would tie its background
+		// email send to a context that gets canceled the instant this
+		// handler returns.
+		dbCtx := db.WithContext(c.Request.Context())
+
 		var req AnimalRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
@@ -30,7 +38,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		}
 
 		var animal models.Animal
-		if err := db.Preload("Tags").First(&animal, animalID).Error; err != nil {
+		if err := dbCtx.Preload("Tags").First(&animal, animalID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}
@@ -175,14 +183,14 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 			return
 		}
 
-		if err := db.Model(&animal).Updates(updates).Error; err != nil {
+		if err := dbCtx.Model(&animal).Updates(updates).Error; err != nil {
 			logger.Error("Failed to update animal", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal"})
 			return
 		}
 
 		// Reload animal to get updated data
-		if err := db.Preload("Tags").First(&animal, animalID).Error; err != nil {
+		if err := dbCtx.Preload("Tags").First(&animal, animalID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload animal"})
 			return
 		}
@@ -192,7 +200,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 			if req.QuarantineIncidentDetails != nil {
 				incidentDetails = *req.QuarantineIncidentDetails
 			}
-			if err := db.Create(&models.AnimalBQIncident{
+			if err := dbCtx.Create(&models.AnimalBQIncident{
 				AnimalID:        animal.ID,
 				IncidentDetails: incidentDetails,
 				StartDate:       bqStartDate,
@@ -202,7 +210,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 			sendQuarantineNotificationEmail(db, emailService, &animal)
 		}
 		if leftQuarantine {
-			if err := db.Model(&models.AnimalBQIncident{}).
+			if err := dbCtx.Model(&models.AnimalBQIncident{}).
 				Where("animal_id = ? AND end_date IS NULL", animal.ID).
 				Update("end_date", incidentEndDateAtExit).Error; err != nil {
 				logger.Error("Failed to close BQ incident", err)
@@ -217,7 +225,7 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 				incidentUpdates["start_date"] = *bqStartDateEdit
 			}
 			if len(incidentUpdates) > 0 {
-				if err := db.Model(&models.AnimalBQIncident{}).
+				if err := dbCtx.Model(&models.AnimalBQIncident{}).
 					Where("animal_id = ? AND end_date IS NULL", animal.ID).
 					Updates(incidentUpdates).Error; err != nil {
 					logger.Error("Failed to update BQ incident", err)
@@ -244,6 +252,7 @@ type BulkUpdateAnimalsRequest struct {
 // BulkUpdateAnimals updates multiple animals at once (admin or group admin)
 func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db = db.WithContext(c.Request.Context())
 		logger := middleware.GetLogger(c)
 
 		// Check if user is site admin or group admin
@@ -334,6 +343,7 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 // GetAllAnimals returns all animals (admin or group admin, for bulk edit page)
 func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db = db.WithContext(c.Request.Context())
 		// Check if user is site admin or group admin
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {

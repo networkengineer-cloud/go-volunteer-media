@@ -29,6 +29,8 @@ var settingValidationRules = map[string]struct {
 // GetSiteSettings returns all site settings (public endpoint)
 func GetSiteSettings(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		var settings []models.SiteSetting
 		if err := db.Find(&settings).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch site settings"})
@@ -48,6 +50,8 @@ func GetSiteSettings(db *gorm.DB) gin.HandlerFunc {
 // UpdateSiteSetting updates a specific site setting (admin only)
 func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		key := c.Param("key")
 
 		var req struct {
@@ -110,6 +114,7 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 func UploadHeroImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 
 		userID := c.GetUint("user_id")

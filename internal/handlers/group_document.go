@@ -24,6 +24,7 @@ import (
 func GetGroupDocuments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -52,6 +53,7 @@ func GetGroupDocuments(db *gorm.DB) gin.HandlerFunc {
 func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converter convert.Converter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 
 		groupIDStr := c.Param("id")
@@ -210,6 +212,7 @@ func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converte
 func DeleteGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		logger := middleware.GetLogger(c)
 
 		groupIDStr := c.Param("id")
@@ -262,6 +265,7 @@ func DeleteGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db = db.WithContext(ctx)
 		uuidParam := c.Param("uuid")
 
 		userIDValue, exists := c.Get("user_id")

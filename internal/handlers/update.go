@@ -26,6 +26,7 @@ type UpdateRequest struct {
 // GetUpdates returns all updates for a group
 func GetUpdates(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db = db.WithContext(c.Request.Context())
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
