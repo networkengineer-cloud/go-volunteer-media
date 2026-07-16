@@ -1,6 +1,7 @@
 package groupme
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -183,7 +184,7 @@ func TestService_SendMessage(t *testing.T) {
 			service := NewService()
 			service.apiURL = server.URL + "/v3/bots/post"
 
-			err := service.SendMessage(tt.botID, tt.text)
+			err := service.SendMessage(context.Background(), tt.botID, tt.text)
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)
@@ -300,7 +301,7 @@ func TestService_SendAnnouncement(t *testing.T) {
 			service := NewService()
 			service.apiURL = server.URL + "/v3/bots/post"
 
-			err := service.SendAnnouncement(tt.botID, tt.title, tt.content)
+			err := service.SendAnnouncement(context.Background(), tt.botID, tt.title, tt.content)
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)

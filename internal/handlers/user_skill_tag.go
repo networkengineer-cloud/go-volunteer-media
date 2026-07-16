@@ -23,7 +23,7 @@ type UserSkillTagRequest struct {
 // Route: GET /api/groups/:id/user-skill-tags
 func GetUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -34,7 +34,7 @@ func GetUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var tags []models.UserSkillTag
-		if err := db.WithContext(ctx).Where("group_id = ?", groupID).Order("name").Find(&tags).Error; err != nil {
+		if err := db.Where("group_id = ?", groupID).Order("name").Find(&tags).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch skill tags"})
 			return
 		}
@@ -47,7 +47,7 @@ func GetUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 // Route: POST /api/groups/:id/user-skill-tags
 func CreateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -80,7 +80,7 @@ func CreateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 			Color:   req.Color,
 		}
 
-		if err := db.WithContext(ctx).Create(&tag).Error; err != nil {
+		if err := db.Create(&tag).Error; err != nil {
 			logger.Error("Failed to create skill tag", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create skill tag"})
 			return
@@ -94,7 +94,7 @@ func CreateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 // Route: PUT /api/groups/:id/user-skill-tags/:tagId
 func UpdateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
 		userID, _ := c.Get("user_id")
@@ -106,7 +106,7 @@ func UpdateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var tag models.UserSkillTag
-		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", tagID, groupID).First(&tag).Error; err != nil {
+		if err := db.Where("id = ? AND group_id = ?", tagID, groupID).First(&tag).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Skill tag not found"})
 			return
 		}
@@ -122,13 +122,13 @@ func UpdateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		if err := db.WithContext(ctx).Model(&tag).Updates(map[string]interface{}{"name": req.Name, "color": req.Color}).Error; err != nil {
+		if err := db.Model(&tag).Updates(map[string]interface{}{"name": req.Name, "color": req.Color}).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update skill tag"})
 			return
 		}
 
 		// Re-fetch to return the current DB state (map-based Updates does not refresh the local struct).
-		if err := db.WithContext(ctx).First(&tag, tag.ID).Error; err != nil {
+		if err := db.First(&tag, tag.ID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload skill tag"})
 			return
 		}
@@ -141,7 +141,7 @@ func UpdateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 // Route: DELETE /api/groups/:id/user-skill-tags/:tagId
 func DeleteUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
 		userID, _ := c.Get("user_id")
@@ -153,14 +153,14 @@ func DeleteUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var tag models.UserSkillTag
-		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", tagID, groupID).First(&tag).Error; err != nil {
+		if err := db.Where("id = ? AND group_id = ?", tagID, groupID).First(&tag).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Skill tag not found"})
 			return
 		}
 
 		// Remove assignments and soft-delete the tag atomically so we never
 		// leave orphaned assignments behind if the tag delete fails.
-		if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := db.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Exec("DELETE FROM user_skill_tag_assignments WHERE user_skill_tag_id = ?", tag.ID).Error; err != nil {
 				return err
 			}
@@ -183,7 +183,7 @@ type AssignUserSkillTagsRequest struct {
 // Route: PUT /api/groups/:id/members/:userId/skill-tags
 func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		targetUserID := c.Param("userId")
 		userID, _ := c.Get("user_id")
@@ -202,7 +202,7 @@ func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify the target user is a member of the group (exclude soft-deleted memberships)
 		var ug models.UserGroup
-		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND deleted_at IS NULL", targetUserID, groupID).First(&ug).Error; err != nil {
+		if err := db.Where("user_id = ? AND group_id = ? AND deleted_at IS NULL", targetUserID, groupID).First(&ug).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User is not a member of this group"})
 			return
 		}
@@ -221,7 +221,7 @@ func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 		// Validate that all tag IDs belong to this group
 		if len(req.TagIDs) > 0 {
 			var count int64
-			if err := db.WithContext(ctx).Model(&models.UserSkillTag{}).Where("id IN ? AND group_id = ?", req.TagIDs, groupID).Count(&count).Error; err != nil {
+			if err := db.Model(&models.UserSkillTag{}).Where("id IN ? AND group_id = ?", req.TagIDs, groupID).Count(&count).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate tag IDs"})
 				return
 			}
@@ -233,7 +233,7 @@ func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 
 		// Load the target user
 		var targetUser models.User
-		if err := db.WithContext(ctx).First(&targetUser, targetUserID).Error; err != nil {
+		if err := db.First(&targetUser, targetUserID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -241,7 +241,7 @@ func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 		// Build the list of new tags
 		var newTags []models.UserSkillTag
 		if len(req.TagIDs) > 0 {
-			if err := db.WithContext(ctx).Where("id IN ? AND group_id = ?", req.TagIDs, groupID).Find(&newTags).Error; err != nil {
+			if err := db.Where("id IN ? AND group_id = ?", req.TagIDs, groupID).Find(&newTags).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tags"})
 				return
 			}
@@ -255,7 +255,7 @@ func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 
 		// Remove existing skill tags for this group, then add new ones — wrapped in a
 		// transaction so a partial failure never leaves the user with no tags at all.
-		if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := db.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Exec(
 				"DELETE FROM user_skill_tag_assignments WHERE user_id = ? AND user_skill_tag_id IN (SELECT id FROM user_skill_tags WHERE group_id = ? AND deleted_at IS NULL)",
 				targetUser.ID, uint(groupIDUint),

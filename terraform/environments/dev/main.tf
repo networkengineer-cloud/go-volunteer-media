@@ -24,7 +24,7 @@ resource "random_string" "kv_suffix" {
 resource "random_password" "db_password" {
   length  = 32
   special = true
-  
+
   lifecycle {
     ignore_changes = [
       length,
@@ -37,15 +37,15 @@ resource "random_password" "db_password" {
 resource "azurerm_resource_group" "main" {
   name     = "rg-${var.project_name}-${var.environment}"
   location = var.location
-  
+
   tags = merge(
     {
-      Project     = var.project_name
-      Environment = var.environment
-      ManagedBy   = "Terraform"
-      Repository  = "go-volunteer-media"
-      Owner       = var.owner_email
-      CostCenter  = var.cost_center
+      Project      = var.project_name
+      Environment  = var.environment
+      ManagedBy    = "Terraform"
+      Repository   = "go-volunteer-media"
+      Owner        = var.owner_email
+      CostCenter   = var.cost_center
       AutoShutdown = "enabled"
     },
     var.additional_tags
@@ -59,43 +59,31 @@ resource "azurerm_log_analytics_workspace" "main" {
   resource_group_name = azurerm_resource_group.main.name
   sku                 = "PerGB2018"
   retention_in_days   = var.log_retention_days
-  
-  tags = azurerm_resource_group.main.tags
-}
 
-# Application Insights for monitoring
-resource "azurerm_application_insights" "main" {
-  name                = "appi-${var.project_name}-${var.environment}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  workspace_id        = azurerm_log_analytics_workspace.main.id
-  application_type    = "web"
-  sampling_percentage = 100  # Full sampling for dev debugging
-  
   tags = azurerm_resource_group.main.tags
 }
 
 # Key Vault for storing secrets (using RBAC model)
 resource "azurerm_key_vault" "main" {
-  name                       = "kv-vm-${var.environment}-${random_string.kv_suffix.result}"
-  location                   = azurerm_resource_group.main.location
-  resource_group_name        = azurerm_resource_group.main.name
-  tenant_id                  = data.azurerm_client_config.current.tenant_id
-  sku_name                   = "standard"
-  
+  name                = "kv-vm-${var.environment}-${random_string.kv_suffix.result}"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+  sku_name            = "standard"
+
   # Use RBAC for permissions (modern approach)
   enable_rbac_authorization = true
-  
+
   # Security settings (more relaxed for dev)
-  purge_protection_enabled   = false  # Allow immediate deletion in dev
-  soft_delete_retention_days = 7      # Minimum retention for dev
-  
+  purge_protection_enabled   = false # Allow immediate deletion in dev
+  soft_delete_retention_days = 7     # Minimum retention for dev
+
   # Network access (open for dev ease of use)
   network_acls {
     default_action = "Allow"
     bypass         = "AzureServices"
   }
-  
+
   tags = azurerm_resource_group.main.tags
 }
 
@@ -112,7 +100,7 @@ resource "azurerm_key_vault_secret" "db_password" {
   name         = "postgresql-admin-password"
   value        = random_password.db_password.result
   key_vault_id = azurerm_key_vault.main.id
-  
+
   depends_on = [azurerm_role_assignment.terraform_kv_secrets_officer]
 }
 
@@ -121,7 +109,7 @@ resource "azurerm_key_vault_secret" "resend_api_key" {
   name         = "resend-api-key"
   value        = var.resend_api_key
   key_vault_id = azurerm_key_vault.main.id
-  
+
   depends_on = [azurerm_role_assignment.terraform_kv_secrets_officer]
 }
 
@@ -130,7 +118,7 @@ resource "azurerm_key_vault_secret" "jwt_secret" {
   name         = "jwt-secret"
   value        = var.jwt_secret
   key_vault_id = azurerm_key_vault.main.id
-  
+
   depends_on = [azurerm_role_assignment.terraform_kv_secrets_officer]
 }
 
@@ -139,34 +127,34 @@ resource "azurerm_postgresql_flexible_server" "main" {
   name                = "psql-${var.project_name}-${var.environment}"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  
+
   # Authentication
   administrator_login    = var.db_admin_username
   administrator_password = random_password.db_password.result
-  
+
   # SKU Configuration (B_Standard_B1ms = Burstable tier with auto-pause)
   sku_name   = var.db_sku_name
   storage_mb = var.db_storage_mb
-  version    = "15"  # PostgreSQL 15
-  
+  version    = "15" # PostgreSQL 15
+
   # Backup and HA
   backup_retention_days        = var.db_backup_retention_days
-  geo_redundant_backup_enabled = false  # Disabled for cost savings
+  geo_redundant_backup_enabled = false # Disabled for cost savings
   auto_grow_enabled            = var.db_auto_grow_enabled
-  
+
   # High availability disabled for dev (omit block entirely to disable)
   # high_availability {
   #   mode = "ZoneRedundant"  # Only valid values: "ZoneRedundant" or "SameZone"
   # }
-  
+
   # Lifecycle protection (relaxed for dev)
   lifecycle {
-    prevent_destroy = false  # Allow deletion in dev
-    ignore_changes  = [
-      zone  # Azure may assign zone automatically, ignore changes to prevent errors
+    prevent_destroy = false # Allow deletion in dev
+    ignore_changes = [
+      zone # Azure may assign zone automatically, ignore changes to prevent errors
     ]
   }
-  
+
   tags = azurerm_resource_group.main.tags
 }
 
@@ -198,28 +186,28 @@ resource "azurerm_storage_account" "main" {
   name                = "st${replace(var.project_name, "-", "")}${var.environment}"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  
+
   account_tier             = var.storage_account_tier
   account_replication_type = var.storage_replication_type
-  
+
   # Security settings
-  min_tls_version                   = "TLS1_2"
-  https_traffic_only_enabled        = true
-  allow_nested_items_to_be_public   = false
-  
+  min_tls_version                 = "TLS1_2"
+  https_traffic_only_enabled      = true
+  allow_nested_items_to_be_public = false
+
   # Enable blob versioning for data protection
   blob_properties {
     versioning_enabled = true
-    
+
     delete_retention_policy {
       days = 7
     }
-    
+
     container_delete_retention_policy {
       days = 7
     }
   }
-  
+
   tags = azurerm_resource_group.main.tags
 }
 
@@ -236,7 +224,7 @@ resource "azurerm_container_app_environment" "main" {
   location                   = azurerm_resource_group.main.location
   resource_group_name        = azurerm_resource_group.main.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
-  
+
   tags = azurerm_resource_group.main.tags
 }
 
@@ -246,201 +234,216 @@ resource "azurerm_container_app" "main" {
   container_app_environment_id = azurerm_container_app_environment.main.id
   resource_group_name          = azurerm_resource_group.main.name
   revision_mode                = "Single"
-  
+
   # Container configuration
   template {
-    min_replicas = 1  # Always keep minimum 1 replica running
+    min_replicas = 1 # Always keep minimum 1 replica running
     max_replicas = var.max_replicas
-    
+
     # HTTP-based autoscaling
     http_scale_rule {
       name                = "http-scaler"
       concurrent_requests = "100"
     }
-    
+
     container {
       name   = "volunteer-media-api"
       image  = var.container_image
       cpu    = var.container_cpu
       memory = var.container_memory
-      
+
       # Environment variables
       env {
         name  = "GIN_MODE"
-        value = "debug"  # Debug mode for dev
+        value = "debug" # Debug mode for dev
       }
-      
+
       env {
         name  = "PORT"
         value = "8080"
       }
-      
+
       # Environment identifier for logging and monitoring
       env {
         name  = "ENV"
         value = "development"
       }
-      
+
       env {
         name  = "DB_HOST"
         value = azurerm_postgresql_flexible_server.main.fqdn
       }
-      
+
       env {
         name  = "DB_PORT"
         value = "5432"
       }
-      
+
       env {
         name  = "DB_USER"
         value = var.db_admin_username
       }
-      
+
       env {
         name        = "DB_PASSWORD"
         secret_name = "db-password"
       }
-      
+
       env {
         name  = "DB_NAME"
         value = azurerm_postgresql_flexible_server_database.main.name
       }
-      
+
       env {
         name  = "DB_SSLMODE"
         value = "require"
       }
-      
+
       # Database Logging (reduce verbosity)
       env {
         name  = "DB_LOG_LEVEL"
         value = "warn"
       }
-      
+
       # Email Configuration (DISABLED for dev)
       env {
         name  = "EMAIL_ENABLED"
         value = "false"
       }
-      
+
       env {
         name  = "EMAIL_PROVIDER"
         value = "resend"
       }
-      
+
       # Frontend URL (for password reset links when email is enabled)
       env {
         name  = "FRONTEND_URL"
         value = var.frontend_url
       }
-      
+
       # Resend SMTP Configuration (placeholder - email disabled)
       env {
         name  = "SMTP_HOST"
         value = "smtp.resend.com"
       }
-      
+
       env {
         name  = "SMTP_PORT"
         value = "587"
       }
-      
+
       env {
         name  = "SMTP_USER"
         value = "resend"
       }
-      
+
       env {
         name        = "SMTP_PASS"
         secret_name = "resend-api-key"
       }
-      
+
       env {
         name  = "SMTP_FROM"
         value = var.resend_from_email
       }
-      
+
       # Azure Storage Configuration
       env {
         name  = "AZURE_STORAGE_ACCOUNT"
         value = azurerm_storage_account.main.name
       }
-      
+
       env {
         name        = "AZURE_STORAGE_KEY"
         secret_name = "storage-account-key"
       }
-      
+
       env {
         name  = "AZURE_STORAGE_CONTAINER"
         value = azurerm_storage_container.uploads.name
       }
-      
+
       # JWT Secret
       env {
         name        = "JWT_SECRET"
         secret_name = "jwt-secret"
       }
-      
+
       # CORS Configuration (more permissive for dev)
       env {
         name  = "ALLOWED_ORIGINS"
         value = join(",", var.allowed_origins)
       }
-      
-      # Application Insights
+
+      # Monitoring — OpenTelemetry exported to Axiom
       env {
-        name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
-        value = azurerm_application_insights.main.connection_string
+        name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+        value = var.axiom_endpoint
+      }
+
+      env {
+        name        = "OTEL_EXPORTER_OTLP_HEADERS"
+        secret_name = "otel-exporter-otlp-headers"
+      }
+
+      env {
+        name  = "OTEL_SERVICE_NAME"
+        value = "go-volunteer-media"
       }
     }
   }
-  
+
   # Ingress configuration
   ingress {
     external_enabled = true
     target_port      = 8080
-    
+
     traffic_weight {
       latest_revision = true
       percentage      = 100
     }
-    
+
     # Allow HTTP/2 and HTTPS
     transport = "auto"
   }
-  
+
   # Note: Custom domain with managed certificate must be added via Azure CLI after DNS validation
   # See outputs for step-by-step instructions
-  
+
   # Secrets
   secret {
     name  = "db-password"
     value = random_password.db_password.result
   }
-  
+
   secret {
     name  = "resend-api-key"
     value = var.resend_api_key
   }
-  
+
   secret {
     name  = "jwt-secret"
     value = var.jwt_secret
   }
-  
+
   secret {
     name  = "storage-account-key"
     value = azurerm_storage_account.main.primary_access_key
   }
-  
+
+  secret {
+    name  = "otel-exporter-otlp-headers"
+    value = "Authorization=Bearer ${var.axiom_api_token},X-Axiom-Dataset=${var.axiom_dataset}"
+  }
+
   # Note: No registry configuration needed - GHCR image is public
-  
+
   # Managed Identity
   identity {
     type = "SystemAssigned"
   }
-  
+
   tags = azurerm_resource_group.main.tags
 }
 
@@ -508,7 +511,7 @@ resource "azurerm_monitor_diagnostic_setting" "container_app" {
   name                       = "diag-container-app"
   target_resource_id         = azurerm_container_app.main.id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
-  
+
   metric {
     category = "AllMetrics"
     enabled  = true
@@ -520,12 +523,12 @@ resource "azurerm_monitor_action_group" "main" {
   name                = "ag-${var.project_name}-${var.environment}"
   resource_group_name = azurerm_resource_group.main.name
   short_name          = "devalerts"
-  
+
   email_receiver {
     name          = "admin"
     email_address = var.owner_email
   }
-  
+
   tags = azurerm_resource_group.main.tags
 }
 
@@ -538,7 +541,7 @@ resource "azurerm_monitor_metric_alert" "app_errors" {
   severity            = 2
   frequency           = "PT5M"
   window_size         = "PT15M"
-  
+
   criteria {
     metric_namespace = "Microsoft.App/containerApps"
     metric_name      = "Replicas"
@@ -546,11 +549,11 @@ resource "azurerm_monitor_metric_alert" "app_errors" {
     operator         = "LessThan"
     threshold        = 1
   }
-  
+
   action {
     action_group_id = azurerm_monitor_action_group.main.id
   }
-  
+
   tags = azurerm_resource_group.main.tags
 }
 
@@ -558,39 +561,39 @@ resource "azurerm_monitor_metric_alert" "app_errors" {
 resource "azurerm_consumption_budget_resource_group" "main" {
   name              = "budget-${var.project_name}-${var.environment}"
   resource_group_id = azurerm_resource_group.main.id
-  
+
   amount     = var.monthly_budget_amount
   time_grain = "Monthly"
-  
+
   time_period {
     start_date = formatdate("YYYY-MM-01'T'00:00:00Z", timestamp())
   }
-  
+
   notification {
     enabled   = true
     threshold = 80
     operator  = "GreaterThan"
-    
+
     contact_emails = concat(
       [var.owner_email],
       var.budget_alert_emails
     )
   }
-  
+
   notification {
     enabled   = true
     threshold = 100
     operator  = "GreaterThan"
-    
+
     contact_emails = concat(
       [var.owner_email],
       var.budget_alert_emails
     )
   }
-  
+
   lifecycle {
     ignore_changes = [
-      time_period  # Prevent recreation on every apply
+      time_period # Prevent recreation on every apply
     ]
   }
 }

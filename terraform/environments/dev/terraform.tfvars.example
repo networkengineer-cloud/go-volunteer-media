@@ -29,6 +29,10 @@ resend_from_email = "dev@volunteermedia.app"
 # Security
 jwt_secret = "generate-with-openssl-rand-base64-32"  # Separate from prod!
 
+# Observability (Axiom via OpenTelemetry)
+axiom_api_token = "xaat-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"  # Get from Axiom Settings > API tokens
+axiom_dataset   = "go-volunteer-media-dev"
+
 # Monitoring
 log_retention_days     = 7
 monthly_budget_amount  = 20

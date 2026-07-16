@@ -7,13 +7,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/maintenance"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"gorm.io/gorm"
 )
 
 // RunOrphanedImageCleanup triggers cleanup of orphaned animal images (admin only)
 func RunOrphanedImageCleanup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 
 		// Get optional days parameter (default 7 days)
 		days := 7
@@ -26,7 +27,7 @@ func RunOrphanedImageCleanup(db *gorm.DB) gin.HandlerFunc {
 		logging.WithField("days", days).Info("Admin triggered orphaned image cleanup")
 
 		// Run cleanup using the maintenance package
-		deletedCount, err := maintenance.CleanupOrphanedImages(db.WithContext(ctx), days)
+		deletedCount, err := maintenance.CleanupOrphanedImages(db, days)
 		if err != nil {
 			logging.WithField("error", err.Error()).Warn("Orphaned image cleanup failed")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Cleanup failed"})
@@ -44,7 +45,7 @@ func RunOrphanedImageCleanup(db *gorm.DB) gin.HandlerFunc {
 // RunSoftDeletedRecordsCleanup triggers cleanup of old soft-deleted records (admin only)
 func RunSoftDeletedRecordsCleanup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 
 		// Get required table parameter
 		tableName := c.Query("table")
@@ -87,7 +88,7 @@ func RunSoftDeletedRecordsCleanup(db *gorm.DB) gin.HandlerFunc {
 		}).Info("Admin triggered soft-deleted records cleanup")
 
 		// Run cleanup using the maintenance package
-		deletedCount, err := maintenance.CleanupOldSoftDeletedRecords(db.WithContext(ctx), tableName, days)
+		deletedCount, err := maintenance.CleanupOldSoftDeletedRecords(db, tableName, days)
 		if err != nil {
 			logging.WithField("error", err.Error()).Warn("Soft-deleted records cleanup failed")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Cleanup failed"})

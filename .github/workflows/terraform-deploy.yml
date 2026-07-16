@@ -125,6 +125,8 @@ jobs:
           TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
           TF_VAR_owner_email: ${{ secrets.OWNER_EMAIL }}
           TF_VAR_container_image: ${{ secrets.CONTAINER_IMAGE }}
+          TF_VAR_axiom_api_token: ${{ secrets.AXIOM_API_TOKEN }}
+          TF_VAR_axiom_dataset: ${{ secrets.AXIOM_DATASET }}
         continue-on-error: true
       
       - name: Comment PR with Plan
@@ -192,7 +194,9 @@ jobs:
           TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
           TF_VAR_owner_email: ${{ secrets.OWNER_EMAIL }}
           TF_VAR_container_image: ${{ secrets.CONTAINER_IMAGE }}
-      
+          TF_VAR_axiom_api_token: ${{ secrets.AXIOM_API_TOKEN }}
+          TF_VAR_axiom_dataset: ${{ secrets.AXIOM_DATASET }}
+
       - name: Get Outputs
         id: outputs
         run: |

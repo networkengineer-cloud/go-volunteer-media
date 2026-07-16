@@ -9,11 +9,22 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 )
 
 const (
 	defaultResendAPIURL = "https://api.resend.com/emails"
 )
+
+// tracer is shared by every Provider implementation in this package (see
+// also smtp_provider.go); span names ("email.resend.send",
+// "email.smtp.send") distinguish providers, so one tracer per package is
+// enough — no need for a differently-named tracer per file.
+var tracer = telemetry.Tracer("internal/email")
 
 // ResendProvider implements the Provider interface using Resend
 type ResendProvider struct {
@@ -74,6 +85,11 @@ func (p *ResendProvider) SendEmail(ctx context.Context, to, subject, htmlBody st
 		return fmt.Errorf("Resend provider is not configured")
 	}
 
+	ctx, span := tracer.Start(ctx, "email.resend.send", trace.WithAttributes(
+		attribute.Int("email.body_size_bytes", len(htmlBody)),
+	))
+	defer span.End()
+
 	// Construct from address
 	from := p.FromEmail
 	if p.FromName != "" {
@@ -90,13 +106,13 @@ func (p *ResendProvider) SendEmail(ctx context.Context, to, subject, htmlBody st
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to marshal request: %w", err), "failed to marshal request")
 	}
 
 	// Create HTTP request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to create request: %w", err), "failed to create request")
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", p.APIKey))
@@ -105,26 +121,26 @@ func (p *ResendProvider) SendEmail(ctx context.Context, to, subject, htmlBody st
 	// Send request
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to send request: %w", err), "request failed")
 	}
 	defer resp.Body.Close()
 
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to read response: %w", err), "failed to read response")
 	}
 
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		var resendResp ResendEmailResponse
 		if err := json.Unmarshal(body, &resendResp); err != nil {
-			return fmt.Errorf("Resend API error: status %d, body: %s", resp.StatusCode, string(body))
+			return telemetry.Fail(span, fmt.Errorf("Resend API error: status %d, body: %s", resp.StatusCode, string(body)), "non-200 response")
 		}
 		if resendResp.Error.Message != "" {
-			return fmt.Errorf("Resend API error: %s", resendResp.Error.Message)
+			return telemetry.Fail(span, fmt.Errorf("Resend API error: %s", resendResp.Error.Message), "non-200 response")
 		}
-		return fmt.Errorf("Resend API error: status %d", resp.StatusCode)
+		return telemetry.Fail(span, fmt.Errorf("Resend API error: status %d", resp.StatusCode), "non-200 response")
 	}
 
 	return nil

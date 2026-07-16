@@ -23,7 +23,7 @@ import (
 // Unlike Scripts, documents are available to all groups regardless of has_protocols.
 func GetGroupDocuments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -34,7 +34,7 @@ func GetGroupDocuments(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var documents []models.GroupDocument
-		if err := db.WithContext(ctx).
+		if err := db.
 			Select("id, created_at, updated_at, group_id, title, description, order_index, "+
 				"file_url, file_name, file_type, file_size, file_provider, file_uploaded_by_user_id").
 			Where("group_id = ?", groupID).
@@ -52,6 +52,7 @@ func GetGroupDocuments(db *gorm.DB) gin.HandlerFunc {
 func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converter convert.Converter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		groupIDStr := c.Param("id")
@@ -210,6 +211,7 @@ func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converte
 func DeleteGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		groupIDStr := c.Param("id")
@@ -262,6 +264,7 @@ func DeleteGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		uuidParam := c.Param("uuid")
 
 		userIDValue, exists := c.Get("user_id")
@@ -279,7 +282,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 
 		// Look up document by blob identifier
 		var doc models.GroupDocument
-		if err := db.WithContext(ctx).Where("file_blob_identifier = ?", uuidParam).First(&doc).Error; err != nil {
+		if err := db.Where("file_blob_identifier = ?", uuidParam).First(&doc).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Document not found"})
 			return
 		}
@@ -287,7 +290,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 		// Authorization: verify user is a member of the document's group or is a site admin
 		if !isAdmin {
 			var count int64
-			if err := db.WithContext(ctx).
+			if err := db.
 				Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id = ?", userID, doc.GroupID).
 				Count(&count).Error; err != nil {

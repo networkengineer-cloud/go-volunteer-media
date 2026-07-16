@@ -116,7 +116,7 @@ func TestService_SendEmail_NotConfigured(t *testing.T) {
 		db:       nil,
 	}
 
-	err := service.SendEmail("test@example.com", "Test Subject", "<html><body>Test Body</body></html>")
+	err := service.SendEmail(context.Background(), "test@example.com", "Test Subject", "<html><body>Test Body</body></html>")
 	if err == nil {
 		t.Error("Expected error when service is not configured, got nil")
 	}
@@ -156,7 +156,7 @@ func TestSendPasswordResetEmail_Structure(t *testing.T) {
 				db:       nil,
 			}
 
-			err := service.SendPasswordResetEmail("test@example.com", "testuser", "test-token-123")
+			err := service.SendPasswordResetEmail(context.Background(), "test@example.com", "testuser", "test-token-123")
 
 			// Should get "not configured" error since service is not configured
 			if err == nil {
@@ -180,6 +180,7 @@ func TestSendAnnouncementEmail_Structure(t *testing.T) {
 	}
 
 	err := service.SendAnnouncementEmail(
+		context.Background(),
 		"test@example.com",
 		"Test Announcement",
 		"This is a test announcement\nwith multiple lines",
@@ -211,7 +212,7 @@ func TestService_SendPasswordResetEmail_WithConfiguredProvider(t *testing.T) {
 	os.Setenv("FRONTEND_URL", "https://test.com")
 	defer os.Setenv("FRONTEND_URL", origFrontendURL)
 
-	err := service.SendPasswordResetEmail("user@example.com", "testuser", "token123")
+	err := service.SendPasswordResetEmail(context.Background(), "user@example.com", "testuser", "token123")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -250,7 +251,7 @@ func TestService_SendAnnouncementEmail_WithConfiguredProvider(t *testing.T) {
 		db:       nil,
 	}
 
-	err := service.SendAnnouncementEmail("user@example.com", "Important Notice", "This is the content\nLine 2")
+	err := service.SendAnnouncementEmail(context.Background(), "user@example.com", "Important Notice", "This is the content\nLine 2")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -466,7 +467,7 @@ func TestEmailTemplates_UseDynamicSiteName(t *testing.T) {
 	t.Run("password reset email uses custom site name", func(t *testing.T) {
 		mockProvider.sentEmails = nil // Clear sent emails
 
-		err := service.SendPasswordResetEmail("user@example.com", "testuser", "reset-token-123")
+		err := service.SendPasswordResetEmail(context.Background(), "user@example.com", "testuser", "reset-token-123")
 		if err != nil {
 			t.Fatalf("Failed to send password reset email: %v", err)
 		}
@@ -491,7 +492,7 @@ func TestEmailTemplates_UseDynamicSiteName(t *testing.T) {
 	t.Run("password setup email uses custom site name", func(t *testing.T) {
 		mockProvider.sentEmails = nil // Clear sent emails
 
-		err := service.SendPasswordSetupEmail("user@example.com", "newuser", "setup-token-456")
+		err := service.SendPasswordSetupEmail(context.Background(), "user@example.com", "newuser", "setup-token-456")
 		if err != nil {
 			t.Fatalf("Failed to send password setup email: %v", err)
 		}
@@ -517,7 +518,7 @@ func TestEmailTemplates_UseDynamicSiteName(t *testing.T) {
 	t.Run("announcement email uses custom site name", func(t *testing.T) {
 		mockProvider.sentEmails = nil // Clear sent emails
 
-		err := service.SendAnnouncementEmail("user@example.com", "Important Update", "This is the announcement content")
+		err := service.SendAnnouncementEmail(context.Background(), "user@example.com", "Important Update", "This is the announcement content")
 		if err != nil {
 			t.Fatalf("Failed to send announcement email: %v", err)
 		}

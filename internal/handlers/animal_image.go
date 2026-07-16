@@ -25,6 +25,7 @@ import (
 // GET /api/groups/:id/animals/:animalId/images
 func GetAnimalImages(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -70,6 +71,7 @@ func GetAnimalImages(db *gorm.DB) gin.HandlerFunc {
 func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -253,6 +255,7 @@ func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) g
 func DeleteAnimalImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -322,6 +325,7 @@ func DeleteAnimalImage(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 // PUT /api/admin/animals/:animalId/images/:imageId/set-profile
 func SetAnimalProfilePicture(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		animalID := c.Param("animalId")
 		imageID := c.Param("imageId")
@@ -396,6 +400,7 @@ func SetAnimalProfilePicture(db *gorm.DB) gin.HandlerFunc {
 // PUT /api/groups/:groupId/animals/:animalId/images/:imageId/set-profile
 func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -494,6 +499,7 @@ func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 // GetDeletedImages returns all soft-deleted images for admin monitoring (admin only)
 func GetDeletedImages(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")

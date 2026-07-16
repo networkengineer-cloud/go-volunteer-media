@@ -140,7 +140,7 @@ func (s *Service) getSiteName() string {
 }
 
 // SendEmail sends an email using the configured provider
-func (s *Service) SendEmail(to, subject, htmlBody string) error {
+func (s *Service) SendEmail(ctx context.Context, to, subject, htmlBody string) error {
 	if !s.IsConfigured() {
 		return fmt.Errorf("email service is not configured")
 	}
@@ -150,15 +150,19 @@ func (s *Service) SendEmail(to, subject, htmlBody string) error {
 		return fmt.Errorf("invalid email address: %s", to)
 	}
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Bound the send with its own timeout. context.WithoutCancel detaches
+	// from the caller's cancellation signal — a client disconnecting mid
+	// -request must not abort an in-flight password-reset/invite email send
+	// — while still carrying the caller's values (trace context, request ID)
+	// so the send stays linked to the originating trace/log context.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 
 	return s.provider.SendEmail(ctx, to, subject, htmlBody)
 }
 
 // SendPasswordResetEmail sends a password reset email
-func (s *Service) SendPasswordResetEmail(to, username, resetToken string) error {
+func (s *Service) SendPasswordResetEmail(ctx context.Context, to, username, resetToken string) error {
 	baseURL := os.Getenv("FRONTEND_URL")
 	if baseURL == "" {
 		baseURL = "http://localhost:5173"
@@ -206,11 +210,11 @@ func (s *Service) SendPasswordResetEmail(to, username, resetToken string) error 
 </html>
 `, username, siteName, resetLink, resetLink, siteName)
 
-	return s.SendEmail(to, subject, body)
+	return s.SendEmail(ctx, to, subject, body)
 }
 
 // SendPasswordSetupEmail sends a password setup email for new user invitations
-func (s *Service) SendPasswordSetupEmail(to, username, setupToken string) error {
+func (s *Service) SendPasswordSetupEmail(ctx context.Context, to, username, setupToken string) error {
 	baseURL := os.Getenv("FRONTEND_URL")
 	if baseURL == "" {
 		baseURL = "http://localhost:5173"
@@ -263,11 +267,11 @@ func (s *Service) SendPasswordSetupEmail(to, username, setupToken string) error 
 </html>
 `, siteName, username, username, siteName, setupLink, setupLink, siteName)
 
-	return s.SendEmail(to, subject, body)
+	return s.SendEmail(ctx, to, subject, body)
 }
 
 // SendAnnouncementEmail sends an announcement email
-func (s *Service) SendAnnouncementEmail(to, title, content string) error {
+func (s *Service) SendAnnouncementEmail(ctx context.Context, to, title, content string) error {
 	siteName := s.getSiteName()
 	subject := fmt.Sprintf("Announcement: %s - %s", title, siteName)
 
@@ -304,5 +308,5 @@ func (s *Service) SendAnnouncementEmail(to, title, content string) error {
 </html>
 `, escapedTitle, htmlContent, siteName)
 
-	return s.SendEmail(to, subject, body)
+	return s.SendEmail(ctx, to, subject, body)
 }

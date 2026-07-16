@@ -367,6 +367,14 @@ router.GET("/health", func(c *gin.Context) {
 })
 ```
 
+### OpenTelemetry / Axiom Export
+
+The Terraform-managed Azure App Service configuration exports OpenTelemetry traces, metrics, and logs to [Axiom](https://axiom.co) via OTLP instead of Application Insights (which has been removed from the Terraform configuration as it was unused).
+
+Before running `terraform apply` for the `dev` or `prod` environment, set the `axiom_api_token` and `axiom_dataset` Terraform variables — for example via `TF_VAR_axiom_api_token` / `TF_VAR_axiom_dataset` environment variables, or your environment's tfvars secret-injection mechanism. `terraform plan`/`apply` will fail validation if these are left unset.
+
+For local development, telemetry export is optional — see the `OTEL_*` variables in `.env.example`. Leaving them unset makes telemetry a no-op.
+
 ### Monitoring Tools
 
 Consider implementing:

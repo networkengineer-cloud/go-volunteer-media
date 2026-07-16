@@ -29,6 +29,7 @@ var settingValidationRules = map[string]struct {
 // GetSiteSettings returns all site settings (public endpoint)
 func GetSiteSettings(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		var settings []models.SiteSetting
 		if err := db.Find(&settings).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch site settings"})
@@ -48,6 +49,7 @@ func GetSiteSettings(db *gorm.DB) gin.HandlerFunc {
 // UpdateSiteSetting updates a specific site setting (admin only)
 func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		key := c.Param("key")
 
 		var req struct {
@@ -110,6 +112,7 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 func UploadHeroImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		userID := c.GetUint("user_id")
@@ -186,7 +189,7 @@ func UploadHeroImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 			BlobIdentifier:  blobIdentifier,
 			BlobExtension:   blobExt,
 		}
-		if err := db.WithContext(ctx).Create(&record).Error; err != nil {
+		if err := db.Create(&record).Error; err != nil {
 			logger.Error("Failed to persist hero image record", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
 			return

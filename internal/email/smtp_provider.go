@@ -3,10 +3,34 @@ package email
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
+	"net"
 	"net/smtp"
 	"os"
+	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 )
+
+// defaultSMTPTimeout bounds the SMTP conversation when ctx carries no
+// deadline of its own (e.g. a caller that didn't wrap ctx with a timeout).
+const defaultSMTPTimeout = 25 * time.Second
+
+// smtpDeadline returns ctx's own deadline if it has one, else a deadline
+// defaultSMTPTimeout from now. net/smtp's Client methods are blocking,
+// context-oblivious I/O — the connection's own deadline is the only thing
+// that can bound a server that accepts the TCP connection but then stalls
+// mid-handshake or mid-conversation.
+func smtpDeadline(ctx context.Context) time.Time {
+	if d, ok := ctx.Deadline(); ok {
+		return d
+	}
+	return time.Now().Add(defaultSMTPTimeout)
+}
 
 // SMTPProvider implements the Provider interface using SMTP
 type SMTPProvider struct {
@@ -61,6 +85,11 @@ func (p *SMTPProvider) SendEmail(ctx context.Context, to, subject, htmlBody stri
 	default:
 	}
 
+	ctx, span := tracer.Start(ctx, "email.smtp.send", trace.WithAttributes(
+		attribute.Int("email.body_size_bytes", len(htmlBody)),
+	))
+	defer span.End()
+
 	from := p.FromEmail
 	if p.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", p.FromName, p.FromEmail)
@@ -83,51 +112,107 @@ func (p *SMTPProvider) SendEmail(ctx context.Context, to, subject, htmlBody stri
 
 	// Try to send with TLS
 	tlsConfig := p.getTLSConfig()
+	deadline := smtpDeadline(ctx)
 
-	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	dialer := &tls.Dialer{NetDialer: &net.Dialer{}, Config: tlsConfig}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		// If TLS connection fails, try STARTTLS
-		return p.sendWithSTARTTLS(addr, auth, p.FromEmail, to, msg)
+		if err := p.sendWithSTARTTLS(ctx, addr, auth, p.FromEmail, to, msg); err != nil {
+			return telemetry.Fail(span, err, "starttls fallback failed")
+		}
+		return nil
 	}
 	defer conn.Close()
+	if err := conn.SetDeadline(deadline); err != nil {
+		return telemetry.Fail(span, fmt.Errorf("failed to set connection deadline: %w", err), "deadline failed")
+	}
 
 	client, err := smtp.NewClient(conn, p.Host)
 	if err != nil {
-		return fmt.Errorf("failed to create SMTP client: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to create SMTP client: %w", err), "client creation failed")
 	}
 	defer client.Close()
 
-	if err = client.Auth(auth); err != nil {
-		return fmt.Errorf("failed to authenticate: %w", err)
+	if err := runSMTPCommands(client, auth, p.FromEmail, to, msg); err != nil {
+		var stepErr *smtpStepError
+		if errors.As(err, &stepErr) {
+			return telemetry.Fail(span, err, stepErr.step+" failed")
+		}
+		return telemetry.Fail(span, err, "smtp command failed")
 	}
-
-	if err = client.Mail(p.FromEmail); err != nil {
-		return fmt.Errorf("failed to set sender: %w", err)
-	}
-
-	if err = client.Rcpt(to); err != nil {
-		return fmt.Errorf("failed to set recipient: %w", err)
-	}
-
-	w, err := client.Data()
-	if err != nil {
-		return fmt.Errorf("failed to get data writer: %w", err)
-	}
-
-	_, err = w.Write(msg)
-	if err != nil {
-		return fmt.Errorf("failed to write message: %w", err)
-	}
-
-	err = w.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close writer: %w", err)
-	}
-
-	return client.Quit()
+	return nil
 }
 
-// sendWithSTARTTLS sends email using STARTTLS
-func (p *SMTPProvider) sendWithSTARTTLS(addr string, auth smtp.Auth, from, to string, msg []byte) error {
-	return smtp.SendMail(addr, auth, from, []string{to}, msg)
+// smtpStepError identifies which step of the SMTP client command sequence
+// (see runSMTPCommands) failed, so callers can attribute the failure to a
+// specific step without duplicating the sequence per caller.
+type smtpStepError struct {
+	step string
+	err  error
+}
+
+func (e *smtpStepError) Error() string { return fmt.Sprintf("failed to %s: %v", e.step, e.err) }
+func (e *smtpStepError) Unwrap() error { return e.err }
+
+// runSMTPCommands walks the SMTP client conversation (Auth, Mail, Rcpt,
+// Data, Write, Close, Quit) shared by the direct-TLS (SendEmail) and
+// STARTTLS (sendWithSTARTTLS) send paths.
+func runSMTPCommands(client *smtp.Client, auth smtp.Auth, from, to string, msg []byte) error {
+	if err := client.Auth(auth); err != nil {
+		return &smtpStepError{"authenticate", err}
+	}
+	if err := client.Mail(from); err != nil {
+		return &smtpStepError{"set sender", err}
+	}
+	if err := client.Rcpt(to); err != nil {
+		return &smtpStepError{"set recipient", err}
+	}
+	w, err := client.Data()
+	if err != nil {
+		return &smtpStepError{"get data writer", err}
+	}
+	if _, err := w.Write(msg); err != nil {
+		return &smtpStepError{"write message", err}
+	}
+	if err := w.Close(); err != nil {
+		return &smtpStepError{"close writer", err}
+	}
+	if err := client.Quit(); err != nil {
+		return &smtpStepError{"quit", err}
+	}
+	return nil
+}
+
+// sendWithSTARTTLS sends email using STARTTLS, as a fallback for servers
+// that don't accept a direct TLS connection on the configured port. This
+// walks the same steps net/smtp.SendMail does internally, but dials via ctx
+// (so an attempt to an unreachable host is cancellable) and sets a deadline
+// on the connection (so a server that accepts the TCP connection but then
+// stalls mid-handshake or mid-conversation can't hang the caller
+// indefinitely — net/smtp's blocking Client methods have no ctx-awareness of
+// their own).
+func (p *SMTPProvider) sendWithSTARTTLS(ctx context.Context, addr string, auth smtp.Auth, from, to string, msg []byte) error {
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(smtpDeadline(ctx)); err != nil {
+		return err
+	}
+
+	client, err := smtp.NewClient(conn, p.Host)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: p.Host}); err != nil {
+			return err
+		}
+	}
+
+	return runSMTPCommands(client, auth, from, to, msg)
 }

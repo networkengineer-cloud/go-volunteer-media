@@ -21,6 +21,7 @@ type AnimalTagRequest struct {
 // Route: GET /api/groups/:id/animal-tags
 func GetAnimalTags(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -45,6 +46,7 @@ func GetAnimalTags(db *gorm.DB) gin.HandlerFunc {
 // Route: POST /api/groups/:id/animal-tags
 func CreateAnimalTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -95,6 +97,7 @@ func CreateAnimalTag(db *gorm.DB) gin.HandlerFunc {
 // Route: PUT /api/groups/:id/animal-tags/:tagId
 func UpdateAnimalTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
@@ -144,6 +147,7 @@ func UpdateAnimalTag(db *gorm.DB) gin.HandlerFunc {
 // Route: DELETE /api/groups/:id/animal-tags/:tagId
 func DeleteAnimalTag(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
@@ -181,6 +185,7 @@ func DeleteAnimalTag(db *gorm.DB) gin.HandlerFunc {
 // Route: POST /api/groups/:id/animals/:animalId/tags
 func AssignTagsToAnimal(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")

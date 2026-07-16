@@ -25,15 +25,60 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/handlers"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/lifecycle"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 func main() {
+	// Load environment variables first so everything below — logging,
+	// telemetry, database config — observes vars set only in .env, not just
+	// the process environment. The "no .env file" notice itself is logged
+	// further down, after InitFromEnv, so it respects the operator's
+	// configured LOG_LEVEL/LOG_FORMAT instead of the package's pre-init
+	// defaults.
+	dotenvErr := godotenv.Load()
+
 	// Initialize logging from environment variables
 	logging.InitFromEnv()
 	logger := logging.GetDefaultLogger()
+
+	if dotenvErr != nil {
+		logger.Info("No .env file found, using system environment variables")
+	}
+
+	// serviceName identifies this process in traces/metrics/logs. Defaults to
+	// "go-volunteer-media" but is operator-overridable via OTEL_SERVICE_NAME,
+	// matching the knob documented in .env.example/DEPLOYMENT.md/Terraform.
+	serviceName := os.Getenv("OTEL_SERVICE_NAME")
+	if serviceName == "" {
+		serviceName = "go-volunteer-media"
+	}
+
+	// Initialize OpenTelemetry (traces, metrics, logs). No-op if
+	// OTEL_EXPORTER_OTLP_ENDPOINT is unset — never blocks startup. No timeout
+	// here: exporter/resource construction is local setup only (env var
+	// reads, no network dial), so there's nothing for a deadline to bound —
+	// actual export happens later, asynchronously, in background batch
+	// processors.
+	telemetry.Init(context.Background(), serviceName, os.Getenv("ENV"))
+
+	shutdownTelemetry := func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := telemetry.Shutdown(shutdownCtx); err != nil {
+			logger.Error("Error shutting down telemetry", err)
+		}
+	}
+	defer shutdownTelemetry()
+	// logger.Fatal exits via os.Exit, which skips deferred functions, so the
+	// deferred shutdownTelemetry above never runs on a fatal startup/runtime
+	// error. Registering it as a shutdown hook ensures the crash itself (and
+	// any spans/metrics buffered up to that point) still gets flushed.
+	lifecycle.SetShutdownHook(shutdownTelemetry)
 
 	// Register custom validators and use JSON tag names in validation error messages
 	v, ok := binding.Validator.Engine().(*validator.Validate)
@@ -52,10 +97,6 @@ func main() {
 			}
 			return name
 		})
-	}
-	// Load environment variables
-	if err := godotenv.Load(); err != nil {
-		logger.Info("No .env file found, using system environment variables")
 	}
 
 	// Initialize database
@@ -125,8 +166,7 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
-	// Add recovery middleware
-	router.Use(gin.Recovery())
+	registerCoreMiddleware(router, serviceName)
 
 	// Security headers middleware (add before CORS)
 	router.Use(middleware.SecurityHeaders())
@@ -136,6 +176,11 @@ func main() {
 
 	// Structured logging middleware
 	router.Use(middleware.LoggingMiddleware())
+
+	// Request-scoped DB middleware — binds *gorm.DB to the request context
+	// once per request so GORM's OTel plugin nests query spans under the
+	// request's trace. Handlers retrieve it via middleware.GetDB(c).
+	router.Use(middleware.DBMiddleware(db))
 
 	// Max request body size middleware — 10 MB default for most routes.
 	// Document upload routes raise this to 25 MB via per-route middleware.
@@ -493,4 +538,33 @@ func main() {
 	}
 
 	logger.Info("Server exited gracefully")
+}
+
+// registerCoreMiddleware wires up an outer safety-net recovery, otelgin, and
+// a second gin.Recovery() in the order required for panics to be recorded as
+// errored spans: otelgin must be registered before the inner gin.Recovery()
+// so that when Recovery catches a panic and writes a 500 response, otelgin's
+// post-c.Next() code (which reads c.Writer.Status() to mark the span as
+// errored) still runs normally instead of being skipped by an unrecovered
+// panic unwinding through its frame. See
+// docs/superpowers/specs/2026-07-10-otel-axiom-observability-design.md for
+// the full reasoning.
+//
+// The outer gin.Recovery() exists because the inner one's defer only guards
+// code that runs inside its own c.Next() call — that covers handlers and
+// otelgin's post-c.Next() bookkeeping, but not otelgin's own pre-c.Next()
+// code, which runs before the inner Recovery is ever entered. A panic there
+// would otherwise escape past gin entirely instead of yielding a clean 500.
+// It has no span to mark (otelgin hasn't started one yet at that point), so
+// it's a backstop, not a replacement for the inner one.
+//
+// This is factored out of main() specifically so that
+// TestOtelginBeforeRecovery_MarksPanicSpanAsErrored (middleware_order_test.go)
+// exercises the exact same code path main() uses, rather than a copy of it —
+// a future reorder here is caught by that test instead of only by this
+// comment.
+func registerCoreMiddleware(router *gin.Engine, serviceName string) {
+	router.Use(gin.Recovery())
+	router.Use(otelgin.Middleware(serviceName))
+	router.Use(gin.Recovery())
 }

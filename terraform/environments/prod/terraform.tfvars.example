@@ -64,6 +64,11 @@ allowed_origins = [
 # cloudflare_zone_id          = "your-cloudflare-zone-id"
 # cloudflare_api_token        = "cf_api_token_with_dns_edit"
 
+# Observability (Axiom via OpenTelemetry)
+# Get your API token from: https://app.axiom.co (Settings > API tokens)
+axiom_api_token = "xaat-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+axiom_dataset   = "go-volunteer-media-prod"
+
 # Monitoring Configuration
 log_retention_days = 30  # 30-730 days
 

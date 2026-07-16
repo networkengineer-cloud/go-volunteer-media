@@ -86,6 +86,7 @@ func sanitizeSessionMetadata(m *models.SessionMetadata) {
 // GetAnimalComments returns comments for an animal with pagination support
 func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		userID, _ := c.Get("user_id")
@@ -185,6 +186,7 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 // CreateAnimalComment creates a new comment on an animal
 func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		userID, _ := c.Get("user_id")
@@ -268,6 +270,7 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 // Users can only edit their own comments
 func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
@@ -372,6 +375,7 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 // GetCommentHistory returns the edit history for a comment (admin only)
 func GetCommentHistory(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
@@ -412,7 +416,7 @@ func GetCommentHistory(db *gorm.DB) gin.HandlerFunc {
 // GetGroupLatestComments returns the latest comments across all animals in a group
 func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -436,7 +440,7 @@ func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 
 		// Get animals in this group first
 		var animals []models.Animal
-		if err := db.WithContext(ctx).Where("group_id = ?", groupID).Find(&animals).Error; err != nil {
+		if err := db.Where("group_id = ?", groupID).Find(&animals).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
 			return
 		}
@@ -456,7 +460,7 @@ func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 
 		// Get latest comments from these animals
 		var comments []models.AnimalComment
-		err := db.WithContext(ctx).
+		err := db.
 			Where("animal_id IN ?", animalIDs).
 			Preload("User").
 			Preload("Tags").
@@ -493,6 +497,7 @@ func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 // Users can delete their own comments, admins can delete any comment
 func DeleteAnimalComment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
@@ -544,6 +549,7 @@ func DeleteAnimalComment(db *gorm.DB) gin.HandlerFunc {
 // GetDeletedComments returns all soft-deleted comments (group admin or site admin)
 func GetDeletedComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")

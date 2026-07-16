@@ -10,6 +10,12 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/lifecycle"
 )
 
 // Level represents log level
@@ -52,6 +58,7 @@ type Logger struct {
 	output     io.Writer
 	jsonFormat bool
 	fields     map[string]interface{}
+	ctx        context.Context
 }
 
 // LogEntry represents a structured log entry
@@ -62,6 +69,8 @@ type LogEntry struct {
 	Fields    map[string]interface{} `json:"fields,omitempty"`
 	RequestID string                 `json:"request_id,omitempty"`
 	UserID    string                 `json:"user_id,omitempty"`
+	TraceID   string                 `json:"trace_id,omitempty"`
+	SpanID    string                 `json:"span_id,omitempty"`
 	File      string                 `json:"file,omitempty"`
 	Line      int                    `json:"line,omitempty"`
 	Function  string                 `json:"function,omitempty"`
@@ -92,6 +101,7 @@ func (l *Logger) WithFields(fields map[string]interface{}) *Logger {
 		output:     l.output,
 		jsonFormat: l.jsonFormat,
 		fields:     make(map[string]interface{}),
+		ctx:        l.ctx,
 	}
 	// Copy existing fields
 	for k, v := range l.fields {
@@ -123,7 +133,17 @@ func (l *Logger) WithContext(ctx context.Context) *Logger {
 		fields["user_id"] = fmt.Sprintf("%d", userID)
 	}
 
-	return l.WithFields(fields)
+	// Extract OTel trace/span IDs, if there's a valid active span. This
+	// intentionally checks IsValid(), not IsSampled(): even an unsampled
+	// span has a real trace ID worth attaching for correlation in Axiom.
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		fields["trace_id"] = sc.TraceID().String()
+		fields["span_id"] = sc.SpanID().String()
+	}
+
+	newLogger := l.WithFields(fields)
+	newLogger.ctx = ctx
+	return newLogger
 }
 
 // log is the internal logging method
@@ -136,7 +156,6 @@ func (l *Logger) log(level Level, msg string, err error) {
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Level:     level.String(),
 		Message:   msg,
-		Fields:    l.fields,
 	}
 
 	// Add caller information
@@ -155,12 +174,33 @@ func (l *Logger) log(level Level, msg string, err error) {
 		entry.Error = err.Error()
 	}
 
-	// Extract request_id and user_id to top level for easier querying
+	// Extract request_id, user_id, trace_id, and span_id to top level for
+	// easier querying, then exclude them from Fields below so they aren't
+	// shipped to Axiom twice per log line.
 	if reqID, ok := l.fields["request_id"].(string); ok {
 		entry.RequestID = reqID
 	}
 	if userID, ok := l.fields["user_id"].(string); ok {
 		entry.UserID = userID
+	}
+	if traceID, ok := l.fields["trace_id"].(string); ok {
+		entry.TraceID = traceID
+	}
+	if spanID, ok := l.fields["span_id"].(string); ok {
+		entry.SpanID = spanID
+	}
+	if len(l.fields) > 0 {
+		fields := make(map[string]interface{}, len(l.fields))
+		for k, v := range l.fields {
+			switch k {
+			case "request_id", "user_id", "trace_id", "span_id":
+				continue
+			}
+			fields[k] = v
+		}
+		if len(fields) > 0 {
+			entry.Fields = fields
+		}
 	}
 
 	var output string
@@ -183,10 +223,15 @@ func (l *Logger) log(level Level, msg string, err error) {
 		}
 	}
 
+	emitOtelRecord(l.ctx, level, msg, err, l.fields)
+
 	fmt.Fprintln(l.output, output)
 
-	// Exit on FATAL
+	// Exit on FATAL. os.Exit skips deferred functions, so anything that must
+	// flush on a fatal error (e.g. telemetry.Shutdown) runs via the
+	// lifecycle package's shutdown hooks instead of relying on `defer`.
 	if level == FATAL {
+		lifecycle.RunShutdownHook()
 		os.Exit(1)
 	}
 }
@@ -339,4 +384,75 @@ type stdLogAdapter struct {
 func (a *stdLogAdapter) Write(p []byte) (n int, err error) {
 	a.logger.Info(strings.TrimSpace(string(p)))
 	return len(p), nil
+}
+
+// otelLoggerName identifies this logger to the OTel log pipeline.
+const otelLoggerName = "go-volunteer-media"
+
+// otelLogger is resolved once at package init. global.Logger's doc comment
+// says the returned Logger is updated in-place when a real LoggerProvider is
+// registered later ("there is no need to call this function again for an
+// updated instance"), so re-resolving it on every log call would just add a
+// global mutex acquisition per log line for no benefit.
+var otelLogger = global.Logger(otelLoggerName)
+
+// emitOtelRecord emits the log line through the global OTel log bridge.
+// otelLogger is a no-op implementation when no LoggerProvider has been
+// configured (telemetry.Init was never called, or the endpoint was unset),
+// so this is always safe to call — it does nothing in that case.
+//
+// ctx falls back to context.Background() rather than skipping the record:
+// callers like Fatal (which run on the package-level default logger, never
+// WithContext'd) must still have their record considered for export — a
+// crash reported with no active span is still worth sending to Axiom, it
+// just won't carry trace/span correlation.
+func emitOtelRecord(ctx context.Context, level Level, msg string, err error, fields map[string]interface{}) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	severity := otelSeverity(level)
+	if !otelLogger.Enabled(ctx, otellog.EnabledParameters{Severity: severity}) {
+		return
+	}
+
+	var record otellog.Record
+	record.SetTimestamp(time.Now().UTC())
+	record.SetSeverity(severity)
+	record.SetBody(otellog.StringValue(msg))
+	if err != nil {
+		record.SetErr(err)
+	}
+
+	// trace_id/span_id are omitted here: the SDK logger already extracts them
+	// from ctx (via trace.SpanContextFromContext) into the record's native
+	// TraceID/SpanID fields, so re-adding them as string attributes would
+	// just duplicate the same IDs on every exported record.
+	attrs := make([]otellog.KeyValue, 0, len(fields))
+	for k, v := range fields {
+		if k == "trace_id" || k == "span_id" {
+			continue
+		}
+		attrs = append(attrs, otellog.String(k, fmt.Sprintf("%v", v)))
+	}
+	record.AddAttributes(attrs...)
+
+	otelLogger.Emit(ctx, record)
+}
+
+func otelSeverity(level Level) otellog.Severity {
+	switch level {
+	case DEBUG:
+		return otellog.SeverityDebug1
+	case INFO:
+		return otellog.SeverityInfo1
+	case WARN:
+		return otellog.SeverityWarn1
+	case ERROR:
+		return otellog.SeverityError1
+	case FATAL:
+		return otellog.SeverityFatal1
+	default:
+		return otellog.SeverityUndefined
+	}
 }

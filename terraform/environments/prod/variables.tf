@@ -200,6 +200,24 @@ variable "resend_from_name" {
   default     = "MyHAWS"
 }
 
+# Axiom / OpenTelemetry Configuration
+variable "axiom_api_token" {
+  type        = string
+  description = "Axiom API token for OpenTelemetry OTLP export (traces, metrics, logs)"
+  sensitive   = true
+}
+
+variable "axiom_dataset" {
+  type        = string
+  description = "Axiom dataset name to export OpenTelemetry data into"
+}
+
+variable "axiom_endpoint" {
+  type        = string
+  description = "Axiom OTLP ingest endpoint for OpenTelemetry export"
+  default     = "https://api.axiom.co"
+}
+
 # Monitoring Configuration
 variable "log_retention_days" {
   type        = number

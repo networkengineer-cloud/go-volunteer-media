@@ -78,7 +78,7 @@ func sendQuarantineNotificationEmail(db *gorm.DB, emailService *email.Service, a
 // GetAnimals returns all animals in a group with optional filtering
 func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -90,7 +90,7 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Build query with filters
-		query := db.WithContext(ctx).Where("group_id = ?", groupID)
+		query := db.Where("group_id = ?", groupID)
 
 		// Status filter (default to "available", "bite_quarantine", and "under_vet_care" if not specified)
 		status := c.Query("status")
@@ -134,7 +134,7 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 		var counts []countRow
 		if len(ids) > 0 {
 			// Best-effort: counts remain zero on error so the list still renders.
-			if result := db.WithContext(ctx).Raw(`
+			if result := db.Raw(`
 				SELECT a.id AS animal_id,
 					COUNT(DISTINCT ai.id) AS image_count,
 					COUNT(DISTINCT av.id) AS video_count
@@ -167,7 +167,7 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 // GetAnimal returns a specific animal by ID
 func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		userID, _ := c.Get("user_id")
@@ -180,7 +180,7 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var animal models.Animal
-		if err := db.WithContext(ctx).Preload("Tags").Preload("NameHistory").Preload("Scripts").Preload("BQIncidents", "end_date IS NOT NULL").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+		if err := db.Preload("Tags").Preload("NameHistory").Preload("Scripts").Preload("BQIncidents", "end_date IS NOT NULL").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}
@@ -192,7 +192,13 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 // CreateAnimal creates a new animal in a group
 func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		// rawDB is captured before the shadow below so the detached
+		// goroutine spawned by sendQuarantineNotificationEmail gets the
+		// unscoped db, not one bound to this request's context (which is
+		// canceled the instant this handler returns). See the same pattern
+		// documented in animal_admin.go's UpdateAnimalAdmin.
+		rawDB := db
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -282,13 +288,13 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			animal.IsReturned = *req.IsReturned
 		}
 
-		if err := db.WithContext(ctx).Create(&animal).Error; err != nil {
+		if err := db.Create(&animal).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create animal"})
 			return
 		}
 
 		if animal.Status == "bite_quarantine" {
-			if err := db.WithContext(ctx).Create(&models.AnimalBQIncident{
+			if err := db.Create(&models.AnimalBQIncident{
 				AnimalID:        animal.ID,
 				IncidentDetails: animal.QuarantineIncidentDetails,
 				StartDate:       *animal.QuarantineStartDate,
@@ -296,14 +302,14 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// Log error but don't fail the create
 				c.Error(err)
 			}
-			sendQuarantineNotificationEmail(db, emailService, &animal)
+			sendQuarantineNotificationEmail(rawDB, emailService, &animal)
 		}
 
 		// If an image_url was provided, link any unlinked images with this URL to this animal
 		// Only link images uploaded by the current user to prevent race conditions
 		if req.ImageURL != "" {
 			if userIDUint, ok := userID.(uint); ok {
-				if err := db.WithContext(ctx).Model(&models.AnimalImage{}).
+				if err := db.Model(&models.AnimalImage{}).
 					Where("image_url = ? AND animal_id IS NULL AND user_id = ?", req.ImageURL, userIDUint).
 					Update("animal_id", animal.ID).Error; err != nil {
 					// Log error with context but don't fail the creation
@@ -324,7 +330,13 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 // UpdateAnimal updates an existing animal
 func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		// rawDB is captured before the shadow below so the detached
+		// goroutine spawned by sendQuarantineNotificationEmail gets the
+		// unscoped db, not one bound to this request's context (which is
+		// canceled the instant this handler returns). See the same pattern
+		// documented in animal_admin.go's UpdateAnimalAdmin.
+		rawDB := db
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		userID, _ := c.Get("user_id")
@@ -347,7 +359,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		}
 
 		var animal models.Animal
-		if err := db.WithContext(ctx).Preload("Tags").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+		if err := db.Preload("Tags").Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}
@@ -367,7 +379,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				NewName:   req.Name,
 				ChangedBy: changedByID,
 			}
-			if err := db.WithContext(ctx).Create(&nameHistory).Error; err != nil {
+			if err := db.Create(&nameHistory).Error; err != nil {
 				// Log error but don't fail the update
 				c.Error(err)
 			}
@@ -512,13 +524,13 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			animal.Age = animal.AgeYearsFromBirthDate()
 		}
 
-		if err := db.WithContext(ctx).Save(&animal).Error; err != nil {
+		if err := db.Save(&animal).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal"})
 			return
 		}
 
 		if enteredQuarantine {
-			if err := db.WithContext(ctx).Create(&models.AnimalBQIncident{
+			if err := db.Create(&models.AnimalBQIncident{
 				AnimalID:        animal.ID,
 				IncidentDetails: animal.QuarantineIncidentDetails,
 				StartDate:       *animal.QuarantineStartDate,
@@ -526,10 +538,10 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				// Log error but don't fail the update
 				c.Error(err)
 			}
-			sendQuarantineNotificationEmail(db, emailService, &animal)
+			sendQuarantineNotificationEmail(rawDB, emailService, &animal)
 		}
 		if leftQuarantine {
-			if err := db.WithContext(ctx).Model(&models.AnimalBQIncident{}).
+			if err := db.Model(&models.AnimalBQIncident{}).
 				Where("animal_id = ? AND end_date IS NULL", animal.ID).
 				Update("end_date", incidentEndDateAtExit).Error; err != nil {
 				// Log error but don't fail the update
@@ -545,7 +557,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 				incidentUpdates["start_date"] = *midBQStartDate
 			}
 			if len(incidentUpdates) > 0 {
-				if err := db.WithContext(ctx).Model(&models.AnimalBQIncident{}).
+				if err := db.Model(&models.AnimalBQIncident{}).
 					Where("animal_id = ? AND end_date IS NULL", animal.ID).
 					Updates(incidentUpdates).Error; err != nil {
 					// Log error but don't fail the update
@@ -558,7 +570,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		// Only link images uploaded by the current user to prevent race conditions
 		if req.ImageURL != "" {
 			if userIDUint, ok := userID.(uint); ok {
-				if err := db.WithContext(ctx).Model(&models.AnimalImage{}).
+				if err := db.Model(&models.AnimalImage{}).
 					Where("image_url = ? AND animal_id IS NULL AND user_id = ?", req.ImageURL, userIDUint).
 					Update("animal_id", animal.ID).Error; err != nil {
 					// Log error with context but don't fail the update
@@ -579,7 +591,7 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 // DeleteAnimal deletes an animal
 func DeleteAnimal(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		userID, _ := c.Get("user_id")
@@ -591,7 +603,7 @@ func DeleteAnimal(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", animalID, groupID).Delete(&models.Animal{}).Error; err != nil {
+		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).Delete(&models.Animal{}).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete animal"})
 			return
 		}

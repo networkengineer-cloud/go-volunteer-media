@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -255,6 +256,7 @@ func checkGroupAdminAccess(db *gorm.DB, userID interface{}, isAdmin interface{},
 // CheckDuplicateNames checks if any animals in a group have duplicate names
 func CheckDuplicateNames(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		name := c.Query("name")
 		userID, _ := c.Get("user_id")

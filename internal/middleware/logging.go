@@ -18,8 +18,13 @@ func LoggingMiddleware() gin.HandlerFunc {
 		// Get request ID from context
 		requestID, _ := c.Get("request_id")
 
-		// Create logger with request context
-		logger := logging.WithFields(map[string]interface{}{
+		// Create logger with request context. WithContext first so trace_id/
+		// span_id from the otelgin span (already on c.Request.Context() by
+		// the time this middleware runs) get attached, then layer the
+		// request-specific fields on top. Reused below for the post-request
+		// log so trace_id/span_id are only derived once per request.
+		ctxLogger := logging.WithContext(c.Request.Context())
+		logger := ctxLogger.WithFields(map[string]interface{}{
 			"request_id": requestID,
 			"method":     c.Request.Method,
 			"path":       path,
@@ -59,7 +64,7 @@ func LoggingMiddleware() gin.HandlerFunc {
 			logFields["user_id"] = userID
 		}
 
-		requestLogger := logging.WithFields(logFields)
+		requestLogger := ctxLogger.WithFields(logFields)
 
 		// Log with appropriate level based on status code
 		if status >= 500 {

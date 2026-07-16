@@ -47,10 +47,10 @@ func toAdminUserResponse(u models.User) adminUserResponse {
 // PromoteUser sets is_admin to true for a user
 func PromoteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userId := c.Param("userId")
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+		if err := db.First(&user, userId).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -58,7 +58,7 @@ func PromoteUser(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already admin"})
 			return
 		}
-		if err := db.WithContext(ctx).Model(&user).Update("is_admin", true).Error; err != nil {
+		if err := db.Model(&user).Update("is_admin", true).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to promote user"})
 			return
 		}
@@ -69,10 +69,10 @@ func PromoteUser(db *gorm.DB) gin.HandlerFunc {
 // DemoteUser sets is_admin to false for a user
 func DemoteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userId := c.Param("userId")
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+		if err := db.First(&user, userId).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -80,7 +80,7 @@ func DemoteUser(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not admin"})
 			return
 		}
-		if err := db.WithContext(ctx).Model(&user).Update("is_admin", false).Error; err != nil {
+		if err := db.Model(&user).Update("is_admin", false).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to demote user"})
 			return
 		}
@@ -91,9 +91,9 @@ func DemoteUser(db *gorm.DB) gin.HandlerFunc {
 // GetDeletedUsers returns all soft-deleted users (admin only)
 func GetDeletedUsers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		var users []models.User
-		if err := db.WithContext(ctx).Unscoped().Preload("Groups", activeGroupsPreload).Where("deleted_at IS NOT NULL").Find(&users).Error; err != nil {
+		if err := db.Unscoped().Preload("Groups", activeGroupsPreload).Where("deleted_at IS NOT NULL").Find(&users).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch deleted users"})
 			return
 		}
@@ -108,15 +108,15 @@ func GetDeletedUsers(db *gorm.DB) gin.HandlerFunc {
 // RestoreUser restores a soft-deleted user (admin only)
 func RestoreUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userId := c.Param("userId")
 		var user models.User
-		if err := db.WithContext(ctx).Unscoped().First(&user, userId).Error; err != nil {
+		if err := db.Unscoped().First(&user, userId).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 		if user.DeletedAt.Valid {
-			if err := db.WithContext(ctx).Unscoped().Model(&user).Update("deleted_at", nil).Error; err != nil {
+			if err := db.Unscoped().Model(&user).Update("deleted_at", nil).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to restore user"})
 				return
 			}
@@ -128,14 +128,14 @@ func RestoreUser(db *gorm.DB) gin.HandlerFunc {
 // AdminDeleteUser soft-deletes (deactivates) a user (marks as deleted, disables login)
 func AdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userId := c.Param("userId")
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userId).Error; err != nil {
+		if err := db.First(&user, userId).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
-		if err := db.WithContext(ctx).Delete(&user).Error; err != nil {
+		if err := db.Delete(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
 			return
 		}
@@ -160,12 +160,13 @@ func isGroupAdminOfAnySharedGroup(ctx context.Context, db *gorm.DB, requesterID,
 func GroupAdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		requesterID := c.GetUint("user_id")
 		isAdmin := c.GetBool("is_admin")
 		userId := c.Param("userId")
 
 		var target models.User
-		if err := db.WithContext(ctx).Preload("Groups").First(&target, userId).Error; err != nil {
+		if err := db.Preload("Groups").First(&target, userId).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -194,7 +195,7 @@ func GroupAdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		if err := db.WithContext(ctx).Delete(&target).Error; err != nil {
+		if err := db.Delete(&target).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
 			return
 		}
@@ -225,6 +226,7 @@ type AdminResetPasswordRequest struct {
 func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		var req AdminCreateUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
@@ -242,7 +244,7 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 
 		// Check if username or email already exists (case-insensitive username check)
 		var existing models.User
-		if err := db.WithContext(ctx).Where("LOWER(username) = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
+		if err := db.Where("LOWER(username) = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or email already exists"})
 			return
 		}
@@ -313,26 +315,26 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			// If group IDs are provided, fetch and associate groups
 			if len(req.GroupIDs) > 0 {
 				var groups []models.Group
-				if err := db.WithContext(ctx).Where("id IN ?", req.GroupIDs).Find(&groups).Error; err != nil {
+				if err := db.Where("id IN ?", req.GroupIDs).Find(&groups).Error; err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch groups"})
 					return
 				}
 				user.Groups = groups
 			}
 
-			if err := db.WithContext(ctx).Create(&user).Error; err != nil {
+			if err := db.Create(&user).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 				return
 			}
 
 			// Preload groups for response
-			if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
+			if err := db.Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user groups"})
 				return
 			}
 
 			// Send setup email (use unhashed token)
-			if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
+			if err := emailService.SendPasswordSetupEmail(ctx, user.Email, user.Username, setupToken); err != nil {
 				// Log error but don't fail the request - user is created
 				logger := middleware.GetLogger(c)
 				logger.Error("Failed to send password setup email", err)
@@ -367,20 +369,20 @@ func AdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		// If group IDs are provided, fetch and associate groups
 		if len(req.GroupIDs) > 0 {
 			var groups []models.Group
-			if err := db.WithContext(ctx).Where("id IN ?", req.GroupIDs).Find(&groups).Error; err != nil {
+			if err := db.Where("id IN ?", req.GroupIDs).Find(&groups).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch groups"})
 				return
 			}
 			user.Groups = groups
 		}
 
-		if err := db.WithContext(ctx).Create(&user).Error; err != nil {
+		if err := db.Create(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
 		}
 
 		// Preload groups for response
-		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user groups"})
 			return
 		}
@@ -404,6 +406,7 @@ type GroupAdminCreateUserRequest struct {
 func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		// Get current user ID
@@ -427,7 +430,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 		// Get current user to check admin status
 		var currentUser models.User
-		if err := db.WithContext(ctx).First(&currentUser, currentUserID).Error; err != nil {
+		if err := db.First(&currentUser, currentUserID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch current user"})
 			return
 		}
@@ -452,7 +455,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 		// Check if username or email already exists (case-insensitive username check)
 		var existing models.User
-		if err := db.WithContext(ctx).Where("LOWER(username) = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
+		if err := db.Where("LOWER(username) = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or email already exists"})
 			return
 		}
@@ -521,25 +524,25 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 			// Fetch and associate groups
 			var groups []models.Group
-			if err := db.WithContext(ctx).Where("id IN ?", req.GroupIDs).Find(&groups).Error; err != nil {
+			if err := db.Where("id IN ?", req.GroupIDs).Find(&groups).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch groups"})
 				return
 			}
 			user.Groups = groups
 
-			if err := db.WithContext(ctx).Create(&user).Error; err != nil {
+			if err := db.Create(&user).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 				return
 			}
 
 			// Preload groups for response
-			if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
+			if err := db.Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user groups"})
 				return
 			}
 
 			// Send setup email
-			if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
+			if err := emailService.SendPasswordSetupEmail(ctx, user.Email, user.Username, setupToken); err != nil {
 				logger.Error("Failed to send password setup email", err)
 
 				c.JSON(http.StatusCreated, gin.H{
@@ -575,19 +578,19 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 		// Fetch and associate groups
 		var groups []models.Group
-		if err := db.WithContext(ctx).Where("id IN ?", req.GroupIDs).Find(&groups).Error; err != nil {
+		if err := db.Where("id IN ?", req.GroupIDs).Find(&groups).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch groups"})
 			return
 		}
 		user.Groups = groups
 
-		if err := db.WithContext(ctx).Create(&user).Error; err != nil {
+		if err := db.Create(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
 		}
 
 		// Preload groups for response
-		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).First(&user, user.ID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user groups"})
 			return
 		}
@@ -605,7 +608,7 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 // AdminResetUserPassword allows an admin, group admin, or the user themselves to reset a password
 func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		userId := c.Param("userId")
 
@@ -630,7 +633,7 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 
 		// Find the target user with their groups
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userIdInt).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).First(&user, userIdInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
@@ -667,7 +670,7 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 			hasAccess := false
 			for _, targetGroup := range user.Groups {
 				var userGroup models.UserGroup
-				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
+				err := db.Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
 					currentUserID, targetGroup.ID, true).First(&userGroup).Error
 				if err == nil {
 					hasAccess = true
@@ -693,7 +696,7 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Update password and clear any lockouts or reset tokens
-		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+		if err := db.Model(&user).Updates(map[string]interface{}{
 			"password":              hashedPassword,
 			"reset_token":           "",
 			"reset_token_expiry":    nil,
@@ -788,6 +791,7 @@ func applyUserUpdate(ctx context.Context, db *gorm.DB, c *gin.Context, user *mod
 func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userId := c.Param("userId")
 
 		// Parse and validate userId
@@ -804,7 +808,7 @@ func AdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, userIdInt).Error; err != nil {
+		if err := db.First(&user, userIdInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
@@ -829,6 +833,7 @@ func isTargetSiteAdmin(user *models.User) bool {
 func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		userId := c.Param("userId")
 
@@ -854,7 +859,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 
 		// Find the target user with their groups
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userIdInt).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).First(&user, userIdInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
@@ -888,7 +893,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 			hasAccess := false
 			for _, targetGroup := range user.Groups {
 				var userGroup models.UserGroup
-				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
+				err := db.Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
 					currentUserID, targetGroup.ID, true).First(&userGroup).Error
 				if err == nil {
 					hasAccess = true
@@ -914,6 +919,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		userIDParam := c.Param("userId")
 
@@ -933,7 +939,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 
 		// Find the target user with their groups (GORM soft-delete filter excludes deleted users)
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userIDInt).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).First(&user, userIDInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
@@ -957,7 +963,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 			hasAccess := false
 			for _, targetGroup := range user.Groups {
 				var userGroup models.UserGroup
-				err := db.WithContext(ctx).Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
+				err := db.Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
 					currentUserID, targetGroup.ID, true).First(&userGroup).Error
 				if err == nil {
 					hasAccess = true
@@ -1004,7 +1010,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 		}
 
 		// Send email before persisting token so a failed send doesn't invalidate the old token
-		if err := emailService.SendPasswordSetupEmail(user.Email, user.Username, setupToken); err != nil {
+		if err := emailService.SendPasswordSetupEmail(ctx, user.Email, user.Username, setupToken); err != nil {
 			logger.Error("Failed to send password setup email", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send invitation email. Please try again."})
 			return
@@ -1012,7 +1018,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 
 		// Email sent successfully — now persist the new token (invalidates old token)
 		expiry := time.Now().Add(SetupTokenExpiry)
-		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+		if err := db.Model(&user).Updates(map[string]interface{}{
 			"setup_token":        hashedSetupToken,
 			"setup_token_lookup": setupToken[:TokenLookupPrefixLength],
 			"setup_token_expiry": expiry,
@@ -1040,6 +1046,7 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		userIDParam := c.Param("userId")
 
@@ -1073,7 +1080,7 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 		// Use Unscoped so we can distinguish a deleted user from a never-existing one.
 		// Use conditional Preload to exclude soft-deleted groups.
 		var user models.User
-		if err := db.WithContext(ctx).Unscoped().Preload("Groups", activeGroupsPreload).First(&user, userIDInt).Error; err != nil {
+		if err := db.Unscoped().Preload("Groups", activeGroupsPreload).First(&user, userIDInt).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			} else {
@@ -1114,7 +1121,7 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 				groupIDs[i] = g.ID
 			}
 			var sharedGroupCount int64
-			if err := db.WithContext(ctx).Model(&models.UserGroup{}).
+			if err := db.Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id IN ? AND is_group_admin = ?", currentUserID, groupIDs, true).
 				Count(&sharedGroupCount).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify group membership"})
@@ -1131,7 +1138,7 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Clear the lockout fields
-		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+		if err := db.Model(&user).Updates(map[string]interface{}{
 			"locked_until":          nil,
 			"failed_login_attempts": 0,
 		}).Error; err != nil {

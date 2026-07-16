@@ -24,10 +24,10 @@ type AnnouncementRequest struct {
 // GetAnnouncements returns all announcements (accessible to all authenticated users)
 func GetAnnouncements(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 
 		var announcements []models.Announcement
-		if err := db.WithContext(ctx).Preload("User").Order("created_at DESC").Limit(10).Find(&announcements).Error; err != nil {
+		if err := db.Preload("User").Order("created_at DESC").Limit(10).Find(&announcements).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch announcements"})
 			return
 		}
@@ -39,7 +39,7 @@ func GetAnnouncements(db *gorm.DB) gin.HandlerFunc {
 // CreateAnnouncement creates a new announcement and optionally sends emails and GroupMe messages (admin only)
 func CreateAnnouncement(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -60,13 +60,13 @@ func CreateAnnouncement(db *gorm.DB, emailService *email.Service, groupMeService
 			SendGroupMe: req.SendGroupMe,
 		}
 
-		if err := db.WithContext(ctx).Create(&announcement).Error; err != nil {
+		if err := db.Create(&announcement).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create announcement"})
 			return
 		}
 
 		// Load the user information for the response
-		if err := db.WithContext(ctx).Preload("User").First(&announcement, announcement.ID).Error; err != nil {
+		if err := db.Preload("User").First(&announcement, announcement.ID).Error; err != nil {
 			logger := middleware.GetLogger(c)
 			logger.Error("Failed to load announcement user", err)
 		}
@@ -100,14 +100,14 @@ func CreateAnnouncement(db *gorm.DB, emailService *email.Service, groupMeService
 // DeleteAnnouncement deletes an announcement (admin only)
 func DeleteAnnouncement(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		announcementID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid announcement ID"})
 			return
 		}
 
-		if err := db.WithContext(ctx).Delete(&models.Announcement{}, uint(announcementID)).Error; err != nil {
+		if err := db.Delete(&models.Announcement{}, uint(announcementID)).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete announcement"})
 			return
 		}
@@ -129,7 +129,7 @@ func sendAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService *emai
 	logger.WithField("user_count", len(users)).Info("Sending announcement emails to users")
 	successCount := 0
 	for _, user := range users {
-		if err := emailService.SendAnnouncementEmail(user.Email, title, content); err != nil {
+		if err := emailService.SendAnnouncementEmail(ctx, user.Email, title, content); err != nil {
 			// Don't log email addresses to prevent PII leakage - just log the error
 			logger.Error("Failed to send announcement email to user", err)
 		} else {
@@ -157,7 +157,7 @@ func sendAnnouncementToGroupMe(ctx context.Context, db *gorm.DB, groupMeService 
 	logger.WithField("group_count", len(groups)).Info("Sending announcement to GroupMe groups")
 	successCount := 0
 	for _, group := range groups {
-		if err := groupMeService.SendAnnouncement(group.GroupMeBotID, title, content); err != nil {
+		if err := groupMeService.SendAnnouncement(ctx, group.GroupMeBotID, title, content); err != nil {
 			logger.WithFields(map[string]interface{}{
 				"group_id":   group.ID,
 				"group_name": group.Name,
@@ -178,7 +178,7 @@ func sendAnnouncementToGroupMe(ctx context.Context, db *gorm.DB, groupMeService 
 // to members of their group
 func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, exists := c.Get("user_id")
 		if !exists {
@@ -208,7 +208,7 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 
 		// Verify group exists
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+		if err := db.First(&group, groupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
@@ -228,13 +228,13 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 			SendGroupMe: req.SendGroupMe,
 		}
 
-		if err := db.WithContext(ctx).Create(&announcement).Error; err != nil {
+		if err := db.Create(&announcement).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create announcement"})
 			return
 		}
 
 		// Load the user information for the response
-		if err := db.WithContext(ctx).Preload("User").First(&announcement, announcement.ID).Error; err != nil {
+		if err := db.Preload("User").First(&announcement, announcement.ID).Error; err != nil {
 			logger := middleware.GetLogger(c)
 			logger.Error("Failed to load announcement user", err)
 		}
@@ -254,7 +254,7 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 		if req.SendGroupMe && groupMeService != nil && group.GroupMeEnabled && group.GroupMeBotID != "" {
 			go func() {
 				bgCtx := context.Background()
-				if err := groupMeService.SendAnnouncement(group.GroupMeBotID, announcement.Title, announcement.Content); err != nil {
+				if err := groupMeService.SendAnnouncement(bgCtx, group.GroupMeBotID, announcement.Title, announcement.Content); err != nil {
 					logging.WithContext(bgCtx).WithFields(map[string]interface{}{
 						"group_id":   group.ID,
 						"group_name": group.Name,
@@ -288,7 +288,7 @@ func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService 
 
 	successCount := 0
 	for _, user := range users {
-		if err := emailService.SendAnnouncementEmail(user.Email, title, content); err != nil {
+		if err := emailService.SendAnnouncementEmail(ctx, user.Email, title, content); err != nil {
 			// Don't log email addresses to prevent PII leakage - just log the error
 			logger.Error("Failed to send announcement email to user", err)
 		} else {

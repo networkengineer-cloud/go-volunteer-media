@@ -7,12 +7,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"gorm.io/gorm"
 )
 
 // SeedDatabase re-seeds the database (admin only, dangerous operation, dev only)
 func SeedDatabase(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		logger := logging.GetDefaultLogger()
 
 		// Only allow in development environment

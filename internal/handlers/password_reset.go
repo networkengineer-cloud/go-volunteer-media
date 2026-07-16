@@ -42,6 +42,7 @@ func generateSecureToken() (string, error) {
 func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		var req RequestPasswordResetRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
@@ -59,7 +60,7 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 
 		// Find user by email
 		var user models.User
-		if err := db.WithContext(ctx).Where("email = ?", req.Email).First(&user).Error; err != nil {
+		if err := db.Where("email = ?", req.Email).First(&user).Error; err != nil {
 			// Don't reveal if email exists - return success anyway
 			c.JSON(http.StatusOK, gin.H{"message": "If the email exists, a password reset link will be sent"})
 			return
@@ -87,7 +88,7 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 		expiry := time.Now().Add(PasswordResetTokenExpiry)
 
 		// Update user with reset token, lookup prefix, and expiry
-		if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+		if err := db.Model(&user).Updates(map[string]interface{}{
 			"reset_token":        hashedToken,
 			"reset_token_lookup": token[:TokenLookupPrefixLength],
 			"reset_token_expiry": expiry,
@@ -99,7 +100,7 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 		}
 
 		// Send password reset email (use unhashed token in email)
-		if err := emailService.SendPasswordResetEmail(user.Email, user.Username, token); err != nil {
+		if err := emailService.SendPasswordResetEmail(ctx, user.Email, user.Username, token); err != nil {
 			logger := middleware.GetLogger(c)
 			logger.Error("Failed to send password reset email", err)
 			// Still return success to prevent email enumeration
@@ -115,7 +116,7 @@ func RequestPasswordReset(db *gorm.DB, emailService *email.Service) gin.HandlerF
 // ResetPassword resets the user's password using the reset token
 func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		var req ResetPasswordRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
@@ -130,7 +131,7 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 
 		// Use the lookup prefix to find the candidate user with a single indexed query
 		var targetUser models.User
-		if err := db.WithContext(ctx).Where(
+		if err := db.Where(
 			"reset_token_lookup = ? AND reset_token IS NOT NULL AND reset_token != ''",
 			req.Token[:TokenLookupPrefixLength],
 		).First(&targetUser).Error; err != nil {
@@ -160,7 +161,7 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Update password and clear reset token and lookup
-		if err := db.WithContext(ctx).Model(&targetUser).Updates(map[string]interface{}{
+		if err := db.Model(&targetUser).Updates(map[string]interface{}{
 			"password":              hashedPassword,
 			"reset_token":           "",
 			"reset_token_lookup":    "",
@@ -182,7 +183,7 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 // This is separate from ResetPassword to prevent token confusion and add proper validation
 func SetupPassword(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		var req ResetPasswordRequest // Reuse same request structure
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
@@ -197,7 +198,7 @@ func SetupPassword(db *gorm.DB) gin.HandlerFunc {
 
 		// Use the lookup prefix to find the candidate user with a single indexed query
 		var targetUser models.User
-		if err := db.WithContext(ctx).Where(
+		if err := db.Where(
 			"setup_token_lookup = ? AND setup_token IS NOT NULL AND setup_token != ''",
 			req.Token[:TokenLookupPrefixLength],
 		).First(&targetUser).Error; err != nil {
@@ -233,7 +234,7 @@ func SetupPassword(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Update password, clear setup token and lookup, and mark account as fully set up
-		if err := db.WithContext(ctx).Model(&targetUser).Updates(map[string]interface{}{
+		if err := db.Model(&targetUser).Updates(map[string]interface{}{
 			"password":                hashedPassword,
 			"setup_token":             "",
 			"setup_token_lookup":      "",
@@ -255,7 +256,7 @@ func SetupPassword(db *gorm.DB) gin.HandlerFunc {
 // UpdateEmailPreferences updates the user's email notification preferences
 func UpdateEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userID, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -273,7 +274,7 @@ func UpdateEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 			"email_notifications_enabled": req.EmailNotificationsEnabled,
 			"show_length_of_stay":         req.ShowLengthOfStay,
 		}
-		if err := db.WithContext(ctx).Model(&models.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
+		if err := db.Model(&models.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update preferences"})
 			return
 		}
@@ -289,7 +290,7 @@ func UpdateEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 // GetEmailPreferences returns the user's email notification preferences
 func GetEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userID, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -297,7 +298,7 @@ func GetEmailPreferences(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var user models.User
-		if err := db.WithContext(ctx).Select("email_notifications_enabled, show_length_of_stay").First(&user, userID).Error; err != nil {
+		if err := db.Select("email_notifications_enabled, show_length_of_stay").First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}

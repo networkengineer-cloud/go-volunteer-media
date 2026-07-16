@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestLevel_String(t *testing.T) {
@@ -254,6 +256,60 @@ func TestSetDefaultLogger(t *testing.T) {
 	if defaultLogger != newLogger {
 		t.Error("Expected default logger to be updated")
 	}
+}
+
+func TestLogger_WithContext_ExtractsTraceInfo(t *testing.T) {
+	traceID, err := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	if err != nil {
+		t.Fatalf("failed to build test trace ID: %v", err)
+	}
+	spanID, err := trace.SpanIDFromHex("00f067aa0ba902b7")
+	if err != nil {
+		t.Fatalf("failed to build test span ID: %v", err)
+	}
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+	ctx := trace.ContextWithSpanContext(context.Background(), sc)
+
+	logger := New(INFO, &bytes.Buffer{}, true)
+	contextLogger := logger.WithContext(ctx)
+
+	if contextLogger.fields["trace_id"] != traceID.String() {
+		t.Errorf("expected trace_id %s, got %v", traceID.String(), contextLogger.fields["trace_id"])
+	}
+	if contextLogger.fields["span_id"] != spanID.String() {
+		t.Errorf("expected span_id %s, got %v", spanID.String(), contextLogger.fields["span_id"])
+	}
+}
+
+func TestLogger_WithContext_NoActiveSpan_NoTraceFields(t *testing.T) {
+	logger := New(INFO, &bytes.Buffer{}, true)
+	contextLogger := logger.WithContext(context.Background())
+
+	if _, ok := contextLogger.fields["trace_id"]; ok {
+		t.Error("expected no trace_id field when context has no active span")
+	}
+	if _, ok := contextLogger.fields["span_id"]; ok {
+		t.Error("expected no span_id field when context has no active span")
+	}
+}
+
+func TestLogger_Log_WithActiveSpan_DoesNotPanicWithoutOtelProvider(t *testing.T) {
+	// No OTel LoggerProvider is configured in this test (telemetry.Init was
+	// never called), so the global log bridge must be a safe no-op.
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: traceID, SpanID: spanID, TraceFlags: trace.FlagsSampled,
+	})
+	ctx := trace.ContextWithSpanContext(context.Background(), sc)
+
+	logger := New(INFO, &bytes.Buffer{}, true).WithContext(ctx)
+	logger.Info("test message")
+	logger.Error("test error", nil)
 }
 
 // Helper type for testing errors

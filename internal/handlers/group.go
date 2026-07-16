@@ -128,7 +128,7 @@ func UploadGroupImage(storageProvider storage.Provider) gin.HandlerFunc {
 // GetGroups returns all groups the user has access to
 func GetGroups(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -150,7 +150,7 @@ func GetGroups(db *gorm.DB) gin.HandlerFunc {
 		}
 		if adminFlag {
 			// Admins can see all groups (with bot ID included)
-			if err := db.WithContext(ctx).Find(&groups).Error; err != nil {
+			if err := db.Find(&groups).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch groups"})
 				return
 			}
@@ -160,7 +160,7 @@ func GetGroups(db *gorm.DB) gin.HandlerFunc {
 
 		// Regular users see only their groups (bot ID omitted)
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user groups"})
 			return
 		}
@@ -173,7 +173,7 @@ func GetGroups(db *gorm.DB) gin.HandlerFunc {
 // GetGroup returns a specific group by ID
 func GetGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
@@ -182,7 +182,7 @@ func GetGroup(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+		if err := db.First(&group, groupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
@@ -190,7 +190,7 @@ func GetGroup(db *gorm.DB) gin.HandlerFunc {
 		// Check if user has access to this group
 		if !middleware.GetIsAdmin(c) {
 			var user models.User
-			if err := db.WithContext(ctx).Preload("Groups", "id = ?", groupID).First(&user, userIDUint).Error; err != nil {
+			if err := db.Preload("Groups", "id = ?", groupID).First(&user, userIDUint).Error; err != nil {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 				return
 			}
@@ -211,7 +211,7 @@ func GetGroup(db *gorm.DB) gin.HandlerFunc {
 // CreateGroup creates a new group (admin only)
 func CreateGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		var req GroupRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
@@ -240,7 +240,7 @@ func CreateGroup(db *gorm.DB) gin.HandlerFunc {
 			GroupMeEnabled: req.GroupMeEnabled,
 		}
 
-		if err := db.WithContext(ctx).Create(&group).Error; err != nil {
+		if err := db.Create(&group).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create group"})
 			return
 		}
@@ -252,7 +252,7 @@ func CreateGroup(db *gorm.DB) gin.HandlerFunc {
 // UpdateGroup updates an existing group (admin only)
 func UpdateGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		var req GroupRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -261,7 +261,7 @@ func UpdateGroup(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+		if err := db.First(&group, groupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
@@ -279,7 +279,7 @@ func UpdateGroup(db *gorm.DB) gin.HandlerFunc {
 		group.GroupMeBotID = req.GroupMeBotID
 		group.GroupMeEnabled = req.GroupMeEnabled
 
-		if err := db.WithContext(ctx).Save(&group).Error; err != nil {
+		if err := db.Save(&group).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update group"})
 			return
 		}
@@ -291,10 +291,10 @@ func UpdateGroup(db *gorm.DB) gin.HandlerFunc {
 // DeleteGroup deletes a group (admin only)
 func DeleteGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 
-		if err := db.WithContext(ctx).Delete(&models.Group{}, groupID).Error; err != nil {
+		if err := db.Delete(&models.Group{}, groupID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete group"})
 			return
 		}
@@ -306,7 +306,7 @@ func DeleteGroup(db *gorm.DB) gin.HandlerFunc {
 // AddUserToGroup adds a user to a group (admin only)
 func AddUserToGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -319,18 +319,18 @@ func AddUserToGroup(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, uint(userID)).Error; err != nil {
+		if err := db.First(&user, uint(userID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, uint(groupID)).Error; err != nil {
+		if err := db.First(&group, uint(groupID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
-		if err := db.WithContext(ctx).Model(&user).Association("Groups").Append(&group); err != nil {
+		if err := db.Model(&user).Association("Groups").Append(&group); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add user to group"})
 			return
 		}
@@ -342,7 +342,7 @@ func AddUserToGroup(db *gorm.DB) gin.HandlerFunc {
 // RemoveUserFromGroup removes a user from a group (admin only)
 func RemoveUserFromGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -355,18 +355,18 @@ func RemoveUserFromGroup(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, uint(userID)).Error; err != nil {
+		if err := db.First(&user, uint(userID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, uint(groupID)).Error; err != nil {
+		if err := db.First(&group, uint(groupID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
-		if err := db.WithContext(ctx).Model(&user).Association("Groups").Delete(&group); err != nil {
+		if err := db.Model(&user).Association("Groups").Delete(&group); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove user from group"})
 			return
 		}
@@ -418,7 +418,7 @@ func IsGroupAdminForAnyGroup(db *gorm.DB, userID uint) bool {
 // Accessible by site admins or group admins of the specific group
 func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
@@ -441,7 +441,7 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 
 		// Check authorization: must be site admin OR group admin of this group
 		var currentUser models.User
-		if err := db.WithContext(ctx).First(&currentUser, currentUserID).Error; err != nil {
+		if err := db.First(&currentUser, currentUserID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
 			return
 		}
@@ -457,21 +457,21 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify user exists
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, uint(userID)).Error; err != nil {
+		if err := db.First(&user, uint(userID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		// Verify group exists
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, uint(groupID)).Error; err != nil {
+		if err := db.First(&group, uint(groupID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
 		// Check if user is a member of the group
 		var userGroup models.UserGroup
-		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", userID, groupID).First(&userGroup).Error; err != nil {
+		if err := db.Where("user_id = ? AND group_id = ?", userID, groupID).First(&userGroup).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not a member of this group"})
 			return
 		}
@@ -483,7 +483,7 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Promote to group admin
-		if err := db.WithContext(ctx).Model(&userGroup).Update("is_group_admin", true).Error; err != nil {
+		if err := db.Model(&userGroup).Update("is_group_admin", true).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to promote user to group admin"})
 			return
 		}
@@ -496,7 +496,7 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 // Accessible by site admins or group admins of the specific group
 func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
@@ -519,7 +519,7 @@ func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 
 		// Check authorization: must be site admin OR group admin of this group
 		var currentUser models.User
-		if err := db.WithContext(ctx).First(&currentUser, currentUserID).Error; err != nil {
+		if err := db.First(&currentUser, currentUserID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
 			return
 		}
@@ -535,21 +535,21 @@ func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify user exists
 		var user models.User
-		if err := db.WithContext(ctx).First(&user, uint(userID)).Error; err != nil {
+		if err := db.First(&user, uint(userID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		// Verify group exists
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, uint(groupID)).Error; err != nil {
+		if err := db.First(&group, uint(groupID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
 		// Check if user is a member of the group
 		var userGroup models.UserGroup
-		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", userID, groupID).First(&userGroup).Error; err != nil {
+		if err := db.Where("user_id = ? AND group_id = ?", userID, groupID).First(&userGroup).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not a member of this group"})
 			return
 		}
@@ -561,7 +561,7 @@ func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Demote from group admin
-		if err := db.WithContext(ctx).Model(&userGroup).Update("is_group_admin", false).Error; err != nil {
+		if err := db.Model(&userGroup).Update("is_group_admin", false).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to demote user from group admin"})
 			return
 		}
@@ -573,7 +573,7 @@ func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 // GetGroupMembers returns all members of a group with their group admin status
 func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
@@ -587,7 +587,7 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 		var currentUserGroupAdmin bool
 		if !isSiteAdmin {
 			var userGroup models.UserGroup
-			if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", currentUserID, groupID).First(&userGroup).Error; err != nil {
+			if err := db.Where("user_id = ? AND group_id = ?", currentUserID, groupID).First(&userGroup).Error; err != nil {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 				return
 			}
@@ -596,7 +596,7 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 
 		// Get all members with their group admin status
 		var userGroups []models.UserGroup
-		if err := db.WithContext(ctx).Preload("User").Where("group_id = ?", groupID).Find(&userGroups).Error; err != nil {
+		if err := db.Preload("User").Where("group_id = ?", groupID).Find(&userGroups).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch group members"})
 			return
 		}
@@ -611,7 +611,7 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 			models.UserSkillTag
 		}
 		var rawTags []userTagRow
-		if err := db.WithContext(ctx).Table("user_skill_tag_assignments AS a").
+		if err := db.Table("user_skill_tag_assignments AS a").
 			Select("a.user_id, t.*").
 			Joins("JOIN user_skill_tags t ON t.id = a.user_skill_tag_id").
 			Where("a.user_id IN ? AND t.group_id = ? AND t.deleted_at IS NULL", userIDs, groupID).
@@ -698,7 +698,7 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 // including whether they are a group admin
 func GetGroupMembership(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
@@ -715,7 +715,7 @@ func GetGroupMembership(db *gorm.DB) gin.HandlerFunc {
 
 		// Get user's membership in this group
 		var userGroup models.UserGroup
-		err = db.WithContext(ctx).Where("user_id = ? AND group_id = ?", userID, groupID).First(&userGroup).Error
+		err = db.Where("user_id = ? AND group_id = ?", userID, groupID).First(&userGroup).Error
 		if err != nil {
 			// If not a member but is site admin, still return info
 			if isSiteAdmin {
@@ -746,7 +746,7 @@ func GetGroupMembership(db *gorm.DB) gin.HandlerFunc {
 // This allows group admins to add new members to their group
 func AddMemberToGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
@@ -765,27 +765,27 @@ func AddMemberToGroup(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify target user exists
 		var targetUser models.User
-		if err := db.WithContext(ctx).First(&targetUser, uint(targetUserID)).Error; err != nil {
+		if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		// Verify group exists
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+		if err := db.First(&group, groupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
 		// Check if user is already a member
 		var existingMembership models.UserGroup
-		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&existingMembership).Error; err == nil {
+		if err := db.Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&existingMembership).Error; err == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already a member of this group"})
 			return
 		}
 
 		// Add user to group
-		if err := db.WithContext(ctx).Model(&targetUser).Association("Groups").Append(&group); err != nil {
+		if err := db.Model(&targetUser).Association("Groups").Append(&group); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add user to group"})
 			return
 		}
@@ -798,7 +798,7 @@ func AddMemberToGroup(db *gorm.DB) gin.HandlerFunc {
 // This allows group admins to remove members from their group
 func RemoveMemberFromGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
@@ -817,27 +817,27 @@ func RemoveMemberFromGroup(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify target user exists
 		var targetUser models.User
-		if err := db.WithContext(ctx).First(&targetUser, uint(targetUserID)).Error; err != nil {
+		if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		// Verify group exists
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+		if err := db.First(&group, groupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
 		// Check if user is a member
 		var existingMembership models.UserGroup
-		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&existingMembership).Error; err != nil {
+		if err := db.Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&existingMembership).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not a member of this group"})
 			return
 		}
 
 		// Remove user from group
-		if err := db.WithContext(ctx).Model(&targetUser).Association("Groups").Delete(&group); err != nil {
+		if err := db.Model(&targetUser).Association("Groups").Delete(&group); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove user from group"})
 			return
 		}
@@ -849,7 +849,7 @@ func RemoveMemberFromGroup(db *gorm.DB) gin.HandlerFunc {
 // PromoteMemberToGroupAdmin promotes a user to group admin status (group admin or site admin)
 func PromoteMemberToGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
@@ -868,21 +868,21 @@ func PromoteMemberToGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify target user exists
 		var targetUser models.User
-		if err := db.WithContext(ctx).First(&targetUser, uint(targetUserID)).Error; err != nil {
+		if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		// Verify group exists
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+		if err := db.First(&group, groupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
 		// Check if user is a member of the group
 		var userGroup models.UserGroup
-		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&userGroup).Error; err != nil {
+		if err := db.Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&userGroup).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not a member of this group"})
 			return
 		}
@@ -894,7 +894,7 @@ func PromoteMemberToGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Promote to group admin
-		if err := db.WithContext(ctx).Model(&userGroup).Update("is_group_admin", true).Error; err != nil {
+		if err := db.Model(&userGroup).Update("is_group_admin", true).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to promote user to group admin"})
 			return
 		}
@@ -906,7 +906,7 @@ func PromoteMemberToGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 // DemoteMemberFromGroupAdmin removes group admin status from a user (group admin or site admin)
 func DemoteMemberFromGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
 		if err != nil {
@@ -925,21 +925,21 @@ func DemoteMemberFromGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify target user exists
 		var targetUser models.User
-		if err := db.WithContext(ctx).First(&targetUser, uint(targetUserID)).Error; err != nil {
+		if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		// Verify group exists
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+		if err := db.First(&group, groupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
 		// Check if user is a member of the group
 		var userGroup models.UserGroup
-		if err := db.WithContext(ctx).Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&userGroup).Error; err != nil {
+		if err := db.Where("user_id = ? AND group_id = ?", targetUserID, groupID).First(&userGroup).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not a member of this group"})
 			return
 		}
@@ -951,7 +951,7 @@ func DemoteMemberFromGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Demote from group admin
-		if err := db.WithContext(ctx).Model(&userGroup).Update("is_group_admin", false).Error; err != nil {
+		if err := db.Model(&userGroup).Update("is_group_admin", false).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to demote user from group admin"})
 			return
 		}
@@ -964,7 +964,7 @@ func DemoteMemberFromGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 // Group admins can update settings for their own group
 func UpdateGroupSettings(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
@@ -982,7 +982,7 @@ func UpdateGroupSettings(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var group models.Group
-		if err := db.WithContext(ctx).First(&group, groupID).Error; err != nil {
+		if err := db.First(&group, groupID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
@@ -1000,7 +1000,7 @@ func UpdateGroupSettings(db *gorm.DB) gin.HandlerFunc {
 		group.GroupMeBotID = req.GroupMeBotID
 		group.GroupMeEnabled = req.GroupMeEnabled
 
-		if err := db.WithContext(ctx).Save(&group).Error; err != nil {
+		if err := db.Save(&group).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update group"})
 			return
 		}

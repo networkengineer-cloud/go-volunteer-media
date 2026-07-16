@@ -36,6 +36,7 @@ type AuthResponse struct {
 func Register(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		var req RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
@@ -47,7 +48,7 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if username or email already exists (case-insensitive username check)
 		var existing models.User
-		if err := db.WithContext(ctx).Where("LOWER(username) = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
+		if err := db.Where("LOWER(username) = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or email already exists"})
 			return
 		}
@@ -69,7 +70,7 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 			IsAdmin:   false,
 		}
 
-		if err := db.WithContext(ctx).Create(&user).Error; err != nil {
+		if err := db.Create(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
 		}
@@ -95,6 +96,7 @@ func Register(db *gorm.DB) gin.HandlerFunc {
 func Login(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		var req LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
@@ -103,7 +105,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 
 		// Find user (case-insensitive username match)
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).Where("LOWER(username) = ?", strings.ToLower(req.Username)).First(&user).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).Where("LOWER(username) = ?", strings.ToLower(req.Username)).First(&user).Error; err != nil {
 			// Audit log: failed login attempt (user not found)
 			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "user_not_found")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
@@ -137,7 +139,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		if user.LockedUntil != nil && user.LockedUntil.Before(time.Now()) {
 			user.FailedLoginAttempts = 0
 			user.LockedUntil = nil
-			if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+			if err := db.Model(&user).Updates(map[string]interface{}{
 				"failed_login_attempts": 0,
 				"locked_until":          nil,
 			}).Error; err != nil {
@@ -156,7 +158,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 				lockUntil := time.Now().Add(AccountLockoutDuration)
 				user.LockedUntil = &lockUntil
 
-				if err := db.WithContext(ctx).Model(&user).Updates(map[string]interface{}{
+				if err := db.Model(&user).Updates(map[string]interface{}{
 					"failed_login_attempts": user.FailedLoginAttempts,
 					"locked_until":          lockUntil,
 				}).Error; err != nil {
@@ -176,7 +178,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			// Update failed attempts count
-			if err := db.WithContext(ctx).Model(&user).Update("failed_login_attempts", user.FailedLoginAttempts).Error; err != nil {
+			if err := db.Model(&user).Update("failed_login_attempts", user.FailedLoginAttempts).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 				return
 			}
@@ -203,7 +205,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 			user.FailedLoginAttempts = 0
 			user.LockedUntil = nil
 		}
-		if err := db.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
+		if err := db.Model(&user).Updates(updates).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 			return
 		}
@@ -230,7 +232,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 // GetCurrentUser returns the current authenticated user
 func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		userID, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -238,14 +240,14 @@ func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var user models.User
-		if err := db.WithContext(ctx).Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
 		// Check if user is a group admin of any group
 		var userGroups []models.UserGroup
-		db.WithContext(ctx).Where("user_id = ? AND is_group_admin = ?", userID, true).Find(&userGroups)
+		db.Where("user_id = ? AND is_group_admin = ?", userID, true).Find(&userGroups)
 
 		// Add is_group_admin flag to response
 		response := map[string]interface{}{

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewSMTPProvider(t *testing.T) {
@@ -190,4 +191,56 @@ func TestSMTPProvider_SendEmail_ValidatesRecipient(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when sending to empty recipient")
 	}
+}
+
+func TestSMTPProvider_SendEmail_RespectsContextDeadline(t *testing.T) {
+	provider := &SMTPProvider{
+		Host:      "192.0.2.1", // TEST-NET-1 (RFC 5737): reserved, never routable
+		Port:      "25",
+		Username:  "user",
+		Password:  "pass",
+		FromEmail: "from@example.com",
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := provider.SendEmail(ctx, "to@example.com", "Test", "<html><body>Test</body></html>")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected an error dialing an unreachable host")
+	}
+	// A generous bound: the fix dials via ctx (DialContext) and sets a
+	// conn-level deadline so a stalled server can't hang the caller.
+	// Without it, tls.Dial/smtp.SendMail have no timeout at all and can
+	// block well past the 200ms context deadline given above.
+	if elapsed > 5*time.Second {
+		t.Fatalf("SendEmail to an unreachable host with a 200ms context deadline took %s — the dial is not respecting ctx", elapsed)
+	}
+}
+
+func TestSMTPDeadline(t *testing.T) {
+	t.Run("uses ctx's own deadline when set", func(t *testing.T) {
+		want := time.Now().Add(time.Hour)
+		ctx, cancel := context.WithDeadline(context.Background(), want)
+		defer cancel()
+
+		if got := smtpDeadline(ctx); !got.Equal(want) {
+			t.Errorf("smtpDeadline() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("falls back to defaultSMTPTimeout when ctx has no deadline", func(t *testing.T) {
+		before := time.Now()
+		got := smtpDeadline(context.Background())
+		after := time.Now()
+
+		minExpected := before.Add(defaultSMTPTimeout)
+		maxExpected := after.Add(defaultSMTPTimeout)
+		if got.Before(minExpected) || got.After(maxExpected) {
+			t.Errorf("smtpDeadline() = %v, want between %v and %v", got, minExpected, maxExpected)
+		}
+	})
 }

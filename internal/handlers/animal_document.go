@@ -22,6 +22,7 @@ import (
 func UploadAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		// Get animal ID from URL parameter
@@ -177,6 +178,7 @@ func UploadAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider)
 func ServeAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		documentUUID := c.Param("uuid")
 		documentURL := fmt.Sprintf("/api/documents/%s", documentUUID)
 
@@ -193,7 +195,7 @@ func ServeAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) 
 
 		// Find animal with the protocol document
 		var animal models.Animal
-		if err := db.WithContext(ctx).Where("protocol_document_url = ?", documentURL).First(&animal).Error; err != nil {
+		if err := db.Where("protocol_document_url = ?", documentURL).First(&animal).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Document not found"})
 			return
 		}
@@ -201,7 +203,7 @@ func ServeAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) 
 		// Authorization: Verify user is member of the animal's group (or is admin)
 		if !isAdmin {
 			var count int64
-			if err := db.WithContext(ctx).
+			if err := db.
 				Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id = ?", userID, animal.GroupID).
 				Count(&count).Error; err != nil {
@@ -254,6 +256,7 @@ func ServeAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) 
 func DeleteAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
 		// Get animal ID from URL parameter

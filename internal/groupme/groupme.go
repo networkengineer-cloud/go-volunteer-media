@@ -2,10 +2,13 @@ package groupme
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 )
 
 const (
@@ -15,6 +18,8 @@ const (
 	// Maximum message length for GroupMe
 	maxMessageLength = 1000
 )
+
+var tracer = telemetry.Tracer("internal/groupme")
 
 // Service represents a GroupMe messaging service
 type Service struct {
@@ -33,7 +38,10 @@ func NewService() *Service {
 }
 
 // SendMessage sends a message to a GroupMe bot
-func (s *Service) SendMessage(botID, text string) error {
+func (s *Service) SendMessage(ctx context.Context, botID, text string) error {
+	ctx, span := tracer.Start(ctx, "groupme.send_message")
+	defer span.End()
+
 	if botID == "" {
 		return fmt.Errorf("bot ID is required")
 	}
@@ -59,7 +67,7 @@ func (s *Service) SendMessage(botID, text string) error {
 	}
 
 	// Create HTTP request
-	req, err := http.NewRequest(http.MethodPost, s.apiURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -69,20 +77,20 @@ func (s *Service) SendMessage(botID, text string) error {
 	// Send request
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send GroupMe message: %w", err)
+		return telemetry.Fail(span, fmt.Errorf("failed to send GroupMe message: %w", err), "request failed")
 	}
 	defer resp.Body.Close()
 
 	// Check response status
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GroupMe API error: status %d", resp.StatusCode)
+		return telemetry.Fail(span, fmt.Errorf("GroupMe API error: status %d", resp.StatusCode), "non-2xx response")
 	}
 
 	return nil
 }
 
 // SendAnnouncement sends a formatted announcement to a GroupMe bot
-func (s *Service) SendAnnouncement(botID, title, content string) error {
+func (s *Service) SendAnnouncement(ctx context.Context, botID, title, content string) error {
 	if title == "" {
 		return fmt.Errorf("title is required")
 	}
@@ -94,7 +102,7 @@ func (s *Service) SendAnnouncement(botID, title, content string) error {
 	// Format the message
 	message := formatAnnouncementMessage(title, content)
 
-	return s.SendMessage(botID, message)
+	return s.SendMessage(ctx, botID, message)
 }
 
 // formatAnnouncementMessage formats an announcement for GroupMe

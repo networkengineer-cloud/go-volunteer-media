@@ -26,6 +26,7 @@ type mediaResponse struct {
 // GET /api/groups/:id/animals/:animalId/media
 func GetAnimalMedia(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -78,6 +79,7 @@ func GetAnimalMedia(db *gorm.DB) gin.HandlerFunc {
 func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -274,6 +276,7 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 func DeleteAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
