@@ -959,8 +959,9 @@ export interface SearchResponse {
 export const searchApi = {
   search: (
     groupId: number,
-    params: { q: string; type?: 'all' | 'animals' | 'comments'; limit?: number; offset?: number }
-  ) => api.get<SearchResponse>(`/groups/${groupId}/search`, { params }),
+    params: { q: string; type?: 'all' | 'animals' | 'comments'; limit?: number; offset?: number },
+    options?: { signal?: AbortSignal }
+  ) => api.get<SearchResponse>(`/groups/${groupId}/search`, { params, signal: options?.signal }),
 };
 
 export default api;

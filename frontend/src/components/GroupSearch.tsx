@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
 import { searchApi } from '../api/client';
 import type { SearchAnimalResult, SearchCommentResult } from '../api/client';
 import { useDebounce } from '../hooks/useDebounce';
@@ -45,8 +46,17 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Tracks the in-flight request so a newer call can cancel an older one —
+  // without this, a slower earlier response could resolve after a faster
+  // later one and overwrite fresher results with stale data.
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const runSearch = useCallback(
     async (q: string, searchType: SearchType, requestOffset: number, append: boolean) => {
+      abortControllerRef.current?.abort();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       if (!q) {
         setAnimals([]);
         setComments([]);
@@ -61,33 +71,64 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
       setError(null);
 
       try {
-        const response = await searchApi.search(groupId, {
-          q,
-          type: searchType,
-          limit: PAGE_SIZE,
-          offset: requestOffset,
-        });
+        const response = await searchApi.search(
+          groupId,
+          { q, type: searchType, limit: PAGE_SIZE, offset: requestOffset },
+          { signal: controller.signal }
+        );
         const data = response.data;
         setAnimals((prev) => (append ? [...prev, ...(data.animals ?? [])] : data.animals ?? []));
         setComments((prev) => (append ? [...prev, ...(data.comments ?? [])] : data.comments ?? []));
         setTotalAnimals(data.total_animals ?? 0);
         setTotalComments(data.total_comments ?? 0);
-      } catch {
+      } catch (err) {
+        // A superseded/cancelled request rejects here too — ignore it
+        // silently rather than surfacing an error for a search the user
+        // has already moved on from.
+        if (axios.isCancel(err)) return;
+        console.error('Failed to search:', err);
         setError('Failed to search. Please try again.');
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        // Only the request that's still current should clear the loading
+        // flags — an aborted, superseded request's `finally` must not flip
+        // them back off after a newer request has already set them.
+        if (abortControllerRef.current === controller) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
     [groupId]
   );
 
-  // New query or type: reset pagination and replace results.
+  // Group switch: clear results immediately, before the new search below
+  // even resolves. Without this, for the brief window until the new
+  // request completes, the previous group's animal/comment data would
+  // still render — but under Links built from the *new* groupId, pointing
+  // at the *old* group's animal IDs.
+  useEffect(() => {
+    setAnimals([]);
+    setComments([]);
+    setTotalAnimals(0);
+    setTotalComments(0);
+    setError(null);
+  }, [groupId]);
+
+  // New query, type, or group: reset pagination and (re)search from the
+  // first page.
   useEffect(() => {
     setOffset(0);
     runSearch(debouncedQuery, type, 0, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, type, groupId]);
+
+  // Cancel any in-flight request on unmount so it can't set state on an
+  // unmounted component.
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   const handleLoadMore = () => {
     const nextOffset = offset + PAGE_SIZE;
@@ -147,7 +188,7 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
           />
         </div>
       ) : (
-        <div className="group-search__results">
+        <div className="group-search__results" role="status" aria-live="polite">
           {showAnimals && animals.length > 0 && (
             <div className="group-search__section">
               <h3 className="group-search__section-title">
