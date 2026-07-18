@@ -77,9 +77,12 @@ func Search(db *gorm.DB) gin.HandlerFunc {
 			var animals []animalSearchResult
 			var totalAnimals int64
 
-			db.Model(&models.Animal{}).
+			if err := db.Model(&models.Animal{}).
 				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
-				Count(&totalAnimals)
+				Count(&totalAnimals).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count matching animals"})
+				return
+			}
 
 			if err := db.Model(&models.Animal{}).
 				Select("animals.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
@@ -108,7 +111,10 @@ func Search(db *gorm.DB) gin.HandlerFunc {
 				Joins("JOIN animals ON animals.id = animal_comments.animal_id").
 				Where("animals.group_id = ? AND animals.deleted_at IS NULL AND animal_comments.search_vector @@ websearch_to_tsquery('english', ?)", groupID, query)
 
-			base.Session(&gorm.Session{}).Count(&totalComments)
+			if err := base.Session(&gorm.Session{}).Count(&totalComments).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count matching comments"})
+				return
+			}
 
 			if err := base.Session(&gorm.Session{}).
 				Select("animal_comments.*, animals.name AS animal_name, ts_rank(animal_comments.search_vector, websearch_to_tsquery('english', ?)) AS rank", query).

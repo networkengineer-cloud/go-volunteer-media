@@ -472,6 +472,17 @@ func createCustomIndexes(db *gorm.DB) error {
 	// Generated tsvector column for full-text keyword/phrase search over animals.
 	// STORED + GENERATED ALWAYS means Postgres keeps it in sync on every
 	// insert/update automatically — no application-level reindexing needed.
+	//
+	// CAUTION: unlike a plain ADD COLUMN, adding a STORED generated column is
+	// NOT a metadata-only change — Postgres must compute and materialize the
+	// value for every existing row, which rewrites the whole table under an
+	// ACCESS EXCLUSIVE lock (blocking all reads and writes to it, including
+	// from other already-running instances on a rolling deploy) for as long
+	// as the rewrite takes. On a fresh/empty database this is instant; on any
+	// deployment with a non-trivial amount of existing animal/comment data,
+	// run this migration during a maintenance window rather than assuming it
+	// applies silently in the background. The same caution applies to the
+	// animal_comments.search_vector column below.
 	animalSearchVectorQuery := `
 		ALTER TABLE animals ADD COLUMN IF NOT EXISTS search_vector tsvector
 		GENERATED ALWAYS AS (
@@ -510,7 +521,9 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created trigram index idx_animals_name_trgm")
 	}
 
-	// Generated tsvector column for full-text keyword/phrase search over comments.
+	// Generated tsvector column for full-text keyword/phrase search over
+	// comments. Same table-rewrite/ACCESS EXCLUSIVE lock caution as
+	// animals.search_vector above applies here too.
 	commentSearchVectorQuery := `
 		ALTER TABLE animal_comments ADD COLUMN IF NOT EXISTS search_vector tsvector
 		GENERATED ALWAYS AS (to_tsvector('english', coalesce(content, ''))) STORED
