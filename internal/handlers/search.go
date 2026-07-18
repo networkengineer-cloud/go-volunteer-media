@@ -27,8 +27,9 @@ type commentSearchResult struct {
 
 // Search performs keyword/phrase search over a group's animals and comments
 // using Postgres full-text search (tsvector columns populated by generated
-// columns — see createSearchIndexes). Scoped to the requesting user's group
-// access, matching every other /groups/:id route in this file set.
+// columns — see createCustomIndexes in internal/database/database.go).
+// Scoped to the requesting user's group access, matching every other
+// /groups/:id route in this file set.
 func Search(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
@@ -77,7 +78,6 @@ func Search(db *gorm.DB) gin.HandlerFunc {
 			var totalAnimals int64
 
 			db.Model(&models.Animal{}).
-				Select("animals.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
 				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
 				Count(&totalAnimals)
 
@@ -100,9 +100,13 @@ func Search(db *gorm.DB) gin.HandlerFunc {
 			var comments []commentSearchResult
 			var totalComments int64
 
+			// GORM's soft-delete scope only auto-applies to the query's primary
+			// model (animal_comments) — the joined animals table needs an
+			// explicit deleted_at check, or comments on a deleted animal leak
+			// through search.
 			base := db.Model(&models.AnimalComment{}).
 				Joins("JOIN animals ON animals.id = animal_comments.animal_id").
-				Where("animals.group_id = ? AND animal_comments.search_vector @@ websearch_to_tsquery('english', ?)", groupID, query)
+				Where("animals.group_id = ? AND animals.deleted_at IS NULL AND animal_comments.search_vector @@ websearch_to_tsquery('english', ?)", groupID, query)
 
 			base.Session(&gorm.Session{}).Count(&totalComments)
 
