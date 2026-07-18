@@ -345,6 +345,9 @@ func main() {
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
 			group.GET("/animals/check-duplicates", handlers.CheckDuplicateNames(db))
 
+			// Keyword/phrase search over animals and comments (Postgres full-text search)
+			group.GET("/search", handlers.Search(db))
+
 			// Animal images - all group members can view, upload, and set profile pictures
 			group.GET("/animals/:animalId/images", handlers.GetAnimalImages(db))
 			group.POST("/animals/:animalId/images", handlers.UploadAnimalImageToGallery(db, storageProvider))
