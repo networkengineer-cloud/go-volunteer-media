@@ -10,6 +10,7 @@ import AnnouncementForm from '../components/AnnouncementForm';
 import EmptyState from '../components/EmptyState';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ErrorState from '../components/ErrorState';
+import GroupSearch from '../components/GroupSearch';
 import Modal from '../components/Modal';
 import ScriptsList from '../components/ScriptsList';
 import { calculateAge, formatAge, formatQuarantineEndDate } from '../utils/dateUtils';
@@ -642,6 +643,8 @@ const GroupPage: React.FC = () => {
           aria-labelledby="activity-tab"
           className="group-content"
         >
+          {id && <GroupSearch groupId={Number(id)} />}
+
           {/* Enhanced Activity Filter Bar */}
           <div className="activity-filter-bar">
             <div className="filter-row">
@@ -919,6 +922,8 @@ const GroupPage: React.FC = () => {
             <div className="section-header">
               <h2>Animals</h2>
             </div>
+
+            {id && <GroupSearch groupId={Number(id)} />}
 
             {/* Filters */}
             <div className="filters-section">

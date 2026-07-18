@@ -936,4 +936,31 @@ export const groupDocumentsApi = {
   },
 };
 
+// Keyword/phrase search over a group's animals and comments (Postgres
+// full-text search on the backend — see GET /groups/:id/search).
+export interface SearchAnimalResult extends Animal {
+  rank: number;
+}
+
+export interface SearchCommentResult extends AnimalComment {
+  animal_name: string;
+  rank: number;
+}
+
+export interface SearchResponse {
+  // Omitted entirely (not just empty) by the backend when `type` narrows
+  // the search to the other resource — always read via `?? []` / `?? 0`.
+  animals?: SearchAnimalResult[];
+  total_animals?: number;
+  comments?: SearchCommentResult[];
+  total_comments?: number;
+}
+
+export const searchApi = {
+  search: (
+    groupId: number,
+    params: { q: string; type?: 'all' | 'animals' | 'comments'; limit?: number; offset?: number }
+  ) => api.get<SearchResponse>(`/groups/${groupId}/search`, { params }),
+};
+
 export default api;
