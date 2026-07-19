@@ -460,6 +460,64 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created partial unique index idx_user_skill_tag_group_name_active")
 	}
 
+	// pgvector powers the embedding columns/HNSW indexes below.
+	vectorExtensionQuery := `CREATE EXTENSION IF NOT EXISTS vector`
+	if err := db.Exec(vectorExtensionQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create vector extension")
+	} else {
+		logging.Info("Ensured vector extension exists")
+	}
+
+	// Embedding columns for semantic (hybrid) search. Unlike search_vector
+	// above, these can't be GENERATED columns — computing an embedding
+	// requires an external API call, which Postgres generated columns can't
+	// make. They're plain nullable columns populated by the application (see
+	// internal/embedding's write-path goroutine and reconciliation sweep).
+	// Deliberately not added to models.Animal/models.AnimalComment — see the
+	// comment on the search_vector columns above for why (AutoMigrate runs
+	// before this function, before the vector extension exists).
+	//
+	// Unlike the STORED generated tsvector columns above, adding a plain
+	// nullable vector column is metadata-only — no table rewrite, no
+	// ACCESS EXCLUSIVE lock, no maintenance-window concern.
+	animalEmbeddingColumnsQuery := `
+		ALTER TABLE animals ADD COLUMN IF NOT EXISTS embedding vector(1024);
+		ALTER TABLE animals ADD COLUMN IF NOT EXISTS embedding_updated_at timestamptz
+	`
+	if err := db.Exec(animalEmbeddingColumnsQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add embedding columns to animals (is the pgvector extension available?)")
+	} else {
+		logging.Info("Ensured animals.embedding/embedding_updated_at columns exist")
+	}
+
+	animalEmbeddingIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animals_embedding ON animals USING hnsw (embedding vector_cosine_ops)
+	`
+	if err := db.Exec(animalEmbeddingIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create HNSW index on animals.embedding")
+	} else {
+		logging.Info("Created HNSW index idx_animals_embedding")
+	}
+
+	commentEmbeddingColumnsQuery := `
+		ALTER TABLE animal_comments ADD COLUMN IF NOT EXISTS embedding vector(1024);
+		ALTER TABLE animal_comments ADD COLUMN IF NOT EXISTS embedding_updated_at timestamptz
+	`
+	if err := db.Exec(commentEmbeddingColumnsQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add embedding columns to animal_comments (is the pgvector extension available?)")
+	} else {
+		logging.Info("Ensured animal_comments.embedding/embedding_updated_at columns exist")
+	}
+
+	commentEmbeddingIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animal_comments_embedding ON animal_comments USING hnsw (embedding vector_cosine_ops)
+	`
+	if err := db.Exec(commentEmbeddingIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create HNSW index on animal_comments.embedding")
+	} else {
+		logging.Info("Created HNSW index idx_animal_comments_embedding")
+	}
+
 	logging.Info("Custom indexes creation completed")
 	return nil
 }
