@@ -601,6 +601,50 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created HNSW index idx_animal_comments_embedding")
 	}
 
+	// updates never got a search_vector column in the original keyword-search
+	// feature (it predates that feature), so this adds both keyword and
+	// semantic search capability together, unlike animals/animal_comments
+	// above which only needed the embedding half added.
+	updateSearchVectorQuery := `
+		ALTER TABLE updates ADD COLUMN IF NOT EXISTS search_vector tsvector
+		GENERATED ALWAYS AS (
+			to_tsvector('english', coalesce(title, '') || ' ' || coalesce(content, ''))
+		) STORED
+	`
+	if err := db.Exec(updateSearchVectorQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add search_vector column to updates")
+	} else {
+		logging.Info("Ensured updates.search_vector column exists")
+	}
+
+	updateSearchVectorIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_updates_search_vector ON updates USING GIN (search_vector)
+	`
+	if err := db.Exec(updateSearchVectorIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create GIN index on updates.search_vector")
+	} else {
+		logging.Info("Created GIN index idx_updates_search_vector")
+	}
+
+	updateEmbeddingColumnsQuery := `
+		ALTER TABLE updates ADD COLUMN IF NOT EXISTS embedding vector(1024);
+		ALTER TABLE updates ADD COLUMN IF NOT EXISTS embedding_updated_at timestamptz
+	`
+	if err := db.Exec(updateEmbeddingColumnsQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add embedding columns to updates (is the pgvector extension available?)")
+	} else {
+		logging.Info("Ensured updates.embedding/embedding_updated_at columns exist")
+	}
+
+	updateEmbeddingIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_updates_embedding ON updates USING hnsw (embedding vector_cosine_ops)
+	`
+	if err := db.Exec(updateEmbeddingIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create HNSW index on updates.embedding")
+	} else {
+		logging.Info("Created HNSW index idx_updates_embedding")
+	}
+
 	logging.Info("Custom indexes creation completed")
 	return nil
 }

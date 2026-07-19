@@ -105,4 +105,28 @@ func TestCreateCustomIndexes_CreatesEmbeddingColumnsAndIndexes(t *testing.T) {
 		SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_animal_comments_embedding')
 	`).Scan(&commentsIndexExists).Error)
 	assert.True(t, commentsIndexExists, "idx_animal_comments_embedding HNSW index must exist")
+
+	var updatesSearchVectorExists bool
+	assert.NoError(t, db.Raw(`
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'updates' AND column_name = 'search_vector'
+		)
+	`).Scan(&updatesSearchVectorExists).Error)
+	assert.True(t, updatesSearchVectorExists, "updates.search_vector column must exist after migration")
+
+	var updatesEmbeddingExists bool
+	assert.NoError(t, db.Raw(`
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'updates' AND column_name = 'embedding'
+		)
+	`).Scan(&updatesEmbeddingExists).Error)
+	assert.True(t, updatesEmbeddingExists, "updates.embedding column must exist after migration")
+
+	var updatesEmbeddingIndexExists bool
+	assert.NoError(t, db.Raw(`
+		SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_updates_embedding')
+	`).Scan(&updatesEmbeddingIndexExists).Error)
+	assert.True(t, updatesEmbeddingIndexExists, "idx_updates_embedding HNSW index must exist")
 }
