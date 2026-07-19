@@ -460,6 +460,89 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created partial unique index idx_user_skill_tag_group_name_active")
 	}
 
+	// pg_trgm powers trigram similarity matching, used below for typo-tolerant
+	// animal name lookups alongside the phrase/keyword full-text search.
+	trgmExtensionQuery := `CREATE EXTENSION IF NOT EXISTS pg_trgm`
+	if err := db.Exec(trgmExtensionQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create pg_trgm extension")
+	} else {
+		logging.Info("Ensured pg_trgm extension exists")
+	}
+
+	// Generated tsvector column for full-text keyword/phrase search over animals.
+	// STORED + GENERATED ALWAYS means Postgres keeps it in sync on every
+	// insert/update automatically — no application-level reindexing needed.
+	//
+	// CAUTION: unlike a plain ADD COLUMN, adding a STORED generated column is
+	// NOT a metadata-only change — Postgres must compute and materialize the
+	// value for every existing row, which rewrites the whole table under an
+	// ACCESS EXCLUSIVE lock (blocking all reads and writes to it, including
+	// from other already-running instances on a rolling deploy) for as long
+	// as the rewrite takes. On a fresh/empty database this is instant; on any
+	// deployment with a non-trivial amount of existing animal/comment data,
+	// run this migration during a maintenance window rather than assuming it
+	// applies silently in the background. The same caution applies to the
+	// animal_comments.search_vector column below.
+	animalSearchVectorQuery := `
+		ALTER TABLE animals ADD COLUMN IF NOT EXISTS search_vector tsvector
+		GENERATED ALWAYS AS (
+			to_tsvector('english',
+				coalesce(name, '') || ' ' ||
+				coalesce(species, '') || ' ' ||
+				coalesce(breed, '') || ' ' ||
+				coalesce(description, '') || ' ' ||
+				coalesce(trainer_notes, '')
+			)
+		) STORED
+	`
+	if err := db.Exec(animalSearchVectorQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add search_vector column to animals")
+	} else {
+		logging.Info("Ensured animals.search_vector column exists")
+	}
+
+	animalSearchVectorIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animals_search_vector ON animals USING GIN (search_vector)
+	`
+	if err := db.Exec(animalSearchVectorIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create GIN index on animals.search_vector")
+	} else {
+		logging.Info("Created GIN index idx_animals_search_vector")
+	}
+
+	// Trigram index on animal name for typo-tolerant/partial matching,
+	// separate from the phrase-search vector above.
+	animalNameTrgmIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animals_name_trgm ON animals USING GIN (name gin_trgm_ops)
+	`
+	if err := db.Exec(animalNameTrgmIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create trigram index on animals.name")
+	} else {
+		logging.Info("Created trigram index idx_animals_name_trgm")
+	}
+
+	// Generated tsvector column for full-text keyword/phrase search over
+	// comments. Same table-rewrite/ACCESS EXCLUSIVE lock caution as
+	// animals.search_vector above applies here too.
+	commentSearchVectorQuery := `
+		ALTER TABLE animal_comments ADD COLUMN IF NOT EXISTS search_vector tsvector
+		GENERATED ALWAYS AS (to_tsvector('english', coalesce(content, ''))) STORED
+	`
+	if err := db.Exec(commentSearchVectorQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add search_vector column to animal_comments")
+	} else {
+		logging.Info("Ensured animal_comments.search_vector column exists")
+	}
+
+	commentSearchVectorIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animal_comments_search_vector ON animal_comments USING GIN (search_vector)
+	`
+	if err := db.Exec(commentSearchVectorIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create GIN index on animal_comments.search_vector")
+	} else {
+		logging.Info("Created GIN index idx_animal_comments_search_vector")
+	}
+
 	// pgvector powers the embedding columns/HNSW indexes below.
 	vectorExtensionQuery := `CREATE EXTENSION IF NOT EXISTS vector`
 	if err := db.Exec(vectorExtensionQuery).Error; err != nil {
