@@ -22,6 +22,22 @@ func setupAnimalCommentTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("Failed to open database: %v", err)
 	}
 
+	// IMPORTANT: SQLite in-memory databases are per-connection. Without
+	// capping the pool to a single connection, database/sql may open a
+	// second physical connection to service a concurrent caller (e.g. the
+	// detached goroutine embedCommentAsync spawns) — and since ":memory:"
+	// isn't shared-cache here, that second connection is a distinct, blank,
+	// unmigrated database, producing intermittent "no such table:
+	// animal_comments" errors. Forcing a single connection makes the pool
+	// serialize access instead, matching the pattern in SetupTestDB
+	// (test_helpers.go).
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("Failed to get database instance: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+
 	// Migrate models
 	err = db.AutoMigrate(
 		&models.User{},
