@@ -1,10 +1,12 @@
 package embedding
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -131,19 +133,96 @@ func TestSweepAnimals_RespectsBatchSizeCap(t *testing.T) {
 	assert.Equal(t, int64(sweepBatchSize), embeddedCount, "expected exactly one batch's worth of animals to be embedded per sweep call")
 }
 
+// countingEmbedder wraps another Embedder and atomically counts calls to
+// EmbedDocuments, so tests can observe how many sweep ticks actually did
+// embedding work.
+type countingEmbedder struct {
+	Embedder
+	calls int64
+}
+
+func (c *countingEmbedder) EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error) {
+	atomic.AddInt64(&c.calls, 1)
+	return c.Embedder.EmbedDocuments(ctx, texts)
+}
+
+func (c *countingEmbedder) Calls() int64 {
+	return atomic.LoadInt64(&c.calls)
+}
+
 // TestStartReconciliationSweep_StopDoesNotLeakGoroutine guards against a
 // regression where the sweep's background goroutine keeps running (and its
 // ticker keeps firing) after stop() is called — e.g. if the select loop's
 // done case were dropped, or if ticker.Stop() were omitted.
+//
+// It runs against a rolled-back transaction (not the raw db) so the sweep's
+// real UPDATEs against animals/animal_comments never escape the test — a
+// prior version of this test passed the raw db and permanently overwrote
+// live dev-database rows with StubEmbedder junk vectors once the sweep
+// goroutine fired for real.
+//
+// To prove the ticker itself stops (not just that the goroutine exits,
+// which NumGoroutine alone can't distinguish from "ticker leaked but the
+// goroutine happened to return anyway"), the test seeds a row that stays
+// perpetually stale — its updated_at is pinned far in the future, so every
+// sweep tick's "embedding_updated_at = now()" write is still older than
+// updated_at and the row is re-embedded on every single tick. A counting
+// embedder records how many times embedding actually ran. After stop(),
+// the count must not increase even after waiting several more tick
+// intervals — if it did, the ticker would still be firing.
 func TestStartReconciliationSweep_StopDoesNotLeakGoroutine(t *testing.T) {
 	db := openSweepTestPostgres(t)
+	tx := db.Begin()
+	defer tx.Rollback()
+
+	group := models.Group{Name: fmt.Sprintf("SweepLeakTest-%d", time.Now().UnixNano())}
+	if err := tx.Create(&group).Error; err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	animal := models.Animal{GroupID: group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+	// Pin updated_at far in the future so the row is always considered
+	// stale (embedding_updated_at, set to now() on every sweep tick, is
+	// always earlier than this), guaranteeing the embedder is invoked on
+	// every tick until the sweep is actually stopped.
+	if err := tx.Exec(
+		"UPDATE animals SET updated_at = ? WHERE id = ?",
+		time.Now().Add(24*time.Hour), animal.ID,
+	).Error; err != nil {
+		t.Fatalf("failed to pin updated_at: %v", err)
+	}
 
 	runtime.GC()
 	before := runtime.NumGoroutine()
 
-	stop := StartReconciliationSweep(db, &StubEmbedder{}, 5*time.Millisecond)
-	time.Sleep(20 * time.Millisecond) // let the ticker fire at least once
+	embedder := &countingEmbedder{Embedder: &StubEmbedder{}}
+	interval := 5 * time.Millisecond
+	stop := StartReconciliationSweep(tx, embedder, interval)
+
+	// Wait for at least one real tick to have run the embedder, so we know
+	// the sweep is actually ticking before we try to stop it.
+	tickDeadline := time.Now().Add(500 * time.Millisecond)
+	for embedder.Calls() == 0 {
+		if time.Now().After(tickDeadline) {
+			t.Fatalf("sweep never invoked the embedder before stop() — test setup didn't produce a stale row")
+		}
+		time.Sleep(interval)
+	}
+
 	stop()
+
+	// Let any tick that was already in flight when stop() was called
+	// finish, then snapshot the call count.
+	time.Sleep(interval * 2)
+	countAtStop := embedder.Calls()
+
+	// Wait past several more tick intervals. If the ticker were still
+	// firing (e.g. ticker.Stop() were omitted or the done case dropped),
+	// the always-stale row would keep incrementing the counter.
+	time.Sleep(interval * 10)
+	assert.Equal(t, countAtStop, embedder.Calls(), "embedder was invoked again after stop() — the ticker did not actually stop")
 
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for {

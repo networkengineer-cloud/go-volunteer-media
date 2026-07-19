@@ -3,6 +3,7 @@ package embedding
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
@@ -45,7 +46,8 @@ func StartReconciliationSweep(db *gorm.DB, embedder Embedder, interval time.Dura
 		}
 	}()
 
-	return func() { close(done) }
+	var once sync.Once
+	return func() { once.Do(func() { close(done) }) }
 }
 
 type staleAnimal struct {
