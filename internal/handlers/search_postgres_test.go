@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/pgvector/pgvector-go"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -155,6 +157,62 @@ func decodeSearchResponse(t *testing.T, w *httptest.ResponseRecorder) map[string
 		t.Fatalf("decode response: %v (body: %s)", err, w.Body.String())
 	}
 	return body
+}
+
+// setAnimalEmbedding directly UPDATEs an animal's embedding column with a
+// hand-crafted vector, bypassing the real embedding pipeline so tests get
+// deterministic, controllable nearest-neighbor behavior instead of depending
+// on a real Voyage call or model output.
+func (f *searchTestFixture) setAnimalEmbedding(t *testing.T, animalID uint, vec []float32) {
+	t.Helper()
+	if err := f.tx.Exec(
+		"UPDATE animals SET embedding = ?, embedding_updated_at = now() WHERE id = ?",
+		pgvector.NewVector(vec), animalID,
+	).Error; err != nil {
+		t.Fatalf("failed to set animal embedding: %v", err)
+	}
+}
+
+func (f *searchTestFixture) setCommentEmbedding(t *testing.T, commentID uint, vec []float32) {
+	t.Helper()
+	if err := f.tx.Exec(
+		"UPDATE animal_comments SET embedding = ?, embedding_updated_at = now() WHERE id = ?",
+		pgvector.NewVector(vec), commentID,
+	).Error; err != nil {
+		t.Fatalf("failed to set comment embedding: %v", err)
+	}
+}
+
+// vectorWithOneAt returns a Dimension-length vector that is 1.0 at the given
+// index and 0 elsewhere — an orthogonal basis vector, so cosine distance
+// between vectorWithOneAt(i) and vectorWithOneAt(j) is deterministic and
+// maximal for i != j, and zero for i == i.
+func vectorWithOneAt(index int) []float32 {
+	v := make([]float32, embedding.Dimension)
+	v[index] = 1.0
+	return v
+}
+
+// fixedVectorEmbedder is an Embedder stub whose EmbedQuery always returns a
+// fixed vector, for tests that need to control exactly what the "query
+// embedding" is (rather than deriving it from the query text like
+// StubEmbedder does), to make a specific semantic match deterministic.
+type fixedVectorEmbedder struct {
+	vector []float32
+}
+
+func (f *fixedVectorEmbedder) EmbedDocument(ctx context.Context, text string) ([]float32, error) {
+	return f.vector, nil
+}
+func (f *fixedVectorEmbedder) EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, len(texts))
+	for i := range out {
+		out[i] = f.vector
+	}
+	return out, nil
+}
+func (f *fixedVectorEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	return f.vector, nil
 }
 
 func TestSearch_Postgres_MatchReturnsExpectedResults(t *testing.T) {
@@ -431,5 +489,99 @@ func TestSearch_Postgres_RanksMultipleMatchesByRelevance(t *testing.T) {
 	}
 	if !(ranks[0] > ranks[1] && ranks[1] > ranks[2]) {
 		t.Fatalf("expected strictly decreasing ranks matching the returned order, got %v for %v", ranks, names)
+	}
+}
+
+func TestSearch_Postgres_SemanticMatchSurfacesResultWithNoKeywordOverlap(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newSearchTestFixture(t, db)
+
+	// "Gets snappy near his bowl" shares zero keyword-search vocabulary with
+	// "resource guarding" — a pure keyword search would miss it. Its
+	// embedding is set to be identical to the query embedding.
+	semanticOnly := models.Animal{
+		GroupID: f.groupA.ID, Name: "Bowl", Species: "Dog", Status: "available",
+		Description: "Gets snappy near his bowl during mealtime.",
+	}
+	if err := f.tx.Create(&semanticOnly).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+	f.setAnimalEmbedding(t, semanticOnly.ID, vectorWithOneAt(0))
+
+	noOverlap := models.Animal{GroupID: f.groupA.ID, Name: "Unrelated", Species: "Cat", Status: "available"}
+	if err := f.tx.Create(&noOverlap).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+	f.setAnimalEmbedding(t, noOverlap.ID, vectorWithOneAt(500)) // orthogonal, far away
+
+	// fixedVectorEmbedder (defined above) forces the query embedding to
+	// exactly match semanticOnly's stored vector, making the semantic match
+	// deterministic without a real Voyage call.
+	c, w := f.searchRequest(t, f.groupA.ID, "resource guarding")
+	Search(f.tx, &fixedVectorEmbedder{vector: vectorWithOneAt(0)})(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := decodeSearchResponse(t, w)
+	animals, _ := body["animals"].([]interface{})
+	found := false
+	for _, a := range animals {
+		if a.(map[string]interface{})["name"] == "Bowl" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected semantic match \"Bowl\" to surface despite no keyword overlap, got animals: %v", animals)
+	}
+}
+
+func TestSearch_Postgres_DegradesToKeywordOnlyWhenEmbedderFails(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newSearchTestFixture(t, db)
+
+	match := models.Animal{
+		GroupID: f.groupA.ID, Name: "Rex", Species: "Dog", Status: "available",
+		Description: "Shows resource guarding around food bowls.",
+	}
+	if err := f.tx.Create(&match).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+
+	failingEmbedder := &embedding.StubEmbedder{Err: fmt.Errorf("simulated Voyage outage")}
+	c, w := f.searchRequest(t, f.groupA.ID, "resource guarding")
+	Search(f.tx, failingEmbedder)(c)
+
+	assert.Equal(t, http.StatusOK, w.Code, "a failed query embedding must degrade to keyword-only results, not fail the request")
+	body := decodeSearchResponse(t, w)
+	animals, _ := body["animals"].([]interface{})
+	if len(animals) != 1 || animals[0].(map[string]interface{})["name"] != "Rex" {
+		t.Fatalf("expected keyword-only match for Rex despite embedder failure, got: %v", animals)
+	}
+}
+
+func TestSearch_Postgres_DeepPaginationCoversResultsBeyondDefaultPool(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newSearchTestFixture(t, db)
+
+	// 60 matching animals — more than the 50-row default candidate pool
+	// floor — to prove candidatePoolSize actually grows for a deep offset.
+	for i := 0; i < 60; i++ {
+		a := models.Animal{
+			GroupID: f.groupA.ID, Name: fmt.Sprintf("Animal%02d", i), Species: "Dog", Status: "available",
+			Description: "Loves the playgroup.",
+		}
+		if err := f.tx.Create(&a).Error; err != nil {
+			t.Fatalf("create animal %d: %v", i, err)
+		}
+	}
+
+	c, w := f.searchRequestWithParams(t, f.groupA.ID, url.Values{"q": {"playgroup"}, "limit": {"10"}, "offset": {"55"}})
+	Search(f.tx, &embedding.StubEmbedder{})(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := decodeSearchResponse(t, w)
+	assert.Equal(t, float64(60), body["total_animals"])
+	animals, _ := body["animals"].([]interface{})
+	if len(animals) != 5 {
+		t.Fatalf("expected 5 animals on the last partial page (60 total, offset=55, limit=10), got %d: %v", len(animals), animals)
 	}
 }
