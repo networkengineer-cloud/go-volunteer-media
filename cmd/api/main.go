@@ -23,6 +23,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/convert"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/handlers"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/lifecycle"
@@ -142,6 +143,21 @@ func main() {
 	} else {
 		logger.Info("Email service not configured - password reset and email notifications will be disabled")
 	}
+
+	// Initialize embedding provider for semantic search
+	embedder := embedding.NewVoyageEmbedder()
+	if embedder.IsConfigured() {
+		logger.Info("Voyage embedding provider configured and ready")
+	} else {
+		logger.Info("Voyage embedding provider not configured - search will be keyword-only")
+	}
+
+	// Reconciliation sweep: backfills missing embeddings and retries failed
+	// write-path embed attempts. A no-op while SEMANTIC_SEARCH_ENABLED is
+	// false or the embedder isn't configured (sweepAnimals/sweepComments
+	// find nothing new to do, and StartReconciliationSweep itself checks the
+	// flag every tick before doing any work).
+	stopEmbeddingSweep := embedding.StartReconciliationSweep(db, embedder, 60*time.Second)
 
 	// Initialize GroupMe service
 	groupMeService := groupme.NewService()
@@ -346,7 +362,7 @@ func main() {
 			group.GET("/animals/check-duplicates", handlers.CheckDuplicateNames(db))
 
 			// Keyword/phrase search over animals and comments (Postgres full-text search)
-			group.GET("/search", handlers.Search(db))
+			group.GET("/search", handlers.Search(db, embedder))
 
 			// Animal images - all group members can view, upload, and set profile pictures
 			group.GET("/animals/:animalId/images", handlers.GetAnimalImages(db))
@@ -364,8 +380,8 @@ func main() {
 
 			// Animal comments - all group members can view, add, and edit own comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
-			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
-			group.PUT("/animals/:animalId/comments/:commentId", handlers.UpdateAnimalComment(db))
+			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db, embedder))
+			group.PUT("/animals/:animalId/comments/:commentId", handlers.UpdateAnimalComment(db, embedder))
 			group.DELETE("/animals/:animalId/comments/:commentId", handlers.DeleteAnimalComment(db))
 			group.GET("/animals/:animalId/comments/:commentId/history", handlers.GetCommentHistory(db))
 
@@ -428,8 +444,8 @@ func main() {
 		// These routes check for site admin OR group admin access within the handlers
 		groupAdminAnimals := protected.Group("/groups/:id/animals")
 		{
-			groupAdminAnimals.POST("", handlers.CreateAnimal(db, emailService))
-			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db, emailService))
+			groupAdminAnimals.POST("", handlers.CreateAnimal(db, emailService, embedder))
+			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db, emailService, embedder))
 			groupAdminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
 			// Tag assignment for animals
 			groupAdminAnimals.POST("/:animalId/tags", handlers.AssignTagsToAnimal(db))
@@ -531,6 +547,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	logger.Info("Shutting down server...")
+	stopEmbeddingSweep()
 
 	// Graceful shutdown with 5 second timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
