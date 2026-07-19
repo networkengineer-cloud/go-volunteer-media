@@ -76,6 +76,24 @@ func TestCreateCustomIndexes_CreatesEmbeddingColumnsAndIndexes(t *testing.T) {
 	`).Scan(&commentColumnExists).Error)
 	assert.True(t, commentColumnExists, "animal_comments.embedding column must exist after migration")
 
+	var animalsEmbeddingUpdatedAtExists bool
+	assert.NoError(t, db.Raw(`
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'animals' AND column_name = 'embedding_updated_at'
+		)
+	`).Scan(&animalsEmbeddingUpdatedAtExists).Error)
+	assert.True(t, animalsEmbeddingUpdatedAtExists, "animals.embedding_updated_at column must exist after migration")
+
+	var commentEmbeddingUpdatedAtExists bool
+	assert.NoError(t, db.Raw(`
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'animal_comments' AND column_name = 'embedding_updated_at'
+		)
+	`).Scan(&commentEmbeddingUpdatedAtExists).Error)
+	assert.True(t, commentEmbeddingUpdatedAtExists, "animal_comments.embedding_updated_at column must exist after migration")
+
 	var animalsIndexExists bool
 	assert.NoError(t, db.Raw(`
 		SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_animals_embedding')
