@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -184,8 +185,14 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 }
 
 // CreateAnimalComment creates a new comment on an animal
-func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
+func CreateAnimalComment(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// rawDB is captured before the shadow below so the detached
+		// goroutine spawned by embedCommentAsync gets the unscoped db, not
+		// one bound to this request's context (which is canceled the
+		// instant this handler returns). See the same pattern in
+		// animal_crud.go's sendQuarantineNotificationEmail usage.
+		rawDB := db
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -245,6 +252,8 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		embedCommentAsync(rawDB, embedder, comment)
+
 		// Attach tags if provided
 		if len(req.TagIDs) > 0 {
 			var tags []models.CommentTag
@@ -268,8 +277,14 @@ func CreateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 
 // UpdateAnimalComment updates a comment on an animal
 // Users can only edit their own comments
-func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
+func UpdateAnimalComment(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// rawDB is captured before the shadow below so the detached
+		// goroutine spawned by embedCommentAsync gets the unscoped db, not
+		// one bound to this request's context (which is canceled the
+		// instant this handler returns). See the same pattern in
+		// animal_crud.go's sendQuarantineNotificationEmail usage.
+		rawDB := db
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
@@ -350,6 +365,8 @@ func UpdateAnimalComment(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update comment"})
 			return
 		}
+
+		embedCommentAsync(rawDB, embedder, comment)
 
 		// Update tags if provided
 		if len(req.TagIDs) > 0 {

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
@@ -289,7 +290,7 @@ func TestCreateAnimalComment(t *testing.T) {
 			tt.setupContext(c)
 
 			// Execute
-			handler := CreateAnimalComment(db)
+			handler := CreateAnimalComment(db, &embedding.StubEmbedder{})
 			handler(c)
 
 			// Assert
@@ -329,7 +330,7 @@ func TestCreateAnimalComment_WithTags(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/groups/1/animals/1/comments", bytes.NewBuffer(bodyBytes))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := CreateAnimalComment(db)
+	handler := CreateAnimalComment(db, &embedding.StubEmbedder{})
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)

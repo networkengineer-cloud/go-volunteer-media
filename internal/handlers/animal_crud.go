@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -190,7 +191,7 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 }
 
 // CreateAnimal creates a new animal in a group
-func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
+func CreateAnimal(db *gorm.DB, emailService *email.Service, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// rawDB is captured before the shadow below so the detached
 		// goroutine spawned by sendQuarantineNotificationEmail gets the
@@ -293,6 +294,8 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			return
 		}
 
+		embedAnimalAsync(rawDB, embedder, animal)
+
 		if animal.Status == "bite_quarantine" {
 			if err := db.Create(&models.AnimalBQIncident{
 				AnimalID:        animal.ID,
@@ -328,7 +331,7 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 }
 
 // UpdateAnimal updates an existing animal
-func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
+func UpdateAnimal(db *gorm.DB, emailService *email.Service, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// rawDB is captured before the shadow below so the detached
 		// goroutine spawned by sendQuarantineNotificationEmail gets the
@@ -528,6 +531,8 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal"})
 			return
 		}
+
+		embedAnimalAsync(rawDB, embedder, animal)
 
 		if enteredQuarantine {
 			if err := db.Create(&models.AnimalBQIncident{
