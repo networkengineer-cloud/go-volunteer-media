@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 )
 
 func TestSearch_ForbiddenWhenNoGroupAccess(t *testing.T) {
@@ -22,7 +23,7 @@ func TestSearch_ForbiddenWhenNoGroupAccess(t *testing.T) {
 	c.Params = gin.Params{{Key: "id", Value: itoa(group.ID)}}
 	c.Request = httptest.NewRequest(http.MethodGet, "/test?q=guarding", nil)
 
-	Search(db)(c)
+	Search(db, &embedding.StubEmbedder{})(c)
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", w.Code)
@@ -44,7 +45,7 @@ func TestSearch_BadRequestWhenTypeInvalid(t *testing.T) {
 	c.Params = gin.Params{{Key: "id", Value: itoa(group.ID)}}
 	c.Request = httptest.NewRequest(http.MethodGet, "/test?q=guarding&type=bogus", nil)
 
-	Search(db)(c)
+	Search(db, &embedding.StubEmbedder{})(c)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -66,7 +67,7 @@ func TestSearch_BadRequestWhenQueryMissing(t *testing.T) {
 	c.Params = gin.Params{{Key: "id", Value: itoa(group.ID)}}
 	c.Request = httptest.NewRequest(http.MethodGet, "/test", nil)
 
-	Search(db)(c)
+	Search(db, &embedding.StubEmbedder{})(c)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)

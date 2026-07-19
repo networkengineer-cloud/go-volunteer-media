@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/postgres"
@@ -176,7 +177,7 @@ func TestSearch_Postgres_MatchReturnsExpectedResults(t *testing.T) {
 	}
 
 	c, w := f.searchRequest(t, f.groupA.ID, "resource guarding")
-	Search(f.tx)(c)
+	Search(f.tx, &embedding.StubEmbedder{})(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -226,7 +227,7 @@ func TestSearch_Postgres_ExcludesCommentsOnDeletedAnimal(t *testing.T) {
 	}
 
 	c, w := f.searchRequest(t, f.groupA.ID, "playgroup")
-	Search(f.tx)(c)
+	Search(f.tx, &embedding.StubEmbedder{})(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -256,7 +257,7 @@ func TestSearch_Postgres_DoesNotLeakAcrossGroups(t *testing.T) {
 	}
 
 	c, w := f.searchRequest(t, f.groupA.ID, "playgroup")
-	Search(f.tx)(c)
+	Search(f.tx, &embedding.StubEmbedder{})(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -294,7 +295,7 @@ func TestSearch_Postgres_TypeFilterScopesToRequestedResource(t *testing.T) {
 
 	t.Run("type=animals returns only animals, omits comments entirely", func(t *testing.T) {
 		c, w := f.searchRequestWithParams(t, f.groupA.ID, url.Values{"q": {"playgroup"}, "type": {"animals"}})
-		Search(f.tx)(c)
+		Search(f.tx, &embedding.StubEmbedder{})(c)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		body := decodeSearchResponse(t, w)
@@ -314,7 +315,7 @@ func TestSearch_Postgres_TypeFilterScopesToRequestedResource(t *testing.T) {
 
 	t.Run("type=comments returns only comments, omits animals entirely", func(t *testing.T) {
 		c, w := f.searchRequestWithParams(t, f.groupA.ID, url.Values{"q": {"playgroup"}, "type": {"comments"}})
-		Search(f.tx)(c)
+		Search(f.tx, &embedding.StubEmbedder{})(c)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		body := decodeSearchResponse(t, w)
@@ -345,7 +346,7 @@ func TestSearch_Postgres_PaginatesWithLimitAndOffset(t *testing.T) {
 	}
 
 	c, w := f.searchRequestWithParams(t, f.groupA.ID, url.Values{"q": {"playgroup"}, "limit": {"2"}, "offset": {"0"}})
-	Search(f.tx)(c)
+	Search(f.tx, &embedding.StubEmbedder{})(c)
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := decodeSearchResponse(t, w)
 	assert.Equal(t, float64(3), body["total_animals"], "total_animals must reflect the full match count, not the page size")
@@ -355,7 +356,7 @@ func TestSearch_Postgres_PaginatesWithLimitAndOffset(t *testing.T) {
 	}
 
 	c2, w2 := f.searchRequestWithParams(t, f.groupA.ID, url.Values{"q": {"playgroup"}, "limit": {"2"}, "offset": {"2"}})
-	Search(f.tx)(c2)
+	Search(f.tx, &embedding.StubEmbedder{})(c2)
 	assert.Equal(t, http.StatusOK, w2.Code)
 	body2 := decodeSearchResponse(t, w2)
 	assert.Equal(t, float64(3), body2["total_animals"], "total_animals on the second page must still reflect the full match count")
@@ -407,7 +408,7 @@ func TestSearch_Postgres_RanksMultipleMatchesByRelevance(t *testing.T) {
 	}
 
 	c, w := f.searchRequest(t, f.groupA.ID, "resource guarding")
-	Search(f.tx)(c)
+	Search(f.tx, &embedding.StubEmbedder{})(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := decodeSearchResponse(t, w)
