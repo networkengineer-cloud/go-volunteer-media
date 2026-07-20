@@ -66,3 +66,18 @@ func TestEmbedCommentNow_EmbedderFailureReturnsError(t *testing.T) {
 		t.Fatal("expected an error when the embedder fails")
 	}
 }
+
+func TestEmbedUpdateNow_EmbedderFailureReturnsError(t *testing.T) {
+	db := SetupTestDB(t)
+	group := CreateTestGroup(t, db, "Dogs", "Dog group")
+	user := CreateTestUser(t, db, "member", "member@example.com", "password123", false)
+	update := models.Update{GroupID: group.ID, UserID: user.ID, Title: "Playgroup Saturday", Content: "10am at the field."}
+	if err := db.Create(&update).Error; err != nil {
+		t.Fatalf("create update: %v", err)
+	}
+
+	failingEmbedder := &embedding.StubEmbedder{Err: errTestEmbedFailure}
+	if err := embedUpdateNow(db, failingEmbedder, update); err == nil {
+		t.Fatal("expected an error when the embedder fails")
+	}
+}

@@ -78,3 +78,37 @@ func embedCommentNow(rawDB *gorm.DB, embedder embedding.Embedder, comment models
 	}
 	return nil
 }
+
+// updateEmbeddingText builds the same searchable text used by updates'
+// search_vector generated column (title + content).
+func updateEmbeddingText(update models.Update) string {
+	return update.Title + " " + update.Content
+}
+
+// embedUpdateAsync mirrors embedAnimalAsync for updates. Update has no edit
+// endpoint (create/delete only), so this is only ever called from CreateUpdate.
+func embedUpdateAsync(rawDB *gorm.DB, embedder embedding.Embedder, update models.Update) {
+	if !embedding.SemanticSearchEnabled() {
+		return
+	}
+	go func() {
+		if err := embedUpdateNow(rawDB, embedder, update); err != nil {
+			logging.WithField("error", err.Error()).Warn("Failed to embed update on write; reconciliation sweep will retry")
+		}
+	}()
+}
+
+// embedUpdateNow is embedUpdateAsync's synchronous core.
+func embedUpdateNow(rawDB *gorm.DB, embedder embedding.Embedder, update models.Update) error {
+	vec, err := embedder.EmbedDocument(context.Background(), updateEmbeddingText(update))
+	if err != nil {
+		return fmt.Errorf("failed to embed update %d: %w", update.ID, err)
+	}
+	if err := rawDB.Exec(
+		"UPDATE updates SET embedding = ?, embedding_updated_at = now() WHERE id = ?",
+		pgvector.NewVector(vec), update.ID,
+	).Error; err != nil {
+		return fmt.Errorf("failed to persist embedding for update %d: %w", update.ID, err)
+	}
+	return nil
+}
