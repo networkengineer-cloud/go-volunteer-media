@@ -31,6 +31,12 @@ type commentSearchResult struct {
 	Rank       float64 `json:"rank"`
 }
 
+// updateSearchResult is a group update match with its relevance rank.
+type updateSearchResult struct {
+	models.Update
+	Rank float64 `json:"rank"`
+}
+
 // Search performs hybrid keyword + semantic search over a group's animals
 // and comments. Keyword matching uses Postgres full-text search
 // (tsvector/websearch_to_tsquery, unchanged from the original keyword-search
@@ -61,8 +67,9 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 		}
 
 		searchType := c.DefaultQuery("type", "all")
-		if searchType != "all" && searchType != "animals" && searchType != "comments" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "type must be one of: all, animals, comments"})
+		validTypes := map[string]bool{"all": true, "animals": true, "comments": true, "updates": true}
+		if !validTypes[searchType] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "type must be one of: all, animals, comments, updates"})
 			return
 		}
 
@@ -181,6 +188,43 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			response["total_comments"] = totalComments
 		}
 
+		if searchType == "all" || searchType == "updates" {
+			var totalUpdates int64
+			if err := db.Model(&models.Update{}).
+				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
+				Count(&totalUpdates).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count matching updates"})
+				return
+			}
+
+			var keywordUpdateRows []updateSearchResult
+			if err := db.Model(&models.Update{}).
+				Select("updates.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
+				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
+				Order("rank DESC").
+				Limit(pool).
+				Find(&keywordUpdateRows).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search updates"})
+				return
+			}
+
+			var semanticUpdateRows []updateSearchResult
+			if semanticAvailable {
+				if err := db.Model(&models.Update{}).
+					Select("updates.*, 0::float8 AS rank").
+					Where("group_id = ? AND embedding IS NOT NULL", groupID).
+					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "embedding <=> ?", Vars: []interface{}{queryVector}}}).
+					Limit(pool).
+					Find(&semanticUpdateRows).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to semantically search updates"})
+					return
+				}
+			}
+
+			response["updates"] = fuseUpdateResults(keywordUpdateRows, semanticUpdateRows, offset, limit)
+			response["total_updates"] = totalUpdates
+		}
+
 		c.JSON(http.StatusOK, response)
 	}
 }
@@ -237,6 +281,34 @@ func fuseCommentResults(keyword, semantic []commentSearchResult, offset, limit i
 	page := paginateIDs(ordered, offset, limit)
 
 	result := make([]commentSearchResult, 0, len(page))
+	for _, id := range page {
+		row := rows[id]
+		row.Rank = scores[id]
+		result = append(result, row)
+	}
+	return result
+}
+
+// fuseUpdateResults mirrors fuseAnimalResults for updateSearchResult.
+func fuseUpdateResults(keyword, semantic []updateSearchResult, offset, limit int) []updateSearchResult {
+	rows := make(map[uint]updateSearchResult, len(keyword)+len(semantic))
+	keywordIDs := make([]uint, len(keyword))
+	for i, r := range keyword {
+		keywordIDs[i] = r.ID
+		rows[r.ID] = r
+	}
+	semanticIDs := make([]uint, len(semantic))
+	for i, r := range semantic {
+		semanticIDs[i] = r.ID
+		if _, ok := rows[r.ID]; !ok {
+			rows[r.ID] = r
+		}
+	}
+
+	ordered, scores := fuseRankedIDs(keywordIDs, semanticIDs)
+	page := paginateIDs(ordered, offset, limit)
+
+	result := make([]updateSearchResult, 0, len(page))
 	for _, id := range page {
 		row := rows[id]
 		row.Rank = scores[id]

@@ -52,6 +52,28 @@ func TestSearch_BadRequestWhenTypeInvalid(t *testing.T) {
 	}
 }
 
+func TestSearch_TypeUpdatesIsAccepted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := SetupTestDB(t)
+
+	group := CreateTestGroup(t, db, "Dogs", "Dog group")
+	user := CreateTestUser(t, db, "member", "member@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user_id", user.ID)
+	c.Set("is_admin", false)
+	c.Params = gin.Params{{Key: "id", Value: itoa(group.ID)}}
+	c.Request = httptest.NewRequest(http.MethodGet, "/test?q=guarding&type=updates", nil)
+
+	Search(db, &embedding.StubEmbedder{})(c)
+
+	if w.Code == http.StatusBadRequest {
+		t.Fatalf("expected type=updates to be accepted, got 400: %s", w.Body.String())
+	}
+}
+
 func TestSearch_BadRequestWhenQueryMissing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := SetupTestDB(t)

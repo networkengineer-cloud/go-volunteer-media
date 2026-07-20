@@ -558,6 +558,40 @@ func TestSearch_Postgres_DegradesToKeywordOnlyWhenEmbedderFails(t *testing.T) {
 	}
 }
 
+func TestSearch_Postgres_MatchesUpdatesByKeyword(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newSearchTestFixture(t, db)
+
+	update := models.Update{
+		GroupID: f.groupA.ID, UserID: f.user.ID,
+		Title: "Playgroup Saturday", Content: "Pairings: Rex+Fido, Bella+Max. 10am at the field.",
+	}
+	if err := f.tx.Create(&update).Error; err != nil {
+		t.Fatalf("create update: %v", err)
+	}
+	other := models.Update{
+		GroupID: f.groupA.ID, UserID: f.user.ID,
+		Title: "Unrelated", Content: "Reminder to restock supplies.",
+	}
+	if err := f.tx.Create(&other).Error; err != nil {
+		t.Fatalf("create other update: %v", err)
+	}
+
+	c, w := f.searchRequestWithParams(t, f.groupA.ID, url.Values{"q": {"pairings"}, "type": {"updates"}})
+	Search(f.tx, &embedding.StubEmbedder{})(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := decodeSearchResponse(t, w)
+	assert.Equal(t, float64(1), body["total_updates"])
+	updates, _ := body["updates"].([]interface{})
+	if len(updates) != 1 || updates[0].(map[string]interface{})["title"] != "Playgroup Saturday" {
+		t.Fatalf("expected exactly the matching update, got: %v", updates)
+	}
+	if _, present := body["animals"]; present {
+		t.Fatalf("expected no 'animals' key when type=updates, got %v", body["animals"])
+	}
+}
+
 func TestSearch_Postgres_DeepPaginationCoversResultsBeyondDefaultPool(t *testing.T) {
 	db := openSearchTestPostgres(t)
 	f := newSearchTestFixture(t, db)
