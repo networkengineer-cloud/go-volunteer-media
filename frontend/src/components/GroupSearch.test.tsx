@@ -3,7 +3,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import GroupSearch from './GroupSearch';
 import { searchApi } from '../api/client';
-import type { SearchAnimalResult, SearchCommentResult, SearchResponse } from '../api/client';
+import type { SearchAnimalResult, SearchCommentResult, SearchUpdateResult, SearchResponse } from '../api/client';
 import type { AxiosResponse } from 'axios';
 
 vi.mock('../api/client', () => ({
@@ -69,6 +69,18 @@ const rexComment: SearchCommentResult = {
   updated_at: '2026-07-01T00:00:00Z',
   animal_name: 'Rex',
   rank: 0.3,
+};
+
+const playgroupUpdate: SearchUpdateResult = {
+  id: 20,
+  group_id: 1,
+  user_id: 1,
+  title: 'Playgroup Saturday',
+  content: 'Pairings: Rex+Fido, Bella+Max. 10am at the field.',
+  image_url: '',
+  send_groupme: false,
+  created_at: '2026-07-01T00:00:00Z',
+  rank: 0.4,
 };
 
 describe('GroupSearch', () => {
@@ -186,6 +198,19 @@ describe('GroupSearch', () => {
     );
   });
 
+  it('shows update matches and hides them when type=comments', async () => {
+    mockSearchResponse({ animals: [rex], total_animals: 1, updates: [playgroupUpdate], total_updates: 1 });
+    renderSearch();
+
+    await typeQuery(screen.getByLabelText('Search animals and comments'), 'pairings');
+
+    expect(screen.getByText('Playgroup Saturday')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Limit search to'), { target: { value: 'comments' } });
+    await typeQuery(screen.getByLabelText('Search animals and comments'), 'pairings');
+    expect(screen.queryByText('Playgroup Saturday')).not.toBeInTheDocument();
+  });
+
   it('hides the animals section entirely when type=comments', async () => {
     mockSearchResponse({ comments: [rexComment], total_comments: 1 });
     renderSearch();
@@ -198,6 +223,23 @@ describe('GroupSearch', () => {
     expect(searchApi.search).toHaveBeenCalledWith(
       1,
       { q: 'guarding', type: 'comments', limit: 10, offset: 0 },
+      { signal: expect.any(AbortSignal) }
+    );
+  });
+
+  it('hides the animals and comments sections entirely when type=updates', async () => {
+    mockSearchResponse({ updates: [playgroupUpdate], total_updates: 1 });
+    renderSearch();
+
+    fireEvent.change(screen.getByLabelText('Limit search to'), { target: { value: 'updates' } });
+    await typeQuery(screen.getByLabelText('Search animals and comments'), 'pairings');
+
+    expect(screen.getByText('Playgroup Saturday')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Animals/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Comments/ })).not.toBeInTheDocument();
+    expect(searchApi.search).toHaveBeenCalledWith(
+      1,
+      { q: 'pairings', type: 'updates', limit: 10, offset: 0 },
       { signal: expect.any(AbortSignal) }
     );
   });

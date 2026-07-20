@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { searchApi } from '../api/client';
-import type { SearchAnimalResult, SearchCommentResult } from '../api/client';
+import type { SearchAnimalResult, SearchCommentResult, SearchUpdateResult } from '../api/client';
 import { useDebounce } from '../hooks/useDebounce';
 import EmptyState from './EmptyState';
 import ErrorState from './ErrorState';
@@ -13,7 +13,7 @@ const PAGE_SIZE = 10;
 const DEBOUNCE_MS = 400;
 const SNIPPET_LENGTH = 160;
 
-type SearchType = 'all' | 'animals' | 'comments';
+type SearchType = 'all' | 'animals' | 'comments' | 'updates';
 
 interface GroupSearchProps {
   groupId: number;
@@ -39,8 +39,10 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
 
   const [animals, setAnimals] = useState<SearchAnimalResult[]>([]);
   const [comments, setComments] = useState<SearchCommentResult[]>([]);
+  const [updates, setUpdates] = useState<SearchUpdateResult[]>([]);
   const [totalAnimals, setTotalAnimals] = useState(0);
   const [totalComments, setTotalComments] = useState(0);
+  const [totalUpdates, setTotalUpdates] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -60,8 +62,10 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
       if (!q) {
         setAnimals([]);
         setComments([]);
+        setUpdates([]);
         setTotalAnimals(0);
         setTotalComments(0);
+        setTotalUpdates(0);
         setError(null);
         return;
       }
@@ -79,8 +83,10 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
         const data = response.data;
         setAnimals((prev) => (append ? [...prev, ...(data.animals ?? [])] : data.animals ?? []));
         setComments((prev) => (append ? [...prev, ...(data.comments ?? [])] : data.comments ?? []));
+        setUpdates((prev) => (append ? [...prev, ...(data.updates ?? [])] : data.updates ?? []));
         setTotalAnimals(data.total_animals ?? 0);
         setTotalComments(data.total_comments ?? 0);
+        setTotalUpdates(data.total_updates ?? 0);
       } catch (err) {
         // A superseded/cancelled request rejects here too — ignore it
         // silently rather than surfacing an error for a search the user
@@ -109,8 +115,10 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
   useEffect(() => {
     setAnimals([]);
     setComments([]);
+    setUpdates([]);
     setTotalAnimals(0);
     setTotalComments(0);
+    setTotalUpdates(0);
     setError(null);
   }, [groupId]);
 
@@ -138,9 +146,12 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
 
   const showAnimals = type === 'all' || type === 'animals';
   const showComments = type === 'all' || type === 'comments';
-  const hasResults = animals.length > 0 || comments.length > 0;
+  const showUpdates = type === 'all' || type === 'updates';
+  const hasResults = animals.length > 0 || comments.length > 0 || updates.length > 0;
   const canLoadMore =
-    (showAnimals && animals.length < totalAnimals) || (showComments && comments.length < totalComments);
+    (showAnimals && animals.length < totalAnimals) ||
+    (showComments && comments.length < totalComments) ||
+    (showUpdates && updates.length < totalUpdates);
 
   return (
     <div className="group-search">
@@ -168,6 +179,7 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
           <option value="all">Animals &amp; Comments</option>
           <option value="animals">Animals Only</option>
           <option value="comments">Comments Only</option>
+          <option value="updates">Updates Only</option>
         </select>
       </div>
 
@@ -229,6 +241,27 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
                     >
                       <span className="group-search__comment-animal">on {comment.animal_name}</span>
                       <span className="group-search__snippet">{snippet(comment.content)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {showUpdates && updates.length > 0 && (
+            <div className="group-search__section">
+              <h3 className="group-search__section-title">
+                Updates <span className="group-search__count">({totalUpdates})</span>
+              </h3>
+              <ul className="group-search__comment-list">
+                {updates.map((update) => (
+                  <li key={update.id}>
+                    <Link
+                      to={`/groups/${groupId}?view=activity`}
+                      className="group-search__comment-result"
+                    >
+                      <span className="group-search__comment-animal">{update.title}</span>
+                      <span className="group-search__snippet">{snippet(update.content)}</span>
                     </Link>
                   </li>
                 ))}
