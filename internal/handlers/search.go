@@ -321,16 +321,29 @@ func applyPageOrPool(q *gorm.DB, semanticAvailable bool, pool, limit, offset int
 
 // cappedTotal folds a keyword-only Count() together with the fused
 // candidate set's size, so total_* reflects semantic-only matches a
-// keyword-only Count() would miss, then caps the result at
-// maxCandidatePool since candidatePoolSize never fetches beyond that
-// ceiling — reporting a higher total would let "Load more" promise results
-// pagination can never actually deliver.
+// keyword-only Count() would miss.
+//
+// fusedTotal is the size of the actual fused candidate set (fuseResults'
+// `ordered`) — exactly what paginateIDs can serve for this request, so it's
+// reported as-is even when it exceeds maxCandidatePool (each of the keyword
+// and semantic queries can independently return up to `pool` rows, so a
+// largely non-overlapping pair of top-`pool` lists can fuse into a set
+// bigger than pool itself; capping it here would hide real, reachable
+// results behind "Load more" for no reason).
+//
+// keywordCount, on the other hand, is an uncapped full-table Count() that
+// can vastly exceed what a bounded candidate pool will ever fetch — only
+// that side of the max() gets clamped to maxCandidatePool, since promising
+// a total driven by keywordCount alone would let "Load more" promise depth
+// pagination can never actually reach.
 func cappedTotal(keywordCount int64, fusedTotal int) int64 {
-	total := max(keywordCount, int64(fusedTotal))
-	if total > int64(maxCandidatePool) {
-		total = int64(maxCandidatePool)
+	if int64(fusedTotal) >= keywordCount {
+		return int64(fusedTotal)
 	}
-	return total
+	if keywordCount > int64(maxCandidatePool) {
+		return int64(maxCandidatePool)
+	}
+	return keywordCount
 }
 
 // paginateIDs slices a fused ID order to the client's requested page,

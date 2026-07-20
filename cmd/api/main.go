@@ -144,10 +144,19 @@ func main() {
 		logger.Info("Email service not configured - password reset and email notifications will be disabled")
 	}
 
-	// Initialize embedding provider for semantic search
-	embedder := embedding.NewVoyageEmbedder()
+	// Initialize embedding provider for semantic search. Declared as the
+	// interface type (not *embedding.VoyageEmbedder) so it can be reset to a
+	// true nil interface below — embedding.Usable(nil) then correctly
+	// disables every one of its five call sites (the three write-path embed
+	// helpers, the reconciliation sweep, and the search handler) instead of
+	// each one independently discovering a broken schema at query time.
+	var embedder embedding.Embedder = embedding.NewVoyageEmbedder()
 	if embedder.IsConfigured() {
 		logger.Info("Voyage embedding provider configured and ready")
+		if !database.VectorSchemaReady(db) {
+			logger.Error("Vector schema not ready (pgvector extension or embedding columns missing) - disabling semantic search; falling back to keyword-only search", nil)
+			embedder = nil
+		}
 	} else {
 		logger.Info("Voyage embedding provider not configured - search will be keyword-only")
 	}

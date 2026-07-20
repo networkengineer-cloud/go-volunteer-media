@@ -650,6 +650,27 @@ func createCustomIndexes(db *gorm.DB) error {
 	return nil
 }
 
+// VectorSchemaReady reports whether the pgvector extension and embedding
+// columns createCustomIndexes attempts to create actually exist. That
+// creation is deliberately best-effort (warn-only, since some managed
+// Postgres providers reject CREATE EXTENSION), so nothing else in migration
+// signals failure — callers use this to decide whether it's safe to enable
+// semantic search, instead of discovering the gap as a query-time SQL error
+// against a column that was never created.
+func VectorSchemaReady(db *gorm.DB) bool {
+	var count int64
+	err := db.Raw(`
+		SELECT COUNT(*) FROM information_schema.columns
+		WHERE table_name IN ('animals', 'animal_comments', 'updates')
+		  AND column_name = 'embedding'
+	`).Scan(&count).Error
+	if err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to check vector schema readiness")
+		return false
+	}
+	return count == 3
+}
+
 // createDefaultGroups creates the default groups if they don't exist
 func createDefaultGroups(db *gorm.DB) error {
 	defaultGroups := []models.Group{

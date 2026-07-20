@@ -167,5 +167,15 @@ func (v *VoyageEmbedder) EmbedDocuments(ctx context.Context, texts []string) ([]
 		}
 		out[item.Index] = item.Embedding
 	}
+	// A response with a duplicate index (e.g. two items both claiming index
+	// 3) passes the length and range checks above while leaving another
+	// index's slot never written — catch that here instead of letting a nil
+	// embedding reach PersistEmbedding indistinguishably from a normal
+	// transient DB error.
+	for i, vec := range out {
+		if vec == nil {
+			return nil, fmt.Errorf("Voyage API response never populated index %d for %d inputs (duplicate index in response)", i, len(out))
+		}
+	}
 	return out, nil
 }
