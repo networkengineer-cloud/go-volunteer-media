@@ -605,6 +605,7 @@ func createCustomIndexes(db *gorm.DB) error {
 	// feature (it predates that feature), so this adds both keyword and
 	// semantic search capability together, unlike animals/animal_comments
 	// above which only needed the embedding half added.
+	// Same table-rewrite/ACCESS EXCLUSIVE lock caution as animals.search_vector above applies here too.
 	updateSearchVectorQuery := `
 		ALTER TABLE updates ADD COLUMN IF NOT EXISTS search_vector tsvector
 		GENERATED ALWAYS AS (
