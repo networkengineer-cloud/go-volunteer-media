@@ -43,9 +43,12 @@ func NewVoyageEmbedder() *VoyageEmbedder {
 	}
 }
 
-// IsConfigured reports whether an API key is present.
+// IsConfigured reports whether an API key is present. Nil-receiver-safe so
+// Usable(embedder) can call it even when embedder is a typed-nil
+// *VoyageEmbedder held in the Embedder interface (interface != nil in that
+// case, so Usable's own nil check can't catch it).
 func (v *VoyageEmbedder) IsConfigured() bool {
-	return v.apiKey != ""
+	return v != nil && v.apiKey != ""
 }
 
 type voyageRequest struct {

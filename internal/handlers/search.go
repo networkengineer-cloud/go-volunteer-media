@@ -118,23 +118,10 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				return
 			}
 
-			keywordAnimalsQuery := db.Model(&models.Animal{}).
+			keywordAnimalsQuery := applyPageOrPool(db.Model(&models.Animal{}).
 				Select("animals.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
 				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
-				Order("rank DESC")
-			if semanticAvailable {
-				// A candidate pool (not the client's exact page) is needed so
-				// fusion has a real keyword-ranked list to merge with the
-				// semantic one before slicing to the requested page.
-				keywordAnimalsQuery = keywordAnimalsQuery.Limit(pool)
-			} else {
-				// No semantic signal for this request: fetch exactly the
-				// requested page directly from Postgres, exactly as the
-				// original keyword-only feature did — unlimited-depth
-				// pagination, no RRF fusion overhead, and the row's real
-				// ts_rank is preserved as-is below.
-				keywordAnimalsQuery = keywordAnimalsQuery.Limit(limit).Offset(offset)
-			}
+				Order("rank DESC"), semanticAvailable, pool, limit, offset)
 			var keywordRows []animalSearchResult
 			if err := keywordAnimalsQuery.Find(&keywordRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search animals"})
@@ -158,23 +145,11 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 
 				animals, fusedAnimalTotal := fuseAnimalResults(keywordRows, semanticRows, offset, limit)
 				response["animals"] = animals
-				// totalAnimals alone undercounts once semantic search is enabled: it's a
-				// keyword-only Count(), but the returned page also includes semantic-only
-				// matches (no shared vocabulary with the query). Without this max(), a
-				// semantic-only match would appear in the results yet total_animals could
-				// read 0, and the frontend's canLoadMore (animals.length < totalAnimals)
-				// would then never fire — hiding any further semantic-only matches beyond
-				// this page. fusedAnimalTotal (bounded by the candidate pool, same as the
-				// results themselves) covers that gap; the keyword Count() still covers
-				// the rare case where keyword matches alone exceed the pool. The result is
-				// then capped at maxCandidatePool: candidatePoolSize never fetches beyond
-				// that ceiling, so reporting a total higher than it would let "Load more"
-				// promise results pagination can never actually deliver.
-				total := max(totalAnimals, int64(fusedAnimalTotal))
-				if total > int64(maxCandidatePool) {
-					total = int64(maxCandidatePool)
-				}
-				response["total_animals"] = total
+				// See cappedTotal's doc comment: totalAnimals alone (a
+				// keyword-only Count()) would undercount once semantic-only
+				// matches are in the results, and an uncapped total would let
+				// "Load more" promise results pagination can never reach.
+				response["total_animals"] = cappedTotal(totalAnimals, fusedAnimalTotal)
 			}
 		}
 
@@ -194,14 +169,9 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				return
 			}
 
-			keywordCommentsQuery := keywordBase.Session(&gorm.Session{}).
+			keywordCommentsQuery := applyPageOrPool(keywordBase.Session(&gorm.Session{}).
 				Select("animal_comments.*, animals.name AS animal_name, ts_rank(animal_comments.search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
-				Order("rank DESC")
-			if semanticAvailable {
-				keywordCommentsQuery = keywordCommentsQuery.Limit(pool)
-			} else {
-				keywordCommentsQuery = keywordCommentsQuery.Limit(limit).Offset(offset)
-			}
+				Order("rank DESC"), semanticAvailable, pool, limit, offset)
 			var keywordRows []commentSearchResult
 			if err := keywordCommentsQuery.Find(&keywordRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search comments"})
@@ -228,14 +198,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 
 				comments, fusedCommentTotal := fuseCommentResults(keywordRows, semanticRows, offset, limit)
 				response["comments"] = comments
-				// See the matching comment on total_animals above: a keyword-only Count()
-				// undercounts once semantic-only matches are in the results, and the
-				// result is capped at maxCandidatePool for the same reachability reason.
-				total := max(totalComments, int64(fusedCommentTotal))
-				if total > int64(maxCandidatePool) {
-					total = int64(maxCandidatePool)
-				}
-				response["total_comments"] = total
+				response["total_comments"] = cappedTotal(totalComments, fusedCommentTotal)
 			}
 		}
 
@@ -248,15 +211,10 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				return
 			}
 
-			keywordUpdatesQuery := db.Model(&models.Update{}).
+			keywordUpdatesQuery := applyPageOrPool(db.Model(&models.Update{}).
 				Select("updates.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
 				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
-				Order("rank DESC")
-			if semanticAvailable {
-				keywordUpdatesQuery = keywordUpdatesQuery.Limit(pool)
-			} else {
-				keywordUpdatesQuery = keywordUpdatesQuery.Limit(limit).Offset(offset)
-			}
+				Order("rank DESC"), semanticAvailable, pool, limit, offset)
 			var keywordUpdateRows []updateSearchResult
 			if err := keywordUpdatesQuery.Find(&keywordUpdateRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search updates"})
@@ -280,14 +238,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 
 				updates, fusedUpdateTotal := fuseUpdateResults(keywordUpdateRows, semanticUpdateRows, offset, limit)
 				response["updates"] = updates
-				// See the matching comment on total_animals above: a keyword-only Count()
-				// undercounts once semantic-only matches are in the results, and the
-				// result is capped at maxCandidatePool for the same reachability reason.
-				total := max(totalUpdates, int64(fusedUpdateTotal))
-				if total > int64(maxCandidatePool) {
-					total = int64(maxCandidatePool)
-				}
-				response["total_updates"] = total
+				response["total_updates"] = cappedTotal(totalUpdates, fusedUpdateTotal)
 			}
 		}
 
@@ -295,94 +246,91 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 	}
 }
 
-// fuseAnimalResults merges keyword and semantic animal matches via
+// fuseResults is the shared core of fuseAnimalResults/fuseCommentResults/
+// fuseUpdateResults: merges keyword and semantic matches of any row type via
 // Reciprocal Rank Fusion and returns the requested page, plus the size of
-// the full fused candidate set (before pagination) — the caller uses this
-// to correct total_animals for semantic-only matches a keyword-only Count()
-// would miss. A row present in both lists is deduplicated (its full data is
-// taken from whichever list is checked first — identical either way, since
-// it's the same database row); only its combined score changes.
+// the full fused candidate set (before pagination) — callers use this to
+// correct total_* for semantic-only matches a keyword-only Count() would
+// miss. A row present in both lists is deduplicated (its full data is taken
+// from whichever list is checked first — identical either way, since it's
+// the same database row); only its combined score changes.
+func fuseResults[T any](keyword, semantic []T, getID func(T) uint, setRank func(*T, float64), offset, limit int) ([]T, int) {
+	rows := make(map[uint]T, len(keyword)+len(semantic))
+	keywordIDs := make([]uint, len(keyword))
+	for i, r := range keyword {
+		id := getID(r)
+		keywordIDs[i] = id
+		rows[id] = r
+	}
+	semanticIDs := make([]uint, len(semantic))
+	for i, r := range semantic {
+		id := getID(r)
+		semanticIDs[i] = id
+		if _, ok := rows[id]; !ok {
+			rows[id] = r
+		}
+	}
+
+	ordered, scores := fuseRankedIDs(keywordIDs, semanticIDs)
+	page := paginateIDs(ordered, offset, limit)
+
+	result := make([]T, 0, len(page))
+	for _, id := range page {
+		row := rows[id]
+		setRank(&row, scores[id])
+		result = append(result, row)
+	}
+	return result, len(ordered)
+}
+
 func fuseAnimalResults(keyword, semantic []animalSearchResult, offset, limit int) ([]animalSearchResult, int) {
-	rows := make(map[uint]animalSearchResult, len(keyword)+len(semantic))
-	keywordIDs := make([]uint, len(keyword))
-	for i, r := range keyword {
-		keywordIDs[i] = r.ID
-		rows[r.ID] = r
-	}
-	semanticIDs := make([]uint, len(semantic))
-	for i, r := range semantic {
-		semanticIDs[i] = r.ID
-		if _, ok := rows[r.ID]; !ok {
-			rows[r.ID] = r
-		}
-	}
-
-	ordered, scores := fuseRankedIDs(keywordIDs, semanticIDs)
-	page := paginateIDs(ordered, offset, limit)
-
-	result := make([]animalSearchResult, 0, len(page))
-	for _, id := range page {
-		row := rows[id]
-		row.Rank = scores[id]
-		result = append(result, row)
-	}
-	return result, len(ordered)
+	return fuseResults(keyword, semantic,
+		func(r animalSearchResult) uint { return r.ID },
+		func(r *animalSearchResult, rank float64) { r.Rank = rank },
+		offset, limit,
+	)
 }
 
-// fuseCommentResults mirrors fuseAnimalResults for commentSearchResult.
 func fuseCommentResults(keyword, semantic []commentSearchResult, offset, limit int) ([]commentSearchResult, int) {
-	rows := make(map[uint]commentSearchResult, len(keyword)+len(semantic))
-	keywordIDs := make([]uint, len(keyword))
-	for i, r := range keyword {
-		keywordIDs[i] = r.ID
-		rows[r.ID] = r
-	}
-	semanticIDs := make([]uint, len(semantic))
-	for i, r := range semantic {
-		semanticIDs[i] = r.ID
-		if _, ok := rows[r.ID]; !ok {
-			rows[r.ID] = r
-		}
-	}
-
-	ordered, scores := fuseRankedIDs(keywordIDs, semanticIDs)
-	page := paginateIDs(ordered, offset, limit)
-
-	result := make([]commentSearchResult, 0, len(page))
-	for _, id := range page {
-		row := rows[id]
-		row.Rank = scores[id]
-		result = append(result, row)
-	}
-	return result, len(ordered)
+	return fuseResults(keyword, semantic,
+		func(r commentSearchResult) uint { return r.ID },
+		func(r *commentSearchResult, rank float64) { r.Rank = rank },
+		offset, limit,
+	)
 }
 
-// fuseUpdateResults mirrors fuseAnimalResults for updateSearchResult.
 func fuseUpdateResults(keyword, semantic []updateSearchResult, offset, limit int) ([]updateSearchResult, int) {
-	rows := make(map[uint]updateSearchResult, len(keyword)+len(semantic))
-	keywordIDs := make([]uint, len(keyword))
-	for i, r := range keyword {
-		keywordIDs[i] = r.ID
-		rows[r.ID] = r
-	}
-	semanticIDs := make([]uint, len(semantic))
-	for i, r := range semantic {
-		semanticIDs[i] = r.ID
-		if _, ok := rows[r.ID]; !ok {
-			rows[r.ID] = r
-		}
-	}
+	return fuseResults(keyword, semantic,
+		func(r updateSearchResult) uint { return r.ID },
+		func(r *updateSearchResult, rank float64) { r.Rank = rank },
+		offset, limit,
+	)
+}
 
-	ordered, scores := fuseRankedIDs(keywordIDs, semanticIDs)
-	page := paginateIDs(ordered, offset, limit)
-
-	result := make([]updateSearchResult, 0, len(page))
-	for _, id := range page {
-		row := rows[id]
-		row.Rank = scores[id]
-		result = append(result, row)
+// applyPageOrPool applies either the client's exact requested page
+// (Limit(limit).Offset(offset)) when semantic search isn't available for
+// this request, or a wider candidate pool (Limit(pool)) when it is — RRF
+// fusion needs a real keyword-ranked candidate list to merge with the
+// semantic one before the actual page is sliced out afterward.
+func applyPageOrPool(q *gorm.DB, semanticAvailable bool, pool, limit, offset int) *gorm.DB {
+	if semanticAvailable {
+		return q.Limit(pool)
 	}
-	return result, len(ordered)
+	return q.Limit(limit).Offset(offset)
+}
+
+// cappedTotal folds a keyword-only Count() together with the fused
+// candidate set's size, so total_* reflects semantic-only matches a
+// keyword-only Count() would miss, then caps the result at
+// maxCandidatePool since candidatePoolSize never fetches beyond that
+// ceiling — reporting a higher total would let "Load more" promise results
+// pagination can never actually deliver.
+func cappedTotal(keywordCount int64, fusedTotal int) int64 {
+	total := max(keywordCount, int64(fusedTotal))
+	if total > int64(maxCandidatePool) {
+		total = int64(maxCandidatePool)
+	}
+	return total
 }
 
 // paginateIDs slices a fused ID order to the client's requested page,

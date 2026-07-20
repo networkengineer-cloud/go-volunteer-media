@@ -663,6 +663,33 @@ func TestEmbedAnimalNow_Postgres_SkipsStaleWriteAfterConcurrentEdit(t *testing.T
 	}
 }
 
+// TestEmbedAnimalNow_Postgres_PersistsWhenNoConcurrentEdit complements
+// TestEmbedAnimalNow_Postgres_SkipsStaleWriteAfterConcurrentEdit's reject
+// path: it proves the "AND updated_at = ?" guard isn't so strict it also
+// discards the normal, non-conflicting case where nothing else has touched
+// the row since the embed text was captured.
+func TestEmbedAnimalNow_Postgres_PersistsWhenNoConcurrentEdit(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newSearchTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.groupA.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+
+	if err := embedAnimalNow(f.tx, &embedding.StubEmbedder{}, animal); err != nil {
+		t.Fatalf("embedAnimalNow returned an unexpected error: %v", err)
+	}
+
+	var embeddingIsNull bool
+	if err := f.tx.Raw("SELECT embedding IS NULL FROM animals WHERE id = ?", animal.ID).Scan(&embeddingIsNull).Error; err != nil {
+		t.Fatalf("query embedding: %v", err)
+	}
+	if embeddingIsNull {
+		t.Fatal("expected the embed write to persist since no concurrent edit landed, but embedding is still NULL")
+	}
+}
+
 func TestSearch_Postgres_MatchesUpdatesByKeyword(t *testing.T) {
 	db := openSearchTestPostgres(t)
 	f := newSearchTestFixture(t, db)

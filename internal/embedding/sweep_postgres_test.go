@@ -133,6 +133,54 @@ func TestSweepAnimals_RespectsBatchSizeCap(t *testing.T) {
 	assert.Equal(t, int64(sweepBatchSize), embeddedCount, "expected exactly one batch's worth of animals to be embedded per sweep call")
 }
 
+func TestSweepComments_ExcludesCommentsOnDeletedAnimal(t *testing.T) {
+	db := openSweepTestPostgres(t)
+	tx := db.Begin()
+	defer tx.Rollback()
+
+	group := models.Group{Name: fmt.Sprintf("SweepTest-%d", time.Now().UnixNano())}
+	if err := tx.Create(&group).Error; err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	user := models.User{Username: fmt.Sprintf("sweeptest-%d", time.Now().UnixNano()), Email: fmt.Sprintf("sweeptest-%d@example.com", time.Now().UnixNano()), Password: "x"}
+	if err := tx.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	keptAnimal := models.Animal{GroupID: group.ID, Name: "Buddy", Species: "Dog", Status: "available"}
+	if err := tx.Create(&keptAnimal).Error; err != nil {
+		t.Fatalf("create kept animal: %v", err)
+	}
+	deletedAnimal := models.Animal{GroupID: group.ID, Name: "Ghost", Species: "Dog", Status: "available"}
+	if err := tx.Create(&deletedAnimal).Error; err != nil {
+		t.Fatalf("create animal to be deleted: %v", err)
+	}
+
+	keptComment := models.AnimalComment{AnimalID: keptAnimal.ID, UserID: user.ID, Content: "Great playgroup session today."}
+	if err := tx.Create(&keptComment).Error; err != nil {
+		t.Fatalf("create comment on kept animal: %v", err)
+	}
+	orphanedComment := models.AnimalComment{AnimalID: deletedAnimal.ID, UserID: user.ID, Content: "Great playgroup session today too."}
+	if err := tx.Create(&orphanedComment).Error; err != nil {
+		t.Fatalf("create comment on animal to be deleted: %v", err)
+	}
+
+	// Soft-delete, exactly as DeleteAnimal does.
+	if err := tx.Delete(&deletedAnimal).Error; err != nil {
+		t.Fatalf("soft-delete animal: %v", err)
+	}
+
+	sweepComments(tx, &StubEmbedder{})
+
+	var keptEmbeddingIsNull bool
+	assert.NoError(t, tx.Raw("SELECT embedding IS NULL FROM animal_comments WHERE id = ?", keptComment.ID).Scan(&keptEmbeddingIsNull).Error)
+	assert.False(t, keptEmbeddingIsNull, "expected the comment on the kept animal to be embedded")
+
+	var orphanedEmbeddingIsNull bool
+	assert.NoError(t, tx.Raw("SELECT embedding IS NULL FROM animal_comments WHERE id = ?", orphanedComment.ID).Scan(&orphanedEmbeddingIsNull).Error)
+	assert.True(t, orphanedEmbeddingIsNull, "expected the comment on the deleted animal to be excluded from the sweep, not embedded")
+}
+
 func TestSweepUpdates_EmbedsRowsWithNullEmbedding(t *testing.T) {
 	db := openSweepTestPostgres(t)
 	tx := db.Begin()

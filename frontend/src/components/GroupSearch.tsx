@@ -176,7 +176,7 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
           aria-label="Limit search to"
           className="group-search__type"
         >
-          <option value="all">Animals &amp; Comments</option>
+          <option value="all">All</option>
           <option value="animals">Animals Only</option>
           <option value="comments">Comments Only</option>
           <option value="updates">Updates Only</option>

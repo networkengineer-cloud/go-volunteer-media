@@ -9,7 +9,6 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
-	"github.com/pgvector/pgvector-go"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 )
@@ -52,51 +51,57 @@ func StartReconciliationSweep(db *gorm.DB, embedder Embedder, interval time.Dura
 	return func() { once.Do(func() { close(done) }) }
 }
 
-// embedAndPersist is the shared core of every sweep function: given the
-// stale rows' IDs, the row's updated_at at the time it was queried (see the
-// UPDATE guard below), and pre-built embedding text (which genuinely
-// differs per resource — animals concatenate five fields, comments and
-// updates fewer — so that part stays in each resource's own sweep
-// function), it embeds the batch and writes each vector back, one UPDATE
-// per row. Factored out so a fix to retry/logging/vector-count-mismatch
-// handling only needs to be made once instead of risking the three
-// resources' sweep functions drifting out of sync with each other. `table`
-// is always one of this package's own hardcoded constants ("animals",
-// "animal_comments", "updates") — never user input — so building it into
-// the UPDATE statement is safe.
-//
-// The "AND updated_at = ?" guard is an optimistic-concurrency check: if the
-// row was edited again between this sweep tick's query and this write (by
-// the user, or by a write-path embed goroutine that won the race), the
-// captured updated_at no longer matches, the UPDATE matches zero rows, and
-// this stale embed attempt is silently discarded rather than overwriting
-// newer content with an outdated vector. The row stays (or becomes) stale
-// under the normal embedding_updated_at < updated_at check, so the next
-// sweep tick retries it against whatever the row looks like by then.
-func embedAndPersist(ctx context.Context, span trace.Span, db *gorm.DB, embedder Embedder, table string, ids []uint, updatedAts []time.Time, texts []string) {
-	if len(texts) == 0 {
+// staleRow is one row awaiting embedding: its ID, its updated_at at query
+// time (used as PersistEmbedding's optimistic-concurrency guard), and the
+// text to embed — kept together in one struct, rather than three parallel
+// slices, so they can't desync by index if a future sweep function's
+// row-building loop changes shape.
+type staleRow struct {
+	ID        uint
+	UpdatedAt time.Time
+	Text      string
+}
+
+// embedAndPersist is the shared core of every sweep function: embeds a
+// batch of stale rows' text and persists each result via PersistEmbedding
+// (the same function the write-path embed helpers in
+// internal/handlers/search_embed.go use), so a fix to
+// retry/logging/vector-count-mismatch/persistence handling only needs to be
+// made in one place instead of risking the three resources' sweep functions
+// drifting out of sync with each other. table is the literal SQL table
+// name ("animals", "animal_comments", "updates"); resourceName is the
+// human-readable word used in log/telemetry messages ("animals",
+// "comments", "updates") — kept separate from table because they diverge
+// for comments, and an operator's saved log search for "comments" shouldn't
+// silently break because the underlying table is called "animal_comments".
+func embedAndPersist(ctx context.Context, span trace.Span, db *gorm.DB, embedder Embedder, table, resourceName string, rows []staleRow) {
+	if len(rows) == 0 {
 		return
+	}
+
+	texts := make([]string, len(rows))
+	for i, r := range rows {
+		texts[i] = r.Text
 	}
 
 	vectors, err := embedder.EmbedDocuments(ctx, texts)
 	if err != nil {
-		telemetry.Fail(span, fmt.Errorf("failed to embed %s: %w", table, err), "embed failed")
+		telemetry.Fail(span, fmt.Errorf("failed to embed %s: %w", resourceName, err), "embed failed")
 		return
 	}
-	if len(vectors) != len(ids) {
-		telemetry.Fail(span, fmt.Errorf("embedder returned %d vectors for %d %s", len(vectors), len(ids), table), "vector count mismatch")
+	if len(vectors) != len(rows) {
+		telemetry.Fail(span, fmt.Errorf("embedder returned %d vectors for %d %s", len(vectors), len(rows), resourceName), "vector count mismatch")
 		return
 	}
 
-	updateSQL := fmt.Sprintf("UPDATE %s SET embedding = ?, embedding_updated_at = now() WHERE id = ? AND updated_at = ?", table)
-	for i, id := range ids {
-		if err := db.Exec(updateSQL, pgvector.NewVector(vectors[i]), id, updatedAts[i]).Error; err != nil {
-			logging.WithField("error", err.Error()).Warn(fmt.Sprintf("Failed to persist %s embedding during sweep", table))
+	for i, r := range rows {
+		if err := PersistEmbedding(db, table, r.ID, r.UpdatedAt, vectors[i]); err != nil {
+			logging.WithField("error", err.Error()).Warn(fmt.Sprintf("Failed to persist %s embedding during sweep", resourceName))
 		}
 	}
 }
 
-type staleAnimal struct {
+type staleAnimalRow struct {
 	ID           uint
 	UpdatedAt    time.Time
 	Name         string
@@ -110,31 +115,28 @@ func sweepAnimals(db *gorm.DB, embedder Embedder) {
 	ctx, span := tracer.Start(context.Background(), "embedding.sweep.animals")
 	defer span.End()
 
-	var rows []staleAnimal
+	var dbRows []staleAnimalRow
 	if err := db.Model(&models.Animal{}).
 		Select("id, updated_at, name, species, breed, description, trainer_notes").
 		Where("embedding IS NULL OR embedding_updated_at < updated_at").
 		Limit(sweepBatchSize).
-		Find(&rows).Error; err != nil {
+		Find(&dbRows).Error; err != nil {
 		telemetry.Fail(span, fmt.Errorf("failed to query stale animal embeddings: %w", err), "query failed")
 		return
 	}
-	if len(rows) == 0 {
-		return
-	}
 
-	ids := make([]uint, len(rows))
-	updatedAts := make([]time.Time, len(rows))
-	texts := make([]string, len(rows))
-	for i, r := range rows {
-		ids[i] = r.ID
-		updatedAts[i] = r.UpdatedAt
-		texts[i] = r.Name + " " + r.Species + " " + r.Breed + " " + r.Description + " " + r.TrainerNotes
+	rows := make([]staleRow, len(dbRows))
+	for i, r := range dbRows {
+		rows[i] = staleRow{
+			ID:        r.ID,
+			UpdatedAt: r.UpdatedAt,
+			Text:      AnimalEmbeddingText(r.Name, r.Species, r.Breed, r.Description, r.TrainerNotes),
+		}
 	}
-	embedAndPersist(ctx, span, db, embedder, "animals", ids, updatedAts, texts)
+	embedAndPersist(ctx, span, db, embedder, "animals", "animals", rows)
 }
 
-type staleComment struct {
+type staleCommentRow struct {
 	ID        uint
 	UpdatedAt time.Time
 	Content   string
@@ -144,31 +146,32 @@ func sweepComments(db *gorm.DB, embedder Embedder) {
 	ctx, span := tracer.Start(context.Background(), "embedding.sweep.comments")
 	defer span.End()
 
-	var rows []staleComment
+	// Joins animals and excludes soft-deleted ones for the same reason
+	// internal/handlers/search.go's comment search does: without this,
+	// comments belonging to a deleted animal are perpetually re-selected as
+	// "stale" (their embedding_updated_at can never catch up to anything
+	// meaningful, since they're never actually re-edited) and burn sweep
+	// batch slots and Voyage calls embedding content that can never surface
+	// in search results.
+	var dbRows []staleCommentRow
 	if err := db.Model(&models.AnimalComment{}).
-		Select("id, updated_at, content").
-		Where("embedding IS NULL OR embedding_updated_at < updated_at").
+		Joins("JOIN animals ON animals.id = animal_comments.animal_id").
+		Select("animal_comments.id, animal_comments.updated_at, animal_comments.content").
+		Where("animals.deleted_at IS NULL AND (animal_comments.embedding IS NULL OR animal_comments.embedding_updated_at < animal_comments.updated_at)").
 		Limit(sweepBatchSize).
-		Find(&rows).Error; err != nil {
+		Find(&dbRows).Error; err != nil {
 		telemetry.Fail(span, fmt.Errorf("failed to query stale comment embeddings: %w", err), "query failed")
 		return
 	}
-	if len(rows) == 0 {
-		return
-	}
 
-	ids := make([]uint, len(rows))
-	updatedAts := make([]time.Time, len(rows))
-	texts := make([]string, len(rows))
-	for i, r := range rows {
-		ids[i] = r.ID
-		updatedAts[i] = r.UpdatedAt
-		texts[i] = r.Content
+	rows := make([]staleRow, len(dbRows))
+	for i, r := range dbRows {
+		rows[i] = staleRow{ID: r.ID, UpdatedAt: r.UpdatedAt, Text: r.Content}
 	}
-	embedAndPersist(ctx, span, db, embedder, "animal_comments", ids, updatedAts, texts)
+	embedAndPersist(ctx, span, db, embedder, "animal_comments", "comments", rows)
 }
 
-type staleUpdate struct {
+type staleUpdateRow struct {
 	ID        uint
 	UpdatedAt time.Time
 	Title     string
@@ -179,26 +182,19 @@ func sweepUpdates(db *gorm.DB, embedder Embedder) {
 	ctx, span := tracer.Start(context.Background(), "embedding.sweep.updates")
 	defer span.End()
 
-	var rows []staleUpdate
+	var dbRows []staleUpdateRow
 	if err := db.Model(&models.Update{}).
 		Select("id, updated_at, title, content").
 		Where("embedding IS NULL OR embedding_updated_at < updated_at").
 		Limit(sweepBatchSize).
-		Find(&rows).Error; err != nil {
+		Find(&dbRows).Error; err != nil {
 		telemetry.Fail(span, fmt.Errorf("failed to query stale update embeddings: %w", err), "query failed")
 		return
 	}
-	if len(rows) == 0 {
-		return
-	}
 
-	ids := make([]uint, len(rows))
-	updatedAts := make([]time.Time, len(rows))
-	texts := make([]string, len(rows))
-	for i, r := range rows {
-		ids[i] = r.ID
-		updatedAts[i] = r.UpdatedAt
-		texts[i] = r.Title + " " + r.Content
+	rows := make([]staleRow, len(dbRows))
+	for i, r := range dbRows {
+		rows[i] = staleRow{ID: r.ID, UpdatedAt: r.UpdatedAt, Text: UpdateEmbeddingText(r.Title, r.Content)}
 	}
-	embedAndPersist(ctx, span, db, embedder, "updates", ids, updatedAts, texts)
+	embedAndPersist(ctx, span, db, embedder, "updates", "updates", rows)
 }

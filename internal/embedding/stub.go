@@ -21,9 +21,12 @@ type StubEmbedder struct {
 // IsConfigured always reports true unless Unconfigured is explicitly set —
 // StubEmbedder never needs real credentials, so it's "configured" by
 // default in every test that doesn't specifically exercise the
-// not-configured path.
+// not-configured path. Nil-receiver-safe for the same reason as
+// VoyageEmbedder.IsConfigured: a typed-nil *StubEmbedder held in the
+// Embedder interface is not == nil, so Usable() relies on this method
+// itself to catch that case.
 func (s *StubEmbedder) IsConfigured() bool {
-	return !s.Unconfigured
+	return s != nil && !s.Unconfigured
 }
 
 func (s *StubEmbedder) dimension() int {
