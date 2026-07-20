@@ -92,8 +92,8 @@ resource "cloudflare_dns_record" "domain" {
   type    = "CNAME"
   content = azurerm_container_app.main.ingress[0].fqdn
   ttl     = 1
-  proxied = false
+  proxied = true
 
   comment = "CNAME record for Azure Container App custom domain"
-  
+
 }

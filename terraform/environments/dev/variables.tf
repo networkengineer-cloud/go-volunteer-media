@@ -220,6 +220,7 @@ variable "axiom_api_token" {
 variable "axiom_dataset" {
   type        = string
   description = "Axiom dataset name to export OpenTelemetry data into"
+  default     = "myhaws-dev" # Separate dataset for dev environment
 }
 
 variable "axiom_endpoint" {
