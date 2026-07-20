@@ -9,7 +9,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.117" # Require 3.117+ for latest security patches
+      version = "~> 4.57" # v4.3+ required to fix managedCertificates ID parsing (azurerm-provider#25972); matches dev
     }
     random = {
       source  = "hashicorp/random"
