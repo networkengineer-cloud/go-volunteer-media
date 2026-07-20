@@ -87,6 +87,10 @@ func sweepAnimals(db *gorm.DB, embedder Embedder) {
 		telemetry.Fail(span, fmt.Errorf("failed to embed animals: %w", err), "embed failed")
 		return
 	}
+	if len(vectors) != len(rows) {
+		telemetry.Fail(span, fmt.Errorf("embedder returned %d vectors for %d animals", len(vectors), len(rows)), "vector count mismatch")
+		return
+	}
 
 	for i, r := range rows {
 		if err := db.Exec(
@@ -128,6 +132,10 @@ func sweepComments(db *gorm.DB, embedder Embedder) {
 	vectors, err := embedder.EmbedDocuments(ctx, texts)
 	if err != nil {
 		telemetry.Fail(span, fmt.Errorf("failed to embed comments: %w", err), "embed failed")
+		return
+	}
+	if len(vectors) != len(rows) {
+		telemetry.Fail(span, fmt.Errorf("embedder returned %d vectors for %d comments", len(vectors), len(rows)), "vector count mismatch")
 		return
 	}
 
@@ -172,6 +180,10 @@ func sweepUpdates(db *gorm.DB, embedder Embedder) {
 	vectors, err := embedder.EmbedDocuments(ctx, texts)
 	if err != nil {
 		telemetry.Fail(span, fmt.Errorf("failed to embed updates: %w", err), "embed failed")
+		return
+	}
+	if len(vectors) != len(rows) {
+		telemetry.Fail(span, fmt.Errorf("embedder returned %d vectors for %d updates", len(vectors), len(rows)), "vector count mismatch")
 		return
 	}
 

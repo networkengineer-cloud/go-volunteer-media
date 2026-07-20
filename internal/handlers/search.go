@@ -138,8 +138,18 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				}
 			}
 
-			response["animals"] = fuseAnimalResults(keywordRows, semanticRows, offset, limit)
-			response["total_animals"] = totalAnimals
+			animals, fusedAnimalTotal := fuseAnimalResults(keywordRows, semanticRows, offset, limit)
+			response["animals"] = animals
+			// totalAnimals alone undercounts once semantic search is enabled: it's a
+			// keyword-only Count(), but the returned page also includes semantic-only
+			// matches (no shared vocabulary with the query). Without this max(), a
+			// semantic-only match would appear in the results yet total_animals could
+			// read 0, and the frontend's canLoadMore (animals.length < totalAnimals)
+			// would then never fire — hiding any further semantic-only matches beyond
+			// this page. fusedAnimalTotal (bounded by the candidate pool, same as the
+			// results themselves) covers that gap; the keyword Count() still covers
+			// the rare case where keyword matches alone exceed the pool.
+			response["total_animals"] = max(totalAnimals, int64(fusedAnimalTotal))
 		}
 
 		if searchType == "all" || searchType == "comments" {
@@ -184,8 +194,11 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				}
 			}
 
-			response["comments"] = fuseCommentResults(keywordRows, semanticRows, offset, limit)
-			response["total_comments"] = totalComments
+			comments, fusedCommentTotal := fuseCommentResults(keywordRows, semanticRows, offset, limit)
+			response["comments"] = comments
+			// See the matching comment on total_animals above: a keyword-only Count()
+			// undercounts once semantic-only matches are in the results.
+			response["total_comments"] = max(totalComments, int64(fusedCommentTotal))
 		}
 
 		if searchType == "all" || searchType == "updates" {
@@ -221,8 +234,11 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				}
 			}
 
-			response["updates"] = fuseUpdateResults(keywordUpdateRows, semanticUpdateRows, offset, limit)
-			response["total_updates"] = totalUpdates
+			updates, fusedUpdateTotal := fuseUpdateResults(keywordUpdateRows, semanticUpdateRows, offset, limit)
+			response["updates"] = updates
+			// See the matching comment on total_animals above: a keyword-only Count()
+			// undercounts once semantic-only matches are in the results.
+			response["total_updates"] = max(totalUpdates, int64(fusedUpdateTotal))
 		}
 
 		c.JSON(http.StatusOK, response)
@@ -230,11 +246,13 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 }
 
 // fuseAnimalResults merges keyword and semantic animal matches via
-// Reciprocal Rank Fusion and returns the requested page. A row present in
-// both lists is deduplicated (its full data is taken from whichever list is
-// checked first — identical either way, since it's the same database row);
-// only its combined score changes.
-func fuseAnimalResults(keyword, semantic []animalSearchResult, offset, limit int) []animalSearchResult {
+// Reciprocal Rank Fusion and returns the requested page, plus the size of
+// the full fused candidate set (before pagination) — the caller uses this
+// to correct total_animals for semantic-only matches a keyword-only Count()
+// would miss. A row present in both lists is deduplicated (its full data is
+// taken from whichever list is checked first — identical either way, since
+// it's the same database row); only its combined score changes.
+func fuseAnimalResults(keyword, semantic []animalSearchResult, offset, limit int) ([]animalSearchResult, int) {
 	rows := make(map[uint]animalSearchResult, len(keyword)+len(semantic))
 	keywordIDs := make([]uint, len(keyword))
 	for i, r := range keyword {
@@ -258,11 +276,11 @@ func fuseAnimalResults(keyword, semantic []animalSearchResult, offset, limit int
 		row.Rank = scores[id]
 		result = append(result, row)
 	}
-	return result
+	return result, len(ordered)
 }
 
 // fuseCommentResults mirrors fuseAnimalResults for commentSearchResult.
-func fuseCommentResults(keyword, semantic []commentSearchResult, offset, limit int) []commentSearchResult {
+func fuseCommentResults(keyword, semantic []commentSearchResult, offset, limit int) ([]commentSearchResult, int) {
 	rows := make(map[uint]commentSearchResult, len(keyword)+len(semantic))
 	keywordIDs := make([]uint, len(keyword))
 	for i, r := range keyword {
@@ -286,11 +304,11 @@ func fuseCommentResults(keyword, semantic []commentSearchResult, offset, limit i
 		row.Rank = scores[id]
 		result = append(result, row)
 	}
-	return result
+	return result, len(ordered)
 }
 
 // fuseUpdateResults mirrors fuseAnimalResults for updateSearchResult.
-func fuseUpdateResults(keyword, semantic []updateSearchResult, offset, limit int) []updateSearchResult {
+func fuseUpdateResults(keyword, semantic []updateSearchResult, offset, limit int) ([]updateSearchResult, int) {
 	rows := make(map[uint]updateSearchResult, len(keyword)+len(semantic))
 	keywordIDs := make([]uint, len(keyword))
 	for i, r := range keyword {
@@ -314,7 +332,7 @@ func fuseUpdateResults(keyword, semantic []updateSearchResult, offset, limit int
 		row.Rank = scores[id]
 		result = append(result, row)
 	}
-	return result
+	return result, len(ordered)
 }
 
 // paginateIDs slices a fused ID order to the client's requested page,

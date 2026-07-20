@@ -532,6 +532,16 @@ func TestSearch_Postgres_SemanticMatchSurfacesResultWithNoKeywordOverlap(t *test
 	if !found {
 		t.Fatalf("expected semantic match \"Bowl\" to surface despite no keyword overlap, got animals: %v", animals)
 	}
+
+	// Regression check: a keyword-only Count() would report 0 here (neither
+	// animal matches "resource guarding" by keyword), even though a semantic
+	// match is genuinely present in the results above. total_animals must
+	// reflect the fused result set, not just the keyword count, or the
+	// frontend's canLoadMore (animals.length < totalAnimals) can never fire
+	// for a page made entirely of semantic-only matches.
+	if body["total_animals"].(float64) < 1 {
+		t.Fatalf("expected total_animals to count the semantic-only match, got %v", body["total_animals"])
+	}
 }
 
 func TestSearch_Postgres_DegradesToKeywordOnlyWhenEmbedderFails(t *testing.T) {
