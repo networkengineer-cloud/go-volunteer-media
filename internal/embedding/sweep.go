@@ -19,8 +19,8 @@ import (
 const sweepBatchSize = 50
 
 // StartReconciliationSweep runs a periodic background pass that embeds any
-// animal/comment whose embedding is missing or older than the row's last
-// edit. One mechanism covers three situations: initial backfill of
+// animal/comment/update whose embedding is missing or older than the row's
+// last edit. One mechanism covers three situations: initial backfill of
 // pre-existing rows on first deploy, retrying rows whose async write-path
 // embed attempt failed, and catching up on anything created/edited while
 // SEMANTIC_SEARCH_ENABLED was false — none of these need special-casing
@@ -39,6 +39,7 @@ func StartReconciliationSweep(db *gorm.DB, embedder Embedder, interval time.Dura
 				}
 				sweepAnimals(db, embedder)
 				sweepComments(db, embedder)
+				sweepUpdates(db, embedder)
 			case <-done:
 				ticker.Stop()
 				return
@@ -136,6 +137,50 @@ func sweepComments(db *gorm.DB, embedder Embedder) {
 			pgvector.NewVector(vectors[i]), r.ID,
 		).Error; err != nil {
 			logging.WithField("error", err.Error()).Warn("Failed to persist comment embedding during sweep")
+		}
+	}
+}
+
+type staleUpdate struct {
+	ID      uint
+	Title   string
+	Content string
+}
+
+func sweepUpdates(db *gorm.DB, embedder Embedder) {
+	ctx, span := tracer.Start(context.Background(), "embedding.sweep.updates")
+	defer span.End()
+
+	var rows []staleUpdate
+	if err := db.Model(&models.Update{}).
+		Select("id, title, content").
+		Where("embedding IS NULL OR embedding_updated_at < updated_at").
+		Limit(sweepBatchSize).
+		Find(&rows).Error; err != nil {
+		telemetry.Fail(span, fmt.Errorf("failed to query stale update embeddings: %w", err), "query failed")
+		return
+	}
+	if len(rows) == 0 {
+		return
+	}
+
+	texts := make([]string, len(rows))
+	for i, r := range rows {
+		texts[i] = r.Title + " " + r.Content
+	}
+
+	vectors, err := embedder.EmbedDocuments(ctx, texts)
+	if err != nil {
+		telemetry.Fail(span, fmt.Errorf("failed to embed updates: %w", err), "embed failed")
+		return
+	}
+
+	for i, r := range rows {
+		if err := db.Exec(
+			"UPDATE updates SET embedding = ?, embedding_updated_at = now() WHERE id = ?",
+			pgvector.NewVector(vectors[i]), r.ID,
+		).Error; err != nil {
+			logging.WithField("error", err.Error()).Warn("Failed to persist update embedding during sweep")
 		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/stretchr/testify/assert"
@@ -23,6 +24,22 @@ func setupUpdateTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
+
+	// IMPORTANT: SQLite in-memory databases are per-connection. Without
+	// capping the pool to a single connection, database/sql may open a
+	// second physical connection to service a concurrent caller (e.g. the
+	// detached goroutine embedUpdateAsync spawns) — and since ":memory:"
+	// isn't shared-cache here, that second connection is a distinct, blank,
+	// unmigrated database, producing intermittent "no such table: updates"
+	// errors. Forcing a single connection makes the pool serialize access
+	// instead, matching the pattern in setupAnimalCommentTestDB
+	// (animal_comment_test.go).
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("Failed to get database instance: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
 	// Migrate models
 	err = db.AutoMigrate(
@@ -203,7 +220,7 @@ func TestCreateUpdate(t *testing.T) {
 			tt.setupContext(c)
 
 			// Execute
-			handler := CreateUpdate(db, email.NewService(db), groupme.NewService())
+			handler := CreateUpdate(db, email.NewService(db), groupme.NewService(), &embedding.StubEmbedder{})
 			handler(c)
 
 			// Assert
@@ -240,7 +257,7 @@ func TestCreateUpdateWithSendEmailFlagForNonAdminIsForcedFalse(t *testing.T) {
 	c.Set("is_admin", false)
 	c.Params = gin.Params{{Key: "id", Value: "1"}}
 
-	handler := CreateUpdate(db, email.NewService(db), groupme.NewService())
+	handler := CreateUpdate(db, email.NewService(db), groupme.NewService(), &embedding.StubEmbedder{})
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
@@ -264,6 +281,14 @@ func TestCreateUpdateWithSendEmailFlagForGroupAdminIsAllowed(t *testing.T) {
 		sqlDB, _ := db.DB()
 		sqlDB.Close()
 	}()
+
+	// See setupUpdateTestDB's comment: caps the pool to a single connection
+	// so the embedUpdateAsync goroutine can't race this test onto a second,
+	// unmigrated in-memory SQLite connection.
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
 	require.NoError(t, db.AutoMigrate(&models.User{}, &models.Group{}, &models.Update{}, &models.UserGroup{}))
 
@@ -290,7 +315,7 @@ func TestCreateUpdateWithSendEmailFlagForGroupAdminIsAllowed(t *testing.T) {
 	c.Set("is_admin", false)
 	c.Params = gin.Params{{Key: "id", Value: strconv.FormatUint(uint64(group.ID), 10)}}
 
-	handler := CreateUpdate(db, email.NewService(db), groupme.NewService())
+	handler := CreateUpdate(db, email.NewService(db), groupme.NewService(), &embedding.StubEmbedder{})
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
@@ -325,7 +350,7 @@ func TestCreateUpdateWithSendEmailFlagForSiteAdminIsAllowed(t *testing.T) {
 	c.Set("is_admin", true)
 	c.Params = gin.Params{{Key: "id", Value: "1"}}
 
-	handler := CreateUpdate(db, email.NewService(db), groupme.NewService())
+	handler := CreateUpdate(db, email.NewService(db), groupme.NewService(), &embedding.StubEmbedder{})
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
@@ -341,6 +366,14 @@ func setupDeleteUpdateTestDB(t *testing.T) (*gorm.DB, models.User, models.User, 
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
+
+	// See setupUpdateTestDB's comment: caps the pool to a single connection
+	// for consistency with the other Update test helpers, even though
+	// DeleteUpdate itself doesn't spawn the embedding goroutine.
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
 	err = db.AutoMigrate(
 		&models.User{},

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
@@ -48,8 +49,14 @@ func GetUpdates(db *gorm.DB) gin.HandlerFunc {
 }
 
 // CreateUpdate creates a new update/post in a group
-func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
+func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// rawDB is captured before the shadow below so the detached goroutine
+		// spawned by embedUpdateAsync gets the unscoped db, not one bound to
+		// this request's context (which is canceled the instant this handler
+		// returns). See the same pattern in animal_crud.go's
+		// sendQuarantineNotificationEmail usage.
+		rawDB := db
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		userID, _ := c.Get("user_id")
@@ -107,6 +114,8 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create update"})
 			return
 		}
+
+		embedUpdateAsync(rawDB, embedder, update)
 
 		// Reload with user info
 		if err := db.Preload("User").First(&update, update.ID).Error; err != nil {

@@ -133,6 +133,31 @@ func TestSweepAnimals_RespectsBatchSizeCap(t *testing.T) {
 	assert.Equal(t, int64(sweepBatchSize), embeddedCount, "expected exactly one batch's worth of animals to be embedded per sweep call")
 }
 
+func TestSweepUpdates_EmbedsRowsWithNullEmbedding(t *testing.T) {
+	db := openSweepTestPostgres(t)
+	tx := db.Begin()
+	defer tx.Rollback()
+
+	group := models.Group{Name: fmt.Sprintf("SweepTest-%d", time.Now().UnixNano())}
+	if err := tx.Create(&group).Error; err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	user := models.User{Username: "sweeptest", Email: "sweeptest@example.com", Password: "x"}
+	if err := tx.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	update := models.Update{GroupID: group.ID, UserID: user.ID, Title: "Playgroup Saturday", Content: "10am at the field."}
+	if err := tx.Create(&update).Error; err != nil {
+		t.Fatalf("create update: %v", err)
+	}
+
+	sweepUpdates(tx, &StubEmbedder{})
+
+	var embeddingIsNull bool
+	assert.NoError(t, tx.Raw("SELECT embedding IS NULL FROM updates WHERE id = ?", update.ID).Scan(&embeddingIsNull).Error)
+	assert.False(t, embeddingIsNull, "expected sweepUpdates to populate the embedding column")
+}
+
 // countingEmbedder wraps another Embedder and atomically counts calls to
 // EmbedDocuments, so tests can observe how many sweep ticks actually did
 // embedding work.

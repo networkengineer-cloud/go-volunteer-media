@@ -393,7 +393,7 @@ func main() {
 
 			// Updates routes
 			group.GET("/updates", handlers.GetUpdates(db))
-			group.POST("/updates", handlers.CreateUpdate(db, emailService, groupMeService))
+			group.POST("/updates", handlers.CreateUpdate(db, emailService, groupMeService, embedder))
 			group.DELETE("/updates/:updateId", handlers.DeleteUpdate(db))
 
 			// Protocol/Script routes - all group members can view
