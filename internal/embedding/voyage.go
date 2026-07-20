@@ -149,7 +149,15 @@ func (v *VoyageEmbedder) EmbedDocuments(ctx context.Context, texts []string) ([]
 	if err != nil {
 		return nil, err
 	}
-	out := make([][]float32, len(items))
+	// Size and validate against the request length (len(texts)), not the
+	// response length (len(items)) — a short response (fewer items than
+	// requested) must fail loudly here rather than silently returning an
+	// undersized slice that a caller indexing by request position could
+	// misinterpret as a shorter-but-complete result.
+	if len(items) != len(texts) {
+		return nil, fmt.Errorf("Voyage API returned %d embeddings for %d inputs", len(items), len(texts))
+	}
+	out := make([][]float32, len(texts))
 	for _, item := range items {
 		if item.Index < 0 || item.Index >= len(out) {
 			return nil, fmt.Errorf("Voyage API returned out-of-range index %d for %d inputs", item.Index, len(out))

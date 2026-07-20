@@ -115,6 +115,31 @@ func TestVoyageEmbedder_EmbedDocuments_SendsBatchAndReturnsInOrder(t *testing.T)
 	}
 }
 
+func TestVoyageEmbedder_EmbedDocuments_ShortResponseReturnsError(t *testing.T) {
+	// Simulates Voyage returning fewer embeddings than requested (e.g. a
+	// partial batch failure that still responds 200 with a shorter data
+	// array) — must fail loudly rather than silently returning an
+	// undersized slice a caller could index past the end of.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		items := []voyageTestResponseItem{
+			{Embedding: make([]float32, Dimension), Index: 0},
+			{Embedding: make([]float32, Dimension), Index: 1},
+		}
+		resp := voyageTestResponse{Data: items}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	v := NewVoyageEmbedder()
+	v.apiKey = "test-key"
+	v.apiURL = server.URL
+
+	if _, err := v.EmbedDocuments(context.Background(), []string{"a", "b", "c"}); err == nil {
+		t.Fatal("expected an error when Voyage returns fewer embeddings than requested texts")
+	}
+}
+
 func TestVoyageEmbedder_NonOKResponse_ReturnsError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)

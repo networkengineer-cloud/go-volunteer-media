@@ -37,17 +37,21 @@ type updateSearchResult struct {
 	Rank float64 `json:"rank"`
 }
 
-// Search performs hybrid keyword + semantic search over a group's animals
-// and comments. Keyword matching uses Postgres full-text search
+// Search performs hybrid keyword + semantic search over a group's animals,
+// comments, and updates. Keyword matching uses Postgres full-text search
 // (tsvector/websearch_to_tsquery, unchanged from the original keyword-search
 // feature); semantic matching uses pgvector cosine similarity against
 // embeddings populated by internal/embedding's write-path goroutine and
-// reconciliation sweep. The two ranked candidate lists are merged via
-// Reciprocal Rank Fusion (see search_rank.go) before the client's
-// limit/offset is applied. Semantic search is a ranking enhancement, never a
-// hard dependency: if SEMANTIC_SEARCH_ENABLED is off, the query-embedding
-// call fails, or a row has no embedding yet, results degrade to keyword-only
-// ranking rather than failing the request.
+// reconciliation sweep. When semantic search is available for this request,
+// the two ranked candidate lists are merged via Reciprocal Rank Fusion (see
+// search_rank.go) before the client's limit/offset is applied; when it
+// isn't, each resource is queried and paginated directly by Postgres exactly
+// as the original keyword-only feature did, preserving real ts_rank values
+// and unlimited-depth pagination. Semantic search is a ranking enhancement,
+// never a hard dependency: if SEMANTIC_SEARCH_ENABLED is off, the embedder
+// isn't configured, the query-embedding call fails, or a row has no
+// embedding yet, results degrade to keyword-only ranking rather than
+// failing the request.
 func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
@@ -94,7 +98,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 
 		var queryVector pgvector.Vector
 		semanticAvailable := false
-		if embedding.SemanticSearchEnabled() {
+		if embedding.Usable(embedder) {
 			if vec, err := embedder.EmbedQuery(c.Request.Context(), query); err == nil {
 				queryVector = pgvector.NewVector(vec)
 				semanticAvailable = true
@@ -114,19 +118,34 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				return
 			}
 
-			var keywordRows []animalSearchResult
-			if err := db.Model(&models.Animal{}).
+			keywordAnimalsQuery := db.Model(&models.Animal{}).
 				Select("animals.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
 				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
-				Order("rank DESC").
-				Limit(pool).
-				Find(&keywordRows).Error; err != nil {
+				Order("rank DESC")
+			if semanticAvailable {
+				// A candidate pool (not the client's exact page) is needed so
+				// fusion has a real keyword-ranked list to merge with the
+				// semantic one before slicing to the requested page.
+				keywordAnimalsQuery = keywordAnimalsQuery.Limit(pool)
+			} else {
+				// No semantic signal for this request: fetch exactly the
+				// requested page directly from Postgres, exactly as the
+				// original keyword-only feature did — unlimited-depth
+				// pagination, no RRF fusion overhead, and the row's real
+				// ts_rank is preserved as-is below.
+				keywordAnimalsQuery = keywordAnimalsQuery.Limit(limit).Offset(offset)
+			}
+			var keywordRows []animalSearchResult
+			if err := keywordAnimalsQuery.Find(&keywordRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search animals"})
 				return
 			}
 
-			var semanticRows []animalSearchResult
-			if semanticAvailable {
+			if !semanticAvailable {
+				response["animals"] = keywordRows
+				response["total_animals"] = totalAnimals
+			} else {
+				var semanticRows []animalSearchResult
 				if err := db.Model(&models.Animal{}).
 					Select("animals.*, 0::float8 AS rank").
 					Where("group_id = ? AND embedding IS NOT NULL", groupID).
@@ -136,20 +155,27 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to semantically search animals"})
 					return
 				}
-			}
 
-			animals, fusedAnimalTotal := fuseAnimalResults(keywordRows, semanticRows, offset, limit)
-			response["animals"] = animals
-			// totalAnimals alone undercounts once semantic search is enabled: it's a
-			// keyword-only Count(), but the returned page also includes semantic-only
-			// matches (no shared vocabulary with the query). Without this max(), a
-			// semantic-only match would appear in the results yet total_animals could
-			// read 0, and the frontend's canLoadMore (animals.length < totalAnimals)
-			// would then never fire — hiding any further semantic-only matches beyond
-			// this page. fusedAnimalTotal (bounded by the candidate pool, same as the
-			// results themselves) covers that gap; the keyword Count() still covers
-			// the rare case where keyword matches alone exceed the pool.
-			response["total_animals"] = max(totalAnimals, int64(fusedAnimalTotal))
+				animals, fusedAnimalTotal := fuseAnimalResults(keywordRows, semanticRows, offset, limit)
+				response["animals"] = animals
+				// totalAnimals alone undercounts once semantic search is enabled: it's a
+				// keyword-only Count(), but the returned page also includes semantic-only
+				// matches (no shared vocabulary with the query). Without this max(), a
+				// semantic-only match would appear in the results yet total_animals could
+				// read 0, and the frontend's canLoadMore (animals.length < totalAnimals)
+				// would then never fire — hiding any further semantic-only matches beyond
+				// this page. fusedAnimalTotal (bounded by the candidate pool, same as the
+				// results themselves) covers that gap; the keyword Count() still covers
+				// the rare case where keyword matches alone exceed the pool. The result is
+				// then capped at maxCandidatePool: candidatePoolSize never fetches beyond
+				// that ceiling, so reporting a total higher than it would let "Load more"
+				// promise results pagination can never actually deliver.
+				total := max(totalAnimals, int64(fusedAnimalTotal))
+				if total > int64(maxCandidatePool) {
+					total = int64(maxCandidatePool)
+				}
+				response["total_animals"] = total
+			}
 		}
 
 		if searchType == "all" || searchType == "comments" {
@@ -168,22 +194,29 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				return
 			}
 
-			var keywordRows []commentSearchResult
-			if err := keywordBase.Session(&gorm.Session{}).
+			keywordCommentsQuery := keywordBase.Session(&gorm.Session{}).
 				Select("animal_comments.*, animals.name AS animal_name, ts_rank(animal_comments.search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
-				Order("rank DESC").
-				Limit(pool).
-				Find(&keywordRows).Error; err != nil {
+				Order("rank DESC")
+			if semanticAvailable {
+				keywordCommentsQuery = keywordCommentsQuery.Limit(pool)
+			} else {
+				keywordCommentsQuery = keywordCommentsQuery.Limit(limit).Offset(offset)
+			}
+			var keywordRows []commentSearchResult
+			if err := keywordCommentsQuery.Find(&keywordRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search comments"})
 				return
 			}
 
-			var semanticRows []commentSearchResult
-			if semanticAvailable {
+			if !semanticAvailable {
+				response["comments"] = keywordRows
+				response["total_comments"] = totalComments
+			} else {
 				semanticBase := db.Model(&models.AnimalComment{}).
 					Joins("JOIN animals ON animals.id = animal_comments.animal_id").
 					Where("animals.group_id = ? AND animals.deleted_at IS NULL AND animal_comments.embedding IS NOT NULL", groupID)
 
+				var semanticRows []commentSearchResult
 				if err := semanticBase.
 					Select("animal_comments.*, animals.name AS animal_name, 0::float8 AS rank").
 					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "animal_comments.embedding <=> ?", Vars: []interface{}{queryVector}}}).
@@ -192,13 +225,18 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to semantically search comments"})
 					return
 				}
-			}
 
-			comments, fusedCommentTotal := fuseCommentResults(keywordRows, semanticRows, offset, limit)
-			response["comments"] = comments
-			// See the matching comment on total_animals above: a keyword-only Count()
-			// undercounts once semantic-only matches are in the results.
-			response["total_comments"] = max(totalComments, int64(fusedCommentTotal))
+				comments, fusedCommentTotal := fuseCommentResults(keywordRows, semanticRows, offset, limit)
+				response["comments"] = comments
+				// See the matching comment on total_animals above: a keyword-only Count()
+				// undercounts once semantic-only matches are in the results, and the
+				// result is capped at maxCandidatePool for the same reachability reason.
+				total := max(totalComments, int64(fusedCommentTotal))
+				if total > int64(maxCandidatePool) {
+					total = int64(maxCandidatePool)
+				}
+				response["total_comments"] = total
+			}
 		}
 
 		if searchType == "all" || searchType == "updates" {
@@ -210,19 +248,26 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				return
 			}
 
-			var keywordUpdateRows []updateSearchResult
-			if err := db.Model(&models.Update{}).
+			keywordUpdatesQuery := db.Model(&models.Update{}).
 				Select("updates.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
 				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
-				Order("rank DESC").
-				Limit(pool).
-				Find(&keywordUpdateRows).Error; err != nil {
+				Order("rank DESC")
+			if semanticAvailable {
+				keywordUpdatesQuery = keywordUpdatesQuery.Limit(pool)
+			} else {
+				keywordUpdatesQuery = keywordUpdatesQuery.Limit(limit).Offset(offset)
+			}
+			var keywordUpdateRows []updateSearchResult
+			if err := keywordUpdatesQuery.Find(&keywordUpdateRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search updates"})
 				return
 			}
 
-			var semanticUpdateRows []updateSearchResult
-			if semanticAvailable {
+			if !semanticAvailable {
+				response["updates"] = keywordUpdateRows
+				response["total_updates"] = totalUpdates
+			} else {
+				var semanticUpdateRows []updateSearchResult
 				if err := db.Model(&models.Update{}).
 					Select("updates.*, 0::float8 AS rank").
 					Where("group_id = ? AND embedding IS NOT NULL", groupID).
@@ -232,13 +277,18 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to semantically search updates"})
 					return
 				}
-			}
 
-			updates, fusedUpdateTotal := fuseUpdateResults(keywordUpdateRows, semanticUpdateRows, offset, limit)
-			response["updates"] = updates
-			// See the matching comment on total_animals above: a keyword-only Count()
-			// undercounts once semantic-only matches are in the results.
-			response["total_updates"] = max(totalUpdates, int64(fusedUpdateTotal))
+				updates, fusedUpdateTotal := fuseUpdateResults(keywordUpdateRows, semanticUpdateRows, offset, limit)
+				response["updates"] = updates
+				// See the matching comment on total_animals above: a keyword-only Count()
+				// undercounts once semantic-only matches are in the results, and the
+				// result is capped at maxCandidatePool for the same reachability reason.
+				total := max(totalUpdates, int64(fusedUpdateTotal))
+				if total > int64(maxCandidatePool) {
+					total = int64(maxCandidatePool)
+				}
+				response["total_updates"] = total
+			}
 		}
 
 		c.JSON(http.StatusOK, response)

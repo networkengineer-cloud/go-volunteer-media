@@ -30,6 +30,12 @@ type Embedder interface {
 	EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error)
 	// EmbedQuery embeds a user's search string at query time.
 	EmbedQuery(ctx context.Context, text string) ([]float32, error)
+	// IsConfigured reports whether this Embedder can actually serve
+	// requests (e.g. an API key is present). Combined with
+	// SemanticSearchEnabled via Usable — an operator-enabled-but-unconfigured
+	// embedder must not be treated as usable, or every write-path embed
+	// attempt and every sweep tick would retry and fail forever.
+	IsConfigured() bool
 }
 
 // SemanticSearchEnabled is the single source of truth for the
@@ -41,4 +47,18 @@ type Embedder interface {
 func SemanticSearchEnabled() bool {
 	v := os.Getenv("SEMANTIC_SEARCH_ENABLED")
 	return v != "false" && v != "0"
+}
+
+// Usable combines the SEMANTIC_SEARCH_ENABLED flag with the embedder's own
+// IsConfigured check into the single question every call site actually
+// cares about: should this attempt semantic work at all? Checking
+// SemanticSearchEnabled() alone lets an unconfigured-but-enabled embedder
+// (the default: the flag is enabled unless explicitly turned off, so a
+// deployment that simply forgets to set an API key is "enabled" by default)
+// retry and fail indefinitely on every write and every sweep tick — this is
+// the single source of truth all five call sites (three write-path embed
+// helpers, the sweep, and the search handler's query-time embed) must use
+// so none of them can drift out of sync with the others.
+func Usable(embedder Embedder) bool {
+	return SemanticSearchEnabled() && embedder != nil && embedder.IsConfigured()
 }

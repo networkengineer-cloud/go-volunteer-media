@@ -126,7 +126,7 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 		if req.SendEmail && emailService != nil && emailService.IsConfigured() {
 			go func() {
 				bgCtx := context.Background()
-				if err := sendGroupAnnouncementEmails(bgCtx, db, emailService, uint(gid), update.Title, update.Content); err != nil {
+				if err := sendGroupAnnouncementEmails(bgCtx, rawDB, emailService, uint(gid), update.Title, update.Content); err != nil {
 					logging.WithContext(bgCtx).Error("Error sending group update emails", err)
 				}
 			}()
@@ -137,7 +137,7 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 			// Use background context for async GroupMe sending
 			go func() {
 				bgCtx := context.Background()
-				if err := sendUpdateToGroupMe(bgCtx, db, groupMeService, uint(gid), update.Title, update.Content); err != nil {
+				if err := sendUpdateToGroupMe(bgCtx, rawDB, groupMeService, uint(gid), update.Title, update.Content); err != nil {
 					logging.WithContext(bgCtx).Error("Error sending update to GroupMe", err)
 				}
 			}()

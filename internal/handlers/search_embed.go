@@ -26,7 +26,7 @@ func animalEmbeddingText(animal models.Animal) string {
 // logged and left for the reconciliation sweep to retry; never surfaced to
 // the write request.
 func embedAnimalAsync(rawDB *gorm.DB, embedder embedding.Embedder, animal models.Animal) {
-	if !embedding.SemanticSearchEnabled() {
+	if !embedding.Usable(embedder) {
 		return
 	}
 	go func() {
@@ -38,14 +38,28 @@ func embedAnimalAsync(rawDB *gorm.DB, embedder embedding.Embedder, animal models
 
 // embedAnimalNow is embedAnimalAsync's synchronous core, factored out so
 // tests can call it directly instead of racing a goroutine.
+//
+// The UPDATE's "AND updated_at = ?" guard is an optimistic-concurrency check
+// against the row version this specific text was captured from: two edits
+// to the same animal in quick succession each spawn their own goroutine, and
+// nothing else serializes them, so the earlier edit's (slower) embed call
+// can complete after the later edit's (faster) one. Without this guard, the
+// earlier goroutine's write would silently overwrite the newer embedding
+// with a stale one while still stamping embedding_updated_at = now() —
+// making the row look "freshly embedded" to the sweep's staleness check
+// (embedding_updated_at < updated_at) even though it holds outdated
+// content. With the guard, a write whose captured version no longer matches
+// the row's current updated_at simply matches zero rows and is silently
+// skipped; the sweep's normal staleness check picks the row up again later
+// exactly as it would for any other stale row.
 func embedAnimalNow(rawDB *gorm.DB, embedder embedding.Embedder, animal models.Animal) error {
 	vec, err := embedder.EmbedDocument(context.Background(), animalEmbeddingText(animal))
 	if err != nil {
 		return fmt.Errorf("failed to embed animal %d: %w", animal.ID, err)
 	}
 	if err := rawDB.Exec(
-		"UPDATE animals SET embedding = ?, embedding_updated_at = now() WHERE id = ?",
-		pgvector.NewVector(vec), animal.ID,
+		"UPDATE animals SET embedding = ?, embedding_updated_at = now() WHERE id = ? AND updated_at = ?",
+		pgvector.NewVector(vec), animal.ID, animal.UpdatedAt,
 	).Error; err != nil {
 		return fmt.Errorf("failed to persist embedding for animal %d: %w", animal.ID, err)
 	}
@@ -54,7 +68,7 @@ func embedAnimalNow(rawDB *gorm.DB, embedder embedding.Embedder, animal models.A
 
 // embedCommentAsync mirrors embedAnimalAsync for comments.
 func embedCommentAsync(rawDB *gorm.DB, embedder embedding.Embedder, comment models.AnimalComment) {
-	if !embedding.SemanticSearchEnabled() {
+	if !embedding.Usable(embedder) {
 		return
 	}
 	go func() {
@@ -64,15 +78,17 @@ func embedCommentAsync(rawDB *gorm.DB, embedder embedding.Embedder, comment mode
 	}()
 }
 
-// embedCommentNow is embedCommentAsync's synchronous core.
+// embedCommentNow is embedCommentAsync's synchronous core. See
+// embedAnimalNow's comment for why the UPDATE guards on the row's captured
+// updated_at.
 func embedCommentNow(rawDB *gorm.DB, embedder embedding.Embedder, comment models.AnimalComment) error {
 	vec, err := embedder.EmbedDocument(context.Background(), comment.Content)
 	if err != nil {
 		return fmt.Errorf("failed to embed comment %d: %w", comment.ID, err)
 	}
 	if err := rawDB.Exec(
-		"UPDATE animal_comments SET embedding = ?, embedding_updated_at = now() WHERE id = ?",
-		pgvector.NewVector(vec), comment.ID,
+		"UPDATE animal_comments SET embedding = ?, embedding_updated_at = now() WHERE id = ? AND updated_at = ?",
+		pgvector.NewVector(vec), comment.ID, comment.UpdatedAt,
 	).Error; err != nil {
 		return fmt.Errorf("failed to persist embedding for comment %d: %w", comment.ID, err)
 	}
@@ -88,7 +104,7 @@ func updateEmbeddingText(update models.Update) string {
 // embedUpdateAsync mirrors embedAnimalAsync for updates. Update has no edit
 // endpoint (create/delete only), so this is only ever called from CreateUpdate.
 func embedUpdateAsync(rawDB *gorm.DB, embedder embedding.Embedder, update models.Update) {
-	if !embedding.SemanticSearchEnabled() {
+	if !embedding.Usable(embedder) {
 		return
 	}
 	go func() {
@@ -98,15 +114,20 @@ func embedUpdateAsync(rawDB *gorm.DB, embedder embedding.Embedder, update models
 	}()
 }
 
-// embedUpdateNow is embedUpdateAsync's synchronous core.
+// embedUpdateNow is embedUpdateAsync's synchronous core. See
+// embedAnimalNow's comment for why the UPDATE guards on the row's captured
+// updated_at. (Update has no edit endpoint, so this race is theoretical for
+// updates specifically today — kept consistent with the other two resources
+// anyway, since a future edit endpoint would otherwise silently reintroduce
+// the gap this guard closes.)
 func embedUpdateNow(rawDB *gorm.DB, embedder embedding.Embedder, update models.Update) error {
 	vec, err := embedder.EmbedDocument(context.Background(), updateEmbeddingText(update))
 	if err != nil {
 		return fmt.Errorf("failed to embed update %d: %w", update.ID, err)
 	}
 	if err := rawDB.Exec(
-		"UPDATE updates SET embedding = ?, embedding_updated_at = now() WHERE id = ?",
-		pgvector.NewVector(vec), update.ID,
+		"UPDATE updates SET embedding = ?, embedding_updated_at = now() WHERE id = ? AND updated_at = ?",
+		pgvector.NewVector(vec), update.ID, update.UpdatedAt,
 	).Error; err != nil {
 		return fmt.Errorf("failed to persist embedding for update %d: %w", update.ID, err)
 	}

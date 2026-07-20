@@ -7,11 +7,23 @@ import "context"
 // (useful for asserting exact nearest-neighbor behavior in tests without a
 // real embedding model), and different text produces a different vector.
 // Set Err to make every call fail, for exercising fallback/error-handling
-// paths (query-embedding failure degrading to keyword-only, etc.).
+// paths (query-embedding failure degrading to keyword-only, etc.). Set
+// Unconfigured to make IsConfigured() report false, for exercising the
+// Usable()-gated degrade path without needing Err (which fails every call
+// outright rather than modeling "not configured").
 type StubEmbedder struct {
 	// Dim overrides the vector length; defaults to Dimension (1024) when zero.
-	Dim int
-	Err error
+	Dim          int
+	Err          error
+	Unconfigured bool
+}
+
+// IsConfigured always reports true unless Unconfigured is explicitly set —
+// StubEmbedder never needs real credentials, so it's "configured" by
+// default in every test that doesn't specifically exercise the
+// not-configured path.
+func (s *StubEmbedder) IsConfigured() bool {
+	return !s.Unconfigured
 }
 
 func (s *StubEmbedder) dimension() int {

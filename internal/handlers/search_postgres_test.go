@@ -214,6 +214,9 @@ func (f *fixedVectorEmbedder) EmbedDocuments(ctx context.Context, texts []string
 func (f *fixedVectorEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
 	return f.vector, nil
 }
+func (f *fixedVectorEmbedder) IsConfigured() bool {
+	return true
+}
 
 func TestSearch_Postgres_MatchReturnsExpectedResults(t *testing.T) {
 	db := openSearchTestPostgres(t)
@@ -565,6 +568,98 @@ func TestSearch_Postgres_DegradesToKeywordOnlyWhenEmbedderFails(t *testing.T) {
 	animals, _ := body["animals"].([]interface{})
 	if len(animals) != 1 || animals[0].(map[string]interface{})["name"] != "Rex" {
 		t.Fatalf("expected keyword-only match for Rex despite embedder failure, got: %v", animals)
+	}
+}
+
+func TestSearch_Postgres_KeywordOnlyModePreservesRealTsRankAndUnboundedPagination(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newSearchTestFixture(t, db)
+
+	// Distinct term-frequency gives distinctly different (not tied) ts_rank
+	// values, so a position-only RRF score (which would only ever be
+	// 1/(60+1), 1/(60+2), ...) is distinguishable from the real ts_rank.
+	low := models.Animal{
+		GroupID: f.groupA.ID, Name: "LowRank", Species: "Dog", Status: "available",
+		Description: "Occasional resource guarding noted around mealtime.",
+	}
+	high := models.Animal{
+		GroupID: f.groupA.ID, Name: "HighRank", Species: "Dog", Status: "available",
+		Description:  "Severe resource guarding. Resource guarding around food, toys, and beds.",
+		TrainerNotes: "Resource guarding resource guarding — handle with extreme care.",
+	}
+	for _, a := range []*models.Animal{&low, &high} {
+		if err := f.tx.Create(a).Error; err != nil {
+			t.Fatalf("create animal %s: %v", a.Name, err)
+		}
+	}
+
+	// SEMANTIC_SEARCH_ENABLED=false forces the keyword-only path regardless
+	// of the embedder passed in, exercising the "flag off" degrade case
+	// specifically (as opposed to "embedder call failed").
+	t.Setenv("SEMANTIC_SEARCH_ENABLED", "false")
+
+	c, w := f.searchRequest(t, f.groupA.ID, "resource guarding")
+	Search(f.tx, &embedding.StubEmbedder{})(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := decodeSearchResponse(t, w)
+	animals, _ := body["animals"].([]interface{})
+	if len(animals) != 2 {
+		t.Fatalf("expected 2 matching animals, got %d: %v", len(animals), animals)
+	}
+
+	ranksByName := map[string]float64{}
+	for _, a := range animals {
+		row := a.(map[string]interface{})
+		ranksByName[row["name"].(string)] = row["rank"].(float64)
+	}
+
+	// A position-only RRF score for a 2-row keyword-only list would be
+	// 1/(60+1) ≈ 0.01639 and 1/(60+2) ≈ 0.01613 — close together regardless
+	// of actual relevance. The real ts_rank values for these two animals
+	// differ far more sharply (HighRank repeats the term many more times),
+	// so asserting the gap is larger than the RRF position-score gap proves
+	// the real ts_rank survived, not a position-derived substitute.
+	rrfPositionGap := 1.0/61.0 - 1.0/62.0
+	actualGap := ranksByName["HighRank"] - ranksByName["LowRank"]
+	if actualGap <= rrfPositionGap {
+		t.Fatalf("expected real ts_rank values (gap should exceed the RRF position-score gap of %v), got HighRank=%v LowRank=%v (gap=%v) — looks like a position-only score, not real ts_rank",
+			rrfPositionGap, ranksByName["HighRank"], ranksByName["LowRank"], actualGap)
+	}
+}
+
+func TestEmbedAnimalNow_Postgres_SkipsStaleWriteAfterConcurrentEdit(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newSearchTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.groupA.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+
+	// Capture the row's state as of creation — this simulates what a
+	// write-path embed goroutine captures before its (slow) embed API call.
+	staleAnimal := animal
+
+	// Simulate a second edit landing before that goroutine's embed call
+	// completes: bump updated_at by saving again.
+	if err := f.tx.Model(&animal).Update("name", "Rex Updated").Error; err != nil {
+		t.Fatalf("update animal: %v", err)
+	}
+
+	// Embed using the STALE captured copy (older updated_at) — this must be
+	// silently discarded rather than overwrite the row, since a newer edit
+	// has landed since this text was captured.
+	if err := embedAnimalNow(f.tx, &embedding.StubEmbedder{}, staleAnimal); err != nil {
+		t.Fatalf("embedAnimalNow returned an unexpected error: %v", err)
+	}
+
+	var embeddingIsNull bool
+	if err := f.tx.Raw("SELECT embedding IS NULL FROM animals WHERE id = ?", animal.ID).Scan(&embeddingIsNull).Error; err != nil {
+		t.Fatalf("query embedding: %v", err)
+	}
+	if !embeddingIsNull {
+		t.Fatal("expected the stale embed write to be discarded (embedding should still be NULL) since a newer edit landed after the embedded text was captured, but it was persisted anyway")
 	}
 }
 
