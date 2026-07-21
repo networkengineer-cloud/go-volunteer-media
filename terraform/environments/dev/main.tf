@@ -348,6 +348,17 @@ resource "azurerm_container_app" "main" {
         value = var.resend_from_email
       }
 
+      # Semantic Search (Voyage AI embeddings)
+      env {
+        name        = "VOYAGE_API_KEY"
+        secret_name = "voyage-api-key"
+      }
+
+      env {
+        name  = "SEMANTIC_SEARCH_ENABLED"
+        value = var.semantic_search_enabled ? "true" : "false"
+      }
+
       # Azure Storage Configuration
       env {
         name  = "AZURE_STORAGE_ACCOUNT"
@@ -420,6 +431,11 @@ resource "azurerm_container_app" "main" {
   secret {
     name  = "resend-api-key"
     value = var.resend_api_key
+  }
+
+  secret {
+    name  = "voyage-api-key"
+    value = var.voyage_api_key
   }
 
   secret {

@@ -200,6 +200,20 @@ variable "resend_from_name" {
   default     = "MyHAWS"
 }
 
+# Semantic Search (Voyage AI embeddings)
+variable "voyage_api_key" {
+  type        = string
+  description = "Voyage AI API key for semantic search embeddings. Optional — leave empty to keep semantic search disabled (keyword-only search still works)."
+  sensitive   = true
+  default     = ""
+}
+
+variable "semantic_search_enabled" {
+  type        = bool
+  description = "Whether to enable semantic (embedding-based) search. Defaults to false so setting voyage_api_key alone doesn't silently turn it on — flip explicitly once ready."
+  default     = false
+}
+
 # Axiom / OpenTelemetry Configuration
 variable "axiom_api_token" {
   type        = string
