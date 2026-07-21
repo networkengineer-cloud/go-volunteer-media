@@ -31,3 +31,21 @@ func PersistEmbedding(db *gorm.DB, table string, id uint, updatedAt time.Time, v
 	updateSQL := fmt.Sprintf("UPDATE %s SET embedding = ?, embedding_updated_at = now() WHERE id = ? AND updated_at = ?", table)
 	return db.Exec(updateSQL, pgvector.NewVector(vec), id, updatedAt).Error
 }
+
+// TouchEmbeddingTimestamp marks a row's embedding as fresh as of updatedAt
+// without re-embedding it, for callers that determined the embeddable text
+// hasn't actually changed since the last real embed (e.g. a status-only
+// animal edit). Without this, the row's embedding_updated_at stays behind
+// its now-bumped updated_at, and the reconciliation sweep's staleness check
+// ("embedding_updated_at < updated_at") re-embeds the identical text on its
+// very next tick — spending exactly the Voyage API call the caller skipped.
+//
+// Deliberately scoped to "AND embedding IS NOT NULL": a row that was never
+// embedded still needs a real embed, not just a timestamp bump, so it's left
+// alone here and stays visible to the sweep even if its current text
+// happens to match some pre-embedding state. The "AND updated_at = ?" guard
+// is the same optimistic-concurrency check PersistEmbedding uses.
+func TouchEmbeddingTimestamp(db *gorm.DB, table string, id uint, updatedAt time.Time) error {
+	updateSQL := fmt.Sprintf("UPDATE %s SET embedding_updated_at = now() WHERE id = ? AND updated_at = ? AND embedding IS NOT NULL", table)
+	return db.Exec(updateSQL, id, updatedAt).Error
+}

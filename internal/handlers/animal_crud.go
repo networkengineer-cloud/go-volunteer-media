@@ -367,6 +367,12 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service, embedder embedding.E
 			return
 		}
 
+		// Captured before any field mutations below so it can be compared
+		// against the post-save text to decide whether re-embedding is
+		// actually necessary (e.g. a pure quarantine-status/approval-status
+		// edit doesn't change the embedded text at all).
+		oldEmbeddingText := animalEmbeddingText(animal)
+
 		// Track name changes
 		oldName := animal.Name
 		if req.Name != oldName {
@@ -532,7 +538,22 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service, embedder embedding.E
 			return
 		}
 
-		embedAnimalAsync(rawDB, embedder, animal)
+		// Skip the embed call entirely when none of the embedded fields
+		// actually changed (e.g. a pure quarantine/approval-status edit) —
+		// the reconciliation sweep only ever retries rows that are actually
+		// stale, so nothing is lost by not re-embedding unchanged text. When
+		// skipped, embedding_updated_at is touched forward to the new
+		// updated_at instead: db.Save above always bumps updated_at
+		// regardless of which fields changed, so without this the sweep
+		// would see the row as stale on its very next tick and re-embed the
+		// exact unchanged text anyway.
+		if animalEmbeddingText(animal) != oldEmbeddingText {
+			embedAnimalAsync(rawDB, embedder, animal)
+		} else if embedding.Usable(embedder) {
+			if err := embedding.TouchEmbeddingTimestamp(rawDB, "animals", animal.ID, animal.UpdatedAt); err != nil {
+				logging.WithField("error", err.Error()).Warn("Failed to touch animal embedding timestamp")
+			}
+		}
 
 		if enteredQuarantine {
 			if err := db.Create(&models.AnimalBQIncident{

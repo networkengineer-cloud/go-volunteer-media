@@ -355,6 +355,12 @@ func UpdateAnimalComment(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFu
 			log.Printf("Failed to save comment history: %v", err)
 		}
 
+		// Captured before the mutation below so it can be compared against
+		// the post-save content to decide whether re-embedding is actually
+		// necessary — a metadata/image-only edit doesn't change the embedded
+		// text at all.
+		oldContent := comment.Content
+
 		// Update comment fields
 		comment.Content = req.Content
 		comment.ImageURL = req.ImageURL
@@ -366,7 +372,21 @@ func UpdateAnimalComment(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFu
 			return
 		}
 
-		embedCommentAsync(rawDB, embedder, comment)
+		// Skip the embed call entirely when the embedded text (Content)
+		// didn't actually change — the reconciliation sweep only ever
+		// retries rows that are actually stale, so nothing is lost by not
+		// re-embedding unchanged text. When skipped, embedding_updated_at is
+		// touched forward to the new updated_at instead: db.Save above
+		// always bumps updated_at regardless of which fields changed, so
+		// without this the sweep would see the row as stale on its very next
+		// tick and re-embed the exact unchanged content anyway.
+		if comment.Content != oldContent {
+			embedCommentAsync(rawDB, embedder, comment)
+		} else if embedding.Usable(embedder) {
+			if err := embedding.TouchEmbeddingTimestamp(rawDB, "animal_comments", comment.ID, comment.UpdatedAt); err != nil {
+				log.Printf("Failed to touch comment embedding timestamp: %v", err)
+			}
+		}
 
 		// Update tags if provided
 		if len(req.TagIDs) > 0 {

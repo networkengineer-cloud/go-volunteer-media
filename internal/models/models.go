@@ -255,6 +255,39 @@ type AnimalComment struct {
 	User      User             `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
+// NonDeletedAnimalCommentsQuery scopes a query to AnimalComment rows whose
+// parent animal is not soft-deleted. GORM's soft-delete scope only
+// auto-applies to the query's primary model (animal_comments) — the joined
+// animals table needs this explicit check, or comments on a deleted animal
+// leak through. Shared by internal/handlers/search.go and
+// internal/embedding/sweep.go (which can't import each other) so the two
+// call sites can't drift out of sync with each other.
+func NonDeletedAnimalCommentsQuery(db *gorm.DB) *gorm.DB {
+	return db.Model(&AnimalComment{}).
+		Joins("JOIN animals ON animals.id = animal_comments.animal_id").
+		Where("animals.deleted_at IS NULL")
+}
+
+// NonDeletedGroupAnimalsQuery scopes a query to Animal rows whose parent
+// group is not soft-deleted. GORM's soft-delete scope only auto-applies to
+// the query's primary model (animals) — DeleteGroup soft-deletes only the
+// Group row with no cascade to its animals, so without this join an
+// animal under a deleted group is never itself soft-deleted and stays
+// perpetually visible (e.g. to the reconciliation sweep, which would
+// otherwise re-embed it forever).
+func NonDeletedGroupAnimalsQuery(db *gorm.DB) *gorm.DB {
+	return db.Model(&Animal{}).
+		Joins("JOIN groups ON groups.id = animals.group_id").
+		Where("groups.deleted_at IS NULL")
+}
+
+// NonDeletedGroupUpdatesQuery mirrors NonDeletedGroupAnimalsQuery for updates.
+func NonDeletedGroupUpdatesQuery(db *gorm.DB) *gorm.DB {
+	return db.Model(&Update{}).
+		Joins("JOIN groups ON groups.id = updates.group_id").
+		Where("groups.deleted_at IS NULL")
+}
+
 // CommentHistory stores the history of comment edits
 // Each entry is a snapshot of a previous version of the comment
 type CommentHistory struct {

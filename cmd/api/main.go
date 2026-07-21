@@ -331,10 +331,10 @@ func main() {
 			// Bulk animal management (admin only)
 			admin.GET("/animals", handlers.GetAllAnimals(db))
 			admin.POST("/animals/bulk-update", handlers.BulkUpdateAnimals(db))
-			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db))
+			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db, embedder))
 			admin.POST("/animals/export-csv", handlers.ExportAnimalsCSV(db))
 			admin.GET("/animals/export-comments-csv", handlers.ExportAnimalCommentsCSV(db))
-			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db, emailService))
+			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db, emailService, embedder))
 
 			// Animal image management (admin only)
 			admin.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePicture(db))
@@ -565,6 +565,14 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal("Server forced to shutdown", err)
 	}
+
+	// srv.Shutdown only waits for in-flight HTTP handlers, not the detached
+	// write-path embed goroutines those handlers spawn (see embedAsync in
+	// internal/handlers/search_embed.go). Drain them here, before the
+	// deferred sqlDB.Close() above runs, so a goroutine started by a request
+	// that returned just before shutdown can't race PersistEmbedding against
+	// an already-closed *sql.DB.
+	handlers.WaitForPendingEmbeds()
 
 	logger.Info("Server exited gracefully")
 }

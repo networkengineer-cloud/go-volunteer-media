@@ -18,6 +18,12 @@ import (
 // instead of firing one unbounded request.
 const sweepBatchSize = 50
 
+// sweepStopTimeout bounds how long stop() waits for an in-flight sweep tick
+// to finish before giving up, mirroring the bounded waits already used
+// elsewhere during shutdown (see cmd/api/main.go's shutdownTelemetry and
+// srv.Shutdown timeouts).
+const sweepStopTimeout = 10 * time.Second
+
 // StartReconciliationSweep runs a periodic background pass that embeds any
 // animal/comment/update whose embedding is missing or older than the row's
 // last edit. One mechanism covers three situations: initial backfill of
@@ -26,11 +32,20 @@ const sweepBatchSize = 50
 // SEMANTIC_SEARCH_ENABLED was false — none of these need special-casing
 // differently from one another. Returns a stop function; call it during
 // graceful shutdown to stop the ticker.
+//
+// stop() blocks (up to sweepStopTimeout) until the sweep goroutine actually
+// exits, including finishing any tick already in flight — without this, a
+// caller that immediately closes the DB connection pool after stop() returns
+// (as cmd/api/main.go does) could race an in-flight sweepAnimals/
+// sweepComments/sweepUpdates call's PersistEmbedding write against a closed
+// *sql.DB.
 func StartReconciliationSweep(db *gorm.DB, embedder Embedder, interval time.Duration) (stop func()) {
 	ticker := time.NewTicker(interval)
 	done := make(chan struct{})
+	finished := make(chan struct{})
 
 	go func() {
+		defer close(finished)
 		for {
 			select {
 			case <-ticker.C:
@@ -48,7 +63,14 @@ func StartReconciliationSweep(db *gorm.DB, embedder Embedder, interval time.Dura
 	}()
 
 	var once sync.Once
-	return func() { once.Do(func() { close(done) }) }
+	return func() {
+		once.Do(func() { close(done) })
+		select {
+		case <-finished:
+		case <-time.After(sweepStopTimeout):
+			logging.Warn(fmt.Sprintf("Reconciliation sweep did not stop within %s of shutdown signal; proceeding with shutdown anyway", sweepStopTimeout))
+		}
+	}
 }
 
 // staleRow is one row awaiting embedding: its ID, its updated_at at query
@@ -115,10 +137,16 @@ func sweepAnimals(db *gorm.DB, embedder Embedder) {
 	ctx, span := tracer.Start(context.Background(), "embedding.sweep.animals")
 	defer span.End()
 
+	// models.NonDeletedGroupAnimalsQuery excludes animals belonging to a
+	// soft-deleted group — DeleteGroup doesn't cascade to its animals, so
+	// without this join an animal under a deleted group is never itself
+	// soft-deleted and would otherwise be re-selected as "stale" forever,
+	// burning sweep batch slots and Voyage calls embedding content for a
+	// group that's supposed to be gone.
 	var dbRows []staleAnimalRow
-	if err := db.Model(&models.Animal{}).
-		Select("id, updated_at, name, species, breed, description, trainer_notes").
-		Where("embedding IS NULL OR embedding_updated_at < updated_at").
+	if err := models.NonDeletedGroupAnimalsQuery(db).
+		Select("animals.id, animals.updated_at, animals.name, animals.species, animals.breed, animals.description, animals.trainer_notes").
+		Where("animals.embedding IS NULL OR animals.embedding_updated_at < animals.updated_at").
 		Limit(sweepBatchSize).
 		Find(&dbRows).Error; err != nil {
 		telemetry.Fail(span, fmt.Errorf("failed to query stale animal embeddings: %w", err), "query failed")
@@ -146,18 +174,18 @@ func sweepComments(db *gorm.DB, embedder Embedder) {
 	ctx, span := tracer.Start(context.Background(), "embedding.sweep.comments")
 	defer span.End()
 
-	// Joins animals and excludes soft-deleted ones for the same reason
-	// internal/handlers/search.go's comment search does: without this,
-	// comments belonging to a deleted animal are perpetually re-selected as
-	// "stale" (their embedding_updated_at can never catch up to anything
-	// meaningful, since they're never actually re-edited) and burn sweep
-	// batch slots and Voyage calls embedding content that can never surface
-	// in search results.
+	// models.NonDeletedAnimalCommentsQuery excludes soft-deleted animals'
+	// comments for the same reason internal/handlers/search.go's comment
+	// search does (shared helper so the two call sites can't drift out of
+	// sync): without this, comments belonging to a deleted animal are
+	// perpetually re-selected as "stale" (their embedding_updated_at can
+	// never catch up to anything meaningful, since they're never actually
+	// re-edited) and burn sweep batch slots and Voyage calls embedding
+	// content that can never surface in search results.
 	var dbRows []staleCommentRow
-	if err := db.Model(&models.AnimalComment{}).
-		Joins("JOIN animals ON animals.id = animal_comments.animal_id").
+	if err := models.NonDeletedAnimalCommentsQuery(db).
 		Select("animal_comments.id, animal_comments.updated_at, animal_comments.content").
-		Where("animals.deleted_at IS NULL AND (animal_comments.embedding IS NULL OR animal_comments.embedding_updated_at < animal_comments.updated_at)").
+		Where("animal_comments.embedding IS NULL OR animal_comments.embedding_updated_at < animal_comments.updated_at").
 		Limit(sweepBatchSize).
 		Find(&dbRows).Error; err != nil {
 		telemetry.Fail(span, fmt.Errorf("failed to query stale comment embeddings: %w", err), "query failed")
@@ -182,10 +210,13 @@ func sweepUpdates(db *gorm.DB, embedder Embedder) {
 	ctx, span := tracer.Start(context.Background(), "embedding.sweep.updates")
 	defer span.End()
 
+	// models.NonDeletedGroupUpdatesQuery excludes updates belonging to a
+	// soft-deleted group, for the same reason sweepAnimals excludes animals
+	// under a soft-deleted group above.
 	var dbRows []staleUpdateRow
-	if err := db.Model(&models.Update{}).
-		Select("id, updated_at, title, content").
-		Where("embedding IS NULL OR embedding_updated_at < updated_at").
+	if err := models.NonDeletedGroupUpdatesQuery(db).
+		Select("updates.id, updates.updated_at, updates.title, updates.content").
+		Where("updates.embedding IS NULL OR updates.embedding_updated_at < updates.updated_at").
 		Limit(sweepBatchSize).
 		Find(&dbRows).Error; err != nil {
 		telemetry.Fail(span, fmt.Errorf("failed to query stale update embeddings: %w", err), "query failed")

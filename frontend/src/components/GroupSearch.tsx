@@ -22,7 +22,12 @@ interface GroupSearchProps {
 function snippet(text: string, length = SNIPPET_LENGTH): string {
   const trimmed = text.trim();
   if (trimmed.length <= length) return trimmed;
-  return trimmed.slice(0, length).trimEnd() + '…';
+  // Array.from splits on Unicode code points rather than UTF-16 code units,
+  // so a truncation boundary can't land in the middle of a surrogate pair
+  // (e.g. an emoji) the way String.slice's code-unit indexing can.
+  const codePoints = Array.from(trimmed);
+  if (codePoints.length <= length) return trimmed;
+  return codePoints.slice(0, length).join('').trimEnd() + '…';
 }
 
 const searchIcon = (
@@ -32,17 +37,35 @@ const searchIcon = (
   </svg>
 );
 
+// Animals/comments/updates results are kept in one state object (rather than
+// six separate useState calls) so resetting them — on an empty query or a
+// group switch — is always a single setResults(emptyResults) instead of
+// several setX(...) calls that could drift out of sync with each other if a
+// future resource type were added.
+interface SearchResults {
+  animals: SearchAnimalResult[];
+  comments: SearchCommentResult[];
+  updates: SearchUpdateResult[];
+  totalAnimals: number;
+  totalComments: number;
+  totalUpdates: number;
+}
+
+const emptyResults: SearchResults = {
+  animals: [],
+  comments: [],
+  updates: [],
+  totalAnimals: 0,
+  totalComments: 0,
+  totalUpdates: 0,
+};
+
 const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounce(query.trim(), DEBOUNCE_MS);
   const [type, setType] = useState<SearchType>('all');
 
-  const [animals, setAnimals] = useState<SearchAnimalResult[]>([]);
-  const [comments, setComments] = useState<SearchCommentResult[]>([]);
-  const [updates, setUpdates] = useState<SearchUpdateResult[]>([]);
-  const [totalAnimals, setTotalAnimals] = useState(0);
-  const [totalComments, setTotalComments] = useState(0);
-  const [totalUpdates, setTotalUpdates] = useState(0);
+  const [results, setResults] = useState<SearchResults>(emptyResults);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -60,12 +83,7 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
       abortControllerRef.current = controller;
 
       if (!q) {
-        setAnimals([]);
-        setComments([]);
-        setUpdates([]);
-        setTotalAnimals(0);
-        setTotalComments(0);
-        setTotalUpdates(0);
+        setResults(emptyResults);
         setError(null);
         return;
       }
@@ -81,19 +99,23 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
           { signal: controller.signal }
         );
         const data = response.data;
-        setAnimals((prev) => (append ? [...prev, ...(data.animals ?? [])] : data.animals ?? []));
-        setComments((prev) => (append ? [...prev, ...(data.comments ?? [])] : data.comments ?? []));
-        setUpdates((prev) => (append ? [...prev, ...(data.updates ?? [])] : data.updates ?? []));
-        setTotalAnimals(data.total_animals ?? 0);
-        setTotalComments(data.total_comments ?? 0);
-        setTotalUpdates(data.total_updates ?? 0);
+        setResults((prev) => ({
+          animals: append ? [...prev.animals, ...(data.animals ?? [])] : data.animals ?? [],
+          comments: append ? [...prev.comments, ...(data.comments ?? [])] : data.comments ?? [],
+          updates: append ? [...prev.updates, ...(data.updates ?? [])] : data.updates ?? [],
+          totalAnimals: data.total_animals ?? 0,
+          totalComments: data.total_comments ?? 0,
+          totalUpdates: data.total_updates ?? 0,
+        }));
       } catch (err) {
         // A superseded/cancelled request rejects here too — ignore it
         // silently rather than surfacing an error for a search the user
         // has already moved on from.
         if (axios.isCancel(err)) return;
         console.error('Failed to search:', err);
-        setError('Failed to search. Please try again.');
+        const message =
+          (axios.isAxiosError(err) && err.response?.data?.error) || 'Failed to search. Please try again.';
+        setError(message);
       } finally {
         // Only the request that's still current should clear the loading
         // flags — an aborted, superseded request's `finally` must not flip
@@ -113,12 +135,7 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
   // still render — but under Links built from the *new* groupId, pointing
   // at the *old* group's animal IDs.
   useEffect(() => {
-    setAnimals([]);
-    setComments([]);
-    setUpdates([]);
-    setTotalAnimals(0);
-    setTotalComments(0);
-    setTotalUpdates(0);
+    setResults(emptyResults);
     setError(null);
   }, [groupId]);
 
@@ -143,6 +160,8 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
     setOffset(nextOffset);
     runSearch(debouncedQuery, type, nextOffset, true);
   };
+
+  const { animals, comments, updates, totalAnimals, totalComments, totalUpdates } = results;
 
   const showAnimals = type === 'all' || type === 'animals';
   const showComments = type === 'all' || type === 'comments';

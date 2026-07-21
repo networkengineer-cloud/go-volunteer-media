@@ -650,25 +650,113 @@ func createCustomIndexes(db *gorm.DB) error {
 	return nil
 }
 
-// VectorSchemaReady reports whether the pgvector extension and embedding
-// columns createCustomIndexes attempts to create actually exist. That
-// creation is deliberately best-effort (warn-only, since some managed
-// Postgres providers reject CREATE EXTENSION), so nothing else in migration
-// signals failure — callers use this to decide whether it's safe to enable
-// semantic search, instead of discovering the gap as a query-time SQL error
-// against a column that was never created.
+// embeddedResourceTables lists every table createCustomIndexes adds an
+// embedding column and HNSW index to. VectorSchemaReady checks against this
+// same list — rather than a second hardcoded literal — so adding or
+// removing an embedded resource type only requires updating one place.
+var embeddedResourceTables = []string{"animals", "animal_comments", "updates"}
+
+// vectorEmbeddingIndexName returns the HNSW index name createCustomIndexes
+// creates for table's embedding column, following the "idx_<table>_embedding"
+// convention used throughout createCustomIndexes' embedding-index queries.
+func vectorEmbeddingIndexName(table string) string {
+	return "idx_" + table + "_embedding"
+}
+
+// quotedTableLiteralList renders tables as a comma-separated list of
+// single-quoted SQL literals for an IN (...) clause. Safe via fmt.Sprintf
+// only because every caller passes this package's own hardcoded table-name
+// constants — never user input.
+func quotedTableLiteralList(tables []string) string {
+	quoted := make([]string, len(tables))
+	for i, t := range tables {
+		quoted[i] = "'" + t + "'"
+	}
+	return strings.Join(quoted, ", ")
+}
+
+// VectorSchemaReady reports whether the pgvector extension, embedding
+// columns, and HNSW indexes createCustomIndexes attempts to create actually
+// exist. That creation is deliberately best-effort (warn-only, since some
+// managed Postgres providers reject CREATE EXTENSION or CREATE INDEX ...
+// USING hnsw), so nothing else in migration signals failure — callers use
+// this to decide whether it's safe to enable semantic search, instead of
+// discovering the gap as a query-time SQL error against a column that was
+// never created, or as a silent unindexed full-table scan on every semantic
+// query if only the index (and not the column) failed to create.
+//
+// Both checks are qualified to table_schema/schemaname = 'public': without
+// it, a same-named table or index in another schema on the search_path (a
+// shadow/template schema some migration tooling uses, for example) would
+// inflate the counts and could make an incomplete public-schema setup look
+// ready, or vice versa.
 func VectorSchemaReady(db *gorm.DB) bool {
-	var count int64
-	err := db.Raw(`
+	want := len(embeddedResourceTables)
+
+	var columnCount int64
+	columnQuery := fmt.Sprintf(`
 		SELECT COUNT(*) FROM information_schema.columns
-		WHERE table_name IN ('animals', 'animal_comments', 'updates')
+		WHERE table_schema = 'public'
+		  AND table_name IN (%s)
 		  AND column_name = 'embedding'
-	`).Scan(&count).Error
-	if err != nil {
-		logging.WithField("error", err.Error()).Warn("Failed to check vector schema readiness")
+	`, quotedTableLiteralList(embeddedResourceTables))
+	if err := db.Raw(columnQuery).Scan(&columnCount).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to check vector schema readiness (columns)")
 		return false
 	}
-	return count == 3
+	if int(columnCount) != want {
+		logMissingVectorSchema(db)
+		return false
+	}
+
+	indexNames := make([]string, want)
+	for i, t := range embeddedResourceTables {
+		indexNames[i] = vectorEmbeddingIndexName(t)
+	}
+	var indexCount int64
+	indexQuery := fmt.Sprintf(`
+		SELECT COUNT(*) FROM pg_indexes
+		WHERE schemaname = 'public'
+		  AND indexname IN (%s)
+	`, quotedTableLiteralList(indexNames))
+	if err := db.Raw(indexQuery).Scan(&indexCount).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to check vector schema readiness (indexes)")
+		return false
+	}
+	if int(indexCount) != want {
+		logMissingVectorSchema(db)
+		return false
+	}
+	return true
+}
+
+// logMissingVectorSchema is called only once VectorSchemaReady has already
+// determined the schema isn't fully ready. It re-checks each table/index
+// individually so the startup log names exactly what's missing, instead of
+// leaving the operator with only an aggregate count mismatch and no way to
+// tell which of the three resource types' migration failed.
+func logMissingVectorSchema(db *gorm.DB) {
+	for _, table := range embeddedResourceTables {
+		var columnExists bool
+		if err := db.Raw(`
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_schema = 'public' AND table_name = ? AND column_name = 'embedding'
+			)
+		`, table).Scan(&columnExists).Error; err == nil && !columnExists {
+			logging.WithField("table", table).Warn("Vector schema not ready: embedding column missing")
+		}
+
+		indexName := vectorEmbeddingIndexName(table)
+		var indexExists bool
+		if err := db.Raw(`
+			SELECT EXISTS (
+				SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?
+			)
+		`, indexName).Scan(&indexExists).Error; err == nil && !indexExists {
+			logging.WithField("index", indexName).Warn("Vector schema not ready: HNSW index missing")
+		}
+	}
 }
 
 // createDefaultGroups creates the default groups if they don't exist

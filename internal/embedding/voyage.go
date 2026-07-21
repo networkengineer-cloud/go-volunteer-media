@@ -116,16 +116,28 @@ func (v *VoyageEmbedder) embed(ctx context.Context, spanName string, input inter
 	return voyageResp.Data, nil
 }
 
+// firstEmbedding extracts and validates the single embedding from a
+// single-item Voyage response, applying the same index-integrity check
+// EmbedDocuments applies to its batch responses — a single-item request
+// should only ever get back index 0, so anything else means the API
+// response doesn't correspond to the request we sent.
+func firstEmbedding(items []voyageResponseItem) ([]float32, error) {
+	if len(items) == 0 {
+		return nil, fmt.Errorf("Voyage API returned no embeddings")
+	}
+	if items[0].Index != 0 {
+		return nil, fmt.Errorf("Voyage API returned unexpected index %d for a single-item request", items[0].Index)
+	}
+	return items[0].Embedding, nil
+}
+
 // EmbedDocument embeds a single piece of indexed text (input_type "document").
 func (v *VoyageEmbedder) EmbedDocument(ctx context.Context, text string) ([]float32, error) {
 	items, err := v.embed(ctx, "embedding.voyage.embed_document", text, "document")
 	if err != nil {
 		return nil, err
 	}
-	if len(items) == 0 {
-		return nil, fmt.Errorf("Voyage API returned no embeddings")
-	}
-	return items[0].Embedding, nil
+	return firstEmbedding(items)
 }
 
 // EmbedQuery embeds a user's search string (input_type "query") — Voyage's
@@ -136,10 +148,7 @@ func (v *VoyageEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32
 	if err != nil {
 		return nil, err
 	}
-	if len(items) == 0 {
-		return nil, fmt.Errorf("Voyage API returned no embeddings")
-	}
-	return items[0].Embedding, nil
+	return firstEmbedding(items)
 }
 
 // EmbedDocuments batches multiple documents into a single Voyage API call.
