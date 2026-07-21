@@ -571,6 +571,94 @@ func TestSearch_Postgres_DegradesToKeywordOnlyWhenEmbedderFails(t *testing.T) {
 	}
 }
 
+// TestSearch_Postgres_DegradesToKeywordOnlyWhenSemanticQueryFails covers a
+// different failure point than the test above: the query embedding itself
+// succeeds (semanticAvailable is true), but the per-resource semantic SELECT
+// against the embedding column fails — simulated here via a dimension
+// mismatch (the query vector is a different size than the stored one),
+// which pgvector rejects at execution time. Before the fix, this branch
+// fused the already-fetched, pool-limited keywordRows (no real Offset
+// applied) instead of falling back to a genuine keyword-only page, which
+// silently broke pagination once offset+limit exceeded the candidate pool.
+//
+// This test deliberately does NOT use the shared f.tx fixture the rest of
+// this file uses: once a statement inside an explicit Postgres transaction
+// errors, the *whole transaction* is aborted and every later statement on
+// it fails too ("current transaction is aborted"), which would make the
+// fixed code's keyword-only re-query fail regardless of correctness — an
+// artifact of the transaction-per-test isolation technique, not of
+// production behavior. Production never wraps a request in an explicit
+// transaction (middleware.GetDB only does WithContext, never Begin), so
+// this test commits real rows and cleans them up manually instead.
+func TestSearch_Postgres_DegradesToKeywordOnlyWhenSemanticQueryFails(t *testing.T) {
+	db := openSearchTestPostgres(t)
+
+	unique := time.Now().UnixNano()
+	group := models.Group{Name: fmt.Sprintf("SearchTest-SemFail-%d", unique)}
+	if err := db.Create(&group).Error; err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	user := models.User{
+		Username: fmt.Sprintf("searchtest-semfail-%d", unique),
+		Email:    fmt.Sprintf("searchtest-semfail-%d@example.com", unique),
+		Password: "x",
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if err := db.Create(&models.UserGroup{UserID: user.ID, GroupID: group.ID}).Error; err != nil {
+		t.Fatalf("add user to group: %v", err)
+	}
+	match := models.Animal{
+		GroupID: group.ID, Name: "Rex", Species: "Dog", Status: "available",
+		Description: "Shows resource guarding around food bowls.",
+	}
+	if err := db.Create(&match).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+	t.Cleanup(func() {
+		db.Unscoped().Delete(&match)
+		db.Unscoped().Where("user_id = ? AND group_id = ?", user.ID, group.ID).Delete(&models.UserGroup{})
+		db.Unscoped().Delete(&user)
+		db.Unscoped().Delete(&group)
+	})
+
+	// A real, correctly-sized embedding so the semantic query has at least
+	// one row to actually evaluate `embedding <=> ?` against — otherwise a
+	// dimension-mismatched query vector could return zero rows without
+	// Postgres ever raising the mismatch error.
+	if err := db.Exec(
+		"UPDATE animals SET embedding = ?, embedding_updated_at = now() WHERE id = ?",
+		pgvector.NewVector(vectorWithOneAt(0)), match.ID,
+	).Error; err != nil {
+		t.Fatalf("failed to set animal embedding: %v", err)
+	}
+
+	// EmbedQuery succeeds (unlike the test above), but returns a vector of
+	// the wrong dimension, so the per-resource semantic query fails at the
+	// database level rather than at the embedding-call level.
+	wrongDimEmbedder := &fixedVectorEmbedder{vector: make([]float32, embedding.Dimension/2)}
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user_id", user.ID)
+	c.Set("is_admin", false)
+	c.Params = gin.Params{{Key: "id", Value: itoa(group.ID)}}
+	c.Request = httptest.NewRequest(http.MethodGet, "/test?"+url.Values{"q": {"resource guarding"}}.Encode(), nil)
+
+	Search(db, wrongDimEmbedder)(c)
+
+	assert.Equal(t, http.StatusOK, w.Code, "a failed semantic query must degrade to keyword-only results, not fail the request: %s", w.Body.String())
+	body := decodeSearchResponse(t, w)
+	animals, _ := body["animals"].([]interface{})
+	if len(animals) != 1 || animals[0].(map[string]interface{})["name"] != "Rex" {
+		t.Fatalf("expected keyword-only match for Rex despite semantic query failure, got: %v", animals)
+	}
+	if total, _ := body["total_animals"].(float64); total != 1 {
+		t.Fatalf("expected total_animals=1 (real keyword count), got %v", body["total_animals"])
+	}
+}
+
 func TestSearch_Postgres_KeywordOnlyModePreservesRealTsRankAndUnboundedPagination(t *testing.T) {
 	db := openSearchTestPostgres(t)
 	f := newSearchTestFixture(t, db)

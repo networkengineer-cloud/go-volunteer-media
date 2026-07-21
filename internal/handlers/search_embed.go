@@ -113,8 +113,25 @@ func embedAsync(rawDB *gorm.DB, embedder embedding.Embedder, table, resourceName
 	if !embedding.Usable(embedder) {
 		return
 	}
+	// Acquire a semaphore slot synchronously, before spawning the goroutine
+	// — not after. Spawning first and blocking on the semaphore only
+	// inside the goroutine would mean a burst of writes (e.g. bulk CSV
+	// import calling this once per row) spawns one goroutine per row
+	// immediately, with all but embedWriteConcurrencyLimit of them sitting
+	// blocked in memory waiting for a slot — the "concurrency limit" would
+	// bound in-flight embeds but not the goroutine/memory footprint itself.
+	// A non-blocking try-acquire here keeps embedAsync's fire-and-forget
+	// contract (never blocks the caller/request) while actually bounding
+	// live goroutines to the semaphore's capacity: at capacity, this
+	// write's embed is skipped entirely and left for the reconciliation
+	// sweep to pick up, exactly like any other embed failure.
+	select {
+	case embedWriteSemaphore <- struct{}{}:
+	default:
+		logging.WithField("resource", resourceName).Warn("Skipping write-path embed; concurrency limit reached, reconciliation sweep will retry")
+		return
+	}
 	embedWriteWG.Go(func() {
-		embedWriteSemaphore <- struct{}{}
 		defer func() { <-embedWriteSemaphore }()
 		if err := embedNow(rawDB, embedder, table, resourceName, id, updatedAt, text); err != nil {
 			logging.WithField("error", err.Error()).Warn(fmt.Sprintf("Failed to embed %s on write; reconciliation sweep will retry", resourceName))

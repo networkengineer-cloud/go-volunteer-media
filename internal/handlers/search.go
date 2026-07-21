@@ -119,15 +119,22 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				return
 			}
 
-			keywordAnimalsQuery := applyPageOrPool(db.Model(&models.Animal{}).
-				Select("animals.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
-				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
-				// A tie-breaker on id is required, not cosmetic: ts_rank ties
-				// are common, and without a deterministic secondary sort key,
-				// Postgres can return tied rows in a different order between
-				// the plain page and any later "load more" page, producing
-				// duplicate or skipped rows across pagination.
-				Order("rank DESC, animals.id ASC"), semanticAvailable, pool, limit, offset)
+			// Built as a closure so it can be re-run for a real
+			// Limit(limit).Offset(offset) page if the semantic query fails
+			// after semanticAvailable was already determined true (see
+			// finishSemanticSearch) — not just for the initial pool fetch.
+			buildAnimalsKeywordQuery := func() *gorm.DB {
+				return db.Model(&models.Animal{}).
+					Select("animals.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
+					Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
+					// A tie-breaker on id is required, not cosmetic: ts_rank ties
+					// are common, and without a deterministic secondary sort key,
+					// Postgres can return tied rows in a different order between
+					// the plain page and any later "load more" page, producing
+					// duplicate or skipped rows across pagination.
+					Order("rank DESC, animals.id ASC")
+			}
+			keywordAnimalsQuery := applyPageOrPool(buildAnimalsKeywordQuery(), semanticAvailable, pool, limit, offset)
 			var keywordRows []animalSearchResult
 			if err := keywordAnimalsQuery.Find(&keywordRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search animals"})
@@ -147,7 +154,11 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				// keyword-only Count()) would undercount once semantic-only
 				// matches are in the results, and an uncapped total would let
 				// "Load more" promise results pagination can never reach.
-				animals, total := finishSemanticSearch("animals", keywordRows, semanticQuery, pool, fuseAnimalResults, totalAnimals, offset, limit)
+				animals, total, err := finishSemanticSearch("animals", keywordRows, buildAnimalsKeywordQuery, semanticQuery, pool, fuseAnimalResults, totalAnimals, offset, limit)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search animals"})
+					return
+				}
 				response["animals"] = animals
 				response["total_animals"] = total
 			}
@@ -169,10 +180,15 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				return
 			}
 
-			keywordCommentsQuery := applyPageOrPool(keywordBase.Session(&gorm.Session{}).
-				Select("animal_comments.*, animals.name AS animal_name, ts_rank(animal_comments.search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
-				// See the animals query above for why a tie-breaker on id is required.
-				Order("rank DESC, animal_comments.id ASC"), semanticAvailable, pool, limit, offset)
+			// See buildAnimalsKeywordQuery above for why this is a closure
+			// (reused for the semantic-failure keyword-only re-page too).
+			buildCommentsKeywordQuery := func() *gorm.DB {
+				return keywordBase.Session(&gorm.Session{}).
+					Select("animal_comments.*, animals.name AS animal_name, ts_rank(animal_comments.search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
+					// See the animals query above for why a tie-breaker on id is required.
+					Order("rank DESC, animal_comments.id ASC")
+			}
+			keywordCommentsQuery := applyPageOrPool(buildCommentsKeywordQuery(), semanticAvailable, pool, limit, offset)
 			var keywordRows []commentSearchResult
 			if err := keywordCommentsQuery.Find(&keywordRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search comments"})
@@ -188,7 +204,11 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 					Where("animals.group_id = ? AND animal_comments.embedding IS NOT NULL", groupID).
 					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "animal_comments.embedding <=> ?", Vars: []interface{}{queryVector}}})
 
-				comments, total := finishSemanticSearch("comments", keywordRows, semanticQuery, pool, fuseCommentResults, totalComments, offset, limit)
+				comments, total, err := finishSemanticSearch("comments", keywordRows, buildCommentsKeywordQuery, semanticQuery, pool, fuseCommentResults, totalComments, offset, limit)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search comments"})
+					return
+				}
 				response["comments"] = comments
 				response["total_comments"] = total
 			}
@@ -203,11 +223,16 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				return
 			}
 
-			keywordUpdatesQuery := applyPageOrPool(db.Model(&models.Update{}).
-				Select("updates.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
-				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
-				// See the animals query above for why a tie-breaker on id is required.
-				Order("rank DESC, updates.id ASC"), semanticAvailable, pool, limit, offset)
+			// See buildAnimalsKeywordQuery above for why this is a closure
+			// (reused for the semantic-failure keyword-only re-page too).
+			buildUpdatesKeywordQuery := func() *gorm.DB {
+				return db.Model(&models.Update{}).
+					Select("updates.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
+					Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
+					// See the animals query above for why a tie-breaker on id is required.
+					Order("rank DESC, updates.id ASC")
+			}
+			keywordUpdatesQuery := applyPageOrPool(buildUpdatesKeywordQuery(), semanticAvailable, pool, limit, offset)
 			var keywordUpdateRows []updateSearchResult
 			if err := keywordUpdatesQuery.Find(&keywordUpdateRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search updates"})
@@ -223,7 +248,11 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 					Where("group_id = ? AND embedding IS NOT NULL", groupID).
 					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "embedding <=> ?", Vars: []interface{}{queryVector}}})
 
-				updates, total := finishSemanticSearch("updates", keywordUpdateRows, semanticQuery, pool, fuseUpdateResults, totalUpdates, offset, limit)
+				updates, total, err := finishSemanticSearch("updates", keywordUpdateRows, buildUpdatesKeywordQuery, semanticQuery, pool, fuseUpdateResults, totalUpdates, offset, limit)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search updates"})
+					return
+				}
 				response["updates"] = updates
 				response["total_updates"] = total
 			}
@@ -303,20 +332,33 @@ func fuseUpdateResults(keyword, semantic []updateSearchResult, offset, limit int
 // semantic query and fuse function differ), so it's factored out here
 // rather than kept as three copies that could drift out of sync — e.g. a
 // fix to the degrade-on-error behavior only needs to be made once.
-func finishSemanticSearch[T any](resourceName string, keywordRows []T, semanticQuery *gorm.DB, pool int, fuse func(keyword, semantic []T, offset, limit int) ([]T, int), keywordCount int64, offset, limit int) ([]T, int64) {
+func finishSemanticSearch[T any](resourceName string, keywordRows []T, rebuildKeywordPage func() *gorm.DB, semanticQuery *gorm.DB, pool int, fuse func(keyword, semantic []T, offset, limit int) ([]T, int), keywordCount int64, offset, limit int) ([]T, int64, error) {
 	var semanticRows []T
 	if err := semanticQuery.Limit(pool).Find(&semanticRows).Error; err != nil {
 		// Semantic search is a ranking enhancement, never a hard dependency
 		// (see Search's doc comment): degrade to keyword-only ranking
-		// instead of discarding the keyword results already in hand. fuse
-		// with a nil semantic list preserves keywordRows' order, and
-		// cappedTotal still applies its usual pool-aware capping.
+		// instead of discarding the keyword results already in hand.
+		//
+		// keywordRows, though, was fetched via applyPageOrPool with
+		// Limit(pool) and no Offset — sized as an RRF candidate pool, not a
+		// real page. Once semantic fusion is off the table (this branch),
+		// fusing that pool-limited, offset-0 slice against the client's
+		// actual offset/limit would silently return wrong or empty results
+		// past the pool boundary (deep pagination broken). Re-run the
+		// keyword query as a real Limit(limit).Offset(offset) page instead
+		// of reusing the pool-shaped one.
 		logging.WithField("error", err.Error()).Warn(fmt.Sprintf("Failed to semantically search %s; degrading to keyword-only results", resourceName))
-		semanticRows = nil
+
+		var page []T
+		if err := rebuildKeywordPage().Limit(limit).Offset(offset).Find(&page).Error; err != nil {
+			logging.WithField("error", err.Error()).Warn(fmt.Sprintf("Failed to re-query %s keyword-only after semantic failure", resourceName))
+			return nil, 0, err
+		}
+		return page, keywordCount, nil
 	}
 
 	rows, fusedTotal := fuse(keywordRows, semanticRows, offset, limit)
-	return rows, cappedTotal(keywordCount, fusedTotal)
+	return rows, cappedTotal(keywordCount, fusedTotal), nil
 }
 
 // applyPageOrPool applies either the client's exact requested page
