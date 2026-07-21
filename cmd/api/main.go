@@ -370,7 +370,10 @@ func main() {
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
 			group.GET("/animals/check-duplicates", handlers.CheckDuplicateNames(db))
 
-			// Keyword/phrase search over animals and comments (Postgres full-text search)
+			// Hybrid search over animals, comments, and updates: Postgres
+			// full-text keyword ranking, fused via RRF with semantic
+			// (embedding) ranking when SEMANTIC_SEARCH_ENABLED and Voyage
+			// are both configured — see handlers.Search's doc comment.
 			group.GET("/search", handlers.Search(db, embedder))
 
 			// Animal images - all group members can view, upload, and set profile pictures

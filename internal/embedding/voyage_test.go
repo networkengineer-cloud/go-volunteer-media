@@ -227,6 +227,27 @@ func TestVoyageEmbedder_NonOKResponse_TruncatesLargeBody(t *testing.T) {
 	}
 }
 
+func TestVoyageEmbedder_RejectsResponseBodyOverSizeCap(t *testing.T) {
+	// A misbehaving upstream/proxy returning a disproportionately large
+	// body (e.g. a multi-GB error page) must be rejected via a bounded
+	// read, not read into memory in full first — a memory-DoS guard, not
+	// just a log-truncation one (see TruncatesLargeBody above).
+	oversized := make([]byte, maxResponseBodyBytes+100)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write(oversized)
+	}))
+	defer server.Close()
+
+	v := NewVoyageEmbedder()
+	v.apiKey = "test-key"
+	v.apiURL = server.URL
+
+	if _, err := v.EmbedDocument(context.Background(), "text"); err == nil {
+		t.Fatal("expected an error for a response body over the size cap, got nil")
+	}
+}
+
 func TestVoyageEmbedder_IsConfigured(t *testing.T) {
 	v := NewVoyageEmbedder()
 	v.apiKey = ""

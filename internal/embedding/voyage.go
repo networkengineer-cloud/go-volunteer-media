@@ -34,6 +34,16 @@ var tracer = telemetry.Tracer("internal/embedding")
 // echo back request content this process shouldn't be re-logging wholesale.
 const maxErrorBodyLen = 500
 
+// maxResponseBodyBytes bounds how much of the Voyage HTTP response this
+// process reads into memory at all, via io.LimitReader below — separate
+// from (and enforced before) maxErrorBodyLen's log-message truncation. A
+// legitimate embeddings response is comfortably under this even at a full
+// batch (sweepBatchSize texts at Dimension floats each is on the order of
+// ~1 MB JSON-encoded), so this exists to guard against a misbehaving
+// upstream/proxy returning something disproportionately large (e.g. a
+// multi-GB error page) rather than to constrain normal operation.
+const maxResponseBodyBytes = 10 * 1024 * 1024 // 10 MB
+
 // truncateForError renders body as a string capped at maxErrorBodyLen,
 // marking whether it was cut short.
 func truncateForError(body []byte) string {
@@ -122,9 +132,16 @@ func (v *VoyageEmbedder) embed(ctx context.Context, spanName string, input inter
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// Read one byte past the cap so an oversized body is detected (rather
+	// than silently truncated and then fed to json.Unmarshal, which would
+	// just fail with a confusing parse error instead of the clear one
+	// below).
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
 	if err != nil {
 		return nil, telemetry.Fail(span, fmt.Errorf("failed to read Voyage response: %w", err), "read failed")
+	}
+	if len(body) > maxResponseBodyBytes {
+		return nil, telemetry.Fail(span, fmt.Errorf("Voyage response exceeded %d bytes, aborting read", maxResponseBodyBytes), "response too large")
 	}
 
 	if resp.StatusCode != http.StatusOK {

@@ -46,9 +46,14 @@ const (
 )
 
 // candidatePoolSize returns how many top matches to fetch from each of the
-// keyword and semantic queries before fusing. It must cover the requested
-// page (offset+limit), or a deep "load more" page would run out of fused
-// candidates even though more matches exist in the database.
+// keyword and semantic queries before fusing. Ideally it covers the
+// requested page (offset+limit), so a "load more" page doesn't run out of
+// fused candidates even though more matches exist in the database — but
+// it's capped at maxCandidatePool regardless, trading unbounded pagination
+// depth in semantic mode (once offset+limit exceeds the cap, results
+// beyond position maxCandidatePool become unreachable, unlike keyword-only
+// mode's real, uncapped Limit/Offset pagination) for a bounded per-request
+// cost against the two source queries.
 func candidatePoolSize(offset, limit int) int {
 	needed := offset + limit
 	switch {
