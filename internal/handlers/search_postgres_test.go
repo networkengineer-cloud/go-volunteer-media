@@ -496,6 +496,10 @@ func TestSearch_Postgres_RanksMultipleMatchesByRelevance(t *testing.T) {
 }
 
 func TestSearch_Postgres_SemanticMatchSurfacesResultWithNoKeywordOverlap(t *testing.T) {
+	// SEMANTIC_SEARCH_ENABLED is opt-in (defaults to disabled) — this test
+	// specifically needs semantic search active to exercise RRF fusion.
+	t.Setenv("SEMANTIC_SEARCH_ENABLED", "true")
+
 	db := openSearchTestPostgres(t)
 	f := newSearchTestFixture(t, db)
 
@@ -548,6 +552,12 @@ func TestSearch_Postgres_SemanticMatchSurfacesResultWithNoKeywordOverlap(t *test
 }
 
 func TestSearch_Postgres_DegradesToKeywordOnlyWhenEmbedderFails(t *testing.T) {
+	// SEMANTIC_SEARCH_ENABLED is opt-in (defaults to disabled) — must be
+	// explicitly enabled here, or Usable(embedder) would short-circuit on
+	// the flag alone and this test would never actually reach (and
+	// exercise) failingEmbedder's EmbedQuery failure below.
+	t.Setenv("SEMANTIC_SEARCH_ENABLED", "true")
+
 	db := openSearchTestPostgres(t)
 	f := newSearchTestFixture(t, db)
 
@@ -591,6 +601,12 @@ func TestSearch_Postgres_DegradesToKeywordOnlyWhenEmbedderFails(t *testing.T) {
 // transaction (middleware.GetDB only does WithContext, never Begin), so
 // this test commits real rows and cleans them up manually instead.
 func TestSearch_Postgres_DegradesToKeywordOnlyWhenSemanticQueryFails(t *testing.T) {
+	// SEMANTIC_SEARCH_ENABLED is opt-in (defaults to disabled) — must be
+	// explicitly enabled here, or Usable(embedder) would short-circuit on
+	// the flag alone and this test would never reach the per-resource
+	// semantic query it's meant to fail.
+	t.Setenv("SEMANTIC_SEARCH_ENABLED", "true")
+
 	db := openSearchTestPostgres(t)
 
 	unique := time.Now().UnixNano()
@@ -813,6 +829,12 @@ func TestSearch_Postgres_MatchesUpdatesByKeyword(t *testing.T) {
 }
 
 func TestSearch_Postgres_DeepPaginationCoversResultsBeyondDefaultPool(t *testing.T) {
+	// SEMANTIC_SEARCH_ENABLED is opt-in (defaults to disabled) — this test
+	// specifically exercises candidatePoolSize's growth, which only matters
+	// on the semantic/RRF-fusion path (applyPageOrPool ignores pool
+	// entirely once semanticAvailable is false), so it must be enabled here.
+	t.Setenv("SEMANTIC_SEARCH_ENABLED", "true")
+
 	db := openSearchTestPostgres(t)
 	f := newSearchTestFixture(t, db)
 

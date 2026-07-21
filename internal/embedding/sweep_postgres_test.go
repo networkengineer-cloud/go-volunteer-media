@@ -244,6 +244,11 @@ func (c *countingEmbedder) Calls() int64 {
 // the count must not increase even after waiting several more tick
 // intervals — if it did, the ticker would still be firing.
 func TestStartReconciliationSweep_StopDoesNotLeakGoroutine(t *testing.T) {
+	// SEMANTIC_SEARCH_ENABLED is opt-in (defaults to disabled) — this test
+	// needs the sweep to actually invoke the embedder every tick (see the
+	// comment below), so it must be explicitly enabled here.
+	t.Setenv("SEMANTIC_SEARCH_ENABLED", "true")
+
 	db := openSweepTestPostgres(t)
 	tx := db.Begin()
 	defer tx.Rollback()

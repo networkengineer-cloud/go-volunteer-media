@@ -556,15 +556,20 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	logger.Info("Shutting down server...")
-	stopEmbeddingSweep()
 
-	// Graceful shutdown with 5 second timeout
+	// Stop accepting new connections first. stopEmbeddingSweep() below can
+	// block for up to sweepStopTimeout (10s) draining an in-flight sweep
+	// tick — running it before srv.Shutdown would leave the server still
+	// accepting new requests for that entire window after SIGTERM/SIGINT,
+	// delaying the graceful shutdown clients are waiting on.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal("Server forced to shutdown", err)
 	}
+
+	stopEmbeddingSweep()
 
 	// srv.Shutdown only waits for in-flight HTTP handlers, not the detached
 	// write-path embed goroutines those handlers spawn (see embedAsync in

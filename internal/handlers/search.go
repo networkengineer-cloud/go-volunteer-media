@@ -148,7 +148,13 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				semanticQuery := db.Model(&models.Animal{}).
 					Select("animals.*, 0::float8 AS rank").
 					Where("group_id = ? AND embedding IS NOT NULL", groupID).
-					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "embedding <=> ?", Vars: []interface{}{queryVector}}})
+					// A tie-breaker on id is required for the same reason as
+					// the keyword query's: ties in vector distance (e.g.
+					// identical/empty embeddings) can otherwise return in a
+					// different order between requests, causing duplicate or
+					// skipped rows across pagination and shifting RRF's
+					// rank-position-based scores.
+					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "embedding <=> ?, animals.id ASC", Vars: []interface{}{queryVector}}})
 
 				// See cappedTotal's doc comment: totalAnimals alone (a
 				// keyword-only Count()) would undercount once semantic-only
@@ -202,7 +208,8 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				semanticQuery := models.NonDeletedAnimalCommentsQuery(db).
 					Select("animal_comments.*, animals.name AS animal_name, 0::float8 AS rank").
 					Where("animals.group_id = ? AND animal_comments.embedding IS NOT NULL", groupID).
-					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "animal_comments.embedding <=> ?", Vars: []interface{}{queryVector}}})
+					// See the animals query above for why a tie-breaker on id is required.
+					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "animal_comments.embedding <=> ?, animal_comments.id ASC", Vars: []interface{}{queryVector}}})
 
 				comments, total, err := finishSemanticSearch("comments", keywordRows, buildCommentsKeywordQuery, semanticQuery, pool, fuseCommentResults, totalComments, offset, limit)
 				if err != nil {
@@ -246,7 +253,8 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				semanticQuery := db.Model(&models.Update{}).
 					Select("updates.*, 0::float8 AS rank").
 					Where("group_id = ? AND embedding IS NOT NULL", groupID).
-					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "embedding <=> ?", Vars: []interface{}{queryVector}}})
+					// See the animals query above for why a tie-breaker on id is required.
+					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "embedding <=> ?, updates.id ASC", Vars: []interface{}{queryVector}}})
 
 				updates, total, err := finishSemanticSearch("updates", keywordUpdateRows, buildUpdatesKeywordQuery, semanticQuery, pool, fuseUpdateResults, totalUpdates, offset, limit)
 				if err != nil {
