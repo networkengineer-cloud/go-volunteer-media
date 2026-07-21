@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -196,6 +197,33 @@ func TestVoyageEmbedder_NonOKResponse_ReturnsError(t *testing.T) {
 
 	if _, err := v.EmbedDocument(context.Background(), "text"); err == nil {
 		t.Fatal("expected an error for a non-200 response, got nil")
+	}
+}
+
+func TestVoyageEmbedder_NonOKResponse_TruncatesLargeBody(t *testing.T) {
+	// An oversized error page (e.g. an HTML error page from a proxy/gateway
+	// in front of the real API) must not be echoed into this app's own logs
+	// in full.
+	largeBody := strings.Repeat("x", maxErrorBodyLen*3)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(largeBody))
+	}))
+	defer server.Close()
+
+	v := NewVoyageEmbedder()
+	v.apiKey = "test-key"
+	v.apiURL = server.URL
+
+	_, err := v.EmbedDocument(context.Background(), "text")
+	if err == nil {
+		t.Fatal("expected an error for a non-200 response, got nil")
+	}
+	if len(err.Error()) >= len(largeBody) {
+		t.Fatalf("expected the error message to truncate the %d-byte response body, got a %d-byte error message", len(largeBody), len(err.Error()))
+	}
+	if !strings.Contains(err.Error(), "truncated") {
+		t.Fatalf("expected the error message to indicate truncation, got: %s", err.Error())
 	}
 }
 

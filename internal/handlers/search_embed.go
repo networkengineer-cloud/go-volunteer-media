@@ -23,8 +23,13 @@ var embedWriteWG sync.WaitGroup
 
 // embedWriteDrainTimeout bounds how long WaitForPendingEmbeds waits for
 // in-flight embed goroutines to finish before giving up, mirroring
-// sweepStopTimeout's bounded wait in internal/embedding/sweep.go.
-const embedWriteDrainTimeout = 10 * time.Second
+// sweepStopTimeout's bounded wait in internal/embedding/sweep.go. Must
+// exceed embedding.RequestTimeout (the longest a single embed call itself
+// is allowed to take, per embedNow's context deadline below) with margin
+// for the subsequent PersistEmbedding write — otherwise this would almost
+// always time out and proceed while a goroutine mid-request is still
+// running, defeating the point of draining before the DB pool closes.
+const embedWriteDrainTimeout = embedding.RequestTimeout + 10*time.Second
 
 // WaitForPendingEmbeds blocks (up to embedWriteDrainTimeout) until every
 // write-path embed goroutine spawned so far has finished. Call during
@@ -92,7 +97,16 @@ var embedWriteSemaphore = make(chan struct{}, embedWriteConcurrencyLimit)
 // normal staleness check picks the row up again later exactly as it would
 // for any other stale row.
 func embedNow(rawDB *gorm.DB, embedder embedding.Embedder, table, resourceName string, id uint, updatedAt time.Time, text string) error {
-	vec, err := embedder.EmbedDocument(context.Background(), text)
+	// A deadline here — rather than a bare context.Background() — bounds
+	// the call regardless of what the concrete Embedder implementation
+	// does internally: VoyageEmbedder already enforces this via its own
+	// http.Client.Timeout, but embedWriteDrainTimeout's guarantee (that
+	// shutdown won't proceed while a goroutine using this function is
+	// still running) shouldn't depend on every current and future Embedder
+	// implementation happening to self-bound the same way.
+	ctx, cancel := context.WithTimeout(context.Background(), embedding.RequestTimeout)
+	defer cancel()
+	vec, err := embedder.EmbedDocument(ctx, text)
 	if err != nil {
 		return fmt.Errorf("failed to embed %s %d: %w", resourceName, id, err)
 	}

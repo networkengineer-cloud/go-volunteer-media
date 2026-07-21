@@ -106,6 +106,12 @@ func embedAndPersist(ctx context.Context, span trace.Span, db *gorm.DB, embedder
 		texts[i] = r.Text
 	}
 
+	// A deadline here, rather than the bare context callers pass in, bounds
+	// the batch call regardless of what the concrete Embedder does
+	// internally — see the same reasoning on embedNow in
+	// internal/handlers/search_embed.go.
+	ctx, cancel := context.WithTimeout(ctx, RequestTimeout)
+	defer cancel()
 	vectors, err := embedder.EmbedDocuments(ctx, texts)
 	if err != nil {
 		telemetry.Fail(span, fmt.Errorf("failed to embed %s: %w", resourceName, err), "embed failed")

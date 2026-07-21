@@ -18,7 +18,30 @@ const (
 	defaultVoyageModel  = "voyage-4"
 )
 
+// RequestTimeout bounds a single embedding HTTP call — used both as
+// VoyageEmbedder's own http.Client.Timeout below and by
+// internal/handlers/search_embed.go to derive its own bounds (the
+// write-path embed call's context deadline and the shutdown drain
+// timeout), so those callers can't drift out of sync with how long an
+// embed call is actually allowed to take.
+const RequestTimeout = 30 * time.Second
+
 var tracer = telemetry.Tracer("internal/embedding")
+
+// maxErrorBodyLen bounds how much of an upstream error response body gets
+// embedded in this package's own error messages (and, from there, into
+// logs) — an API error page can be arbitrarily large or, in the worst case,
+// echo back request content this process shouldn't be re-logging wholesale.
+const maxErrorBodyLen = 500
+
+// truncateForError renders body as a string capped at maxErrorBodyLen,
+// marking whether it was cut short.
+func truncateForError(body []byte) string {
+	if len(body) <= maxErrorBodyLen {
+		return string(body)
+	}
+	return string(body[:maxErrorBodyLen]) + "... (truncated)"
+}
 
 // VoyageEmbedder implements Embedder using Voyage AI's embeddings API.
 type VoyageEmbedder struct {
@@ -39,7 +62,7 @@ func NewVoyageEmbedder() *VoyageEmbedder {
 		apiKey: os.Getenv("VOYAGE_API_KEY"),
 		model:  model,
 		apiURL: defaultVoyageAPIURL,
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{Timeout: RequestTimeout},
 	}
 }
 
@@ -105,7 +128,11 @@ func (v *VoyageEmbedder) embed(ctx context.Context, spanName string, input inter
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, telemetry.Fail(span, fmt.Errorf("Voyage API error: status %d, body: %s", resp.StatusCode, string(body)), "non-200 response")
+		// Truncated rather than included in full: an error response body is
+		// operator-facing diagnostic text, not something this app's own
+		// logs should let grow unbounded or risk echoing back arbitrarily
+		// large/sensitive upstream content.
+		return nil, telemetry.Fail(span, fmt.Errorf("Voyage API error: status %d, body: %s", resp.StatusCode, truncateForError(body)), "non-200 response")
 	}
 
 	var voyageResp voyageResponse
