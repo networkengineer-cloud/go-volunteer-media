@@ -17,6 +17,17 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// vectorEmbeddingDimension is the width of the vector column
+// createCustomIndexes creates on animals/animal_comments/updates.embedding.
+// Must match embedding.Dimension (internal/embedding/embedder.go) — the two
+// can't share a single Go constant because internal/embedding's own
+// Postgres-gated test file imports internal/database, so internal/database
+// importing internal/embedding would create an import cycle. Centralized
+// here (instead of repeating the literal in three separate ALTER TABLE
+// strings) so a future embedding-model change with a different dimension
+// only needs updating in two places instead of four.
+const vectorEmbeddingDimension = 1024
+
 // Initialize creates and returns a database connection
 func Initialize() (*gorm.DB, error) {
 	dbHost := os.Getenv("DB_HOST")
@@ -460,8 +471,13 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created partial unique index idx_user_skill_tag_group_name_active")
 	}
 
-	// pg_trgm powers trigram similarity matching, used below for typo-tolerant
-	// animal name lookups alongside the phrase/keyword full-text search.
+	// pg_trgm powers trigram similarity matching. Only the extension and the
+	// GIN index below are set up so far — it currently accelerates the
+	// existing LOWER(name) LIKE '%...%' substring search in GetAnimals/
+	// GetAllAnimals (a plain B-tree index can't serve a leading-wildcard
+	// LIKE), but nothing yet queries via the actual %/similarity() fuzzy
+	// operators, so true typo-tolerant matching ("Rax" surfacing "Rex")
+	// isn't implemented yet — the infrastructure is just in place for it.
 	trgmExtensionQuery := `CREATE EXTENSION IF NOT EXISTS pg_trgm`
 	if err := db.Exec(trgmExtensionQuery).Error; err != nil {
 		logging.WithField("error", err.Error()).Warn("Failed to create pg_trgm extension")
@@ -563,10 +579,10 @@ func createCustomIndexes(db *gorm.DB) error {
 	// Unlike the STORED generated tsvector columns above, adding a plain
 	// nullable vector column is metadata-only — no table rewrite, no
 	// ACCESS EXCLUSIVE lock, no maintenance-window concern.
-	animalEmbeddingColumnsQuery := `
-		ALTER TABLE animals ADD COLUMN IF NOT EXISTS embedding vector(1024);
+	animalEmbeddingColumnsQuery := fmt.Sprintf(`
+		ALTER TABLE animals ADD COLUMN IF NOT EXISTS embedding vector(%d);
 		ALTER TABLE animals ADD COLUMN IF NOT EXISTS embedding_updated_at timestamptz
-	`
+	`, vectorEmbeddingDimension)
 	if err := db.Exec(animalEmbeddingColumnsQuery).Error; err != nil {
 		logging.WithField("error", err.Error()).Warn("Failed to add embedding columns to animals (is the pgvector extension available?)")
 	} else {
@@ -582,10 +598,10 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created HNSW index idx_animals_embedding")
 	}
 
-	commentEmbeddingColumnsQuery := `
-		ALTER TABLE animal_comments ADD COLUMN IF NOT EXISTS embedding vector(1024);
+	commentEmbeddingColumnsQuery := fmt.Sprintf(`
+		ALTER TABLE animal_comments ADD COLUMN IF NOT EXISTS embedding vector(%d);
 		ALTER TABLE animal_comments ADD COLUMN IF NOT EXISTS embedding_updated_at timestamptz
-	`
+	`, vectorEmbeddingDimension)
 	if err := db.Exec(commentEmbeddingColumnsQuery).Error; err != nil {
 		logging.WithField("error", err.Error()).Warn("Failed to add embedding columns to animal_comments (is the pgvector extension available?)")
 	} else {
@@ -627,10 +643,10 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created GIN index idx_updates_search_vector")
 	}
 
-	updateEmbeddingColumnsQuery := `
-		ALTER TABLE updates ADD COLUMN IF NOT EXISTS embedding vector(1024);
+	updateEmbeddingColumnsQuery := fmt.Sprintf(`
+		ALTER TABLE updates ADD COLUMN IF NOT EXISTS embedding vector(%d);
 		ALTER TABLE updates ADD COLUMN IF NOT EXISTS embedding_updated_at timestamptz
-	`
+	`, vectorEmbeddingDimension)
 	if err := db.Exec(updateEmbeddingColumnsQuery).Error; err != nil {
 		logging.WithField("error", err.Error()).Warn("Failed to add embedding columns to updates (is the pgvector extension available?)")
 	} else {

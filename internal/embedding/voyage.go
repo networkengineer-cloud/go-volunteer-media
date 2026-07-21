@@ -128,6 +128,15 @@ func firstEmbedding(items []voyageResponseItem) ([]float32, error) {
 	if items[0].Index != 0 {
 		return nil, fmt.Errorf("Voyage API returned unexpected index %d for a single-item request", items[0].Index)
 	}
+	// Fail fast here instead of letting a wrong-dimension vector reach
+	// PersistEmbedding, where it would fail at the Postgres level against
+	// the fixed-width vector(Dimension) column — and since PersistEmbedding
+	// failing never marks the row as embedded, the reconciliation sweep
+	// would just keep re-attempting (and re-failing) the same embed forever
+	// instead of surfacing a clear error once.
+	if len(items[0].Embedding) != Dimension {
+		return nil, fmt.Errorf("Voyage API returned a %d-dimensional embedding, expected %d", len(items[0].Embedding), Dimension)
+	}
 	return items[0].Embedding, nil
 }
 
@@ -173,6 +182,11 @@ func (v *VoyageEmbedder) EmbedDocuments(ctx context.Context, texts []string) ([]
 	for _, item := range items {
 		if item.Index < 0 || item.Index >= len(out) {
 			return nil, fmt.Errorf("Voyage API returned out-of-range index %d for %d inputs", item.Index, len(out))
+		}
+		// See firstEmbedding's comment on why this needs to fail fast rather
+		// than let a wrong-dimension vector reach PersistEmbedding.
+		if len(item.Embedding) != Dimension {
+			return nil, fmt.Errorf("Voyage API returned a %d-dimensional embedding at index %d, expected %d", len(item.Embedding), item.Index, Dimension)
 		}
 		out[item.Index] = item.Embedding
 	}

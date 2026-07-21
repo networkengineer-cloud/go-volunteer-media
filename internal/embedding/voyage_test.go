@@ -140,6 +140,49 @@ func TestVoyageEmbedder_EmbedDocuments_ShortResponseReturnsError(t *testing.T) {
 	}
 }
 
+func TestVoyageEmbedder_EmbedDocument_WrongDimensionReturnsError(t *testing.T) {
+	// Simulates Voyage returning a vector shorter than the configured
+	// Dimension (e.g. a model/config mismatch) — must fail fast here
+	// rather than let a wrong-width vector reach PersistEmbedding, where it
+	// would fail against the fixed-width vector(Dimension) column and leave
+	// the reconciliation sweep retrying (and re-failing) forever.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := voyageTestResponse{Data: []voyageTestResponseItem{{Embedding: make([]float32, Dimension/2), Index: 0}}}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	v := NewVoyageEmbedder()
+	v.apiKey = "test-key"
+	v.apiURL = server.URL
+
+	if _, err := v.EmbedDocument(context.Background(), "resource guarding"); err == nil {
+		t.Fatal("expected an error when Voyage returns a wrong-dimension embedding")
+	}
+}
+
+func TestVoyageEmbedder_EmbedDocuments_WrongDimensionReturnsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		items := []voyageTestResponseItem{
+			{Embedding: make([]float32, Dimension), Index: 0},
+			{Embedding: make([]float32, Dimension/2), Index: 1}, // wrong dimension
+		}
+		resp := voyageTestResponse{Data: items}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	v := NewVoyageEmbedder()
+	v.apiKey = "test-key"
+	v.apiURL = server.URL
+
+	if _, err := v.EmbedDocuments(context.Background(), []string{"a", "b"}); err == nil {
+		t.Fatal("expected an error when Voyage returns a wrong-dimension embedding in a batch")
+	}
+}
+
 func TestVoyageEmbedder_NonOKResponse_ReturnsError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
