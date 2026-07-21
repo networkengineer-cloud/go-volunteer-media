@@ -85,6 +85,13 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
       if (!q) {
         setResults(emptyResults);
         setError(null);
+        // Also clear both loading flags: this call just replaced
+        // abortControllerRef.current, so if a previous request (e.g. a
+        // "load more") was still in flight, its own `finally` block will no
+        // longer match the current controller and won't clear loadingMore
+        // itself — leaving the "Load more" button stuck disabled.
+        setLoading(false);
+        setLoadingMore(false);
         return;
       }
 
@@ -144,8 +151,7 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
   useEffect(() => {
     setOffset(0);
     runSearch(debouncedQuery, type, 0, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery, type, groupId]);
+  }, [debouncedQuery, type, groupId, runSearch]);
 
   // Cancel any in-flight request on unmount so it can't set state on an
   // unmounted component.
@@ -184,8 +190,8 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search animals and comments (e.g. &quot;resource guarding&quot;, &quot;playgroup&quot;)..."
-            aria-label="Search animals and comments"
+            placeholder="Search animals, comments, and updates (e.g. &quot;resource guarding&quot;, &quot;playgroup&quot;)..."
+            aria-label="Search animals, comments, and updates"
             className="group-search__input"
           />
         </div>

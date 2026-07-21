@@ -122,7 +122,12 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			keywordAnimalsQuery := applyPageOrPool(db.Model(&models.Animal{}).
 				Select("animals.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
 				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
-				Order("rank DESC"), semanticAvailable, pool, limit, offset)
+				// A tie-breaker on id is required, not cosmetic: ts_rank ties
+				// are common, and without a deterministic secondary sort key,
+				// Postgres can return tied rows in a different order between
+				// the plain page and any later "load more" page, producing
+				// duplicate or skipped rows across pagination.
+				Order("rank DESC, animals.id ASC"), semanticAvailable, pool, limit, offset)
 			var keywordRows []animalSearchResult
 			if err := keywordAnimalsQuery.Find(&keywordRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search animals"})
@@ -166,7 +171,8 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 
 			keywordCommentsQuery := applyPageOrPool(keywordBase.Session(&gorm.Session{}).
 				Select("animal_comments.*, animals.name AS animal_name, ts_rank(animal_comments.search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
-				Order("rank DESC"), semanticAvailable, pool, limit, offset)
+				// See the animals query above for why a tie-breaker on id is required.
+				Order("rank DESC, animal_comments.id ASC"), semanticAvailable, pool, limit, offset)
 			var keywordRows []commentSearchResult
 			if err := keywordCommentsQuery.Find(&keywordRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search comments"})
@@ -200,7 +206,8 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			keywordUpdatesQuery := applyPageOrPool(db.Model(&models.Update{}).
 				Select("updates.*, ts_rank(search_vector, websearch_to_tsquery('english', ?)) AS rank", query).
 				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
-				Order("rank DESC"), semanticAvailable, pool, limit, offset)
+				// See the animals query above for why a tie-breaker on id is required.
+				Order("rank DESC, updates.id ASC"), semanticAvailable, pool, limit, offset)
 			var keywordUpdateRows []updateSearchResult
 			if err := keywordUpdatesQuery.Find(&keywordUpdateRows).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search updates"})

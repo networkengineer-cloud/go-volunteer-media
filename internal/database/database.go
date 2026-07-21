@@ -675,6 +675,15 @@ func quotedTableLiteralList(tables []string) string {
 	return strings.Join(quoted, ", ")
 }
 
+// embeddedResourceColumns lists every column, alongside "embedding" itself,
+// that the write path (PersistEmbedding) and reconciliation sweep depend on.
+// embedding_updated_at holds the optimistic-concurrency/staleness timestamp
+// both of those read and write — if it's missing while embedding exists
+// (e.g. the two ALTER TABLE statements in createCustomIndexes' combined Exec
+// call ever stop being atomic), semantic search would look "ready" here but
+// fail the moment anything tries to persist or touch an embedding.
+var embeddedResourceColumns = []string{"embedding", "embedding_updated_at"}
+
 // VectorSchemaReady reports whether the pgvector extension, embedding
 // columns, and HNSW indexes createCustomIndexes attempts to create actually
 // exist. That creation is deliberately best-effort (warn-only, since some
@@ -691,25 +700,26 @@ func quotedTableLiteralList(tables []string) string {
 // inflate the counts and could make an incomplete public-schema setup look
 // ready, or vice versa.
 func VectorSchemaReady(db *gorm.DB) bool {
-	want := len(embeddedResourceTables)
+	wantColumns := len(embeddedResourceTables) * len(embeddedResourceColumns)
+	wantIndexes := len(embeddedResourceTables)
 
 	var columnCount int64
 	columnQuery := fmt.Sprintf(`
 		SELECT COUNT(*) FROM information_schema.columns
 		WHERE table_schema = 'public'
 		  AND table_name IN (%s)
-		  AND column_name = 'embedding'
-	`, quotedTableLiteralList(embeddedResourceTables))
+		  AND column_name IN (%s)
+	`, quotedTableLiteralList(embeddedResourceTables), quotedTableLiteralList(embeddedResourceColumns))
 	if err := db.Raw(columnQuery).Scan(&columnCount).Error; err != nil {
 		logging.WithField("error", err.Error()).Warn("Failed to check vector schema readiness (columns)")
 		return false
 	}
-	if int(columnCount) != want {
+	if int(columnCount) != wantColumns {
 		logMissingVectorSchema(db)
 		return false
 	}
 
-	indexNames := make([]string, want)
+	indexNames := make([]string, wantIndexes)
 	for i, t := range embeddedResourceTables {
 		indexNames[i] = vectorEmbeddingIndexName(t)
 	}
@@ -723,7 +733,7 @@ func VectorSchemaReady(db *gorm.DB) bool {
 		logging.WithField("error", err.Error()).Warn("Failed to check vector schema readiness (indexes)")
 		return false
 	}
-	if int(indexCount) != want {
+	if int(indexCount) != wantIndexes {
 		logMissingVectorSchema(db)
 		return false
 	}
@@ -737,14 +747,16 @@ func VectorSchemaReady(db *gorm.DB) bool {
 // tell which of the three resource types' migration failed.
 func logMissingVectorSchema(db *gorm.DB) {
 	for _, table := range embeddedResourceTables {
-		var columnExists bool
-		if err := db.Raw(`
-			SELECT EXISTS (
-				SELECT 1 FROM information_schema.columns
-				WHERE table_schema = 'public' AND table_name = ? AND column_name = 'embedding'
-			)
-		`, table).Scan(&columnExists).Error; err == nil && !columnExists {
-			logging.WithField("table", table).Warn("Vector schema not ready: embedding column missing")
+		for _, column := range embeddedResourceColumns {
+			var columnExists bool
+			if err := db.Raw(`
+				SELECT EXISTS (
+					SELECT 1 FROM information_schema.columns
+					WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
+				)
+			`, table, column).Scan(&columnExists).Error; err == nil && !columnExists {
+				logging.WithFields(map[string]interface{}{"table": table, "column": column}).Warn("Vector schema not ready: column missing")
+			}
 		}
 
 		indexName := vectorEmbeddingIndexName(table)

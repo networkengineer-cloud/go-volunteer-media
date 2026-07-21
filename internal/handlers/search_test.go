@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -69,8 +70,18 @@ func TestSearch_TypeUpdatesIsAccepted(t *testing.T) {
 
 	Search(db, &embedding.StubEmbedder{})(c)
 
-	if w.Code == http.StatusBadRequest {
-		t.Fatalf("expected type=updates to be accepted, got 400: %s", w.Body.String())
+	// This only exercises the request-validation layer (the validTypes map
+	// in Search): SetupTestDB is SQLite, which can't execute the
+	// Postgres-only search_vector/websearch_to_tsquery SQL the handler runs
+	// past validation, so a DB-layer 500 here is expected and not itself a
+	// failure — checking w.Code != 400 alone can't distinguish "updates
+	// passed validation" from "updates was rejected as invalid," so assert
+	// specifically against the type-validation error message. Full
+	// end-to-end coverage of type=updates (real matches, real ranking) is
+	// in search_postgres_test.go's TestSearch_Postgres_MatchesUpdatesByKeyword,
+	// which runs against a real Postgres instance.
+	if w.Code == http.StatusBadRequest && strings.Contains(w.Body.String(), "type must be one of") {
+		t.Fatalf("expected type=updates to pass validation, got 400: %s", w.Body.String())
 	}
 }
 

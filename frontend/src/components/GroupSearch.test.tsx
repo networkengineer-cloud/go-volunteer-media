@@ -103,7 +103,7 @@ describe('GroupSearch', () => {
     mockSearchResponse({ animals: [rex], total_animals: 1, comments: [rexComment], total_comments: 1 });
     renderSearch(7);
 
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'resource guarding');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'resource guarding');
 
     expect(screen.getByText('Rex')).toBeInTheDocument();
     expect(screen.getByText('on Rex')).toBeInTheDocument();
@@ -126,7 +126,7 @@ describe('GroupSearch', () => {
     );
     renderSearch();
 
-    fireEvent.change(screen.getByLabelText('Search animals and comments'), { target: { value: 'guarding' } });
+    fireEvent.change(screen.getByLabelText('Search animals, comments, and updates'), { target: { value: 'guarding' } });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     });
@@ -144,7 +144,7 @@ describe('GroupSearch', () => {
     mockSearchResponse({ animals: [], total_animals: 0, comments: [], total_comments: 0 });
     renderSearch();
 
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'nonexistentterm');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'nonexistentterm');
 
     expect(screen.getByText('No matches found')).toBeInTheDocument();
     expect(screen.getByText(/nonexistentterm/)).toBeInTheDocument();
@@ -156,7 +156,7 @@ describe('GroupSearch', () => {
     vi.mocked(searchApi.search).mockRejectedValueOnce(networkError);
     renderSearch();
 
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'guarding');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'guarding');
 
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to search:', networkError);
@@ -177,7 +177,7 @@ describe('GroupSearch', () => {
     vi.mocked(searchApi.search).mockRejectedValueOnce(new CanceledError());
     renderSearch();
 
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'guarding');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'guarding');
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
@@ -187,7 +187,7 @@ describe('GroupSearch', () => {
     renderSearch();
 
     fireEvent.change(screen.getByLabelText('Limit search to'), { target: { value: 'animals' } });
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'guarding');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'guarding');
 
     expect(screen.getByText('Rex')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /^Comments/ })).not.toBeInTheDocument();
@@ -202,12 +202,12 @@ describe('GroupSearch', () => {
     mockSearchResponse({ animals: [rex], total_animals: 1, updates: [playgroupUpdate], total_updates: 1 });
     renderSearch();
 
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'pairings');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'pairings');
 
     expect(screen.getByText('Playgroup Saturday')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Limit search to'), { target: { value: 'comments' } });
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'pairings');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'pairings');
     expect(screen.queryByText('Playgroup Saturday')).not.toBeInTheDocument();
   });
 
@@ -216,7 +216,7 @@ describe('GroupSearch', () => {
     renderSearch();
 
     fireEvent.change(screen.getByLabelText('Limit search to'), { target: { value: 'comments' } });
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'guarding');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'guarding');
 
     expect(screen.getByText('on Rex')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /^Animals/ })).not.toBeInTheDocument();
@@ -232,7 +232,7 @@ describe('GroupSearch', () => {
     renderSearch();
 
     fireEvent.change(screen.getByLabelText('Limit search to'), { target: { value: 'updates' } });
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'pairings');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'pairings');
 
     expect(screen.getByText('Playgroup Saturday')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /^Animals/ })).not.toBeInTheDocument();
@@ -253,7 +253,7 @@ describe('GroupSearch', () => {
       .mockResolvedValueOnce({ data: { animals: [page2], total_animals: 2 } } as AxiosResponse<SearchResponse>);
 
     renderSearch();
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'dog');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'dog');
 
     expect(screen.getByText('Rex')).toBeInTheDocument();
     const loadMore = screen.getByRole('button', { name: /load more results/i });
@@ -275,7 +275,7 @@ describe('GroupSearch', () => {
     mockSearchResponse({ animals: [rex], total_animals: 1 });
     renderSearch();
 
-    const input = screen.getByLabelText('Search animals and comments');
+    const input = screen.getByLabelText('Search animals, comments, and updates');
     await typeQuery(input, 'guarding');
     expect(screen.getByText('Rex')).toBeInTheDocument();
 
@@ -295,7 +295,7 @@ describe('GroupSearch', () => {
       .mockResolvedValueOnce({ data: { animals: [groupBAnimal], total_animals: 1 } } as AxiosResponse<SearchResponse>);
 
     const { rerender } = renderSearch(1);
-    await typeQuery(screen.getByLabelText('Search animals and comments'), 'dog');
+    await typeQuery(screen.getByLabelText('Search animals, comments, and updates'), 'dog');
     expect(screen.getByText('Rex')).toBeInTheDocument();
 
     const rexLink = screen.getByText('Rex').closest('a');
