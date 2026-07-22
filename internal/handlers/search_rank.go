@@ -1,6 +1,10 @@
 package handlers
 
-import "sort"
+import (
+	"os"
+	"sort"
+	"strconv"
+)
 
 // rrfK is Reciprocal Rank Fusion's standard smoothing constant. RRF combines
 // two differently-scaled ranked lists (ts_rank and cosine distance aren't on
@@ -45,6 +49,15 @@ const (
 	maxCandidatePool = 500
 )
 
+// defaultMaxSemanticDistance is maxSemanticDistance's value when
+// SEMANTIC_SEARCH_MAX_DISTANCE isn't set. Cosine distance ranges 0
+// (identical) to 2 (opposite); 0.75 is a conservative starting cutoff meant
+// to exclude clearly-unrelated content while still admitting genuinely
+// related matches — it hasn't been validated against real Voyage embedding
+// output (no VOYAGE_API_KEY in dev/test) and should be tuned from production
+// search logs once real query/document embedding distances are observable.
+const defaultMaxSemanticDistance = 0.75
+
 // maxSemanticDistance bounds the semantic candidate queries (see search.go)
 // to rows genuinely similar to the query embedding. Without it, "embedding IS
 // NOT NULL ORDER BY embedding <=> ? LIMIT pool" always returns `pool` rows
@@ -52,16 +65,22 @@ const (
 // a small group (fewer embedded rows than the pool floor), that means every
 // row in the group comes back, merely sorted by how (un)related it is,
 // letting fully irrelevant rows surface as "matches" whenever the keyword
-// query finds nothing to fuse against. Cosine distance ranges 0 (identical)
-// to 2 (opposite); 0.75 is a conservative starting cutoff meant to exclude
-// clearly-unrelated content while still admitting genuinely related matches
-// — it hasn't been validated against real Voyage embedding output (no
-// VOYAGE_API_KEY in dev/test) and should be tuned from production search
-// logs once real query/document embedding distances are observable. See
-// finishSemanticSearch's candidate-count log line, which exists so this
-// cutoff's real-world effect (how often it zeroes out the semantic side) is
-// observable without a code change.
-const maxSemanticDistance = 0.75
+// query finds nothing to fuse against.
+//
+// Overridable via SEMANTIC_SEARCH_MAX_DISTANCE (e.g. "0.8") so
+// defaultMaxSemanticDistance can be corrected from production search logs
+// (see finishSemanticSearch's candidate-count log line) without a code
+// change and redeploy. Read via os.Getenv per call, not cached, matching
+// embedding.SemanticSearchEnabled's pattern — cheap enough per-request, and
+// keeps it trivially overridable in tests via t.Setenv.
+func maxSemanticDistance() float64 {
+	if v := os.Getenv("SEMANTIC_SEARCH_MAX_DISTANCE"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
+	}
+	return defaultMaxSemanticDistance
+}
 
 // semanticDistanceClause returns the "<column> <=> ? < ?" fragment each
 // resource's semantic candidate query in search.go uses to bound results to

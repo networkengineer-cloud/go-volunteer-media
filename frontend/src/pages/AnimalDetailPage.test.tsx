@@ -231,23 +231,25 @@ describe('AnimalDetailPage', () => {
 
     it('jumps straight to the page containing a deep-linked comment that is not already loaded', async () => {
       const earlierComments = Array.from({ length: 10 }, (_, i) => mockComment({ id: 100 + i, content: `comment ${i}` }));
+      const deltaComments = [
+        ...Array.from({ length: 5 }, (_, i) => mockComment({ id: 200 + i, content: `later ${i}` })),
+        mockComment({ id: 2, content: 'deep comment' }),
+        ...Array.from({ length: 4 }, (_, i) => mockComment({ id: 300 + i, content: `even later ${i}` })),
+      ];
 
       vi.mocked(animalCommentsApi.getAll)
         .mockResolvedValueOnce({
           data: { comments: earlierComments, total: 21, limit: 10, offset: 0, hasMore: true },
         } as AxiosResponse)
         .mockResolvedValueOnce({
-          data: {
-            comments: [...earlierComments, ...Array.from({ length: 5 }, (_, i) => mockComment({ id: 200 + i, content: `later ${i}` })), mockComment({ id: 2, content: 'deep comment' })],
-            total: 21,
-            limit: 20,
-            offset: 0,
-            hasMore: true,
-          },
+          data: { comments: deltaComments, total: 21, limit: 10, offset: 10, hasMore: true },
         } as AxiosResponse);
 
       // Position 15 (0-based) puts the target on the second page (index 1)
-      // under COMMENTS_PER_PAGE=10, so fetching it in one shot needs limit=20.
+      // under COMMENTS_PER_PAGE=10, so reaching it needs comments through
+      // offset 20 (limitNeeded=20). 10 are already loaded, so only the
+      // remaining 10 (offset 10, limit 10) should be fetched and appended —
+      // not a full re-fetch from offset 0.
       vi.mocked(animalCommentsApi.getPosition).mockResolvedValue({
         data: { found: true, offset: 15 },
       } as AxiosResponse);
@@ -259,10 +261,92 @@ describe('AnimalDetailPage', () => {
       await waitFor(() => {
         expect(document.getElementById('comment-2')).toHaveClass('comment-card--highlighted');
       });
+      // The already-loaded first page is still present — proving this was
+      // an append, not a replace-from-offset-0.
+      expect(screen.getByText('comment 0')).toBeInTheDocument();
 
       expect(animalCommentsApi.getPosition).toHaveBeenCalledWith(1, 1, 2, { order: 'desc' });
       expect(animalCommentsApi.getAll).toHaveBeenCalledTimes(2);
-      expect(animalCommentsApi.getAll).toHaveBeenLastCalledWith(1, 1, expect.objectContaining({ limit: 20, offset: 0 }));
+      expect(animalCommentsApi.getAll).toHaveBeenLastCalledWith(1, 1, expect.objectContaining({ limit: 10, offset: 10 }));
+    });
+
+    it('tracks the true global offset after a deep link jumps past MAX_COMMENTS_LIMIT, so a later "Load More" click continues from the right position', async () => {
+      // Position 150 exceeds MAX_COMMENTS_LIMIT (100), so the locate effect
+      // takes the page-jump fallback: a non-append fetch straight to the
+      // comment's own page (offset 150, since targetPage=15 under
+      // COMMENTS_PER_PAGE=10), replacing `comments` with just that page's
+      // rows instead of everything from offset 0.
+      const targetPageComments = Array.from({ length: 10 }, (_, i) =>
+        i === 5 ? mockComment({ id: 2, content: 'deep comment' }) : mockComment({ id: 400 + i, content: `page comment ${i}` })
+      );
+
+      vi.mocked(animalCommentsApi.getAll)
+        .mockResolvedValueOnce({
+          data: { comments: [mockComment({ id: 1, content: 'first page comment' })], total: 500, limit: 10, offset: 0, hasMore: true },
+        } as AxiosResponse)
+        .mockResolvedValueOnce({
+          data: { comments: targetPageComments, total: 500, limit: 10, offset: 150, hasMore: true },
+        } as AxiosResponse)
+        .mockResolvedValueOnce({
+          // The "Load More" click after the jump: correct behavior appends
+          // starting at offset 160 (150 + 10 already-loaded), continuing
+          // from where the jumped-to page actually ended — not offset 10,
+          // which comments.length alone would incorrectly suggest.
+          data: { comments: [mockComment({ id: 999, content: 'next page comment' })], total: 500, limit: 10, offset: 160, hasMore: true },
+        } as AxiosResponse);
+
+      vi.mocked(animalCommentsApi.getPosition).mockResolvedValue({
+        data: { found: true, offset: 150 },
+      } as AxiosResponse);
+
+      window.history.pushState({}, '', '/groups/1/animals/1/view?comment=2');
+      renderDetailPage();
+
+      await screen.findByText('deep comment');
+      await waitFor(() => {
+        expect(document.getElementById('comment-2')).toHaveClass('comment-card--highlighted');
+      });
+      expect(animalCommentsApi.getAll).toHaveBeenLastCalledWith(1, 1, expect.objectContaining({ offset: 150 }));
+
+      const loadMoreButton = await screen.findByLabelText('Load more comments');
+      fireEvent.click(loadMoreButton);
+
+      await screen.findByText('next page comment');
+      expect(animalCommentsApi.getAll).toHaveBeenLastCalledWith(1, 1, expect.objectContaining({ offset: 160 }));
+    });
+
+    it('does not get stuck on a genuinely slow position lookup (regression: the locate effect used to cancel its own in-flight request)', async () => {
+      // A mockResolvedValue-backed promise resolves within a microtask,
+      // fast enough that it doesn't reliably expose a same-tick effect
+      // self-cancellation race. A real, non-trivial delay is needed to
+      // reproduce it: the locate effect used to call setLoadingMore(true)
+      // with `loadingMore` in its own dependency array, so React would
+      // re-run the effect (cancelling this in-flight lookup via cleanup)
+      // before the delayed response ever arrived — permanently stranding
+      // loadingMore at true and never resolving the deep link.
+      vi.mocked(animalCommentsApi.getAll)
+        .mockResolvedValueOnce({
+          data: { comments: [mockComment({ id: 1, content: 'first page comment' })], total: 2, limit: 10, offset: 0, hasMore: false },
+        } as AxiosResponse)
+        .mockResolvedValueOnce({
+          data: { comments: [mockComment({ id: 1, content: 'first page comment' }), mockComment({ id: 2, content: 'deep comment' })], total: 2, limit: 10, offset: 0, hasMore: false },
+        } as AxiosResponse);
+
+      vi.mocked(animalCommentsApi.getPosition).mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ data: { found: true, offset: 1 } } as AxiosResponse), 20))
+      );
+
+      window.history.pushState({}, '', '/groups/1/animals/1/view?comment=2');
+      renderDetailPage();
+
+      await screen.findByText('first page comment');
+
+      await waitFor(
+        () => {
+          expect(document.getElementById('comment-2')).toHaveClass('comment-card--highlighted');
+        },
+        { timeout: 1000 }
+      );
     });
 
     it("shows a message when the deep-linked comment can't be located", async () => {
