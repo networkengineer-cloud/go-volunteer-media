@@ -86,8 +86,8 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ item, groupId, onImageClick
         {/* Animal link for comments */}
         {item.type === 'comment' && item.animal && (
           <div className="activity-item__animal-link">
-            <Link 
-              to={`/groups/${groupId}/animals/${item.animal_id}/view`}
+            <Link
+              to={`/groups/${groupId}/animals/${item.animal_id}/view?comment=${item.id}`}
               className="activity-item__animal-name"
             >
               {item.animal.image_url && (
@@ -149,8 +149,8 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ item, groupId, onImageClick
       {/* Footer with action buttons */}
       <div className="activity-item__footer">
         {item.type === 'comment' && item.animal && (
-          <Link 
-            to={`/groups/${groupId}/animals/${item.animal_id}/view`}
+          <Link
+            to={`/groups/${groupId}/animals/${item.animal_id}/view?comment=${item.id}`}
             className="activity-item__action-link"
           >
             View animal

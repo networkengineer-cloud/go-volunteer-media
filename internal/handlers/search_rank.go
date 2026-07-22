@@ -57,8 +57,23 @@ const (
 // clearly-unrelated content while still admitting genuinely related matches
 // — it hasn't been validated against real Voyage embedding output (no
 // VOYAGE_API_KEY in dev/test) and should be tuned from production search
-// logs once real query/document embedding distances are observable.
+// logs once real query/document embedding distances are observable. See
+// finishSemanticSearch's candidate-count log line, which exists so this
+// cutoff's real-world effect (how often it zeroes out the semantic side) is
+// observable without a code change.
 const maxSemanticDistance = 0.75
+
+// semanticDistanceClause returns the "<column> <=> ? < ?" fragment each
+// resource's semantic candidate query in search.go uses to bound results to
+// maxSemanticDistance. Centralized so the threshold/operator can't drift out
+// of sync across the animals/comments/updates queries, which are otherwise
+// identical in shape (see fuseResults' and finishSemanticSearch's doc
+// comments for why those are shared too). Callers still supply the query
+// vector and maxSemanticDistance as bind args, in that order, after this
+// fragment's own args.
+func semanticDistanceClause(embeddingColumn string) string {
+	return embeddingColumn + " <=> ? < ?"
+}
 
 // candidatePoolSize returns how many top matches to fetch from each of the
 // keyword and semantic queries before fusing. Ideally it covers the

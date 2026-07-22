@@ -147,7 +147,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			} else {
 				semanticQuery := db.Model(&models.Animal{}).
 					Select("animals.*, 0::float8 AS rank").
-					Where("group_id = ? AND embedding IS NOT NULL AND embedding <=> ? < ?", groupID, queryVector, maxSemanticDistance).
+					Where("group_id = ? AND embedding IS NOT NULL AND "+semanticDistanceClause("embedding"), groupID, queryVector, maxSemanticDistance).
 					// A tie-breaker on id is required for the same reason as
 					// the keyword query's: ties in vector distance (e.g.
 					// identical/empty embeddings) can otherwise return in a
@@ -207,7 +207,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			} else {
 				semanticQuery := models.NonDeletedAnimalCommentsQuery(db).
 					Select("animal_comments.*, animals.name AS animal_name, 0::float8 AS rank").
-					Where("animals.group_id = ? AND animal_comments.embedding IS NOT NULL AND animal_comments.embedding <=> ? < ?", groupID, queryVector, maxSemanticDistance).
+					Where("animals.group_id = ? AND animal_comments.embedding IS NOT NULL AND "+semanticDistanceClause("animal_comments.embedding"), groupID, queryVector, maxSemanticDistance).
 					// See the animals query above for why a tie-breaker on id is required.
 					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "animal_comments.embedding <=> ?, animal_comments.id ASC", Vars: []interface{}{queryVector}}})
 
@@ -252,7 +252,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			} else {
 				semanticQuery := db.Model(&models.Update{}).
 					Select("updates.*, 0::float8 AS rank").
-					Where("group_id = ? AND embedding IS NOT NULL AND embedding <=> ? < ?", groupID, queryVector, maxSemanticDistance).
+					Where("group_id = ? AND embedding IS NOT NULL AND "+semanticDistanceClause("embedding"), groupID, queryVector, maxSemanticDistance).
 					// See the animals query above for why a tie-breaker on id is required.
 					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "embedding <=> ?, updates.id ASC", Vars: []interface{}{queryVector}}})
 
@@ -364,6 +364,13 @@ func finishSemanticSearch[T any](resourceName string, keywordRows []T, rebuildKe
 		}
 		return page, keywordCount, nil
 	}
+
+	// maxSemanticDistance (search_rank.go) hasn't been validated against real
+	// embedding output, so log how many candidates survive it per request —
+	// this is the only visibility into whether it's cutting too aggressively
+	// (frequent 0s despite embedded rows existing) without querying
+	// production data directly.
+	logging.WithField("resource", resourceName).WithField("semanticCandidates", len(semanticRows)).Debug("Semantic search candidates within maxSemanticDistance")
 
 	rows, fusedTotal := fuse(keywordRows, semanticRows, offset, limit)
 	return rows, cappedTotal(keywordCount, fusedTotal), nil

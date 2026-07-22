@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import AnimalDetailPage from './AnimalDetailPage';
 import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi, authApi } from '../api/client';
@@ -21,6 +21,7 @@ vi.mock('../api/client', () => ({
   animalCommentsApi: {
     getAll: vi.fn(),
     getDeleted: vi.fn(),
+    getPosition: vi.fn(),
   },
   commentTagsApi: {
     getAll: vi.fn(),
@@ -184,6 +185,12 @@ describe('AnimalDetailPage', () => {
       // jsdom doesn't implement scrollIntoView.
       Element.prototype.scrollIntoView = vi.fn();
       mockAnimal({ status: 'available' });
+      // Only tests that actually exercise the "not on the loaded page(s)"
+      // path override this; default to "not found" so an accidental call
+      // elsewhere doesn't hang on an unresolved mock.
+      vi.mocked(animalCommentsApi.getPosition).mockResolvedValue({
+        data: { found: false },
+      } as AxiosResponse);
     });
 
     afterEach(() => {
@@ -208,41 +215,101 @@ describe('AnimalDetailPage', () => {
       renderDetailPage();
 
       await screen.findByText('second comment');
-      const highlighted = document.getElementById('comment-2');
-      expect(highlighted).toHaveClass('comment-card--highlighted');
+      // The highlight class is applied by a useEffect that runs after the
+      // comments state update commits — a separate render pass from the one
+      // findByText observes — so wait for it rather than asserting inline.
+      await waitFor(() => {
+        expect(document.getElementById('comment-2')).toHaveClass('comment-card--highlighted');
+      });
       expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
 
       const notHighlighted = document.getElementById('comment-1');
       expect(notHighlighted).not.toHaveClass('comment-card--highlighted');
+      // Already on the loaded page — no need to ask the backend for it.
+      expect(animalCommentsApi.getPosition).not.toHaveBeenCalled();
     });
 
-    it('auto-loads further pages until the deep-linked comment is found', async () => {
+    it('jumps straight to the page containing a deep-linked comment that is not already loaded', async () => {
+      const earlierComments = Array.from({ length: 10 }, (_, i) => mockComment({ id: 100 + i, content: `comment ${i}` }));
+
       vi.mocked(animalCommentsApi.getAll)
         .mockResolvedValueOnce({
-          data: {
-            comments: [mockComment({ id: 1, content: 'page one comment' })],
-            total: 2,
-            limit: 10,
-            offset: 0,
-            hasMore: true,
-          },
+          data: { comments: earlierComments, total: 21, limit: 10, offset: 0, hasMore: true },
         } as AxiosResponse)
         .mockResolvedValueOnce({
           data: {
-            comments: [mockComment({ id: 2, content: 'page two comment' })],
-            total: 2,
-            limit: 10,
-            offset: 1,
-            hasMore: false,
+            comments: [...earlierComments, ...Array.from({ length: 5 }, (_, i) => mockComment({ id: 200 + i, content: `later ${i}` })), mockComment({ id: 2, content: 'deep comment' })],
+            total: 21,
+            limit: 20,
+            offset: 0,
+            hasMore: true,
           },
         } as AxiosResponse);
+
+      // Position 15 (0-based) puts the target on the second page (index 1)
+      // under COMMENTS_PER_PAGE=10, so fetching it in one shot needs limit=20.
+      vi.mocked(animalCommentsApi.getPosition).mockResolvedValue({
+        data: { found: true, offset: 15 },
+      } as AxiosResponse);
 
       window.history.pushState({}, '', '/groups/1/animals/1/view?comment=2');
       renderDetailPage();
 
-      await screen.findByText('page two comment');
-      expect(document.getElementById('comment-2')).toHaveClass('comment-card--highlighted');
+      await screen.findByText('deep comment');
+      await waitFor(() => {
+        expect(document.getElementById('comment-2')).toHaveClass('comment-card--highlighted');
+      });
+
+      expect(animalCommentsApi.getPosition).toHaveBeenCalledWith(1, 1, 2, { order: 'desc' });
       expect(animalCommentsApi.getAll).toHaveBeenCalledTimes(2);
+      expect(animalCommentsApi.getAll).toHaveBeenLastCalledWith(1, 1, expect.objectContaining({ limit: 20, offset: 0 }));
+    });
+
+    it("shows a message when the deep-linked comment can't be located", async () => {
+      vi.mocked(animalCommentsApi.getAll).mockResolvedValue({
+        data: { comments: [], total: 0, limit: 10, offset: 0, hasMore: false },
+      } as AxiosResponse);
+      vi.mocked(animalCommentsApi.getPosition).mockResolvedValue({
+        data: { found: false },
+      } as AxiosResponse);
+
+      window.history.pushState({}, '', '/groups/1/animals/1/view?comment=999');
+      renderDetailPage();
+
+      expect(await screen.findByText(/couldn.t be found/i)).toBeInTheDocument();
+    });
+
+    it('only clears the tag filter once per deep-linked id, so a filter picked afterward sticks', async () => {
+      vi.mocked(animalCommentsApi.getAll).mockResolvedValue({
+        data: {
+          comments: [mockComment({ id: 2, content: 'unfiltered comment' })],
+          total: 1,
+          limit: 10,
+          offset: 0,
+          hasMore: false,
+        },
+      } as AxiosResponse);
+      vi.mocked(commentTagsApi.getAll).mockResolvedValue({
+        data: [{ id: 1, group_id: 1, name: 'urgent', color: '#FF0000' }],
+      } as AxiosResponse);
+
+      window.history.pushState({}, '', '/groups/1/animals/1/view?comment=2');
+      renderDetailPage();
+
+      await screen.findByText('unfiltered comment');
+      await waitFor(() => {
+        expect(document.getElementById('comment-2')).toHaveClass('comment-card--highlighted');
+      });
+
+      // Deep-link resolution is done for id 2 (locatedCommentIdRef is set) —
+      // a filter the user picks afterward should stick, not get silently
+      // cleared again by the same effect on its next run.
+      const filterButton = await screen.findByLabelText('Filter by urgent');
+      fireEvent.click(filterButton);
+
+      await waitFor(() => {
+        expect(filterButton).toHaveAttribute('aria-pressed', 'true');
+      });
     });
   });
 

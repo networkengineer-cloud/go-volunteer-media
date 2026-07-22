@@ -357,6 +357,10 @@ export interface PaginatedCommentsResponse {
   hasMore: boolean;
 }
 
+export type CommentPositionResponse =
+  | { found: true; offset: number }
+  | { found: false };
+
 export interface CommentWithAnimal extends AnimalComment {
   animal: Animal;
 }
@@ -758,6 +762,18 @@ export const animalCommentsApi = {
     api.get<AnimalComment[]>('/admin/groups/' + groupId + '/deleted-comments'),
   getHistory: (groupId: number, animalId: number, commentId: number) =>
     api.get<CommentHistory[]>('/groups/' + groupId + '/animals/' + animalId + '/comments/' + commentId + '/history'),
+  // Looks up which page a comment falls on under a given tagFilter/order, so
+  // a deep link to a specific comment can jump straight to its page in one
+  // request instead of paging through every prior page to find it.
+  getPosition: (groupId: number, animalId: number, commentId: number, options?: {
+    tagFilter?: string;
+    order?: 'asc' | 'desc';
+  }) => {
+    const params: Record<string, string> = {};
+    if (options?.tagFilter) params.tags = options.tagFilter;
+    if (options?.order) params.order = options.order;
+    return api.get<CommentPositionResponse>('/groups/' + groupId + '/animals/' + animalId + '/comments/' + commentId + '/position', { params });
+  },
 };
 
 // Comment Tags API - Group-specific tags

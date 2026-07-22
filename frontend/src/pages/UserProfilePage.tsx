@@ -287,7 +287,7 @@ const UserProfilePage: React.FC = () => {
               {profile.recent_comments.map((comment) => (
                 <div key={comment.id} className="activity-item">
                   <div className="activity-meta">
-                    <Link to={`/groups/${comment.group_id}/animals/${comment.animal_id}/view`} className="animal-link">
+                    <Link to={`/groups/${comment.group_id}/animals/${comment.animal_id}/view?comment=${comment.id}`} className="animal-link">
                       {comment.animal_name}
                     </Link>
                     <span className="activity-group">in {comment.group_name}</span>
