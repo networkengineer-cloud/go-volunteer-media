@@ -4,20 +4,6 @@
 # Get current Azure client configuration
 data "azurerm_client_config" "current" {}
 
-# Generate a unique suffix for Key Vault name (globally unique requirement)
-# This prevents conflicts when changing regions or recreating resources
-resource "random_string" "kv_suffix" {
-  length  = 6
-  special = false
-  upper   = false
-  numeric = true
-
-  keepers = {
-    # Regenerate if location changes (allows new KV in new region)
-    location = var.location
-  }
-}
-
 # Generate a random password for PostgreSQL admin
 # Note: Password is stored in Terraform state. State is encrypted in HCP Terraform Cloud.
 # For production, consider external secret generation and rotation strategy.
@@ -63,16 +49,20 @@ resource "azurerm_log_analytics_workspace" "main" {
   tags = azurerm_resource_group.main.tags
 }
 
-# Key Vault for storing secrets (using RBAC model)
+# Key Vault for storing secrets
+# Note: RBAC model (enable_rbac_authorization = true) is the long-term goal, but switching
+# requires Microsoft.Authorization/roleAssignments/write on this vault, which the Terraform
+# service principal doesn't have yet (see FEDERATED_CREDENTIALS.md). Attempting the switch
+# without that permission locks everyone out of the vault's secrets. Stick with access
+# policies until the SPN is granted User Access Administrator (or equivalent) on this vault.
 resource "azurerm_key_vault" "main" {
-  name                = "kv-vm-${var.environment}-${random_string.kv_suffix.result}"
+  name                = "kv-${var.project_name}-${var.environment}"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   tenant_id           = data.azurerm_client_config.current.tenant_id
   sku_name            = "standard"
 
-  # Use RBAC for permissions (modern approach)
-  enable_rbac_authorization = true
+  enable_rbac_authorization = false
 
   # Security settings (more relaxed for dev)
   purge_protection_enabled   = false # Allow immediate deletion in dev
@@ -87,13 +77,25 @@ resource "azurerm_key_vault" "main" {
   tags = azurerm_resource_group.main.tags
 }
 
-# Grant Terraform service principal Key Vault Secrets Officer role
-# This allows creating, reading, and managing secrets
-resource "azurerm_role_assignment" "terraform_kv_secrets_officer" {
-  scope                = azurerm_key_vault.main.id
-  role_definition_name = "Key Vault Secrets Officer"
-  principal_id         = data.azurerm_client_config.current.object_id
+# Grant Terraform access to Key Vault
+resource "azurerm_key_vault_access_policy" "terraform" {
+  key_vault_id = azurerm_key_vault.main.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
+
+  secret_permissions = [
+    "Get", "List", "Set", "Delete", "Purge", "Recover"
+  ]
 }
+
+# Uncomment once the Terraform service principal has Microsoft.Authorization/roleAssignments/write
+# on this vault, and flip enable_rbac_authorization above to true in the same apply:
+#
+# resource "azurerm_role_assignment" "terraform_kv_secrets_officer" {
+#   scope                = azurerm_key_vault.main.id
+#   role_definition_name = "Key Vault Secrets Officer"
+#   principal_id         = data.azurerm_client_config.current.object_id
+# }
 
 # Store database password in Key Vault
 resource "azurerm_key_vault_secret" "db_password" {
@@ -101,7 +103,7 @@ resource "azurerm_key_vault_secret" "db_password" {
   value        = random_password.db_password.result
   key_vault_id = azurerm_key_vault.main.id
 
-  depends_on = [azurerm_role_assignment.terraform_kv_secrets_officer]
+  depends_on = [azurerm_key_vault_access_policy.terraform]
 }
 
 # Store Resend API key in Key Vault
@@ -110,7 +112,7 @@ resource "azurerm_key_vault_secret" "resend_api_key" {
   value        = var.resend_api_key
   key_vault_id = azurerm_key_vault.main.id
 
-  depends_on = [azurerm_role_assignment.terraform_kv_secrets_officer]
+  depends_on = [azurerm_key_vault_access_policy.terraform]
 }
 
 # Store JWT secret in Key Vault
@@ -119,7 +121,7 @@ resource "azurerm_key_vault_secret" "jwt_secret" {
   value        = var.jwt_secret
   key_vault_id = azurerm_key_vault.main.id
 
-  depends_on = [azurerm_role_assignment.terraform_kv_secrets_officer]
+  depends_on = [azurerm_key_vault_access_policy.terraform]
 }
 
 # PostgreSQL Flexible Server with auto-pause capability
@@ -376,17 +378,22 @@ resource "azurerm_container_app" "main" {
 
       # Azure Storage Configuration
       env {
-        name  = "AZURE_STORAGE_ACCOUNT"
+        name  = "STORAGE_PROVIDER"
+        value = "azure"
+      }
+
+      env {
+        name  = "AZURE_STORAGE_ACCOUNT_NAME"
         value = azurerm_storage_account.main.name
       }
 
       env {
-        name        = "AZURE_STORAGE_KEY"
+        name        = "AZURE_STORAGE_ACCOUNT_KEY"
         secret_name = "storage-account-key"
       }
 
       env {
-        name  = "AZURE_STORAGE_CONTAINER"
+        name  = "AZURE_STORAGE_CONTAINER_NAME"
         value = azurerm_storage_container.uploads.name
       }
 
@@ -516,13 +523,25 @@ resource "azurerm_container_app_custom_domain" "cert" {
   ]
 }
 
-# Grant Container App managed identity Key Vault Secrets User role
-# This allows reading secrets only (principle of least privilege)
-resource "azurerm_role_assignment" "container_app_kv_secrets_user" {
-  scope                = azurerm_key_vault.main.id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_container_app.main.identity[0].principal_id
+# Grant Container App managed identity read access to Key Vault
+resource "azurerm_key_vault_access_policy" "container_app" {
+  key_vault_id = azurerm_key_vault.main.id
+  tenant_id    = azurerm_container_app.main.identity[0].tenant_id
+  object_id    = azurerm_container_app.main.identity[0].principal_id
+
+  secret_permissions = [
+    "Get", "List"
+  ]
 }
+
+# Uncomment once the Terraform service principal has Microsoft.Authorization/roleAssignments/write
+# on this vault (pairs with terraform_kv_secrets_officer above):
+#
+# resource "azurerm_role_assignment" "container_app_kv_secrets_user" {
+#   scope                = azurerm_key_vault.main.id
+#   role_definition_name = "Key Vault Secrets User"
+#   principal_id         = azurerm_container_app.main.identity[0].principal_id
+# }
 
 # Note: Role assignments require elevated permissions.
 # For dev environment, we use storage account key directly in secrets.
