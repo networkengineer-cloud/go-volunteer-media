@@ -98,7 +98,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -298,6 +298,7 @@ Consider using managed PostgreSQL services:
 - **Google Cloud SQL**: High availability, automatic updates
 - **Digital Ocean Managed Databases**: Simple setup
 - **Heroku Postgres**: Easy integration
+- **pgvector support**: if using a managed provider, confirm the `vector` extension is allow-listed (AWS RDS for PostgreSQL 15+ and Azure Database for PostgreSQL Flexible Server both support it as of this writing) before relying on semantic search in production — if the extension can't be created, semantic search silently stays keyword-only (see Error Handling in the design spec) rather than breaking the deploy.
 
 ## Reverse Proxy Setup
 

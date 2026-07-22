@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -81,8 +82,14 @@ func ExportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
 }
 
 // ImportAnimalsCSV imports animals from CSV file
-func ImportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
+func ImportAnimalsCSV(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// rawDB is captured before the shadow below so the detached embed
+		// goroutines spawned below get the unscoped db, not one bound to
+		// this request's context (which is canceled the instant this
+		// handler returns). See the same pattern in animal_crud.go's
+		// CreateAnimal.
+		rawDB := db
 		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
@@ -250,6 +257,14 @@ func ImportAnimalsCSV(db *gorm.DB) gin.HandlerFunc {
 			logger.Error("Failed to import animals", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to import animals"})
 			return
+		}
+
+		// db.Create above populates each animal's ID, so these are safe to
+		// embed now. Uses rawDB (not the request-scoped db) since
+		// embedAnimalAsync's goroutines outlive this request — see the same
+		// pattern in animal_crud.go's CreateAnimal.
+		for _, animal := range animals {
+			embedAnimalAsync(rawDB, embedder, animal)
 		}
 
 		logger.WithFields(map[string]interface{}{

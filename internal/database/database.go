@@ -17,6 +17,17 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// vectorEmbeddingDimension is the width of the vector column
+// createCustomIndexes creates on animals/animal_comments/updates.embedding.
+// Must match embedding.Dimension (internal/embedding/embedder.go) — the two
+// can't share a single Go constant because internal/embedding's own
+// Postgres-gated test file imports internal/database, so internal/database
+// importing internal/embedding would create an import cycle. Centralized
+// here (instead of repeating the literal in three separate ALTER TABLE
+// strings) so a future embedding-model change with a different dimension
+// only needs updating in two places instead of four.
+const vectorEmbeddingDimension = 1024
+
 // Initialize creates and returns a database connection
 func Initialize() (*gorm.DB, error) {
 	dbHost := os.Getenv("DB_HOST")
@@ -460,8 +471,320 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created partial unique index idx_user_skill_tag_group_name_active")
 	}
 
+	// pg_trgm powers trigram similarity matching. Only the extension and the
+	// GIN index below are set up so far — it currently accelerates the
+	// existing LOWER(name) LIKE '%...%' substring search in GetAnimals/
+	// GetAllAnimals (a plain B-tree index can't serve a leading-wildcard
+	// LIKE), but nothing yet queries via the actual %/similarity() fuzzy
+	// operators, so true typo-tolerant matching ("Rax" surfacing "Rex")
+	// isn't implemented yet — the infrastructure is just in place for it.
+	trgmExtensionQuery := `CREATE EXTENSION IF NOT EXISTS pg_trgm`
+	if err := db.Exec(trgmExtensionQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create pg_trgm extension")
+	} else {
+		logging.Info("Ensured pg_trgm extension exists")
+	}
+
+	// Generated tsvector column for full-text keyword/phrase search over animals.
+	// STORED + GENERATED ALWAYS means Postgres keeps it in sync on every
+	// insert/update automatically — no application-level reindexing needed.
+	//
+	// CAUTION: unlike a plain ADD COLUMN, adding a STORED generated column is
+	// NOT a metadata-only change — Postgres must compute and materialize the
+	// value for every existing row, which rewrites the whole table under an
+	// ACCESS EXCLUSIVE lock (blocking all reads and writes to it, including
+	// from other already-running instances on a rolling deploy) for as long
+	// as the rewrite takes. On a fresh/empty database this is instant; on any
+	// deployment with a non-trivial amount of existing animal/comment data,
+	// run this migration during a maintenance window rather than assuming it
+	// applies silently in the background. The same caution applies to the
+	// animal_comments.search_vector column below.
+	animalSearchVectorQuery := `
+		ALTER TABLE animals ADD COLUMN IF NOT EXISTS search_vector tsvector
+		GENERATED ALWAYS AS (
+			to_tsvector('english',
+				coalesce(name, '') || ' ' ||
+				coalesce(species, '') || ' ' ||
+				coalesce(breed, '') || ' ' ||
+				coalesce(description, '') || ' ' ||
+				coalesce(trainer_notes, '')
+			)
+		) STORED
+	`
+	if err := db.Exec(animalSearchVectorQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add search_vector column to animals")
+	} else {
+		logging.Info("Ensured animals.search_vector column exists")
+	}
+
+	animalSearchVectorIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animals_search_vector ON animals USING GIN (search_vector)
+	`
+	if err := db.Exec(animalSearchVectorIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create GIN index on animals.search_vector")
+	} else {
+		logging.Info("Created GIN index idx_animals_search_vector")
+	}
+
+	// Trigram index on animal name for typo-tolerant/partial matching,
+	// separate from the phrase-search vector above.
+	animalNameTrgmIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animals_name_trgm ON animals USING GIN (name gin_trgm_ops)
+	`
+	if err := db.Exec(animalNameTrgmIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create trigram index on animals.name")
+	} else {
+		logging.Info("Created trigram index idx_animals_name_trgm")
+	}
+
+	// Generated tsvector column for full-text keyword/phrase search over
+	// comments. Same table-rewrite/ACCESS EXCLUSIVE lock caution as
+	// animals.search_vector above applies here too.
+	commentSearchVectorQuery := `
+		ALTER TABLE animal_comments ADD COLUMN IF NOT EXISTS search_vector tsvector
+		GENERATED ALWAYS AS (to_tsvector('english', coalesce(content, ''))) STORED
+	`
+	if err := db.Exec(commentSearchVectorQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add search_vector column to animal_comments")
+	} else {
+		logging.Info("Ensured animal_comments.search_vector column exists")
+	}
+
+	commentSearchVectorIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animal_comments_search_vector ON animal_comments USING GIN (search_vector)
+	`
+	if err := db.Exec(commentSearchVectorIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create GIN index on animal_comments.search_vector")
+	} else {
+		logging.Info("Created GIN index idx_animal_comments_search_vector")
+	}
+
+	// pgvector powers the embedding columns/HNSW indexes below.
+	vectorExtensionQuery := `CREATE EXTENSION IF NOT EXISTS vector`
+	if err := db.Exec(vectorExtensionQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create vector extension")
+	} else {
+		logging.Info("Ensured vector extension exists")
+	}
+
+	// Embedding columns for semantic (hybrid) search. Unlike search_vector
+	// above, these can't be GENERATED columns — computing an embedding
+	// requires an external API call, which Postgres generated columns can't
+	// make. They're plain nullable columns populated by the application (see
+	// internal/embedding's write-path goroutine and reconciliation sweep).
+	// Deliberately not added to models.Animal/models.AnimalComment — see the
+	// comment on the search_vector columns above for why (AutoMigrate runs
+	// before this function, before the vector extension exists).
+	//
+	// Unlike the STORED generated tsvector columns above, adding a plain
+	// nullable vector column is metadata-only — no table rewrite, no
+	// ACCESS EXCLUSIVE lock, no maintenance-window concern.
+	animalEmbeddingColumnsQuery := fmt.Sprintf(`
+		ALTER TABLE animals ADD COLUMN IF NOT EXISTS embedding vector(%d);
+		ALTER TABLE animals ADD COLUMN IF NOT EXISTS embedding_updated_at timestamptz
+	`, vectorEmbeddingDimension)
+	if err := db.Exec(animalEmbeddingColumnsQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add embedding columns to animals (is the pgvector extension available?)")
+	} else {
+		logging.Info("Ensured animals.embedding/embedding_updated_at columns exist")
+	}
+
+	animalEmbeddingIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animals_embedding ON animals USING hnsw (embedding vector_cosine_ops)
+	`
+	if err := db.Exec(animalEmbeddingIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create HNSW index on animals.embedding")
+	} else {
+		logging.Info("Created HNSW index idx_animals_embedding")
+	}
+
+	commentEmbeddingColumnsQuery := fmt.Sprintf(`
+		ALTER TABLE animal_comments ADD COLUMN IF NOT EXISTS embedding vector(%d);
+		ALTER TABLE animal_comments ADD COLUMN IF NOT EXISTS embedding_updated_at timestamptz
+	`, vectorEmbeddingDimension)
+	if err := db.Exec(commentEmbeddingColumnsQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add embedding columns to animal_comments (is the pgvector extension available?)")
+	} else {
+		logging.Info("Ensured animal_comments.embedding/embedding_updated_at columns exist")
+	}
+
+	commentEmbeddingIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animal_comments_embedding ON animal_comments USING hnsw (embedding vector_cosine_ops)
+	`
+	if err := db.Exec(commentEmbeddingIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create HNSW index on animal_comments.embedding")
+	} else {
+		logging.Info("Created HNSW index idx_animal_comments_embedding")
+	}
+
+	// updates never got a search_vector column in the original keyword-search
+	// feature (it predates that feature), so this adds both keyword and
+	// semantic search capability together, unlike animals/animal_comments
+	// above which only needed the embedding half added.
+	// Same table-rewrite/ACCESS EXCLUSIVE lock caution as animals.search_vector above applies here too.
+	updateSearchVectorQuery := `
+		ALTER TABLE updates ADD COLUMN IF NOT EXISTS search_vector tsvector
+		GENERATED ALWAYS AS (
+			to_tsvector('english', coalesce(title, '') || ' ' || coalesce(content, ''))
+		) STORED
+	`
+	if err := db.Exec(updateSearchVectorQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add search_vector column to updates")
+	} else {
+		logging.Info("Ensured updates.search_vector column exists")
+	}
+
+	updateSearchVectorIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_updates_search_vector ON updates USING GIN (search_vector)
+	`
+	if err := db.Exec(updateSearchVectorIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create GIN index on updates.search_vector")
+	} else {
+		logging.Info("Created GIN index idx_updates_search_vector")
+	}
+
+	updateEmbeddingColumnsQuery := fmt.Sprintf(`
+		ALTER TABLE updates ADD COLUMN IF NOT EXISTS embedding vector(%d);
+		ALTER TABLE updates ADD COLUMN IF NOT EXISTS embedding_updated_at timestamptz
+	`, vectorEmbeddingDimension)
+	if err := db.Exec(updateEmbeddingColumnsQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to add embedding columns to updates (is the pgvector extension available?)")
+	} else {
+		logging.Info("Ensured updates.embedding/embedding_updated_at columns exist")
+	}
+
+	updateEmbeddingIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_updates_embedding ON updates USING hnsw (embedding vector_cosine_ops)
+	`
+	if err := db.Exec(updateEmbeddingIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create HNSW index on updates.embedding")
+	} else {
+		logging.Info("Created HNSW index idx_updates_embedding")
+	}
+
 	logging.Info("Custom indexes creation completed")
 	return nil
+}
+
+// embeddedResourceTables lists every table createCustomIndexes adds an
+// embedding column and HNSW index to. VectorSchemaReady checks against this
+// same list — rather than a second hardcoded literal — so adding or
+// removing an embedded resource type only requires updating one place.
+var embeddedResourceTables = []string{"animals", "animal_comments", "updates"}
+
+// vectorEmbeddingIndexName returns the HNSW index name createCustomIndexes
+// creates for table's embedding column, following the "idx_<table>_embedding"
+// convention used throughout createCustomIndexes' embedding-index queries.
+func vectorEmbeddingIndexName(table string) string {
+	return "idx_" + table + "_embedding"
+}
+
+// quotedTableLiteralList renders tables as a comma-separated list of
+// single-quoted SQL literals for an IN (...) clause. Safe via fmt.Sprintf
+// only because every caller passes this package's own hardcoded table-name
+// constants — never user input.
+func quotedTableLiteralList(tables []string) string {
+	quoted := make([]string, len(tables))
+	for i, t := range tables {
+		quoted[i] = "'" + t + "'"
+	}
+	return strings.Join(quoted, ", ")
+}
+
+// embeddedResourceColumns lists every column, alongside "embedding" itself,
+// that the write path (PersistEmbedding) and reconciliation sweep depend on.
+// embedding_updated_at holds the optimistic-concurrency/staleness timestamp
+// both of those read and write — if it's missing while embedding exists
+// (e.g. the two ALTER TABLE statements in createCustomIndexes' combined Exec
+// call ever stop being atomic), semantic search would look "ready" here but
+// fail the moment anything tries to persist or touch an embedding.
+var embeddedResourceColumns = []string{"embedding", "embedding_updated_at"}
+
+// VectorSchemaReady reports whether the pgvector extension, embedding
+// columns, and HNSW indexes createCustomIndexes attempts to create actually
+// exist. That creation is deliberately best-effort (warn-only, since some
+// managed Postgres providers reject CREATE EXTENSION or CREATE INDEX ...
+// USING hnsw), so nothing else in migration signals failure — callers use
+// this to decide whether it's safe to enable semantic search, instead of
+// discovering the gap as a query-time SQL error against a column that was
+// never created, or as a silent unindexed full-table scan on every semantic
+// query if only the index (and not the column) failed to create.
+//
+// Both checks are qualified to table_schema/schemaname = 'public': without
+// it, a same-named table or index in another schema on the search_path (a
+// shadow/template schema some migration tooling uses, for example) would
+// inflate the counts and could make an incomplete public-schema setup look
+// ready, or vice versa.
+func VectorSchemaReady(db *gorm.DB) bool {
+	wantColumns := len(embeddedResourceTables) * len(embeddedResourceColumns)
+	wantIndexes := len(embeddedResourceTables)
+
+	var columnCount int64
+	columnQuery := fmt.Sprintf(`
+		SELECT COUNT(*) FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name IN (%s)
+		  AND column_name IN (%s)
+	`, quotedTableLiteralList(embeddedResourceTables), quotedTableLiteralList(embeddedResourceColumns))
+	if err := db.Raw(columnQuery).Scan(&columnCount).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to check vector schema readiness (columns)")
+		return false
+	}
+	if int(columnCount) != wantColumns {
+		logMissingVectorSchema(db)
+		return false
+	}
+
+	indexNames := make([]string, wantIndexes)
+	for i, t := range embeddedResourceTables {
+		indexNames[i] = vectorEmbeddingIndexName(t)
+	}
+	var indexCount int64
+	indexQuery := fmt.Sprintf(`
+		SELECT COUNT(*) FROM pg_indexes
+		WHERE schemaname = 'public'
+		  AND indexname IN (%s)
+	`, quotedTableLiteralList(indexNames))
+	if err := db.Raw(indexQuery).Scan(&indexCount).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to check vector schema readiness (indexes)")
+		return false
+	}
+	if int(indexCount) != wantIndexes {
+		logMissingVectorSchema(db)
+		return false
+	}
+	return true
+}
+
+// logMissingVectorSchema is called only once VectorSchemaReady has already
+// determined the schema isn't fully ready. It re-checks each table/index
+// individually so the startup log names exactly what's missing, instead of
+// leaving the operator with only an aggregate count mismatch and no way to
+// tell which of the three resource types' migration failed.
+func logMissingVectorSchema(db *gorm.DB) {
+	for _, table := range embeddedResourceTables {
+		for _, column := range embeddedResourceColumns {
+			var columnExists bool
+			if err := db.Raw(`
+				SELECT EXISTS (
+					SELECT 1 FROM information_schema.columns
+					WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
+				)
+			`, table, column).Scan(&columnExists).Error; err == nil && !columnExists {
+				logging.WithFields(map[string]interface{}{"table": table, "column": column}).Warn("Vector schema not ready: column missing")
+			}
+		}
+
+		indexName := vectorEmbeddingIndexName(table)
+		var indexExists bool
+		if err := db.Raw(`
+			SELECT EXISTS (
+				SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?
+			)
+		`, indexName).Scan(&indexExists).Error; err == nil && !indexExists {
+			logging.WithField("index", indexName).Warn("Vector schema not ready: HNSW index missing")
+		}
+	}
 }
 
 // createDefaultGroups creates the default groups if they don't exist

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
@@ -20,6 +21,22 @@ func setupAnimalCommentTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
+
+	// IMPORTANT: SQLite in-memory databases are per-connection. Without
+	// capping the pool to a single connection, database/sql may open a
+	// second physical connection to service a concurrent caller (e.g. the
+	// detached goroutine embedCommentAsync spawns) — and since ":memory:"
+	// isn't shared-cache here, that second connection is a distinct, blank,
+	// unmigrated database, producing intermittent "no such table:
+	// animal_comments" errors. Forcing a single connection makes the pool
+	// serialize access instead, matching the pattern in SetupTestDB
+	// (test_helpers.go).
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("Failed to get database instance: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
 	// Migrate models
 	err = db.AutoMigrate(
@@ -289,7 +306,7 @@ func TestCreateAnimalComment(t *testing.T) {
 			tt.setupContext(c)
 
 			// Execute
-			handler := CreateAnimalComment(db)
+			handler := CreateAnimalComment(db, &embedding.StubEmbedder{})
 			handler(c)
 
 			// Assert
@@ -329,7 +346,7 @@ func TestCreateAnimalComment_WithTags(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/groups/1/animals/1/comments", bytes.NewBuffer(bodyBytes))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := CreateAnimalComment(db)
+	handler := CreateAnimalComment(db, &embedding.StubEmbedder{})
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 )
 
@@ -37,7 +38,7 @@ func TestUpdateAnimalAdmin_Success(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -86,7 +87,7 @@ func TestUpdateAnimalAdmin_PartialUpdate(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -126,7 +127,7 @@ func TestUpdateAnimalAdmin_StatusTransition(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -169,7 +170,7 @@ func TestUpdateAnimalAdmin_EnterQuarantine_StoresIncidentDetails(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -213,7 +214,7 @@ func TestUpdateAnimalAdmin_LeaveQuarantine_ClearsIncidentDetails(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -252,7 +253,7 @@ func TestUpdateAnimalAdmin_UnderVetCareTransition(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -299,7 +300,7 @@ func TestUpdateAnimalAdmin_MoveGroup(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -332,7 +333,7 @@ func TestUpdateAnimalAdmin_NotFound(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/api/v1/admin/animals/99999", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusNotFound {
@@ -360,7 +361,7 @@ func TestUpdateAnimalAdmin_NoUpdates(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	// The handler will accept this as an update (even though the value is the same)
@@ -387,7 +388,7 @@ func TestUpdateAnimalAdmin_ValidationError(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusBadRequest {
@@ -584,7 +585,7 @@ func TestUpdateAnimalAdmin_ApprovalStatusSet(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateAnimalAdmin(db, nil)(c)
+	UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -620,7 +621,7 @@ func TestUpdateAnimalAdmin_ApprovalClearedOnTransitionToAvailable(t *testing.T) 
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	UpdateAnimalAdmin(db, nil)(c)
+	UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -656,7 +657,7 @@ func TestUpdateAnimalAdmin_BiteQuarantine_DefaultEndDate(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -699,7 +700,7 @@ func TestUpdateAnimalAdmin_BiteQuarantine_EndDateBeforeStartDate(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusBadRequest {
@@ -738,7 +739,7 @@ func TestUpdateAnimalAdmin_EditEndDateOnly_WhileInQuarantine(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -783,7 +784,7 @@ func TestUpdateAnimalAdmin_LeaveQuarantine_ClearsEndDate(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -819,7 +820,7 @@ func TestUpdateAnimalAdmin_BQEntry_CreatesIncidentRow(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -864,7 +865,7 @@ func TestUpdateAnimalAdmin_BQExit_StampsEndDate(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -922,7 +923,7 @@ func TestUpdateAnimalAdmin_BQExit_ExplicitEndDate_UsesProvidedValue(t *testing.T
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -978,7 +979,7 @@ func TestUpdateAnimalAdmin_BQExit_ExplicitEndDate_NoStoredStartDate_Succeeds(t *
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -1036,7 +1037,7 @@ func TestUpdateAnimalAdmin_BQExit_InvalidExplicitEndDate_RejectsBeforeSaving(t *
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusBadRequest {
@@ -1094,7 +1095,7 @@ func TestUpdateAnimalAdmin_LeaveQuarantine_EarlyExit_CapsEndDateAtNow(t *testing
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 	afterRequest := time.Now()
 
@@ -1147,7 +1148,7 @@ func TestUpdateAnimalAdmin_MidBQ_UpdatesIncidentDetails(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -1202,7 +1203,7 @@ func TestUpdateAnimalAdmin_MidBQ_EditStartDate_SyncsIncidentRow(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimalAdmin(db, nil)
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {

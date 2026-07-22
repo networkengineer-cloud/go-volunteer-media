@@ -8,13 +8,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
 
 // UpdateAnimalAdmin updates an existing animal by ID (admin only, no group check needed)
-func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
+func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := middleware.GetLogger(c)
 		animalID := c.Param("animalId")
@@ -43,6 +44,12 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}
+
+		// Captured before any field mutations below so it can be compared
+		// against the post-update text to decide whether re-embedding is
+		// actually necessary — mirrors the same pattern in
+		// animal_crud.go's UpdateAnimal.
+		oldEmbeddingText := animalEmbeddingText(animal)
 
 		// Build update map with only provided fields
 		updates := make(map[string]interface{})
@@ -194,6 +201,16 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service) gin.HandlerFunc
 		if err := dbCtx.Preload("Tags").First(&animal, animalID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload animal"})
 			return
+		}
+
+		// db is the unscoped *gorm.DB (see the comment on dbCtx above) so the
+		// detached embed goroutine isn't tied to this request's context.
+		if animalEmbeddingText(animal) != oldEmbeddingText {
+			embedAnimalAsync(db, embedder, animal)
+		} else if embedding.Usable(embedder) {
+			if err := embedding.TouchEmbeddingTimestamp(db, "animals", animal.ID, animal.UpdatedAt); err != nil {
+				logger.Error("Failed to touch animal embedding timestamp", err)
+			}
 		}
 
 		if enteredQuarantine {

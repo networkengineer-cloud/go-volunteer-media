@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 )
 
@@ -127,7 +128,7 @@ func TestImportAnimalsCSV_Success(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/api/v1/admin/animals/import-csv", body)
 	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
 
-	handler := ImportAnimalsCSV(db)
+	handler := ImportAnimalsCSV(db, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -173,7 +174,7 @@ func TestImportAnimalsCSV_UnderVetCareStatus(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/api/v1/admin/animals/import-csv", body)
 	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
 
-	handler := ImportAnimalsCSV(db)
+	handler := ImportAnimalsCSV(db, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -206,7 +207,7 @@ func TestImportAnimalsCSV_InvalidFile(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/api/v1/admin/animals/import-csv", body)
 	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
 
-	handler := ImportAnimalsCSV(db)
+	handler := ImportAnimalsCSV(db, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusBadRequest {
@@ -239,7 +240,7 @@ func TestImportAnimalsCSV_MissingRequiredColumn(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/api/v1/admin/animals/import-csv", body)
 	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
 
-	handler := ImportAnimalsCSV(db)
+	handler := ImportAnimalsCSV(db, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusBadRequest {
@@ -274,7 +275,7 @@ invalid,Rex,Dog
 	c.Request = httptest.NewRequest("POST", "/api/v1/admin/animals/import-csv", body)
 	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
 
-	handler := ImportAnimalsCSV(db)
+	handler := ImportAnimalsCSV(db, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -308,7 +309,7 @@ func TestImportAnimalsCSV_NoFile(t *testing.T) {
 	c, w := setupAnimalTestContext(user.ID, true)
 	c.Request = httptest.NewRequest("POST", "/api/v1/admin/animals/import-csv", nil)
 
-	handler := ImportAnimalsCSV(db)
+	handler := ImportAnimalsCSV(db, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusBadRequest {

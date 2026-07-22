@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 )
 
@@ -73,7 +74,7 @@ func TestUpdateAnimal_EnterQuarantine_StoresIncidentAndKeepsItOnEdit(t *testing.
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db, nil)
+	handler := UpdateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -105,7 +106,7 @@ func TestUpdateAnimal_EnterQuarantine_StoresIncidentAndKeepsItOnEdit(t *testing.
 	c2.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData2))
 	c2.Request.Header.Set("Content-Type", "application/json")
 
-	handler2 := UpdateAnimal(db, nil)
+	handler2 := UpdateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler2(c2)
 
 	if w2.Code != http.StatusOK {
@@ -150,7 +151,7 @@ func TestUpdateAnimal_LeaveQuarantine_ClearsIncident(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d/animals/%d", group.ID, animal.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db, nil)
+	handler := UpdateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -186,7 +187,7 @@ func TestCreateAnimal_BQEntry_CreatesIncidentRow(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := CreateAnimal(db, nil)
+	handler := CreateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusCreated {
@@ -225,7 +226,7 @@ func TestUpdateAnimal_BQEntry_CreatesIncidentRow(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db, nil)
+	handler := UpdateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -274,7 +275,7 @@ func TestUpdateAnimal_BQExit_StampsEndDate(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db, nil)
+	handler := UpdateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -335,7 +336,7 @@ func TestUpdateAnimal_BQExit_ExplicitEndDate_UsesProvidedValue(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db, nil)
+	handler := UpdateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -393,7 +394,7 @@ func TestUpdateAnimal_BQExit_ExplicitEndDate_NoStoredStartDate_Succeeds(t *testi
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db, nil)
+	handler := UpdateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -454,7 +455,7 @@ func TestUpdateAnimal_BQExit_InvalidExplicitEndDate_RejectsBeforeSaving(t *testi
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db, nil)
+	handler := UpdateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusBadRequest {
@@ -516,7 +517,7 @@ func TestUpdateAnimal_MidBQ_UpdatesIncidentDetails(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db, nil)
+	handler := UpdateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {
@@ -554,7 +555,7 @@ func TestCreateAnimal_BiteQuarantine_StoresIncidentDetails(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := CreateAnimal(db, nil)
+	handler := CreateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusCreated {
@@ -669,7 +670,7 @@ func TestUpdateAnimal_MidBQ_EditStartDate_SyncsIncidentRow(t *testing.T) {
 	c.Request = httptest.NewRequest("PUT", "/", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	handler := UpdateAnimal(db, nil)
+	handler := UpdateAnimal(db, nil, &embedding.StubEmbedder{})
 	handler(c)
 
 	if w.Code != http.StatusOK {

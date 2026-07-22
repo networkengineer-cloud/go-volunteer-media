@@ -23,6 +23,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/convert"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/handlers"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/lifecycle"
@@ -142,6 +143,30 @@ func main() {
 	} else {
 		logger.Info("Email service not configured - password reset and email notifications will be disabled")
 	}
+
+	// Initialize embedding provider for semantic search. Declared as the
+	// interface type (not *embedding.VoyageEmbedder) so it can be reset to a
+	// true nil interface below — embedding.Usable(nil) then correctly
+	// disables every one of its five call sites (the three write-path embed
+	// helpers, the reconciliation sweep, and the search handler) instead of
+	// each one independently discovering a broken schema at query time.
+	var embedder embedding.Embedder = embedding.NewVoyageEmbedder()
+	if embedder.IsConfigured() {
+		logger.Info("Voyage embedding provider configured and ready")
+		if !database.VectorSchemaReady(db) {
+			logger.Error("Vector schema not ready (pgvector extension or embedding columns missing) - disabling semantic search; falling back to keyword-only search", nil)
+			embedder = nil
+		}
+	} else {
+		logger.Info("Voyage embedding provider not configured - search will be keyword-only")
+	}
+
+	// Reconciliation sweep: backfills missing embeddings and retries failed
+	// write-path embed attempts. A no-op while SEMANTIC_SEARCH_ENABLED is
+	// false or the embedder isn't configured (sweepAnimals/sweepComments
+	// find nothing new to do, and StartReconciliationSweep itself checks the
+	// flag every tick before doing any work).
+	stopEmbeddingSweep := embedding.StartReconciliationSweep(db, embedder, 60*time.Second)
 
 	// Initialize GroupMe service
 	groupMeService := groupme.NewService()
@@ -306,10 +331,10 @@ func main() {
 			// Bulk animal management (admin only)
 			admin.GET("/animals", handlers.GetAllAnimals(db))
 			admin.POST("/animals/bulk-update", handlers.BulkUpdateAnimals(db))
-			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db))
+			admin.POST("/animals/import-csv", handlers.ImportAnimalsCSV(db, embedder))
 			admin.POST("/animals/export-csv", handlers.ExportAnimalsCSV(db))
 			admin.GET("/animals/export-comments-csv", handlers.ExportAnimalCommentsCSV(db))
-			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db, emailService))
+			admin.PUT("/animals/:animalId", handlers.UpdateAnimalAdmin(db, emailService, embedder))
 
 			// Animal image management (admin only)
 			admin.PUT("/animals/:animalId/images/:imageId/set-profile", handlers.SetAnimalProfilePicture(db))
@@ -345,6 +370,12 @@ func main() {
 			group.GET("/animals/:animalId", handlers.GetAnimal(db))
 			group.GET("/animals/check-duplicates", handlers.CheckDuplicateNames(db))
 
+			// Hybrid search over animals, comments, and updates: Postgres
+			// full-text keyword ranking, fused via RRF with semantic
+			// (embedding) ranking when SEMANTIC_SEARCH_ENABLED and Voyage
+			// are both configured — see handlers.Search's doc comment.
+			group.GET("/search", handlers.Search(db, embedder))
+
 			// Animal images - all group members can view, upload, and set profile pictures
 			group.GET("/animals/:animalId/images", handlers.GetAnimalImages(db))
 			group.POST("/animals/:animalId/images", handlers.UploadAnimalImageToGallery(db, storageProvider))
@@ -361,8 +392,8 @@ func main() {
 
 			// Animal comments - all group members can view, add, and edit own comments
 			group.GET("/animals/:animalId/comments", handlers.GetAnimalComments(db))
-			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db))
-			group.PUT("/animals/:animalId/comments/:commentId", handlers.UpdateAnimalComment(db))
+			group.POST("/animals/:animalId/comments", handlers.CreateAnimalComment(db, embedder))
+			group.PUT("/animals/:animalId/comments/:commentId", handlers.UpdateAnimalComment(db, embedder))
 			group.DELETE("/animals/:animalId/comments/:commentId", handlers.DeleteAnimalComment(db))
 			group.GET("/animals/:animalId/comments/:commentId/history", handlers.GetCommentHistory(db))
 
@@ -374,7 +405,7 @@ func main() {
 
 			// Updates routes
 			group.GET("/updates", handlers.GetUpdates(db))
-			group.POST("/updates", handlers.CreateUpdate(db, emailService, groupMeService))
+			group.POST("/updates", handlers.CreateUpdate(db, emailService, groupMeService, embedder))
 			group.DELETE("/updates/:updateId", handlers.DeleteUpdate(db))
 
 			// Protocol/Script routes - all group members can view
@@ -425,8 +456,8 @@ func main() {
 		// These routes check for site admin OR group admin access within the handlers
 		groupAdminAnimals := protected.Group("/groups/:id/animals")
 		{
-			groupAdminAnimals.POST("", handlers.CreateAnimal(db, emailService))
-			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db, emailService))
+			groupAdminAnimals.POST("", handlers.CreateAnimal(db, emailService, embedder))
+			groupAdminAnimals.PUT("/:animalId", handlers.UpdateAnimal(db, emailService, embedder))
 			groupAdminAnimals.DELETE("/:animalId", handlers.DeleteAnimal(db))
 			// Tag assignment for animals
 			groupAdminAnimals.POST("/:animalId/tags", handlers.AssignTagsToAnimal(db))
@@ -529,13 +560,27 @@ func main() {
 	<-quit
 	logger.Info("Shutting down server...")
 
-	// Graceful shutdown with 5 second timeout
+	// Stop accepting new connections first. stopEmbeddingSweep() below can
+	// block for up to sweepStopTimeout (10s) draining an in-flight sweep
+	// tick — running it before srv.Shutdown would leave the server still
+	// accepting new requests for that entire window after SIGTERM/SIGINT,
+	// delaying the graceful shutdown clients are waiting on.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal("Server forced to shutdown", err)
 	}
+
+	stopEmbeddingSweep()
+
+	// srv.Shutdown only waits for in-flight HTTP handlers, not the detached
+	// write-path embed goroutines those handlers spawn (see embedAsync in
+	// internal/handlers/search_embed.go). Drain them here, before the
+	// deferred sqlDB.Close() above runs, so a goroutine started by a request
+	// that returned just before shutdown can't race PersistEmbedding against
+	// an already-closed *sql.DB.
+	handlers.WaitForPendingEmbeds()
 
 	logger.Info("Server exited gracefully")
 }

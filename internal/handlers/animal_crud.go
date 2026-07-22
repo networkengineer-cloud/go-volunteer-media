@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -190,7 +191,7 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 }
 
 // CreateAnimal creates a new animal in a group
-func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
+func CreateAnimal(db *gorm.DB, emailService *email.Service, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// rawDB is captured before the shadow below so the detached
 		// goroutine spawned by sendQuarantineNotificationEmail gets the
@@ -293,6 +294,8 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			return
 		}
 
+		embedAnimalAsync(rawDB, embedder, animal)
+
 		if animal.Status == "bite_quarantine" {
 			if err := db.Create(&models.AnimalBQIncident{
 				AnimalID:        animal.ID,
@@ -328,7 +331,7 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 }
 
 // UpdateAnimal updates an existing animal
-func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
+func UpdateAnimal(db *gorm.DB, emailService *email.Service, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// rawDB is captured before the shadow below so the detached
 		// goroutine spawned by sendQuarantineNotificationEmail gets the
@@ -363,6 +366,12 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
 			return
 		}
+
+		// Captured before any field mutations below so it can be compared
+		// against the post-save text to decide whether re-embedding is
+		// actually necessary (e.g. a pure quarantine-status/approval-status
+		// edit doesn't change the embedded text at all).
+		oldEmbeddingText := animalEmbeddingText(animal)
 
 		// Track name changes
 		oldName := animal.Name
@@ -527,6 +536,23 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service) gin.HandlerFunc {
 		if err := db.Save(&animal).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update animal"})
 			return
+		}
+
+		// Skip the embed call entirely when none of the embedded fields
+		// actually changed (e.g. a pure quarantine/approval-status edit) —
+		// the reconciliation sweep only ever retries rows that are actually
+		// stale, so nothing is lost by not re-embedding unchanged text. When
+		// skipped, embedding_updated_at is touched forward to the new
+		// updated_at instead: db.Save above always bumps updated_at
+		// regardless of which fields changed, so without this the sweep
+		// would see the row as stale on its very next tick and re-embed the
+		// exact unchanged text anyway.
+		if animalEmbeddingText(animal) != oldEmbeddingText {
+			embedAnimalAsync(rawDB, embedder, animal)
+		} else if embedding.Usable(embedder) {
+			if err := embedding.TouchEmbeddingTimestamp(rawDB, "animals", animal.ID, animal.UpdatedAt); err != nil {
+				logging.WithField("error", err.Error()).Warn("Failed to touch animal embedding timestamp")
+			}
 		}
 
 		if enteredQuarantine {

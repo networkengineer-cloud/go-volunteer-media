@@ -4,7 +4,7 @@ services:
   # Development Database
   # Use environment variables or .env file for credentials
   postgres_dev:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: volunteer_media_db_dev
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
@@ -22,7 +22,7 @@ services:
 
   # Production Database (for testing production setup)
   postgres_prod:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: volunteer_media_db_prod
     environment:
       POSTGRES_USER: postgres

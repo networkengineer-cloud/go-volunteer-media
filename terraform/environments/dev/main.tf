@@ -181,6 +181,21 @@ resource "azurerm_postgresql_flexible_server_database" "main" {
   collation = "en_US.utf8"
 }
 
+# Extension allow-list. Azure Flexible Server only permits CREATE EXTENSION
+# for extensions named here — the app's migrations (internal/database's
+# createCustomIndexes) run `CREATE EXTENSION IF NOT EXISTS pg_trgm` (typo-
+# tolerant search) and `CREATE EXTENSION IF NOT EXISTS vector` (pgvector,
+# semantic search) as best-effort/warn-only DDL, so without this the
+# extensions silently fail to create and the features they back silently
+# degrade — no deploy failure, no obvious error, just a missing index. This
+# resource is a full replace, not additive: any extension the app needs must
+# be listed here, not appended via `az postgres flexible-server parameter set`.
+resource "azurerm_postgresql_flexible_server_configuration" "extensions" {
+  name      = "azure.extensions"
+  server_id = azurerm_postgresql_flexible_server.main.id
+  value     = "pg_trgm,vector"
+}
+
 # Storage Account for image uploads
 resource "azurerm_storage_account" "main" {
   name                = "st${replace(var.project_name, "-", "")}${var.environment}"
@@ -348,6 +363,17 @@ resource "azurerm_container_app" "main" {
         value = var.resend_from_email
       }
 
+      # Semantic Search (Voyage AI embeddings)
+      env {
+        name        = "VOYAGE_API_KEY"
+        secret_name = "voyage-api-key"
+      }
+
+      env {
+        name  = "SEMANTIC_SEARCH_ENABLED"
+        value = var.semantic_search_enabled ? "true" : "false"
+      }
+
       # Azure Storage Configuration
       env {
         name  = "AZURE_STORAGE_ACCOUNT"
@@ -420,6 +446,11 @@ resource "azurerm_container_app" "main" {
   secret {
     name  = "resend-api-key"
     value = var.resend_api_key
+  }
+
+  secret {
+    name  = "voyage-api-key"
+    value = var.voyage_api_key
   }
 
   secret {
