@@ -551,6 +551,40 @@ func TestSearch_Postgres_SemanticMatchSurfacesResultWithNoKeywordOverlap(t *test
 	}
 }
 
+// TestSearch_Postgres_ExcludesUnrelatedSemanticMatchesBeyondDistanceThreshold
+// guards against the semantic candidate query returning literally every
+// embedded row in the group merely because it has to return *something*: with
+// no keyword overlap and no genuinely similar row, "Unrelated" (orthogonal to
+// the query embedding, i.e. maximally dissimilar) must not appear in results
+// just because it's the least-distant of a small candidate set.
+func TestSearch_Postgres_ExcludesUnrelatedSemanticMatchesBeyondDistanceThreshold(t *testing.T) {
+	t.Setenv("SEMANTIC_SEARCH_ENABLED", "true")
+
+	db := openSearchTestPostgres(t)
+	f := newSearchTestFixture(t, db)
+
+	noOverlap := models.Animal{GroupID: f.groupA.ID, Name: "Unrelated", Species: "Cat", Status: "available"}
+	if err := f.tx.Create(&noOverlap).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+	// Orthogonal to the query embedding below (vectorWithOneAt(0)) — cosine
+	// distance 1.0, the maximum for two non-opposite vectors, i.e. as
+	// unrelated as two embeddings can be.
+	f.setAnimalEmbedding(t, noOverlap.ID, vectorWithOneAt(500))
+
+	c, w := f.searchRequest(t, f.groupA.ID, "tennis ball")
+	Search(f.tx, &fixedVectorEmbedder{vector: vectorWithOneAt(0)})(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := decodeSearchResponse(t, w)
+	animals, _ := body["animals"].([]interface{})
+	for _, a := range animals {
+		if a.(map[string]interface{})["name"] == "Unrelated" {
+			t.Fatalf("expected \"Unrelated\" (orthogonal embedding, no keyword overlap) to be excluded as not a real match, got animals: %v", animals)
+		}
+	}
+}
+
 func TestSearch_Postgres_DegradesToKeywordOnlyWhenEmbedderFails(t *testing.T) {
 	// SEMANTIC_SEARCH_ENABLED is opt-in (defaults to disabled) — must be
 	// explicitly enabled here, or Usable(embedder) would short-circuit on

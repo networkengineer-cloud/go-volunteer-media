@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi, scriptsApi } from '../api/client';
 import type { Animal, AnimalComment, CommentTag, CommentHistory, Group, GroupMembership, SessionMetadata, Script } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
@@ -28,6 +28,7 @@ const ProtocolViewer = lazy(() => import('../components/ProtocolViewer'));
 const AnimalDetailPage: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAdmin, user } = useAuth();
   const toast = useToast();
   const [animal, setAnimal] = useState<Animal | null>(null);
@@ -67,6 +68,17 @@ const AnimalDetailPage: React.FC = () => {
   const [scriptFilter, setScriptFilter] = useState('');
   const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
+
+  // Deep-link support from search results (GroupSearch links to
+  // `?comment=<id>`): the target comment may be several pages deep (or on a
+  // different sort order) from what loadAnimalData's initial page fetches,
+  // so scrolledToHighlightRef tracks whether *this* comment id has already
+  // been located/scrolled-to, distinct from highlightedCommentId (which also
+  // drives the CSS highlight and is cleared after the highlight fades).
+  const highlightCommentParam = searchParams.get('comment');
+  const highlightCommentId = highlightCommentParam ? Number(highlightCommentParam) : null;
+  const [highlightedCommentId, setHighlightedCommentId] = useState<number | null>(null);
+  const scrolledToHighlightRef = useRef<number | null>(null);
 
   const loadComments = useCallback(async (
     gId: number, 
@@ -316,6 +328,34 @@ const AnimalDetailPage: React.FC = () => {
       setLoadingMore(false);
     }
   };
+
+  // Locate a comment deep-linked from search: keep paging until it shows up
+  // or we run out of pages, then scroll to and briefly highlight it. Calls
+  // loadComments directly (rather than handleLoadMore) so this effect's
+  // dependency list stays exhaustive-deps clean — handleLoadMore is
+  // redefined every render and isn't memoized. Resets
+  // scrolledToHighlightRef whenever the target id changes so navigating
+  // between two search results re-triggers.
+  useEffect(() => {
+    if (!highlightCommentId || !groupId || !id) return;
+    if (scrolledToHighlightRef.current === highlightCommentId) return;
+
+    const target = comments.find((c) => c.id === highlightCommentId);
+    if (target) {
+      scrolledToHighlightRef.current = highlightCommentId;
+      const el = document.getElementById(`comment-${highlightCommentId}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedCommentId(highlightCommentId);
+      const timeout = setTimeout(() => setHighlightedCommentId(null), 2500);
+      return () => clearTimeout(timeout);
+    }
+
+    if (hasMore && !loadingMore) {
+      setLoadingMore(true);
+      loadComments(Number(groupId), Number(id), filterTags.join(','), comments.length, sortOrder, true)
+        .finally(() => setLoadingMore(false));
+    }
+  }, [comments, hasMore, loadingMore, highlightCommentId, groupId, id, filterTags, sortOrder, loadComments]);
 
   const handleSortChange = () => {
     const newOrder = sortOrder === 'desc' ? 'asc' : 'desc';
@@ -920,7 +960,11 @@ const AnimalDetailPage: React.FC = () => {
                   const isCommentOwner = comment.user?.id === user?.id;
                   
                   return (
-                    <div key={comment.id} className={`comment-card ${isEditing ? 'editing' : ''}`}>
+                    <div
+                      key={comment.id}
+                      id={`comment-${comment.id}`}
+                      className={`comment-card ${isEditing ? 'editing' : ''} ${highlightedCommentId === comment.id ? 'comment-card--highlighted' : ''}`}
+                    >
                       {isEditing ? (
                         // Inline editing form
                         <SessionReportForm

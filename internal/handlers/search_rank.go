@@ -45,6 +45,21 @@ const (
 	maxCandidatePool = 500
 )
 
+// maxSemanticDistance bounds the semantic candidate queries (see search.go)
+// to rows genuinely similar to the query embedding. Without it, "embedding IS
+// NOT NULL ORDER BY embedding <=> ? LIMIT pool" always returns `pool` rows
+// regardless of whether any of them are actually related to the query — with
+// a small group (fewer embedded rows than the pool floor), that means every
+// row in the group comes back, merely sorted by how (un)related it is,
+// letting fully irrelevant rows surface as "matches" whenever the keyword
+// query finds nothing to fuse against. Cosine distance ranges 0 (identical)
+// to 2 (opposite); 0.75 is a conservative starting cutoff meant to exclude
+// clearly-unrelated content while still admitting genuinely related matches
+// — it hasn't been validated against real Voyage embedding output (no
+// VOYAGE_API_KEY in dev/test) and should be tuned from production search
+// logs once real query/document embedding distances are observable.
+const maxSemanticDistance = 0.75
+
 // candidatePoolSize returns how many top matches to fetch from each of the
 // keyword and semantic queries before fusing. Ideally it covers the
 // requested page (offset+limit), so a "load more" page doesn't run out of

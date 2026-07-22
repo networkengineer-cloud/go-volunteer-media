@@ -718,6 +718,36 @@
   box-shadow: 0 4px 12px rgba(26, 156, 127, 0.3);
 }
 
+.comment-card--highlighted {
+  animation: comment-highlight-fade 2.5s ease-out;
+}
+
+@keyframes comment-highlight-fade {
+  0% {
+    background: var(--brand-100, #d7f0e8);
+    box-shadow: 0 0 0 2px var(--brand, #0e6c55);
+  }
+  100% {
+    background: var(--surface);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+}
+
+[data-theme='dark'] .comment-card--highlighted {
+  animation-name: comment-highlight-fade-dark;
+}
+
+@keyframes comment-highlight-fade-dark {
+  0% {
+    background: var(--brand-900, #123d32);
+    box-shadow: 0 0 0 2px var(--brand-400, #1a9c7f);
+  }
+  100% {
+    background: var(--surface);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+}
+
 .comment-header {
   display: flex;
   justify-content: space-between;

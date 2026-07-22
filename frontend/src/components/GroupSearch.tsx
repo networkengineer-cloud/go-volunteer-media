@@ -261,7 +261,7 @@ const GroupSearch: React.FC<GroupSearchProps> = ({ groupId }) => {
                 {comments.map((comment) => (
                   <li key={comment.id}>
                     <Link
-                      to={`/groups/${groupId}/animals/${comment.animal_id}/view`}
+                      to={`/groups/${groupId}/animals/${comment.animal_id}/view?comment=${comment.id}`}
                       className="group-search__comment-result"
                     >
                       <span className="group-search__comment-animal">on {comment.animal_name}</span>

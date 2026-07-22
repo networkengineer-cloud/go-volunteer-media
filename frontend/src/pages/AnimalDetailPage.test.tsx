@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import AnimalDetailPage from './AnimalDetailPage';
@@ -58,6 +58,18 @@ const mockAnimal = (overrides: Partial<Animal>) => {
     data: { ...baseAnimal, ...overrides },
   } as AxiosResponse<Animal>);
 };
+
+const mockComment = (overrides: Partial<AnimalComment>): AnimalComment => ({
+  id: 1,
+  animal_id: 1,
+  user_id: 1,
+  content: 'a comment',
+  image_url: '',
+  is_edited: false,
+  created_at: '2026-06-22T00:00:00Z',
+  updated_at: '2026-06-22T00:00:00Z',
+  ...overrides,
+});
 
 const mockDeletedComment = (overrides: Partial<AnimalComment>): AnimalComment => ({
   id: 1,
@@ -165,6 +177,73 @@ describe('AnimalDetailPage', () => {
     renderDetailPage();
 
     expect(await screen.findByText(/End: June 13, 2024/)).toBeInTheDocument();
+  });
+
+  describe('comment deep-linking from search (?comment=<id>)', () => {
+    beforeEach(() => {
+      // jsdom doesn't implement scrollIntoView.
+      Element.prototype.scrollIntoView = vi.fn();
+      mockAnimal({ status: 'available' });
+    });
+
+    afterEach(() => {
+      window.history.pushState({}, '', '/');
+    });
+
+    it('scrolls to and highlights the comment named in the ?comment= query param', async () => {
+      vi.mocked(animalCommentsApi.getAll).mockResolvedValue({
+        data: {
+          comments: [
+            mockComment({ id: 1, content: 'first comment' }),
+            mockComment({ id: 2, content: 'second comment' }),
+          ],
+          total: 2,
+          limit: 10,
+          offset: 0,
+          hasMore: false,
+        },
+      } as AxiosResponse);
+
+      window.history.pushState({}, '', '/groups/1/animals/1/view?comment=2');
+      renderDetailPage();
+
+      await screen.findByText('second comment');
+      const highlighted = document.getElementById('comment-2');
+      expect(highlighted).toHaveClass('comment-card--highlighted');
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+
+      const notHighlighted = document.getElementById('comment-1');
+      expect(notHighlighted).not.toHaveClass('comment-card--highlighted');
+    });
+
+    it('auto-loads further pages until the deep-linked comment is found', async () => {
+      vi.mocked(animalCommentsApi.getAll)
+        .mockResolvedValueOnce({
+          data: {
+            comments: [mockComment({ id: 1, content: 'page one comment' })],
+            total: 2,
+            limit: 10,
+            offset: 0,
+            hasMore: true,
+          },
+        } as AxiosResponse)
+        .mockResolvedValueOnce({
+          data: {
+            comments: [mockComment({ id: 2, content: 'page two comment' })],
+            total: 2,
+            limit: 10,
+            offset: 1,
+            hasMore: false,
+          },
+        } as AxiosResponse);
+
+      window.history.pushState({}, '', '/groups/1/animals/1/view?comment=2');
+      renderDetailPage();
+
+      await screen.findByText('page two comment');
+      expect(document.getElementById('comment-2')).toHaveClass('comment-card--highlighted');
+      expect(animalCommentsApi.getAll).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('admin deleted comments scoping', () => {
