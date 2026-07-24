@@ -233,6 +233,12 @@ variable "axiom_endpoint" {
   default     = "https://api.axiom.co"
 }
 
+variable "axiom_metrics_dataset" {
+  type        = string
+  description = "Axiom dataset name for OpenTelemetry metrics export. Must be a dataset created with type \"Metrics\" in Axiom, not \"Events\" — Axiom requires metrics on their own dataset with a dedicated x-axiom-metrics-dataset header, separate from the Events-type dataset (axiom_dataset) used for logs/traces. Optional — leave empty to keep metrics export unconfigured until that dataset exists."
+  default     = ""
+}
+
 # Monitoring Configuration
 variable "log_retention_days" {
   type        = number
