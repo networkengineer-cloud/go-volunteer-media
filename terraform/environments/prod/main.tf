@@ -365,9 +365,12 @@ resource "azurerm_container_app" "main" {
       }
 
       # Semantic Search (Voyage AI embeddings)
-      env {
-        name        = "VOYAGE_API_KEY"
-        secret_name = "voyage-api-key"
+      dynamic "env" {
+        for_each = var.voyage_api_key != "" ? [1] : []
+        content {
+          name        = "VOYAGE_API_KEY"
+          secret_name = "voyage-api-key"
+        }
       }
 
       env {
@@ -454,9 +457,12 @@ resource "azurerm_container_app" "main" {
     value = var.resend_api_key
   }
 
-  secret {
-    name  = "voyage-api-key"
-    value = var.voyage_api_key
+  dynamic "secret" {
+    for_each = var.voyage_api_key != "" ? [var.voyage_api_key] : []
+    content {
+      name  = "voyage-api-key"
+      value = secret.value
+    }
   }
 
   secret {
