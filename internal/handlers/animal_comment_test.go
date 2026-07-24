@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
@@ -211,6 +212,110 @@ func TestGetAnimalComments_WithTagFilter(t *testing.T) {
 	// Accept either OK (if JOIN works) or error (SQLite limitations with complex JOINs)
 	// The important thing is the handler doesn't crash
 	assert.True(t, w.Code == http.StatusOK || w.Code == http.StatusInternalServerError)
+}
+
+func TestGetAnimalCommentPosition(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupAnimalCommentTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	oldest := models.AnimalComment{AnimalID: 1, UserID: 1, Content: "oldest", CreatedAt: base}
+	middle := models.AnimalComment{AnimalID: 1, UserID: 1, Content: "middle", CreatedAt: base.Add(time.Hour)}
+	newest := models.AnimalComment{AnimalID: 1, UserID: 1, Content: "newest", CreatedAt: base.Add(2 * time.Hour)}
+	db.Create(&oldest)
+	db.Create(&middle)
+	db.Create(&newest)
+
+	var urgentTag models.CommentTag
+	db.Where("name = ?", "urgent").First(&urgentTag)
+	db.Model(&middle).Association("Tags").Append(&urgentTag)
+
+	requestPosition := func(commentID uint, query string) (int, map[string]interface{}) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest("GET", fmt.Sprintf("/groups/1/animals/1/comments/%d/position%s", commentID, query), nil)
+		c.Set("user_id", uint(1))
+		c.Set("is_admin", false)
+		c.Params = gin.Params{
+			{Key: "id", Value: "1"},
+			{Key: "animalId", Value: "1"},
+			{Key: "commentId", Value: fmt.Sprintf("%d", commentID)},
+		}
+
+		handler := GetAnimalCommentPosition(db)
+		handler(c)
+
+		var body map[string]interface{}
+		json.Unmarshal(w.Body.Bytes(), &body)
+		return w.Code, body
+	}
+
+	t.Run("default order (desc) ranks the newest comment first", func(t *testing.T) {
+		status, body := requestPosition(newest.ID, "")
+		assert.Equal(t, http.StatusOK, status)
+		assert.Equal(t, true, body["found"])
+		assert.Equal(t, float64(0), body["offset"])
+	})
+
+	t.Run("default order (desc) ranks the oldest comment last", func(t *testing.T) {
+		status, body := requestPosition(oldest.ID, "")
+		assert.Equal(t, http.StatusOK, status)
+		assert.Equal(t, float64(2), body["offset"])
+	})
+
+	t.Run("asc order reverses the ranking", func(t *testing.T) {
+		status, body := requestPosition(oldest.ID, "?order=asc")
+		assert.Equal(t, http.StatusOK, status)
+		assert.Equal(t, float64(0), body["offset"])
+
+		status, body = requestPosition(newest.ID, "?order=asc")
+		assert.Equal(t, http.StatusOK, status)
+		assert.Equal(t, float64(2), body["offset"])
+	})
+
+	t.Run("tag filter positions relative to the filtered set only", func(t *testing.T) {
+		// "middle" is the only urgent-tagged comment, so it's position 0
+		// within that filtered set even though it's position 1 overall.
+		status, body := requestPosition(middle.ID, "?tags=urgent")
+		assert.Equal(t, http.StatusOK, status)
+		assert.Equal(t, true, body["found"])
+		assert.Equal(t, float64(0), body["offset"])
+	})
+
+	t.Run("reports found:false when the comment doesn't match the active tag filter", func(t *testing.T) {
+		status, body := requestPosition(oldest.ID, "?tags=urgent")
+		assert.Equal(t, http.StatusOK, status)
+		assert.Equal(t, false, body["found"])
+		assert.NotContains(t, body, "offset")
+	})
+
+	t.Run("not found when the comment doesn't exist", func(t *testing.T) {
+		status, body := requestPosition(99999, "")
+		assert.Equal(t, http.StatusNotFound, status)
+		assert.Contains(t, body["error"], "Comment not found")
+	})
+
+	t.Run("forbidden when no group access", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest("GET", fmt.Sprintf("/groups/1/animals/1/comments/%d/position", oldest.ID), nil)
+		c.Set("user_id", uint(999))
+		c.Set("is_admin", false)
+		c.Params = gin.Params{
+			{Key: "id", Value: "1"},
+			{Key: "animalId", Value: "1"},
+			{Key: "commentId", Value: fmt.Sprintf("%d", oldest.ID)},
+		}
+
+		handler := GetAnimalCommentPosition(db)
+		handler(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
 }
 
 func TestCreateAnimalComment(t *testing.T) {

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
@@ -84,6 +83,19 @@ func sanitizeSessionMetadata(m *models.SessionMetadata) {
 	m.OtherNotes = htmlTagPattern.ReplaceAllString(m.OtherNotes, "")
 }
 
+// applyTagFilter joins in the tag filter's OR-matched comment_tags rows and
+// groups by comment id to dedupe when a comment matches multiple requested
+// tags. Shared by every animal-comments query that supports ?tags= so the
+// join shape (and its Group, required for the dedupe) can't drift out of
+// sync across them.
+func applyTagFilter(query *gorm.DB, tagNames []string) *gorm.DB {
+	return query.
+		Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
+		Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
+		Where("comment_tags.name IN ?", tagNames).
+		Group("animal_comments.id")
+}
+
 // GetAnimalComments returns comments for an animal with pagination support
 func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -137,30 +149,14 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 
 		// Apply tag filter if provided (multiple tags = OR logic)
 		if tagFilter != "" {
-			tagNames := strings.Split(tagFilter, ",")
-			// Trim whitespace from tag names
-			for i, name := range tagNames {
-				tagNames[i] = strings.TrimSpace(name)
-			}
-
-			query = query.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
-				Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
-				Where("comment_tags.name IN ?", tagNames).
-				Group("animal_comments.id")
+			query = applyTagFilter(query, splitAndTrim(tagFilter))
 		}
 
 		// Get total count
 		var total int64
 		countQuery := db.Model(&models.AnimalComment{}).Where("animal_id = ?", animalID)
 		if tagFilter != "" {
-			tagNames := strings.Split(tagFilter, ",")
-			for i, name := range tagNames {
-				tagNames[i] = strings.TrimSpace(name)
-			}
-			countQuery = countQuery.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
-				Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
-				Where("comment_tags.name IN ?", tagNames).
-				Group("animal_comments.id")
+			countQuery = applyTagFilter(countQuery, splitAndTrim(tagFilter))
 		}
 		if err := countQuery.Count(&total).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count comments"})
@@ -168,7 +164,13 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var comments []models.AnimalComment
-		if err := query.Order("created_at " + sortOrder).Limit(limit).Offset(offset).Find(&comments).Error; err != nil {
+		// A secondary tie-break on id is required: without it, comments
+		// sharing an identical created_at (bulk-inserted/seeded data, or
+		// coarse client clocks) sort in whatever order Postgres happens to
+		// return them in, which can differ from GetAnimalCommentPosition's
+		// offset computation below and misalign which page a given comment
+		// actually lands on.
+		if err := query.Order("animal_comments.created_at " + sortOrder + ", animal_comments.id " + sortOrder).Limit(limit).Offset(offset).Find(&comments).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
 			return
 		}
@@ -181,6 +183,111 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 			"offset":   offset,
 			"hasMore":  offset+len(comments) < int(total),
 		})
+	}
+}
+
+// commentMatchesTagFilter reports whether comment carries any of the given
+// tag names (the same OR-match semantics as GetAnimalComments' ?tags=
+// filter). tagNames is assumed already parsed via splitAndTrim.
+func commentMatchesTagFilter(comment models.AnimalComment, tagNames []string) bool {
+	wanted := make(map[string]bool, len(tagNames))
+	for _, name := range tagNames {
+		wanted[name] = true
+	}
+	for _, tag := range comment.Tags {
+		if wanted[tag.Name] {
+			return true
+		}
+	}
+	return false
+}
+
+// GetAnimalCommentPosition returns the 0-based offset a specific comment
+// falls at under the same ?tags=/?order= a client would pass to
+// GetAnimalComments, so a client that only knows a comment id — e.g.
+// deep-linking a search result to a specific comment — can jump straight to
+// the page containing it with one request, instead of paging through every
+// prior page client-side just to locate it.
+func GetAnimalCommentPosition(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupID := c.Param("id")
+		animalID := c.Param("animalId")
+		commentID := c.Param("commentId")
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		var animal models.Animal
+		if err := db.Where("id = ? AND group_id = ?", animalID, groupID).First(&animal).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Animal not found"})
+			return
+		}
+
+		// Parsed before the target query below so the Preload("Tags") it needs
+		// can be made conditional — Tags is only read by commentMatchesTagFilter
+		// when a tag filter is actually present; the sole current caller
+		// (the frontend's deep-link locate effect) never sends one, so an
+		// unconditional preload would be a wasted join on every request.
+		tagFilter := c.Query("tags")
+
+		targetQuery := db.Where("id = ? AND animal_id = ?", commentID, animalID)
+		if tagFilter != "" {
+			targetQuery = targetQuery.Preload("Tags")
+		}
+		var target models.AnimalComment
+		if err := targetQuery.First(&target).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})
+			return
+		}
+
+		sortOrder := "DESC"
+		if order := c.Query("order"); order == "asc" || order == "ASC" {
+			sortOrder = "ASC"
+		}
+
+		if tagFilter != "" && !commentMatchesTagFilter(target, splitAndTrim(tagFilter)) {
+			// The comment exists, but wouldn't appear in a GetAnimalComments
+			// call using this tag filter — the same outcome the list
+			// endpoint itself would produce (the row just never comes back).
+			// Report it explicitly so the client can tell "filtered out"
+			// apart from "doesn't exist" and act accordingly (e.g. clear the
+			// filter) instead of silently paging forever.
+			c.JSON(http.StatusOK, gin.H{"found": false})
+			return
+		}
+
+		countQuery := db.Model(&models.AnimalComment{}).Where("animal_id = ?", animalID)
+		if tagFilter != "" {
+			countQuery = applyTagFilter(countQuery, splitAndTrim(tagFilter))
+		}
+		// Position = how many rows sort strictly before the target under the
+		// same ORDER BY (created_at, id) GetAnimalComments uses for this
+		// sortOrder — the id tie-break matters whenever another comment
+		// shares the target's exact created_at.
+		if sortOrder == "ASC" {
+			countQuery = countQuery.Where(
+				"(animal_comments.created_at < ? OR (animal_comments.created_at = ? AND animal_comments.id < ?))",
+				target.CreatedAt, target.CreatedAt, target.ID,
+			)
+		} else {
+			countQuery = countQuery.Where(
+				"(animal_comments.created_at > ? OR (animal_comments.created_at = ? AND animal_comments.id > ?))",
+				target.CreatedAt, target.CreatedAt, target.ID,
+			)
+		}
+
+		var position int64
+		if err := countQuery.Count(&position).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to locate comment"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"found": true, "offset": position})
 	}
 }
 

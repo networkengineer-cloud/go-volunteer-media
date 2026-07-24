@@ -307,17 +307,7 @@ func ExportAnimalCommentsCSV(db *gorm.DB) gin.HandlerFunc {
 
 		// Apply tag filter if provided (multiple tags = OR logic)
 		if tagFilter != "" {
-			tagNames := strings.Split(tagFilter, ",")
-			// Trim whitespace from tag names
-			for i, name := range tagNames {
-				tagNames[i] = strings.TrimSpace(name)
-			}
-
-			// Join with tag tables to filter by tags
-			query = query.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
-				Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
-				Where("comment_tags.name IN ?", tagNames).
-				Group("animal_comments.id")
+			query = applyTagFilter(query, splitAndTrim(tagFilter))
 		}
 
 		var comments []models.AnimalComment

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { animalsApi, animalCommentsApi, commentTagsApi, groupsApi, scriptsApi } from '../api/client';
 import type { Animal, AnimalComment, CommentTag, CommentHistory, Group, GroupMembership, SessionMetadata, Script } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
@@ -25,9 +25,16 @@ import '../components/ScriptsList.css';
 // Lazy load ProtocolViewer to reduce initial bundle size (~350KB savings)
 const ProtocolViewer = lazy(() => import('../components/ProtocolViewer'));
 
+// Shared by scrollToComments' 'top' case and the deep-link locate effect —
+// both ultimately just want to smooth-scroll a specific element into view.
+const scrollElementIntoView = (el: Element | null, block: ScrollLogicalPosition) => {
+  el?.scrollIntoView({ behavior: 'smooth', block });
+};
+
 const AnimalDetailPage: React.FC = () => {
   const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAdmin, user } = useAuth();
   const toast = useToast();
   const [animal, setAnimal] = useState<Animal | null>(null);
@@ -67,32 +74,92 @@ const AnimalDetailPage: React.FC = () => {
   const [scriptFilter, setScriptFilter] = useState('');
   const commentsTopRef = useRef<HTMLDivElement>(null);
   const COMMENTS_PER_PAGE = 10;
+  const commentsRequestIdRef = useRef(0);
+  // Tracks the global offset immediately following the last loaded page,
+  // i.e. where the next "load more" or delta fetch should start. comments
+  // .length can't be used for this: once the deep-link locate effect jumps
+  // straight to a later page (see MAX_COMMENTS_LIMIT below), comments holds
+  // only that page's rows, not everything from offset 0, so its length no
+  // longer corresponds to a global offset.
+  const commentsOffsetRef = useRef(0);
+
+  // Deep-link support from search results (GroupSearch links to
+  // `?comment=<id>`): locatedCommentIdRef tracks whether *this* comment id
+  // has already been located (either found in an already-loaded page, or
+  // looked up via animalCommentsApi.getPosition and fetched), distinct from
+  // highlightedCommentId (which drives the CSS highlight and is cleared
+  // after the highlight fades).
+  const highlightCommentParam = searchParams.get('comment');
+  const highlightCommentId = highlightCommentParam !== null && !Number.isNaN(Number(highlightCommentParam))
+    ? Number(highlightCommentParam)
+    : null;
+  const [highlightedCommentId, setHighlightedCommentId] = useState<number | null>(null);
+  const locatedCommentIdRef = useRef<number | null>(null);
+  // Tracks which highlightCommentId the filter-clear effect below has
+  // already run for, so it only clears filterTags once per deep-linked id
+  // rather than on every render.
+  const clearedFilterForDeepLinkRef = useRef<number | null>(null);
+  // The backend's GetAnimalComments caps `limit` at 100 — fetching from
+  // offset 0 up to a comment deeper than that would silently get clamped
+  // and never actually reach it (see the locate effect below).
+  const MAX_COMMENTS_LIMIT = 100;
+  // Guards the locate effect against concluding "not on this page, ask the
+  // backend where it is" before the very first comments fetch for this
+  // animal has even landed — comments starts as [] on every mount, which
+  // looks identical to "genuinely not found" unless this is checked too.
+  const initialCommentsLoadedRef = useRef(false);
+  // Guards the locate effect's own async lookup against concurrent starts.
+  // Deliberately a ref, not the `loadingMore` state: the effect used to gate
+  // on `loadingMore` itself while also being the one setting it, which put
+  // `loadingMore` in the effect's own dependency array — the effect's
+  // `setLoadingMore(true)` then triggered React to tear the effect down
+  // (running its cleanup, which cancelled the in-flight lookup) and re-run
+  // it before the request could resolve, permanently stranding
+  // `loadingMore` at `true`. A ref sidesteps that: it's read/written for
+  // re-entrancy control without being a reactive dependency.
+  const locatingRef = useRef(false);
 
   const loadComments = useCallback(async (
-    gId: number, 
-    animalId: number, 
-    filter: string, 
+    gId: number,
+    animalId: number,
+    filter: string,
     offset: number = 0,
     order: 'asc' | 'desc' = 'desc',
-    append: boolean = false
+    append: boolean = false,
+    limitOverride?: number
   ) => {
+    // Several effects can independently call loadComments close together
+    // (the initial-mount load and the filterTags/sortOrder effect both fire
+    // on mount; the deep-link locate effect can also overlap with either).
+    // Requests aren't guaranteed to resolve in the order they were issued,
+    // so a stale response applying after a newer one would silently clobber
+    // it (e.g. an appended page getting wiped by a slow-to-resolve initial
+    // page-0 load). Track the latest issued request and drop any response
+    // that isn't from it.
+    const requestId = ++commentsRequestIdRef.current;
     try {
       const commentsRes = await animalCommentsApi.getAll(gId, animalId, {
         tagFilter: filter || undefined,
-        limit: COMMENTS_PER_PAGE,
+        limit: limitOverride ?? COMMENTS_PER_PAGE,
         offset,
         order
       });
-      
+
+      if (requestId !== commentsRequestIdRef.current) return;
+
+      initialCommentsLoadedRef.current = true;
+
       if (append) {
         setComments(prev => [...prev, ...commentsRes.data.comments]);
       } else {
         setComments(commentsRes.data.comments);
       }
-      
+      commentsOffsetRef.current = offset + commentsRes.data.comments.length;
+
       setTotalComments(commentsRes.data.total);
       setHasMore(commentsRes.data.hasMore);
     } catch (error) {
+      if (requestId !== commentsRequestIdRef.current) return;
       console.error('Failed to load comments:', error);
       toast.showError('Failed to load comments. Please try again.');
     }
@@ -158,7 +225,20 @@ const AnimalDetailPage: React.FC = () => {
       setError('');
       const animalRes = await animalsApi.getById(gId, animalId);
       setAnimal(animalRes.data);
-      await loadComments(gId, animalId, '', 0, sortOrder);
+      // Comments are loaded by the filterTags/sortOrder effect below, which
+      // already re-fires on mount and on groupId/id changes — calling
+      // loadComments here too used to fire a redundant, un-coordinated
+      // second fetch for the same page every time this ran, which could
+      // resolve out of order and clobber state from a legitimate later
+      // request (e.g. the deep-link pagination effect's appended page).
+      //
+      // Dropping that loadComments call also (as a side effect, not the
+      // point) made this function's identity stable across sortOrder
+      // changes, which used to indirectly refetch group/tags/deleted-comments
+      // via the mount effect below whenever sort was toggled — group
+      // membership, tags, and deleted comments don't depend on comment sort
+      // order, so no longer refreshing them on a sort toggle is intentional,
+      // not a regression to restore.
     } catch (error: unknown) {
       console.error('Failed to load animal data:', error);
       const errorMsg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to load animal information. Please try again.';
@@ -166,7 +246,7 @@ const AnimalDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [loadComments, sortOrder]);
+  }, []);
 
   useEffect(() => {
     if (groupId && id) {
@@ -181,14 +261,26 @@ const AnimalDetailPage: React.FC = () => {
 
   useEffect(() => {
     setShowDeleted(false);
+    initialCommentsLoadedRef.current = false;
+    commentsOffsetRef.current = 0;
+    // Deep-link locate state is scoped to a specific comment id, but that id
+    // could coincidentally match a comment id still relevant to a
+    // *different* animal after navigating here without a full remount (e.g.
+    // clicking another animal's link while `?comment=<id>` happens to repeat
+    // a value already recorded). Reset so the locate effect re-evaluates
+    // fresh for the new animal instead of short-circuiting on stale state.
+    locatedCommentIdRef.current = null;
+    clearedFilterForDeepLinkRef.current = null;
   }, [id]);
 
   useEffect(() => {
-    if (groupId && id) {
-      const tagFilterString = filterTags.join(',');
-      loadComments(Number(groupId), Number(id), tagFilterString, 0, sortOrder);
-    }
-  }, [filterTags, groupId, id, loadComments, sortOrder]);
+    // Gated on `animal` so a failed/forbidden animal fetch (loadAnimalData
+    // never calling setAnimal) doesn't also fire a doomed GetAnimalComments
+    // request and surface a second, redundant error toast for the same bad id.
+    if (!groupId || !id || !animal) return;
+    const tagFilterString = filterTags.join(',');
+    loadComments(Number(groupId), Number(id), tagFilterString, 0, sortOrder);
+  }, [filterTags, groupId, id, loadComments, sortOrder, animal]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -221,7 +313,12 @@ const AnimalDetailPage: React.FC = () => {
       } else {
         setComments([...comments, newComment.data]);
       }
-      
+      // One more item is now in `comments` without having gone through
+      // loadComments, so commentsOffsetRef must advance to match — otherwise
+      // it stays stale and the next "Load More" re-fetches an already-shown
+      // comment (see the desc-order shift this causes).
+      commentsOffsetRef.current += 1;
+
       setTotalComments(prev => prev + 1);
       toast.showSuccess('Comment posted successfully!');
     } catch (error: unknown) {
@@ -305,10 +402,10 @@ const AnimalDetailPage: React.FC = () => {
     try {
       const tagFilterString = filterTags.join(',');
       await loadComments(
-        Number(groupId), 
-        Number(id), 
-        tagFilterString, 
-        comments.length,
+        Number(groupId),
+        Number(id),
+        tagFilterString,
+        commentsOffsetRef.current,
         sortOrder,
         true // append
       );
@@ -316,6 +413,126 @@ const AnimalDetailPage: React.FC = () => {
       setLoadingMore(false);
     }
   };
+
+  // A deep-linked comment should be reachable regardless of whatever tag
+  // filter happens to be active in this mounted instance — the whole point
+  // of following a search result is to see that specific comment. Clear any
+  // active filter once per highlightCommentId rather than letting the
+  // locate effect below silently page forever against a filter that
+  // excludes the target.
+  useEffect(() => {
+    if (highlightCommentId === null || clearedFilterForDeepLinkRef.current === highlightCommentId) return;
+    clearedFilterForDeepLinkRef.current = highlightCommentId;
+    setFilterTags((prev) => (prev.length > 0 ? [] : prev));
+  }, [highlightCommentId]);
+
+  // Locate a comment deep-linked from search: if it's already on a
+  // loaded page, scroll to and briefly highlight it directly. Otherwise ask
+  // the backend which page it's on (animalCommentsApi.getPosition) and fetch
+  // straight to that page in one request, rather than paging through every
+  // prior page client-side just to find it. Waits for filterTags to
+  // actually be cleared (see above) before asking, so it isn't located
+  // relative to a filter that's about to change out from under it.
+  useEffect(() => {
+    if (highlightCommentId === null || !groupId || !id) return;
+    if (locatedCommentIdRef.current === highlightCommentId) return;
+
+    const target = comments.find((c) => c.id === highlightCommentId);
+    if (target) {
+      locatedCommentIdRef.current = highlightCommentId;
+      scrollElementIntoView(document.getElementById(`comment-${highlightCommentId}`), 'center');
+      setHighlightedCommentId(highlightCommentId);
+      return;
+    }
+
+    // comments starts as [] on every mount — until the first real fetch for
+    // this animal has landed, "not found above" doesn't mean "not on this
+    // page," just "haven't loaded a page yet." Wait rather than firing a
+    // position lookup that the normal first-page load would make redundant.
+    if (!initialCommentsLoadedRef.current) return;
+    // locatingRef (a ref, not the loadingMore *state*) guards re-entrancy
+    // here. loadingMore used to be read directly for this guard, which put
+    // it in this effect's own dependency array — but this effect is also
+    // what calls setLoadingMore(true), so that self-triggered re-run tore
+    // the effect down (cancelling the in-flight lookup via cleanup) before
+    // the request could resolve, permanently stranding loadingMore at true.
+    // A ref sidesteps the problem: it's mutated for control flow without
+    // being reactive, so setting it doesn't cause React to re-run this
+    // effect.
+    if (filterTags.length > 0 || locatingRef.current) return;
+
+    let cancelled = false;
+    locatingRef.current = true;
+    setLoadingMore(true);
+    (async () => {
+      try {
+        const res = await animalCommentsApi.getPosition(Number(groupId), Number(id), highlightCommentId, { order: sortOrder });
+        if (cancelled) return;
+
+        if (!res.data.found) {
+          locatedCommentIdRef.current = highlightCommentId;
+          toast.showWarning("That comment couldn't be found — it may have been deleted.");
+          return;
+        }
+
+        const targetPage = Math.floor(res.data.offset / COMMENTS_PER_PAGE);
+        const limitNeeded = (targetPage + 1) * COMMENTS_PER_PAGE;
+        if (limitNeeded <= MAX_COMMENTS_LIMIT) {
+          // Fetch only the rows not already loaded and append them, rather
+          // than re-fetching (and re-rendering) offset 0 through
+          // limitNeeded every time — commentsOffsetRef.current is where the
+          // currently-loaded range actually ends.
+          const alreadyLoaded = commentsOffsetRef.current;
+          if (limitNeeded > alreadyLoaded) {
+            await loadComments(Number(groupId), Number(id), '', alreadyLoaded, sortOrder, true, limitNeeded - alreadyLoaded);
+          }
+        } else {
+          // Too deep to fetch from the start in one request — jump to the
+          // comment's own page instead, trading one-shot access to earlier
+          // comments for a bounded request size. loadComments records the
+          // resulting range in commentsOffsetRef, so a later "Load More"
+          // continues correctly from this new base instead of assuming the
+          // list still starts at offset 0.
+          await loadComments(Number(groupId), Number(id), '', targetPage * COMMENTS_PER_PAGE, sortOrder, false);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        locatedCommentIdRef.current = highlightCommentId;
+        console.error('Failed to locate deep-linked comment:', error);
+        toast.showWarning("That comment couldn't be found — it may have been deleted.");
+      } finally {
+        if (!cancelled) {
+          locatingRef.current = false;
+          setLoadingMore(false);
+        }
+      }
+    })();
+
+    // Also resets locatingRef/loadingMore synchronously (not just via the
+    // async branch's own finally): if a real dependency change cancels this
+    // run mid-flight, the busy state must clear here too, or a fresh
+    // invocation that doesn't start a new lookup (e.g. it finds the target
+    // already loaded) would otherwise see locatingRef still true and the
+    // "Load More" button would stay disabled indefinitely. Both paths
+    // resetting the same values to false is idempotent — no conflict.
+    return () => {
+      cancelled = true;
+      locatingRef.current = false;
+      setLoadingMore(false);
+    };
+  }, [comments, highlightCommentId, groupId, id, sortOrder, filterTags, loadComments, toast]);
+
+  // Clears the highlight after its fade animation finishes. Kept as its own
+  // effect, keyed only on highlightedCommentId, so an unrelated comments
+  // change during the fade window (e.g. someone posts a new comment) can't
+  // make React re-run the effect above, cancel this timeout via its cleanup,
+  // and then short-circuit on locatedCommentIdRef without rescheduling —
+  // which would leave the highlight stuck on indefinitely.
+  useEffect(() => {
+    if (highlightedCommentId === null) return;
+    const timeout = setTimeout(() => setHighlightedCommentId(null), 2500);
+    return () => clearTimeout(timeout);
+  }, [highlightedCommentId]);
 
   const handleSortChange = () => {
     const newOrder = sortOrder === 'desc' ? 'asc' : 'desc';
@@ -332,7 +549,7 @@ const AnimalDetailPage: React.FC = () => {
 
   const scrollToComments = (position: 'top' | 'bottom') => {
     if (position === 'top' && commentsTopRef.current) {
-      commentsTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollElementIntoView(commentsTopRef.current, 'start');
     } else {
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     }
@@ -920,7 +1137,11 @@ const AnimalDetailPage: React.FC = () => {
                   const isCommentOwner = comment.user?.id === user?.id;
                   
                   return (
-                    <div key={comment.id} className={`comment-card ${isEditing ? 'editing' : ''}`}>
+                    <div
+                      key={comment.id}
+                      id={`comment-${comment.id}`}
+                      className={`comment-card ${isEditing ? 'editing' : ''} ${highlightedCommentId === comment.id ? 'comment-card--highlighted' : ''}`}
+                    >
                       {isEditing ? (
                         // Inline editing form
                         <SessionReportForm
@@ -1035,7 +1256,7 @@ const AnimalDetailPage: React.FC = () => {
                         <>
                           Load More Comments
                           <span className="remaining-count">
-                            ({totalComments - comments.length} more • {Math.ceil((totalComments - comments.length) / COMMENTS_PER_PAGE)} pages)
+                            ({totalComments - commentsOffsetRef.current} more • {Math.ceil((totalComments - commentsOffsetRef.current) / COMMENTS_PER_PAGE)} pages)
                           </span>
                         </>
                       )}

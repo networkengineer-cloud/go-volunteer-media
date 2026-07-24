@@ -328,6 +328,14 @@ func WithContext(ctx context.Context) *Logger {
 	return defaultLogger.WithContext(ctx)
 }
 
+// Enabled reports whether a message at the given level would actually be
+// emitted by the default logger, so a caller building an expensive field set
+// (e.g. a WithField chain, which allocates a new Logger and field map per
+// call) can skip that work entirely when the level is disabled.
+func Enabled(level Level) bool {
+	return level >= defaultLogger.level
+}
+
 // SetLevel sets the log level for the default logger
 func SetLevel(level Level) {
 	defaultLogger.level = level

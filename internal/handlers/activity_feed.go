@@ -166,14 +166,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 
 				// Apply tag filter if specified
 				if filterTags != "" {
-					tagNames := []string{}
-					for _, tag := range splitAndTrim(filterTags) {
-						tagNames = append(tagNames, tag)
-					}
-					commentQuery = commentQuery.Joins("JOIN animal_comment_tags ON animal_comment_tags.animal_comment_id = animal_comments.id").
-						Joins("JOIN comment_tags ON comment_tags.id = animal_comment_tags.comment_tag_id").
-						Where("comment_tags.name IN ?", tagNames).
-						Group("animal_comments.id")
+					commentQuery = applyTagFilter(commentQuery, splitAndTrim(filterTags))
 				}
 
 				err := commentQuery.Preload("User").

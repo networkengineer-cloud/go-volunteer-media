@@ -396,6 +396,7 @@ func main() {
 			group.PUT("/animals/:animalId/comments/:commentId", handlers.UpdateAnimalComment(db, embedder))
 			group.DELETE("/animals/:animalId/comments/:commentId", handlers.DeleteAnimalComment(db))
 			group.GET("/animals/:animalId/comments/:commentId/history", handlers.GetCommentHistory(db))
+			group.GET("/animals/:animalId/comments/:commentId/position", handlers.GetAnimalCommentPosition(db))
 
 			// Latest comments across the group
 			group.GET("/latest-comments", handlers.GetGroupLatestComments(db))
