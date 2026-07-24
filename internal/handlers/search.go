@@ -1,15 +1,20 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 	"github.com/pgvector/pgvector-go"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -54,6 +59,29 @@ type updateSearchResult struct {
 // embedding yet, results degrade to keyword-only ranking rather than
 // failing the request.
 func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
+	meter := telemetry.Meter("internal/handlers/search")
+	searchModeCount, err := meter.Int64Counter(
+		"search.mode_count",
+		metric.WithDescription("Search requests by whether semantic search was available for the request"),
+	)
+	if err != nil {
+		logging.WithField("error", err.Error()).Warn("failed to create search.mode_count counter")
+	}
+	embedFailureCount, err := meter.Int64Counter(
+		"search.embed_failure_count",
+		metric.WithDescription("Query-embedding failures that degraded a search request to keyword-only"),
+	)
+	if err != nil {
+		logging.WithField("error", err.Error()).Warn("failed to create search.embed_failure_count counter")
+	}
+	semanticCandidates, err := meter.Int64Histogram(
+		"search.semantic_candidates",
+		metric.WithDescription("Semantic candidates found within maxSemanticDistance, per resource type"),
+	)
+	if err != nil {
+		logging.WithField("error", err.Error()).Warn("failed to create search.semantic_candidates histogram")
+	}
+
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
@@ -105,8 +133,18 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				semanticAvailable = true
 			} else {
 				logging.WithField("error", err.Error()).Warn("Failed to embed search query; falling back to keyword-only results")
+				embedFailureCount.Add(c.Request.Context(), 1)
 			}
 		}
+
+		mode := "keyword_only"
+		if semanticAvailable {
+			mode = "semantic"
+		}
+		searchModeCount.Add(c.Request.Context(), 1, metric.WithAttributes(
+			attribute.String("mode", mode),
+			attribute.String("type", searchType),
+		))
 
 		response := gin.H{}
 
@@ -160,7 +198,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				// keyword-only Count()) would undercount once semantic-only
 				// matches are in the results, and an uncapped total would let
 				// "Load more" promise results pagination can never reach.
-				animals, total, err := finishSemanticSearch("animals", keywordRows, buildAnimalsKeywordQuery, semanticQuery, pool, fuseAnimalResults, totalAnimals, offset, limit)
+				animals, total, err := finishSemanticSearch(c.Request.Context(), "animals", keywordRows, buildAnimalsKeywordQuery, semanticQuery, pool, fuseAnimalResults, totalAnimals, offset, limit, semanticCandidates)
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search animals"})
 					return
@@ -211,7 +249,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 					// See the animals query above for why a tie-breaker on id is required.
 					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "animal_comments.embedding <=> ?, animal_comments.id ASC", Vars: []interface{}{queryVector}}})
 
-				comments, total, err := finishSemanticSearch("comments", keywordRows, buildCommentsKeywordQuery, semanticQuery, pool, fuseCommentResults, totalComments, offset, limit)
+				comments, total, err := finishSemanticSearch(c.Request.Context(), "comments", keywordRows, buildCommentsKeywordQuery, semanticQuery, pool, fuseCommentResults, totalComments, offset, limit, semanticCandidates)
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search comments"})
 					return
@@ -256,7 +294,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 					// See the animals query above for why a tie-breaker on id is required.
 					Clauses(clause.OrderBy{Expression: clause.Expr{SQL: "embedding <=> ?, updates.id ASC", Vars: []interface{}{queryVector}}})
 
-				updates, total, err := finishSemanticSearch("updates", keywordUpdateRows, buildUpdatesKeywordQuery, semanticQuery, pool, fuseUpdateResults, totalUpdates, offset, limit)
+				updates, total, err := finishSemanticSearch(c.Request.Context(), "updates", keywordUpdateRows, buildUpdatesKeywordQuery, semanticQuery, pool, fuseUpdateResults, totalUpdates, offset, limit, semanticCandidates)
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search updates"})
 					return
@@ -340,7 +378,7 @@ func fuseUpdateResults(keyword, semantic []updateSearchResult, offset, limit int
 // semantic query and fuse function differ), so it's factored out here
 // rather than kept as three copies that could drift out of sync — e.g. a
 // fix to the degrade-on-error behavior only needs to be made once.
-func finishSemanticSearch[T any](resourceName string, keywordRows []T, rebuildKeywordPage func() *gorm.DB, semanticQuery *gorm.DB, pool int, fuse func(keyword, semantic []T, offset, limit int) ([]T, int), keywordCount int64, offset, limit int) ([]T, int64, error) {
+func finishSemanticSearch[T any](ctx context.Context, resourceName string, keywordRows []T, rebuildKeywordPage func() *gorm.DB, semanticQuery *gorm.DB, pool int, fuse func(keyword, semantic []T, offset, limit int) ([]T, int), keywordCount int64, offset, limit int, candidatesHistogram metric.Int64Histogram) ([]T, int64, error) {
 	var semanticRows []T
 	if err := semanticQuery.Limit(pool).Find(&semanticRows).Error; err != nil {
 		// Semantic search is a ranking enhancement, never a hard dependency
@@ -372,6 +410,8 @@ func finishSemanticSearch[T any](resourceName string, keywordRows []T, rebuildKe
 	// production data directly. Gated on logging.Enabled so the WithField
 	// chain's allocations (a new Logger + field map per call) aren't paid on
 	// every search request when DEBUG logging is off, which is the default.
+	candidatesHistogram.Record(ctx, int64(len(semanticRows)), metric.WithAttributes(attribute.String("resource", resourceName)))
+
 	if logging.Enabled(logging.DEBUG) {
 		logging.WithField("resource", resourceName).WithField("semanticCandidates", len(semanticRows)).Debug("Semantic search candidates within maxSemanticDistance")
 	}

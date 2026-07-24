@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/log/global"
 	lognoop "go.opentelemetry.io/otel/log/noop"
+	"go.opentelemetry.io/otel/metric"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
@@ -238,4 +239,14 @@ func Fail(span trace.Span, err error, msg string) error {
 // an independently chosen name.
 func Tracer(name string) trace.Tracer {
 	return otel.Tracer(name)
+}
+
+// Meter returns a named meter via the current global MeterProvider, mirroring
+// Tracer above. Safe to call before Init runs (e.g. from a package-level var
+// or a handler factory invoked during route setup) — otel's global package
+// returns a delegating meter that's transparently rebound once Init calls
+// otel.SetMeterProvider, and instruments created against it forward to the
+// real provider from then on.
+func Meter(name string) metric.Meter {
+	return otel.Meter(name)
 }
