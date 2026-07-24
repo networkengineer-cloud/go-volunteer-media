@@ -51,12 +51,13 @@ const (
 
 // defaultMaxSemanticDistance is maxSemanticDistance's value when
 // SEMANTIC_SEARCH_MAX_DISTANCE isn't set. Cosine distance ranges 0
-// (identical) to 2 (opposite); 0.75 is a conservative starting cutoff meant
-// to exclude clearly-unrelated content while still admitting genuinely
-// related matches — it hasn't been validated against real Voyage embedding
-// output (no VOYAGE_API_KEY in dev/test) and should be tuned from production
-// search logs once real query/document embedding distances are observable.
-const defaultMaxSemanticDistance = 0.75
+// (identical) to 2 (opposite); 0.65 was chosen by running a fixed query set
+// (scripts/search_relevance_test.py) against dev with real Voyage
+// embeddings and comparing 0.5/0.65/0.75 — 0.75 let clearly-unrelated
+// queries match, 0.5 excluded nearly everything including good matches, and
+// 0.65 was the best balance on that (small, synthetic) dataset. Revisit once
+// real production query/document embedding distances are observable.
+const defaultMaxSemanticDistance = 0.65
 
 // maxSemanticDistance bounds the semantic candidate queries (see search.go)
 // to rows genuinely similar to the query embedding. Without it, "embedding IS
