@@ -7,7 +7,12 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 )
 
-// LoggingMiddleware logs HTTP requests with structured logging
+// LoggingMiddleware logs HTTP requests with structured logging. Per-route
+// request count/duration metrics are NOT recorded here — otelgin.Middleware
+// (registered separately in cmd/api/main.go) already emits the standard
+// http.server.request.duration histogram with method/route/status
+// attributes via the same MeterProvider; adding a second, differently-named
+// metric here would just double-count the same signal in Axiom.
 func LoggingMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Start timer
