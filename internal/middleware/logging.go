@@ -4,33 +4,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
-
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
-	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 )
 
-// LoggingMiddleware logs HTTP requests with structured logging, and records
-// per-route request count/duration metrics.
+// LoggingMiddleware logs HTTP requests with structured logging. Per-route
+// request count/duration metrics are NOT recorded here — otelgin.Middleware
+// (registered separately in cmd/api/main.go) already emits the standard
+// http.server.request.duration histogram with method/route/status
+// attributes via the same MeterProvider; adding a second, differently-named
+// metric here would just double-count the same signal in Axiom.
 func LoggingMiddleware() gin.HandlerFunc {
-	meter := telemetry.Meter("internal/middleware")
-	requestCount, err := meter.Int64Counter(
-		"http.server.request_count",
-		metric.WithDescription("Total number of HTTP requests handled"),
-	)
-	if err != nil {
-		logging.WithField("error", err.Error()).Warn("failed to create http.server.request_count counter")
-	}
-	requestDuration, err := meter.Float64Histogram(
-		"http.server.request_duration_seconds",
-		metric.WithDescription("HTTP request duration in seconds"),
-		metric.WithUnit("s"),
-	)
-	if err != nil {
-		logging.WithField("error", err.Error()).Warn("failed to create http.server.request_duration_seconds histogram")
-	}
-
 	return func(c *gin.Context) {
 		// Start timer
 		start := time.Now()
@@ -66,22 +49,6 @@ func LoggingMiddleware() gin.HandlerFunc {
 
 		// Get status code and error if any
 		status := c.Writer.Status()
-
-		// route is the matched route template (e.g. "/api/groups/:id/search"),
-		// not the raw path, so the metric doesn't get a distinct series per
-		// animal/group ID. Unmatched routes (404s) report "unmatched" rather
-		// than the raw, attacker-controllable path.
-		route := c.FullPath()
-		if route == "" {
-			route = "unmatched"
-		}
-		metricAttrs := metric.WithAttributes(
-			attribute.String("method", c.Request.Method),
-			attribute.String("route", route),
-			attribute.Int("status", status),
-		)
-		requestCount.Add(c.Request.Context(), 1, metricAttrs)
-		requestDuration.Record(c.Request.Context(), latency.Seconds(), metricAttrs)
 
 		// Log the request with appropriate level
 		logFields := map[string]interface{}{

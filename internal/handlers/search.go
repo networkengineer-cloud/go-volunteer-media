@@ -60,27 +60,24 @@ type updateSearchResult struct {
 // failing the request.
 func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 	meter := telemetry.Meter("internal/handlers/search")
-	searchModeCount, err := meter.Int64Counter(
-		"search.mode_count",
-		metric.WithDescription("Search requests by whether semantic search was available for the request"),
-	)
-	if err != nil {
-		logging.WithField("error", err.Error()).Warn("failed to create search.mode_count counter")
-	}
-	embedFailureCount, err := meter.Int64Counter(
-		"search.embed_failure_count",
-		metric.WithDescription("Query-embedding failures that degraded a search request to keyword-only"),
-	)
-	if err != nil {
-		logging.WithField("error", err.Error()).Warn("failed to create search.embed_failure_count counter")
-	}
-	semanticCandidates, err := meter.Int64Histogram(
-		"search.semantic_candidates",
-		metric.WithDescription("Semantic candidates found within maxSemanticDistance, per resource type"),
-	)
-	if err != nil {
-		logging.WithField("error", err.Error()).Warn("failed to create search.semantic_candidates histogram")
-	}
+	searchModeCount := telemetry.NewInstrument("search.mode_count", func() (metric.Int64Counter, error) {
+		return meter.Int64Counter(
+			"search.mode_count",
+			metric.WithDescription("Search requests by whether semantic search was available for the request"),
+		)
+	})
+	embedFailureCount := telemetry.NewInstrument("search.embed_failure_count", func() (metric.Int64Counter, error) {
+		return meter.Int64Counter(
+			"search.embed_failure_count",
+			metric.WithDescription("Query-embedding failures that degraded a search request to keyword-only"),
+		)
+	})
+	semanticCandidates := telemetry.NewInstrument("search.semantic_candidates", func() (metric.Int64Histogram, error) {
+		return meter.Int64Histogram(
+			"search.semantic_candidates",
+			metric.WithDescription("Semantic candidates found within maxSemanticDistance, per resource type"),
+		)
+	})
 
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
@@ -404,12 +401,16 @@ func finishSemanticSearch[T any](ctx context.Context, resourceName string, keywo
 	}
 
 	// maxSemanticDistance (search_rank.go) hasn't been validated against real
-	// embedding output, so log how many candidates survive it per request —
-	// this is the only visibility into whether it's cutting too aggressively
+	// embedding output, so record how many candidates survive it per
+	// request — visibility into whether it's cutting too aggressively
 	// (frequent 0s despite embedded rows existing) without querying
-	// production data directly. Gated on logging.Enabled so the WithField
-	// chain's allocations (a new Logger + field map per call) aren't paid on
-	// every search request when DEBUG logging is off, which is the default.
+	// production data directly. The histogram is the always-on aggregate
+	// signal (query it in Axiom instead of enabling DEBUG logging); the
+	// DEBUG log below is for drilling into individual requests once the
+	// histogram flags something worth investigating, and is gated on
+	// logging.Enabled so the WithField chain's allocations (a new Logger +
+	// field map per call) aren't paid on every search request when DEBUG
+	// logging is off, which is the default.
 	candidatesHistogram.Record(ctx, int64(len(semanticRows)), metric.WithAttributes(attribute.String("resource", resourceName)))
 
 	if logging.Enabled(logging.DEBUG) {

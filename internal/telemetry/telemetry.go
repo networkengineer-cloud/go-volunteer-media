@@ -62,6 +62,20 @@ func Enabled() bool {
 // behaves identically with zero telemetry configuration (local dev, CI).
 // Telemetry setup failure is never fatal to application startup — Init logs
 // a warning and falls back to no-op providers instead of returning an error.
+//
+// Per-signal overrides: each exporter also independently checks a
+// signal-specific env var before falling back to the generic one above —
+// OTEL_EXPORTER_OTLP_TRACES_HEADERS / _METRICS_HEADERS / _LOGS_HEADERS (and
+// the _ENDPOINT equivalents), per the OTel spec's env var precedence. This
+// matters here because Axiom (our OTLP backend, see terraform/environments/
+// {dev,prod}/main.tf) requires metrics on a separate dataset — of type
+// "Metrics", not "Events" — routed via a distinct x-axiom-metrics-dataset
+// header, so OTEL_EXPORTER_OTLP_METRICS_HEADERS is set (conditionally, once
+// axiom_metrics_dataset is configured) alongside the generic
+// OTEL_EXPORTER_OTLP_HEADERS that otherwise only correctly routes
+// traces/logs. Without that per-signal header, metrics silently degrade to
+// the generic one — no error here or in Terraform, just data landing in the
+// wrong dataset (or rejected) on the Axiom side.
 func Init(ctx context.Context, serviceName, environment string) {
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {
@@ -249,4 +263,20 @@ func Tracer(name string) trace.Tracer {
 // real provider from then on.
 func Meter(name string) metric.Meter {
 	return otel.Meter(name)
+}
+
+// NewInstrument creates an OTel metric instrument (an Int64Counter,
+// Float64Histogram, etc.) via create, logging a warning and returning
+// whatever create returned if it errors, instead of every call site
+// repeating the same "create, check err, log" block. Per the OTel API
+// contract, an instrument is still safe to use (as an effective no-op) even
+// when create returns an error, so callers never need a nil check. name is
+// only used for the warning's log field — create is responsible for passing
+// the instrument's real name/description to the meter.
+func NewInstrument[T any](name string, create func() (T, error)) T {
+	inst, err := create()
+	if err != nil {
+		logging.WithField("error", err.Error()).WithField("instrument", name).Warn("failed to create OTel instrument")
+	}
+	return inst
 }
