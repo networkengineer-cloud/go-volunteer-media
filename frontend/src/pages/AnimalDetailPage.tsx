@@ -274,11 +274,13 @@ const AnimalDetailPage: React.FC = () => {
   }, [id]);
 
   useEffect(() => {
-    if (groupId && id) {
-      const tagFilterString = filterTags.join(',');
-      loadComments(Number(groupId), Number(id), tagFilterString, 0, sortOrder);
-    }
-  }, [filterTags, groupId, id, loadComments, sortOrder]);
+    // Gated on `animal` so a failed/forbidden animal fetch (loadAnimalData
+    // never calling setAnimal) doesn't also fire a doomed GetAnimalComments
+    // request and surface a second, redundant error toast for the same bad id.
+    if (!groupId || !id || !animal) return;
+    const tagFilterString = filterTags.join(',');
+    loadComments(Number(groupId), Number(id), tagFilterString, 0, sortOrder);
+  }, [filterTags, groupId, id, loadComments, sortOrder, animal]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -311,7 +313,12 @@ const AnimalDetailPage: React.FC = () => {
       } else {
         setComments([...comments, newComment.data]);
       }
-      
+      // One more item is now in `comments` without having gone through
+      // loadComments, so commentsOffsetRef must advance to match — otherwise
+      // it stays stale and the next "Load More" re-fetches an already-shown
+      // comment (see the desc-order shift this causes).
+      commentsOffsetRef.current += 1;
+
       setTotalComments(prev => prev + 1);
       toast.showSuccess('Comment posted successfully!');
     } catch (error: unknown) {
@@ -1249,7 +1256,7 @@ const AnimalDetailPage: React.FC = () => {
                         <>
                           Load More Comments
                           <span className="remaining-count">
-                            ({totalComments - comments.length} more • {Math.ceil((totalComments - comments.length) / COMMENTS_PER_PAGE)} pages)
+                            ({totalComments - commentsOffsetRef.current} more • {Math.ceil((totalComments - commentsOffsetRef.current) / COMMENTS_PER_PAGE)} pages)
                           </span>
                         </>
                       )}
