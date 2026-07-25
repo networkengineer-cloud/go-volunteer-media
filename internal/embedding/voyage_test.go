@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -268,9 +267,9 @@ func TestVoyageEmbedder_IsConfigured(t *testing.T) {
 func TestVoyageEmbedder_EmbedDocuments_RecordsSpanAttributes(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
-	prev := otel.GetTracerProvider()
-	otel.SetTracerProvider(tp)
-	defer otel.SetTracerProvider(prev)
+	origTracer := tracer
+	tracer = tp.Tracer("test")
+	defer func() { tracer = origTracer }()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := voyageTestResponse{Data: []voyageTestResponseItem{
@@ -315,9 +314,9 @@ func TestVoyageEmbedder_EmbedDocuments_RecordsSpanAttributes(t *testing.T) {
 func TestVoyageEmbedder_EmbedDocument_RecordsHTTPStatusOnFailure(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
-	prev := otel.GetTracerProvider()
-	otel.SetTracerProvider(tp)
-	defer otel.SetTracerProvider(prev)
+	origTracer := tracer
+	tracer = tp.Tracer("test")
+	defer func() { tracer = origTracer }()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -354,9 +353,9 @@ func TestVoyageEmbedder_EmbedDocument_RecordsHTTPStatusOnFailure(t *testing.T) {
 func TestVoyageEmbedder_EmbedDocument_RecordsTotalTokensWhenPresent(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
-	prev := otel.GetTracerProvider()
-	otel.SetTracerProvider(tp)
-	defer otel.SetTracerProvider(prev)
+	origTracer := tracer
+	tracer = tp.Tracer("test")
+	defer func() { tracer = origTracer }()
 
 	type responseWithUsage struct {
 		Data  []voyageTestResponseItem `json:"data"`
