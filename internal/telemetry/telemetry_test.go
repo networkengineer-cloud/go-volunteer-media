@@ -9,6 +9,9 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // weakTestCertPEM is a throwaway self-signed cert (not a secret; borrowed
@@ -95,4 +98,34 @@ func TestInit_ExporterSetupError_FallsBackToNoOp(t *testing.T) {
 	if err := Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown returned error after failed Init: %v", err)
 	}
+}
+
+func TestSetSpanAttributes_SetsAttributesOnActiveSpan(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	ctx, span := tp.Tracer("test").Start(context.Background(), "test-span")
+
+	SetSpanAttributes(ctx, attribute.String("auth_failure_reason", "token_expired"))
+	span.End()
+
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 recorded span, got %d", len(spans))
+	}
+	found := false
+	for _, a := range spans[0].Attributes {
+		if string(a.Key) == "auth_failure_reason" && a.Value.AsString() == "token_expired" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected auth_failure_reason=token_expired attribute, got %v", spans[0].Attributes)
+	}
+}
+
+func TestSetSpanAttributes_NoOpWithoutActiveSpan(t *testing.T) {
+	// Must not panic when ctx carries no span — the common case for a call
+	// site invoked outside any request (or in a test with no tracer wired
+	// up).
+	SetSpanAttributes(context.Background(), attribute.String("k", "v"))
 }

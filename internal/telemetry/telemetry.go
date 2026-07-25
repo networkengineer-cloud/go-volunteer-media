@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/log/global"
 	lognoop "go.opentelemetry.io/otel/log/noop"
@@ -245,6 +246,14 @@ func RecordError(span trace.Span, err error, msg string) {
 func Fail(span trace.Span, err error, msg string) error {
 	RecordError(span, err, msg)
 	return err
+}
+
+// SetSpanAttributes sets attrs on the span active in ctx, if any. A no-op
+// when ctx carries no recording span — the single entry point handlers use
+// to annotate "the current request span" (e.g. why a 401 happened) without
+// each repeating the trace.SpanFromContext lookup themselves.
+func SetSpanAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
+	trace.SpanFromContext(ctx).SetAttributes(attrs...)
 }
 
 // Tracer returns a named tracer via the current global TracerProvider. A
