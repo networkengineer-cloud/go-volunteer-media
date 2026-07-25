@@ -18,6 +18,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/pgvector/pgvector-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"gorm.io/driver/postgres"
@@ -908,6 +909,13 @@ func TestSearch_Postgres_RecordsVectorQuerySpan(t *testing.T) {
 	defer func() { tracer = origTracer }()
 
 	db := openSearchTestPostgres(t)
+	// Registered against tp (not the global provider) so the gorm.Query
+	// span this produces lands in the same exporter as search.vector_query
+	// above, letting the assertion below check they're actually nested
+	// rather than merely both existing.
+	if err := db.Use(otelgorm.NewPlugin(otelgorm.WithTracerProvider(tp))); err != nil {
+		t.Fatalf("register otelgorm plugin: %v", err)
+	}
 	f := newSearchTestFixture(t, db)
 
 	animal := models.Animal{GroupID: f.groupA.ID, Name: "Rex", Species: "Dog", Status: "available", Description: "resource guarding around food bowls"}
@@ -922,9 +930,13 @@ func TestSearch_Postgres_RecordsVectorQuerySpan(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var vectorSpans []tracetest.SpanStub
+	var gormQuerySpans []tracetest.SpanStub
 	for _, s := range exporter.GetSpans() {
-		if s.Name == "search.vector_query" {
+		switch s.Name {
+		case "search.vector_query":
 			vectorSpans = append(vectorSpans, s)
+		case "gorm.Query":
+			gormQuerySpans = append(gormQuerySpans, s)
 		}
 	}
 	if len(vectorSpans) != 1 {
@@ -946,5 +958,22 @@ func TestSearch_Postgres_RecordsVectorQuerySpan(t *testing.T) {
 	}
 	if _, ok := got["search.max_distance"]; !ok {
 		t.Error("expected search.max_distance attribute to be set")
+	}
+
+	// The whole point of search.vector_query is to make the semantic
+	// query's gorm.Query span identifiable among the several
+	// identically-named ones a search request emits — so it must actually
+	// be that span's parent, not merely a sibling that happens to overlap
+	// in time.
+	vectorSpanID := vectorSpans[0].SpanContext.SpanID()
+	childFound := false
+	for _, gs := range gormQuerySpans {
+		if gs.Parent.SpanID() == vectorSpanID {
+			childFound = true
+			break
+		}
+	}
+	if !childFound {
+		t.Error("expected a gorm.Query span parented to search.vector_query — the vector query's own span is not nested under it")
 	}
 }

@@ -378,15 +378,22 @@ func fuseUpdateResults(keyword, semantic []updateSearchResult, offset, limit int
 // rather than kept as three copies that could drift out of sync — e.g. a
 // fix to the degrade-on-error behavior only needs to be made once.
 func finishSemanticSearch[T any](ctx context.Context, resourceName string, keywordRows []T, rebuildKeywordPage func() *gorm.DB, semanticQuery *gorm.DB, pool int, fuse func(keyword, semantic []T, offset, limit int) ([]T, int), keywordCount int64, offset, limit int, candidatesHistogram metric.Int64Histogram) ([]T, int64, error) {
-	_, span := tracer.Start(ctx, "search.vector_query")
+	spanCtx, span := tracer.Start(ctx, "search.vector_query")
 	span.SetAttributes(
 		attribute.String("search.resource", resourceName),
 		attribute.Float64("search.max_distance", maxSemanticDistance()),
 		attribute.Int("search.embedding_dimension", embedding.Dimension),
 	)
 
+	// WithContext(spanCtx), not the outer ctx: semanticQuery was built
+	// against the request context before this span existed, so without
+	// rebinding here the otelgorm plugin parents the actual gorm.Query span
+	// to the request span instead of to search.vector_query — defeating
+	// the point of this span, which is to make the vector query
+	// identifiable among the other (identically-named) gorm.Query spans a
+	// search request emits.
 	var semanticRows []T
-	err := semanticQuery.Limit(pool).Find(&semanticRows).Error
+	err := semanticQuery.WithContext(spanCtx).Limit(pool).Find(&semanticRows).Error
 	if err != nil {
 		telemetry.Fail(span, err, "vector query failed")
 		span.End()
