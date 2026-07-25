@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -97,16 +98,25 @@ type voyageResponseItem struct {
 }
 
 type voyageResponse struct {
-	Data []voyageResponseItem `json:"data"`
+	Data  []voyageResponseItem `json:"data"`
+	Usage *struct {
+		TotalTokens int `json:"total_tokens"`
+	} `json:"usage"`
 }
 
-func (v *VoyageEmbedder) embed(ctx context.Context, spanName string, input interface{}, inputType string) ([]voyageResponseItem, error) {
+func (v *VoyageEmbedder) embed(ctx context.Context, spanName string, input interface{}, inputType string, batchSize int) ([]voyageResponseItem, error) {
 	if !v.IsConfigured() {
 		return nil, fmt.Errorf("Voyage embedder is not configured (VOYAGE_API_KEY not set)")
 	}
 
 	ctx, span := tracer.Start(ctx, spanName)
 	defer span.End()
+	span.SetAttributes(
+		attribute.String("voyage.model", v.model),
+		attribute.String("voyage.input_type", inputType),
+		attribute.Int("voyage.batch_size", batchSize),
+		attribute.Int("voyage.dimension", Dimension),
+	)
 
 	reqBody := voyageRequest{
 		Input:           input,
@@ -145,6 +155,7 @@ func (v *VoyageEmbedder) embed(ctx context.Context, spanName string, input inter
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		span.SetAttributes(attribute.Int("voyage.http_status", resp.StatusCode))
 		// Truncated rather than included in full: an error response body is
 		// operator-facing diagnostic text, not something this app's own
 		// logs should let grow unbounded or risk echoing back arbitrarily
@@ -155,6 +166,9 @@ func (v *VoyageEmbedder) embed(ctx context.Context, spanName string, input inter
 	var voyageResp voyageResponse
 	if err := json.Unmarshal(body, &voyageResp); err != nil {
 		return nil, telemetry.Fail(span, fmt.Errorf("failed to unmarshal Voyage response: %w", err), "unmarshal failed")
+	}
+	if voyageResp.Usage != nil {
+		span.SetAttributes(attribute.Int("voyage.total_tokens", voyageResp.Usage.TotalTokens))
 	}
 
 	return voyageResp.Data, nil
@@ -186,7 +200,7 @@ func firstEmbedding(items []voyageResponseItem) ([]float32, error) {
 
 // EmbedDocument embeds a single piece of indexed text (input_type "document").
 func (v *VoyageEmbedder) EmbedDocument(ctx context.Context, text string) ([]float32, error) {
-	items, err := v.embed(ctx, "embedding.voyage.embed_document", text, "document")
+	items, err := v.embed(ctx, "embedding.voyage.embed_document", text, "document", 1)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +211,7 @@ func (v *VoyageEmbedder) EmbedDocument(ctx context.Context, text string) ([]floa
 // retrieval-tuned models perform better when query text is distinguished
 // from document text at embed time.
 func (v *VoyageEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
-	items, err := v.embed(ctx, "embedding.voyage.embed_query", text, "query")
+	items, err := v.embed(ctx, "embedding.voyage.embed_query", text, "query", 1)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +224,7 @@ func (v *VoyageEmbedder) EmbedDocuments(ctx context.Context, texts []string) ([]
 	for i, t := range texts {
 		inputs[i] = t
 	}
-	items, err := v.embed(ctx, "embedding.voyage.embed_documents", inputs, "document")
+	items, err := v.embed(ctx, "embedding.voyage.embed_documents", inputs, "document", len(texts))
 	if err != nil {
 		return nil, err
 	}

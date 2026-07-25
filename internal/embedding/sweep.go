@@ -9,6 +9,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 )
@@ -40,6 +41,14 @@ const sweepStopTimeout = 10 * time.Second
 // sweepComments/sweepUpdates call's PersistEmbedding write against a closed
 // *sql.DB.
 func StartReconciliationSweep(db *gorm.DB, embedder Embedder, interval time.Duration) (stop func()) {
+	meter := telemetry.Meter("internal/embedding")
+	heartbeat := telemetry.NewInstrument("embedding.sweep.heartbeat", func() (metric.Int64Counter, error) {
+		return meter.Int64Counter(
+			"embedding.sweep.heartbeat",
+			metric.WithDescription("Incremented once per reconciliation sweep tick, regardless of outcome — absence signals the sweep goroutine died"),
+		)
+	})
+
 	ticker := time.NewTicker(interval)
 	done := make(chan struct{})
 	finished := make(chan struct{})
@@ -49,6 +58,7 @@ func StartReconciliationSweep(db *gorm.DB, embedder Embedder, interval time.Dura
 		for {
 			select {
 			case <-ticker.C:
+				heartbeat.Add(context.Background(), 1)
 				if !Usable(embedder) {
 					continue
 				}

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/log/global"
 	lognoop "go.opentelemetry.io/otel/log/noop"
@@ -76,7 +77,7 @@ func Enabled() bool {
 // traces/logs. Without that per-signal header, metrics silently degrade to
 // the generic one — no error here or in Terraform, just data landing in the
 // wrong dataset (or rejected) on the Axiom side.
-func Init(ctx context.Context, serviceName, environment string) {
+func Init(ctx context.Context, serviceName, environment, version string) {
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {
 		logging.Info("OTEL_EXPORTER_OTLP_ENDPOINT not set, telemetry disabled (using no-op providers)")
@@ -93,12 +94,7 @@ func Init(ctx context.Context, serviceName, environment string) {
 		logging.WithField("error", err.Error()).Warn("opentelemetry reported an internal error")
 	}))
 
-	res, err := resource.New(ctx,
-		resource.WithAttributes(
-			semconv.ServiceName(serviceName),
-			semconv.DeploymentEnvironmentName(environment),
-		),
-	)
+	res, err := buildResource(ctx, serviceName, environment, version)
 	if err != nil {
 		logging.WithField("error", err.Error()).Warn("failed to build otel resource, falling back to no-op telemetry providers")
 		return
@@ -121,6 +117,20 @@ func Init(ctx context.Context, serviceName, environment string) {
 	}
 
 	logging.WithField("endpoint", endpoint).Info("OpenTelemetry initialized")
+}
+
+// buildResource constructs the OTel resource identifying this process —
+// service name, version (git SHA, or "dev" outside a versioned build), and
+// deployment environment. Split out from Init so it's unit-testable without
+// spinning up real exporters.
+func buildResource(ctx context.Context, serviceName, environment, version string) (*resource.Resource, error) {
+	return resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceName(serviceName),
+			semconv.ServiceVersion(version),
+			semconv.DeploymentEnvironmentName(environment),
+		),
+	)
 }
 
 // fallback tears down any providers Init already configured before a later
@@ -245,6 +255,14 @@ func RecordError(span trace.Span, err error, msg string) {
 func Fail(span trace.Span, err error, msg string) error {
 	RecordError(span, err, msg)
 	return err
+}
+
+// SetSpanAttributes sets attrs on the span active in ctx, if any. A no-op
+// when ctx carries no recording span — the single entry point handlers use
+// to annotate "the current request span" (e.g. why a 401 happened) without
+// each repeating the trace.SpanFromContext lookup themselves.
+func SetSpanAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
+	trace.SpanFromContext(ctx).SetAttributes(attrs...)
 }
 
 // Tracer returns a named tracer via the current global TracerProvider. A

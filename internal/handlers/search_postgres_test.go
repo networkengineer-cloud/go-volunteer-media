@@ -18,6 +18,9 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/pgvector/pgvector-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
@@ -893,5 +896,84 @@ func TestSearch_Postgres_DeepPaginationCoversResultsBeyondDefaultPool(t *testing
 	animals, _ := body["animals"].([]interface{})
 	if len(animals) != 5 {
 		t.Fatalf("expected 5 animals on the last partial page (60 total, offset=55, limit=10), got %d: %v", len(animals), animals)
+	}
+}
+
+func TestSearch_Postgres_RecordsVectorQuerySpan(t *testing.T) {
+	t.Setenv("SEMANTIC_SEARCH_ENABLED", "true")
+
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	origTracer := tracer
+	tracer = tp.Tracer("test")
+	defer func() { tracer = origTracer }()
+
+	db := openSearchTestPostgres(t)
+	// Registered against tp (not the global provider) so the gorm.Query
+	// span this produces lands in the same exporter as search.vector_query
+	// above, letting the assertion below check they're actually nested
+	// rather than merely both existing.
+	if err := db.Use(otelgorm.NewPlugin(otelgorm.WithTracerProvider(tp))); err != nil {
+		t.Fatalf("register otelgorm plugin: %v", err)
+	}
+	f := newSearchTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.groupA.ID, Name: "Rex", Species: "Dog", Status: "available", Description: "resource guarding around food bowls"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+	f.setAnimalEmbedding(t, animal.ID, vectorWithOneAt(0))
+
+	c, w := f.searchRequestWithParams(t, f.groupA.ID, url.Values{"q": {"resource guarding"}, "type": {"animals"}})
+	Search(f.tx, &fixedVectorEmbedder{vector: vectorWithOneAt(0)})(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var vectorSpans []tracetest.SpanStub
+	var gormQuerySpans []tracetest.SpanStub
+	for _, s := range exporter.GetSpans() {
+		switch s.Name {
+		case "search.vector_query":
+			vectorSpans = append(vectorSpans, s)
+		case "gorm.Query":
+			gormQuerySpans = append(gormQuerySpans, s)
+		}
+	}
+	if len(vectorSpans) != 1 {
+		t.Fatalf("expected 1 search.vector_query span, got %d", len(vectorSpans))
+	}
+
+	got := map[string]interface{}{}
+	for _, a := range vectorSpans[0].Attributes {
+		got[string(a.Key)] = a.Value.AsInterface()
+	}
+	if got["search.resource"] != "animals" {
+		t.Errorf("search.resource = %v, want %q", got["search.resource"], "animals")
+	}
+	if got["search.embedding_dimension"] != int64(embedding.Dimension) {
+		t.Errorf("search.embedding_dimension = %v, want %d", got["search.embedding_dimension"], embedding.Dimension)
+	}
+	if _, ok := got["search.candidate_count"]; !ok {
+		t.Error("expected search.candidate_count attribute to be set")
+	}
+	if _, ok := got["search.max_distance"]; !ok {
+		t.Error("expected search.max_distance attribute to be set")
+	}
+
+	// The whole point of search.vector_query is to make the semantic
+	// query's gorm.Query span identifiable among the several
+	// identically-named ones a search request emits — so it must actually
+	// be that span's parent, not merely a sibling that happens to overlap
+	// in time.
+	vectorSpanID := vectorSpans[0].SpanContext.SpanID()
+	childFound := false
+	for _, gs := range gormQuerySpans {
+		if gs.Parent.SpanID() == vectorSpanID {
+			childFound = true
+			break
+		}
+	}
+	if !childFound {
+		t.Error("expected a gorm.Query span parented to search.vector_query — the vector query's own span is not nested under it")
 	}
 }

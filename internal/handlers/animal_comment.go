@@ -11,6 +11,8 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
+	"go.opentelemetry.io/otel/metric"
 	"gorm.io/gorm"
 )
 
@@ -293,6 +295,14 @@ func GetAnimalCommentPosition(db *gorm.DB) gin.HandlerFunc {
 
 // CreateAnimalComment creates a new comment on an animal
 func CreateAnimalComment(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
+	meter := telemetry.Meter("internal/handlers/animal_comment")
+	commentsCreated := telemetry.NewInstrument("comments.created", func() (metric.Int64Counter, error) {
+		return meter.Int64Counter(
+			"comments.created",
+			metric.WithDescription("Comments successfully created"),
+		)
+	})
+
 	return func(c *gin.Context) {
 		// rawDB is captured before the shadow below so the detached
 		// goroutine spawned by embedCommentAsync gets the unscoped db, not
@@ -358,6 +368,7 @@ func CreateAnimalComment(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFu
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create comment"})
 			return
 		}
+		commentsCreated.Add(c.Request.Context(), 1)
 
 		embedCommentAsync(rawDB, embedder, comment)
 

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"gorm.io/gorm"
 )
 
@@ -591,5 +594,68 @@ func TestGetCurrentUserSoftDeletedGroups(t *testing.T) {
 				t.Errorf("Expected 'active-group', got '%s'", groupName)
 			}
 		}
+	}
+}
+
+func TestLogin_RecordsFailureReasonOnSpan(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name    string
+		setupDB func(*gorm.DB)
+		payload map[string]interface{}
+	}{
+		{
+			name:    "user not found",
+			payload: map[string]interface{}{"username": "nobody", "password": "whatever123"},
+		},
+		{
+			name: "wrong password",
+			setupDB: func(db *gorm.DB) {
+				createTestUser(t, db, "testuser", "test@example.com", "password123", false)
+			},
+			payload: map[string]interface{}{"username": "testuser", "password": "wrongpassword"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			if tt.setupDB != nil {
+				tt.setupDB(db)
+			}
+
+			exporter := tracetest.NewInMemoryExporter()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+			ctx, span := tp.Tracer("test").Start(context.Background(), "test-request")
+
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			jsonBytes, _ := json.Marshal(tt.payload)
+			req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewBuffer(jsonBytes))
+			req.Header.Set("Content-Type", "application/json")
+			c.Request = req.WithContext(ctx)
+
+			Login(db)(c)
+			span.End()
+
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
+			}
+
+			spans := exporter.GetSpans()
+			if len(spans) != 1 {
+				t.Fatalf("expected 1 recorded span, got %d", len(spans))
+			}
+			got := ""
+			for _, a := range spans[0].Attributes {
+				if string(a.Key) == "auth_failure_reason" {
+					got = a.Value.AsString()
+				}
+			}
+			if got != "invalid_credentials" {
+				t.Errorf("auth_failure_reason = %q, want %q", got, "invalid_credentials")
+			}
+		})
 	}
 }

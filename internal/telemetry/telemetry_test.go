@@ -9,6 +9,10 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	semconv "go.opentelemetry.io/otel/semconv/v1.28.0"
 )
 
 // weakTestCertPEM is a throwaway self-signed cert (not a secret; borrowed
@@ -29,10 +33,26 @@ Lhnm4N/QDk5rek0=
 -----END CERTIFICATE-----
 `
 
+func TestBuildResource_IncludesServiceVersion(t *testing.T) {
+	res, err := buildResource(context.Background(), "test-service", "test", "abc1234")
+	if err != nil {
+		t.Fatalf("buildResource: %v", err)
+	}
+	found := false
+	for _, kv := range res.Attributes() {
+		if kv.Key == semconv.ServiceVersionKey && kv.Value.AsString() == "abc1234" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected service.version=abc1234 in resource attributes, got %v", res.Attributes())
+	}
+}
+
 func TestInit_NoEndpoint_IsNoOp(t *testing.T) {
 	os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 
-	Init(context.Background(), "test-service", "test")
+	Init(context.Background(), "test-service", "test", "test-version")
 
 	if err := Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown returned error after no-op Init: %v", err)
@@ -48,7 +68,7 @@ func TestInit_WithEndpoint_ConfiguresProviders(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", server.URL)
 	t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "true")
 
-	Init(context.Background(), "test-service", "test")
+	Init(context.Background(), "test-service", "test", "test-version")
 
 	if err := Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown returned error: %v", err)
@@ -84,7 +104,7 @@ func TestInit_ExporterSetupError_FallsBackToNoOp(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "true")
 	t.Setenv("OTEL_EXPORTER_OTLP_CERTIFICATE", certPath)
 
-	Init(context.Background(), "test-service", "test")
+	Init(context.Background(), "test-service", "test", "test-version")
 
 	_, span := otel.Tracer("test").Start(context.Background(), "test-span")
 	defer span.End()
@@ -95,4 +115,34 @@ func TestInit_ExporterSetupError_FallsBackToNoOp(t *testing.T) {
 	if err := Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown returned error after failed Init: %v", err)
 	}
+}
+
+func TestSetSpanAttributes_SetsAttributesOnActiveSpan(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	ctx, span := tp.Tracer("test").Start(context.Background(), "test-span")
+
+	SetSpanAttributes(ctx, attribute.String("auth_failure_reason", "token_expired"))
+	span.End()
+
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 recorded span, got %d", len(spans))
+	}
+	found := false
+	for _, a := range spans[0].Attributes {
+		if string(a.Key) == "auth_failure_reason" && a.Value.AsString() == "token_expired" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected auth_failure_reason=token_expired attribute, got %v", spans[0].Attributes)
+	}
+}
+
+func TestSetSpanAttributes_NoOpWithoutActiveSpan(t *testing.T) {
+	// Must not panic when ctx carries no span — the common case for a call
+	// site invoked outside any request (or in a test with no tracer wired
+	// up).
+	SetSpanAttributes(context.Background(), attribute.String("k", "v"))
 }

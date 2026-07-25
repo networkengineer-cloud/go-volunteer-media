@@ -10,6 +10,8 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"
 )
 
@@ -108,6 +110,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 		if err := db.Preload("Groups", activeGroupsPreload).Where("LOWER(username) = ?", strings.ToLower(req.Username)).First(&user).Error; err != nil {
 			// Audit log: failed login attempt (user not found)
 			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "user_not_found")
+			telemetry.SetSpanAttributes(ctx, attribute.String("auth_failure_reason", "invalid_credentials"))
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 			return
 		}
@@ -185,6 +188,7 @@ func Login(db *gorm.DB) gin.HandlerFunc {
 
 			// Audit log: failed login attempt
 			logging.LogAuthFailure(ctx, req.Username, c.ClientIP(), "invalid_password")
+			telemetry.SetSpanAttributes(ctx, attribute.String("auth_failure_reason", "invalid_credentials"))
 
 			attemptsRemaining := MaxFailedLoginAttempts - user.FailedLoginAttempts
 			c.JSON(http.StatusUnauthorized, gin.H{
