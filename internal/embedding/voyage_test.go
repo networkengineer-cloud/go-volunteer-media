@@ -380,7 +380,6 @@ func TestVoyageEmbedder_EmbedDocument_RecordsTotalTokensWhenPresent(t *testing.T
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	tp.ForceFlush(context.Background())
 	spans := exporter.GetSpans()
 	if len(spans) != 1 {
 		t.Fatalf("expected 1 recorded span, got %d", len(spans))

@@ -944,7 +944,7 @@ func TestSearch_Postgres_RecordsVectorQuerySpan(t *testing.T) {
 	if _, ok := got["search.candidate_count"]; !ok {
 		t.Error("expected search.candidate_count attribute to be set")
 	}
-	if _, ok := got["search.similarity_threshold"]; !ok {
-		t.Error("expected search.similarity_threshold attribute to be set")
+	if _, ok := got["search.max_distance"]; !ok {
+		t.Error("expected search.max_distance attribute to be set")
 	}
 }

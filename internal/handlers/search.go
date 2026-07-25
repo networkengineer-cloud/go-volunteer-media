@@ -381,7 +381,7 @@ func finishSemanticSearch[T any](ctx context.Context, resourceName string, keywo
 	_, span := tracer.Start(ctx, "search.vector_query")
 	span.SetAttributes(
 		attribute.String("search.resource", resourceName),
-		attribute.Float64("search.similarity_threshold", maxSemanticDistance()),
+		attribute.Float64("search.max_distance", maxSemanticDistance()),
 		attribute.Int("search.embedding_dimension", embedding.Dimension),
 	)
 

@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"go.opentelemetry.io/otel"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
-	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 )
 
 // animalListItem is the minimal shape of a GetAnimals response entry used across tests.

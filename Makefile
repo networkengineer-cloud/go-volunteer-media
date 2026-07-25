@@ -26,7 +26,7 @@ dev: ## Run both backend and frontend (requires two terminals)
 
 build-backend: ## Build backend binary
 	@echo "Building backend..."
-	go build -ldflags="-X github.com/networkengineer-cloud/go-volunteer-media/internal/version.GitSHA=$(shell git rev-parse --short HEAD)" -o api ./cmd/api
+	go build -ldflags="-X github.com/networkengineer-cloud/go-volunteer-media/internal/version.GitSHA=$(shell git rev-parse HEAD 2>/dev/null || echo dev)" -o api ./cmd/api
 
 build-frontend: ## Build frontend for production
 	@echo "Building frontend..."

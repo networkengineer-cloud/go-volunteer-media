@@ -8,11 +8,11 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/metric"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
+	"go.opentelemetry.io/otel/metric"
 	"gorm.io/gorm"
 )
 
