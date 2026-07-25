@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "Group Go module bumps into one PR and keep go.sum in sync",
+      "matchManagers": ["gomod"],
+      "groupName": "Go dependencies",
+      "postUpdateOptions": ["gomodTidy"]
+    },
+    {
+      "description": "Group non-major frontend bumps into one PR",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "frontend dependencies (non-major)"
+    },
+    {
+      "description": "Group GitHub Actions version bumps into one PR",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "go-volunteer-media-base is our own image (Dockerfile.base / build-base-image.yml), tagged YYYY.MM and rebuilt monthly — track it so the Dockerfile FROM bump gets proposed automatically instead of manually",
+      "matchManagers": ["dockerfile"],
+      "matchDepNames": ["ghcr.io/networkengineer-cloud/go-volunteer-media-base"],
+      "versioning": "loose",
+      "groupName": "internal base image"
+    }
+  ]
+}

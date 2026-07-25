@@ -59,8 +59,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Final stage — use the pre-built base image so LibreOffice is not installed
 # on every build. Rebuild the base by running build-base-image.yml manually
 # or by editing Dockerfile.base (it also rebuilds monthly for security patches).
-# Tag format: YYYY.MM — update this after each monthly base rebuild
-# (see build-base-image.yml; configure Renovate to automate the bump).
+# Tag format: YYYY.MM — Renovate (see renovate.json) opens a PR bumping this
+# after each monthly rebuild in build-base-image.yml.
 FROM ghcr.io/networkengineer-cloud/go-volunteer-media-base:2026.06
 
 # Copy binary from backend builder

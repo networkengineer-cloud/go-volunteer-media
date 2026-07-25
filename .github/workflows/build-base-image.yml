@@ -45,8 +45,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Versioned date tag — referenced in Dockerfile FROM; update manually
-            # after each monthly base rebuild (or configure Renovate to do it).
+            # Versioned date tag — referenced in Dockerfile FROM; Renovate
+            # (see renovate.json) opens a PR bumping it after each rebuild.
             type=raw,value={{date 'YYYY.MM'}}
             # Convenience alias — not used in Dockerfile FROM
             type=raw,value=latest
@@ -82,4 +82,4 @@ jobs:
           echo "${IMAGE_TAGS}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Update the FROM tag in Dockerfile to the new date tag and open a PR." >> $GITHUB_STEP_SUMMARY
+          echo "Renovate will open a PR bumping the Dockerfile FROM tag to this date tag." >> $GITHUB_STEP_SUMMARY
