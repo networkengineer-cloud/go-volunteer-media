@@ -20,6 +20,12 @@ RUN if [ -f "package.json" ]; then \
 # CGO_ENABLED=0 with GOOS/GOARCH lets Go cross-compile natively to linux/amd64.
 FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
 
+# GIT_SHA identifies the build for the service.version OTel resource
+# attribute (see internal/version). Passed in via --build-arg from CI
+# (build-image.yml); defaults to "dev" for a manual `docker build` with no
+# build-arg, matching internal/version.GitSHA's own local-dev default.
+ARG GIT_SHA=dev
+
 # Install security updates and build dependencies
 RUN apk update && apk upgrade && \
     apk add --no-cache git ca-certificates tzdata && \
@@ -48,7 +54,7 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 # whole dependency tree (e.g. Azure SDK) every time.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "-static"' -o /app/api ./cmd/api
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s -extldflags \"-static\" -X github.com/networkengineer-cloud/go-volunteer-media/internal/version.GitSHA=${GIT_SHA}" -o /app/api ./cmd/api
 
 # Final stage — use the pre-built base image so LibreOffice is not installed
 # on every build. Rebuild the base by running build-base-image.yml manually
