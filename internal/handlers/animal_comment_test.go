@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/stretchr/testify/assert"
@@ -551,5 +553,41 @@ func TestGetGroupLatestComments(t *testing.T) {
 				assert.Contains(t, w.Body.String(), tt.expectedError)
 			}
 		})
+	}
+}
+
+func TestCreateAnimalComment_IncrementsCommentsCreatedCounter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	prev := otel.GetMeterProvider()
+	otel.SetMeterProvider(mp)
+	defer otel.SetMeterProvider(prev)
+
+	db := setupAnimalCommentTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body, _ := json.Marshal(AnimalCommentRequest{Content: "Test comment"})
+	c.Request = httptest.NewRequest("POST", "/groups/1/animals/1/comments", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("user_id", uint(1))
+	c.Set("is_admin", false)
+	c.Params = gin.Params{{Key: "id", Value: "1"}, {Key: "animalId", Value: "1"}}
+
+	handler := CreateAnimalComment(db, &embedding.StubEmbedder{})
+	handler(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if total := metricSum(t, reader, "comments.created"); total != 1 {
+		t.Fatalf("comments.created = %d, want 1", total)
 	}
 }
