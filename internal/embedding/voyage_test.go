@@ -7,6 +7,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 type voyageTestRequest struct {
@@ -257,5 +262,137 @@ func TestVoyageEmbedder_IsConfigured(t *testing.T) {
 	v.apiKey = "test-key"
 	if !v.IsConfigured() {
 		t.Fatal("expected IsConfigured to be true with an API key set")
+	}
+}
+
+func TestVoyageEmbedder_EmbedDocuments_RecordsSpanAttributes(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	defer otel.SetTracerProvider(prev)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := voyageTestResponse{Data: []voyageTestResponseItem{
+			{Embedding: make([]float32, Dimension), Index: 0},
+			{Embedding: make([]float32, Dimension), Index: 1},
+		}}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	v := NewVoyageEmbedder()
+	v.apiKey = "test-key"
+	v.apiURL = server.URL
+	v.model = "voyage-4"
+
+	if _, err := v.EmbedDocuments(context.Background(), []string{"a", "b"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 recorded span, got %d", len(spans))
+	}
+	got := map[string]interface{}{}
+	for _, a := range spans[0].Attributes {
+		got[string(a.Key)] = a.Value.AsInterface()
+	}
+	want := map[string]interface{}{
+		"voyage.model":      "voyage-4",
+		"voyage.input_type": "document",
+		"voyage.batch_size": int64(2),
+		"voyage.dimension":  int64(Dimension),
+	}
+	for k, wantV := range want {
+		if got[k] != wantV {
+			t.Errorf("attribute %s = %v, want %v", k, got[k], wantV)
+		}
+	}
+}
+
+func TestVoyageEmbedder_EmbedDocument_RecordsHTTPStatusOnFailure(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	defer otel.SetTracerProvider(prev)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"error":"rate limited"}`))
+	}))
+	defer server.Close()
+
+	v := NewVoyageEmbedder()
+	v.apiKey = "test-key"
+	v.apiURL = server.URL
+
+	if _, err := v.EmbedDocument(context.Background(), "text"); err == nil {
+		t.Fatal("expected an error for a 429 response")
+	}
+
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 recorded span, got %d", len(spans))
+	}
+	if spans[0].Status.Code != codes.Error {
+		t.Fatalf("expected span status Error, got %v", spans[0].Status)
+	}
+	var gotStatus int64 = -1
+	for _, a := range spans[0].Attributes {
+		if string(a.Key) == "voyage.http_status" {
+			gotStatus = a.Value.AsInt64()
+		}
+	}
+	if gotStatus != http.StatusTooManyRequests {
+		t.Fatalf("voyage.http_status = %d, want %d", gotStatus, http.StatusTooManyRequests)
+	}
+}
+
+func TestVoyageEmbedder_EmbedDocument_RecordsTotalTokensWhenPresent(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	defer otel.SetTracerProvider(prev)
+
+	type responseWithUsage struct {
+		Data  []voyageTestResponseItem `json:"data"`
+		Usage struct {
+			TotalTokens int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := responseWithUsage{Data: []voyageTestResponseItem{{Embedding: make([]float32, Dimension), Index: 0}}}
+		resp.Usage.TotalTokens = 42
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	v := NewVoyageEmbedder()
+	v.apiKey = "test-key"
+	v.apiURL = server.URL
+
+	if _, err := v.EmbedDocument(context.Background(), "text"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tp.ForceFlush(context.Background())
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 recorded span, got %d", len(spans))
+	}
+	var gotTokens int64 = -1
+	for _, a := range spans[0].Attributes {
+		if string(a.Key) == "voyage.total_tokens" {
+			gotTokens = a.Value.AsInt64()
+		}
+	}
+	if gotTokens != 42 {
+		t.Fatalf("voyage.total_tokens = %d, want 42", gotTokens)
 	}
 }
