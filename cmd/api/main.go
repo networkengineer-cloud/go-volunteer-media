@@ -31,6 +31,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/version"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
@@ -65,7 +66,7 @@ func main() {
 	// reads, no network dial), so there's nothing for a deadline to bound —
 	// actual export happens later, asynchronously, in background batch
 	// processors.
-	telemetry.Init(context.Background(), serviceName, os.Getenv("ENV"))
+	telemetry.Init(context.Background(), serviceName, os.Getenv("ENV"), version.GitSHA)
 
 	shutdownTelemetry := func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
