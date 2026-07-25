@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 )
@@ -2629,5 +2633,57 @@ func TestUpdateAnimal_LeaveQuarantine_EarlyExit_CapsEndDateAtNow(t *testing.T) {
 	}
 	if incident.EndDate.Before(beforeRequest) || incident.EndDate.After(afterRequest) {
 		t.Errorf("Expected EndDate to be capped at now (between %v and %v), got %v (stored future end date was %v)", beforeRequest, afterRequest, *incident.EndDate, futureEndDate)
+	}
+}
+
+func metricSum(t *testing.T, reader *sdkmetric.ManualReader, name string) int64 {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	var total int64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			if sum, ok := m.Data.(metricdata.Sum[int64]); ok {
+				for _, dp := range sum.DataPoints {
+					total += dp.Value
+				}
+			}
+		}
+	}
+	return total
+}
+
+func TestCreateAnimal_IncrementsAnimalsCreatedCounter(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	prev := otel.GetMeterProvider()
+	otel.SetMeterProvider(mp)
+	defer otel.SetMeterProvider(prev)
+
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
+
+	animalReq := AnimalRequest{Name: "Rex", Species: "Dog", Status: "available"}
+	jsonData, _ := json.Marshal(animalReq)
+
+	c, w := setupAnimalTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := CreateAnimal(db, nil, &embedding.StubEmbedder{})
+	handler(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if total := metricSum(t, reader, "animals.created"); total != 1 {
+		t.Fatalf("animals.created = %d, want 1", total)
 	}
 }

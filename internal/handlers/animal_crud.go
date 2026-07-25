@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/metric"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 	"gorm.io/gorm"
 )
 
@@ -192,6 +194,14 @@ func GetAnimal(db *gorm.DB) gin.HandlerFunc {
 
 // CreateAnimal creates a new animal in a group
 func CreateAnimal(db *gorm.DB, emailService *email.Service, embedder embedding.Embedder) gin.HandlerFunc {
+	meter := telemetry.Meter("internal/handlers/animal_crud")
+	animalsCreated := telemetry.NewInstrument("animals.created", func() (metric.Int64Counter, error) {
+		return meter.Int64Counter(
+			"animals.created",
+			metric.WithDescription("Animals successfully created"),
+		)
+	})
+
 	return func(c *gin.Context) {
 		// rawDB is captured before the shadow below so the detached
 		// goroutine spawned by sendQuarantineNotificationEmail gets the
@@ -293,6 +303,7 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service, embedder embedding.E
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create animal"})
 			return
 		}
+		animalsCreated.Add(c.Request.Context(), 1)
 
 		embedAnimalAsync(rawDB, embedder, animal)
 
