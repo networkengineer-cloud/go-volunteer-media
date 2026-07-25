@@ -20,6 +20,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var tracer = telemetry.Tracer("internal/handlers/search")
+
 // animalSearchResult is an animal match with its full-text/semantic
 // relevance rank (the Reciprocal Rank Fusion score once fused; see
 // fuseAnimalResults).
@@ -376,8 +378,19 @@ func fuseUpdateResults(keyword, semantic []updateSearchResult, offset, limit int
 // rather than kept as three copies that could drift out of sync — e.g. a
 // fix to the degrade-on-error behavior only needs to be made once.
 func finishSemanticSearch[T any](ctx context.Context, resourceName string, keywordRows []T, rebuildKeywordPage func() *gorm.DB, semanticQuery *gorm.DB, pool int, fuse func(keyword, semantic []T, offset, limit int) ([]T, int), keywordCount int64, offset, limit int, candidatesHistogram metric.Int64Histogram) ([]T, int64, error) {
+	_, span := tracer.Start(ctx, "search.vector_query")
+	span.SetAttributes(
+		attribute.String("search.resource", resourceName),
+		attribute.Float64("search.similarity_threshold", maxSemanticDistance()),
+		attribute.Int("search.embedding_dimension", embedding.Dimension),
+	)
+
 	var semanticRows []T
-	if err := semanticQuery.Limit(pool).Find(&semanticRows).Error; err != nil {
+	err := semanticQuery.Limit(pool).Find(&semanticRows).Error
+	if err != nil {
+		telemetry.Fail(span, err, "vector query failed")
+		span.End()
+
 		// Semantic search is a ranking enhancement, never a hard dependency
 		// (see Search's doc comment): degrade to keyword-only ranking
 		// instead of discarding the keyword results already in hand.
@@ -399,6 +412,9 @@ func finishSemanticSearch[T any](ctx context.Context, resourceName string, keywo
 		}
 		return page, keywordCount, nil
 	}
+
+	span.SetAttributes(attribute.Int("search.candidate_count", len(semanticRows)))
+	span.End()
 
 	// maxSemanticDistance (search_rank.go) hasn't been validated against real
 	// embedding output, so record how many candidates survive it per
