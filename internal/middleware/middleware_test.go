@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,8 +11,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -1005,4 +1009,78 @@ func TestAuthRequired_APIToken(t *testing.T) {
 			t.Errorf("body = %s, want is_admin false (reflecting the demotion)", w.Body.String())
 		}
 	})
+}
+
+func TestAuthRequired_RecordsFailureReasonOnSpan(t *testing.T) {
+	tests := []struct {
+		name       string
+		authHeader string
+		buildToken func(t *testing.T) string
+		wantReason string
+	}{
+		{name: "missing header", authHeader: "", wantReason: "missing_header"},
+		{name: "invalid format", authHeader: "Basic abc", wantReason: "invalid_format"},
+		{name: "invalid token", authHeader: "Bearer not-a-real-token", wantReason: "token_invalid"},
+		{
+			name: "expired token",
+			buildToken: func(t *testing.T) string {
+				claims := auth.Claims{
+					UserID: 1,
+					RegisteredClaims: jwt.RegisteredClaims{
+						ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
+						IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
+					},
+				}
+				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+				signed, err := token.SignedString([]byte("L5WTt6D+6R55YfKzwqPRAEX5bR0bkNo4i58jYKL0wsk="))
+				if err != nil {
+					t.Fatalf("failed to sign expired test token: %v", err)
+				}
+				return signed
+			},
+			wantReason: "token_expired",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exporter := tracetest.NewInMemoryExporter()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+			ctx, span := tp.Tracer("test").Start(context.Background(), "test-request")
+
+			authHeader := tt.authHeader
+			if tt.buildToken != nil {
+				authHeader = "Bearer " + tt.buildToken(t)
+			}
+
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			req := httptest.NewRequest("GET", "/protected", nil)
+			if authHeader != "" {
+				req.Header.Set("Authorization", authHeader)
+			}
+			c.Request = req.WithContext(ctx)
+
+			AuthRequired(newMiddlewareTestDB(t))(c)
+			span.End()
+
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("expected 401, got %d", w.Code)
+			}
+
+			spans := exporter.GetSpans()
+			if len(spans) != 1 {
+				t.Fatalf("expected 1 recorded span, got %d", len(spans))
+			}
+			got := ""
+			for _, a := range spans[0].Attributes {
+				if string(a.Key) == "auth_failure_reason" {
+					got = a.Value.AsString()
+				}
+			}
+			if got != tt.wantReason {
+				t.Errorf("auth_failure_reason = %q, want %q", got, tt.wantReason)
+			}
+		})
+	}
 }

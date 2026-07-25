@@ -2,15 +2,19 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"
 )
 
@@ -71,6 +75,7 @@ func AuthRequired(db *gorm.DB) gin.HandlerFunc {
 				"endpoint": c.Request.URL.Path,
 				"method":   c.Request.Method,
 			}).Warn("Authorization header missing")
+			telemetry.SetSpanAttributes(ctx, attribute.String("auth_failure_reason", "missing_header"))
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
 			c.Abort()
 			return
@@ -85,6 +90,7 @@ func AuthRequired(db *gorm.DB) gin.HandlerFunc {
 				"endpoint": c.Request.URL.Path,
 				"method":   c.Request.Method,
 			}).Warn("Invalid authorization format")
+			telemetry.SetSpanAttributes(ctx, attribute.String("auth_failure_reason", "invalid_format"))
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization format"})
 			c.Abort()
 			return
@@ -103,6 +109,7 @@ func AuthRequired(db *gorm.DB) gin.HandlerFunc {
 				}).Warn("Invalid or expired API token")
 
 				logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "invalid_api_token")
+				telemetry.SetSpanAttributes(ctx, attribute.String("auth_failure_reason", "invalid_api_token"))
 
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 				c.Abort()
@@ -128,6 +135,12 @@ func AuthRequired(db *gorm.DB) gin.HandlerFunc {
 
 			// Use audit logger for security event
 			logging.LogUnauthorizedAccess(ctx, c.ClientIP(), c.Request.URL.Path, "invalid_token")
+
+			reason := "token_invalid"
+			if errors.Is(err, jwt.ErrTokenExpired) {
+				reason = "token_expired"
+			}
+			telemetry.SetSpanAttributes(ctx, attribute.String("auth_failure_reason", reason))
 
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
