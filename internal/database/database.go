@@ -662,6 +662,23 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created HNSW index idx_updates_embedding")
 	}
 
+	// Covers the activity feed's comment query (WHERE animal_id IN (...)
+	// ORDER BY created_at DESC): the existing idx_comment_animal_created
+	// index is (created_at, animal_id) - created_at leading, wrong order for
+	// an animal_id IN-list filter, which is why Postgres wasn't using it for
+	// that query. deleted_at is included so the soft-delete scope GORM
+	// always appends (deleted_at IS NULL) can be satisfied from the same
+	// index alongside the animal_id filter and created_at ordering.
+	activityFeedCommentIndexQuery := `
+		CREATE INDEX IF NOT EXISTS idx_animal_comments_animal_deleted_created
+		ON animal_comments (animal_id, deleted_at, created_at DESC)
+	`
+	if err := db.Exec(activityFeedCommentIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create index idx_animal_comments_animal_deleted_created")
+	} else {
+		logging.Info("Created index idx_animal_comments_animal_deleted_created")
+	}
+
 	logging.Info("Custom indexes creation completed")
 	return nil
 }
