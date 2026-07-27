@@ -399,3 +399,67 @@ func TestActivityFeed_Postgres_HasIndexForCommentQuery(t *testing.T) {
 		t.Fatalf("expected index to cover animal_id, deleted_at, and created_at, got: %s", indexDef)
 	}
 }
+
+// TestActivityFeed_Postgres_TotalCommentsCorrectWithTagFilterGroupBy closes
+// the loop on a finding from an automated PR review: applyTagFilter (see
+// animal_comment.go) adds a JOIN + GROUP BY animal_comments.id to dedupe
+// multi-tag matches, and the claim was that GORM's Count() on a grouped
+// query returns an arbitrary single group's row count rather than the true
+// distinct total. Investigated and refuted (GORM's Count() explicitly uses
+// RowsAffected - the number of rows/groups actually returned - whenever a
+// GROUP BY clause is present, which is exactly "number of distinct
+// groups"), including empirically against real Postgres. This test pins
+// that down permanently: each seeded comment carries two tags (so the join
+// produces two rows per comment before GROUP BY collapses them back down),
+// which is precisely the shape that would surface a bug here if one
+// existed.
+func TestActivityFeed_Postgres_TotalCommentsCorrectWithTagFilterGroupBy(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newActivityFeedTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+
+	unique := time.Now().UnixNano()
+	tag1 := models.CommentTag{Name: fmt.Sprintf("behavior%d", unique), Color: "#FF0000"}
+	tag2 := models.CommentTag{Name: fmt.Sprintf("medical%d", unique), Color: "#00FF00"}
+	if err := f.tx.Create(&tag1).Error; err != nil {
+		t.Fatalf("create tag1: %v", err)
+	}
+	if err := f.tx.Create(&tag2).Error; err != nil {
+		t.Fatalf("create tag2: %v", err)
+	}
+
+	const numTaggedComments = 5
+	for i := 0; i < numTaggedComments; i++ {
+		comment := models.AnimalComment{
+			AnimalID: animal.ID,
+			UserID:   f.user.ID,
+			Content:  fmt.Sprintf("tagged comment %d", i),
+			Tags:     []models.CommentTag{tag1, tag2},
+		}
+		if err := f.tx.Create(&comment).Error; err != nil {
+			t.Fatalf("create tagged comment %d: %v", i, err)
+		}
+	}
+	// An untagged comment too, to confirm the filter is actually narrowing
+	// results rather than everything happening to match.
+	if err := f.tx.Create(&models.AnimalComment{AnimalID: animal.ID, UserID: f.user.ID, Content: "untagged comment"}).Error; err != nil {
+		t.Fatalf("create untagged comment: %v", err)
+	}
+
+	body := f.feedRequest(t, fmt.Sprintf("type=comments&limit=2&tags=%s", tag1.Name))
+
+	if got := int(body["total"].(float64)); got != numTaggedComments {
+		t.Fatalf("total: got %d, want %d (the true distinct comment count under the tag filter's GROUP BY, not an arbitrary per-group value)", got, numTaggedComments)
+	}
+	items, _ := body["items"].([]interface{})
+	if len(items) != 2 {
+		t.Fatalf("expected the page itself to still respect limit=2, got %d items", len(items))
+	}
+	if body["hasMore"] != true {
+		t.Fatalf("expected hasMore=true (2 of %d tagged comments shown), got %v", numTaggedComments, body["hasMore"])
+	}
+}
