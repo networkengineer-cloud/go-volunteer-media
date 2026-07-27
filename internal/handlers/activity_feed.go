@@ -92,6 +92,13 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
+		// totalAnnouncements/totalComments are true counts, independent of
+		// any bounded fetch below - len(activityItems) can no longer be used
+		// for "total"/"hasMore" once the comments query is limited, since it
+		// would silently undercount past the fetched window.
+		var totalAnnouncements int
+		summary := ActivityFeedSummary{}
+
 		// Fetch announcements (Updates) if not filtering for comments only
 		if filterType == "" || filterType == "all" || filterType == "announcements" {
 			var updates []models.Update
@@ -112,6 +119,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch announcements"})
 				return
 			}
+			totalAnnouncements = len(updates)
 
 			for _, update := range updates {
 				activityItems = append(activityItems, ActivityItem{
@@ -126,6 +134,8 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 				})
 			}
 		}
+
+		var totalComments int64
 
 		// Fetch comments if not filtering for announcements only
 		if filterType == "" || filterType == "all" || filterType == "comments" {
@@ -152,8 +162,6 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			if len(animalIDs) > 0 {
-				// Get comments from these animals
-				var comments []models.AnimalComment
 				commentQuery := db.Where("animal_id IN ?", animalIDs)
 
 				// Apply date filters
@@ -169,36 +177,105 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 					commentQuery = applyTagFilter(commentQuery, splitAndTrim(filterTags))
 				}
 
-				err := commentQuery.Preload("User").
+				// Apply the rating filter in SQL (against the metadata jsonb
+				// column) rather than after fetching every row - this has to
+				// happen in SQL, not after Find(), for the Limit(offset+
+				// limit) below to be safe: a post-fetch filter could still
+				// drop rows out of an already-limited page, silently
+				// under-filling it.
+				//
+				// Replicates the old post-fetch Go loop's semantics exactly,
+				// including its structure: a comment needs *some* rating for
+				// any non-empty filterRating value (checked unconditionally,
+				// before branching - not just within the poor/exact cases),
+				// then poor/exact further narrow that, and a non-numeric,
+				// non-"poor" value is a deliberate no-op on top of the
+				// has-a-rating gate (the old code's strconv.Atoi failure
+				// branch didn't skip the comment either, so this preserves
+				// that quirk rather than silently tightening it).
+				//
+				// SessionRating is `json:"session_rating,omitempty"`, so a
+				// zero rating is never actually present as JSON 0 - the key
+				// is omitted from the document entirely - meaning
+				// metadata->>'session_rating' IS NOT NULL alone is
+				// equivalent to "has a nonzero rating", covering both a NULL
+				// metadata column and a present-but-keyless one.
+				if filterRating != "" {
+					commentQuery = commentQuery.Where("(animal_comments.metadata->>'session_rating') IS NOT NULL")
+					if filterRating == "poor" {
+						commentQuery = commentQuery.Where("(animal_comments.metadata->>'session_rating')::int BETWEEN 1 AND 2")
+					} else if ratingVal, err := strconv.Atoi(filterRating); err == nil {
+						commentQuery = commentQuery.Where("(animal_comments.metadata->>'session_rating')::int = ?", ratingVal)
+					}
+				}
+
+				// True count of every matching comment (all filters above,
+				// no Limit) - see totalComments' declaration comment.
+				if err := commentQuery.Session(&gorm.Session{}).
+					Model(&models.AnimalComment{}).
+					Count(&totalComments).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count comments"})
+					return
+				}
+
+				// Summary stats need every matching comment's metadata, not
+				// just the current page - fetched separately (and leanly:
+				// just the metadata column, no User/Tags preload) from the
+				// bounded page query below so bounding that query for
+				// performance can't also silently narrow the summary counts
+				// to whatever happened to fit on this page.
+				var summaryRows []models.AnimalComment
+				if err := commentQuery.Session(&gorm.Session{}).
+					Select("metadata").
+					Find(&summaryRows).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to compute activity feed summary"})
+					return
+				}
+				for _, row := range summaryRows {
+					if row.Metadata == nil {
+						continue
+					}
+					if row.Metadata.BehaviorNotes != "" {
+						summary.BehaviorConcernsCount++
+					}
+					if row.Metadata.MedicalNotes != "" {
+						summary.MedicalConcernsCount++
+					}
+					if row.Metadata.SessionRating > 0 && row.Metadata.SessionRating <= 2 {
+						summary.PoorSessionsCount++
+					}
+				}
+
+				// The actual page of comments to display. Bounded to
+				// offset+limit rather than fetched in full - this is the
+				// query that caused the incident this fix addresses (it
+				// previously had no Limit at all, pulling every comment
+				// across every animal in the group). offset+limit (not just
+				// limit) is required, not a rounding-friendly shortcut: the
+				// final response interleaves comments with announcements by
+				// created_at and only then slices out [offset:offset+limit],
+				// so anything that could land in that slice - across both
+				// sources - has to be fetched first. Any comment that ends
+				// up in the true top offset+limit of the *merged* feed must
+				// itself be within the top offset+limit of the
+				// comments-only list too (at most offset+limit-1 items,
+				// comments or announcements, can be more recent than it) -
+				// the standard bounded top-K merge argument. Announcements
+				// are left unbounded (fetched in full, as before), which
+				// trivially satisfies the same "at least top-K" requirement
+				// for that side.
+				var comments []models.AnimalComment
+				if err := commentQuery.Session(&gorm.Session{}).
+					Preload("User").
 					Preload("Tags").
 					Order("created_at DESC").
-					Find(&comments).Error
-
-				if err != nil {
+					Limit(offset + limit).
+					Find(&comments).Error; err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
 					return
 				}
 
 				for _, comment := range comments {
-					// Apply rating filter if specified
-					if filterRating != "" {
-						if comment.Metadata == nil || comment.Metadata.SessionRating == 0 {
-							continue // Skip if no rating
-						}
-
-						if filterRating == "poor" {
-							if comment.Metadata.SessionRating > 2 {
-								continue // Skip if not poor rating (1-2)
-							}
-						} else {
-							if ratingVal, err := strconv.Atoi(filterRating); err == nil {
-								if comment.Metadata.SessionRating != ratingVal {
-									continue // Skip if rating doesn't match
-								}
-							}
-						}
-					}
-
 					animal := animalMap[comment.AnimalID]
 					activityItems = append(activityItems, ActivityItem{
 						ID:        comment.ID,
@@ -222,31 +299,19 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			return activityItems[i].CreatedAt.After(activityItems[j].CreatedAt)
 		})
 
-		// Calculate summary statistics
-		summary := ActivityFeedSummary{}
-		for _, item := range activityItems {
-			if item.Type == "comment" && item.Metadata != nil {
-				if item.Metadata.BehaviorNotes != "" {
-					summary.BehaviorConcernsCount++
-				}
-				if item.Metadata.MedicalNotes != "" {
-					summary.MedicalConcernsCount++
-				}
-				if item.Metadata.SessionRating > 0 && item.Metadata.SessionRating <= 2 {
-					summary.PoorSessionsCount++
-				}
-			}
-		}
-
-		// Apply pagination
-		total := len(activityItems)
+		// Apply pagination. Slicing is bounded against len(activityItems)
+		// purely to stay in-range (activityItems no longer holds every
+		// matching comment, just the bounded page fetched above) - the
+		// reported total/hasMore below use the true counts instead, not
+		// this length.
+		sliceLen := len(activityItems)
 		start := offset
-		if start > total {
-			start = total
+		if start > sliceLen {
+			start = sliceLen
 		}
 		end := start + limit
-		if end > total {
-			end = total
+		if end > sliceLen {
+			end = sliceLen
 		}
 
 		paginatedItems := activityItems[start:end]
@@ -256,13 +321,20 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			paginatedItems = []ActivityItem{}
 		}
 
+		// True total across both sources: announcements are fetched in full
+		// above (len(updates) is already an accurate count), comments use
+		// the dedicated count query above (totalComments) since the comment
+		// fetch itself is now bounded.
+		total := int64(totalAnnouncements) + totalComments
+		hasMore := int64(offset+len(paginatedItems)) < total
+
 		// Return response with pagination metadata and summary
 		c.JSON(http.StatusOK, gin.H{
 			"items":   paginatedItems,
 			"total":   total,
 			"limit":   limit,
 			"offset":  offset,
-			"hasMore": end < total,
+			"hasMore": hasMore,
 			"summary": summary,
 		})
 	}
