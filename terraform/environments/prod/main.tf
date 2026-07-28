@@ -121,6 +121,15 @@ resource "azurerm_key_vault_secret" "jwt_secret" {
   depends_on = [azurerm_role_assignment.terraform_kv_secrets_officer]
 }
 
+# Store Axiom API token in Key Vault
+resource "azurerm_key_vault_secret" "axiom_api_token" {
+  name         = "axiom-api-token"
+  value        = var.axiom_api_token
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_role_assignment.terraform_kv_secrets_officer]
+}
+
 # PostgreSQL Flexible Server
 resource "azurerm_postgresql_flexible_server" "main" {
   name                = "psql-${var.project_name}-${var.environment}"
