@@ -521,6 +521,11 @@ resource "azurerm_container_app" "main" {
   }
 
   tags = azurerm_resource_group.main.tags
+
+  lifecycle {
+    # Deploys happen via scripts/deploy-ghcr-az.sh (az containerapp update), not Terraform.
+    ignore_changes = [template[0].container[0].image]
+  }
 }
 
 # Custom Domain Configuration (only if custom domain is provided)
