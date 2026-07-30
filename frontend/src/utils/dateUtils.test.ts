@@ -11,6 +11,8 @@ import {
   computeEstimatedBirthDate,
   formatCalendarDate,
   formatQuarantineEndDate,
+  localDayStartISO,
+  localDayEndISO,
 } from './dateUtils';
 
 describe('dateUtils', () => {
@@ -195,6 +197,66 @@ describe('dateUtils', () => {
 
     it('returns "-" when neither date is present', () => {
       expect(formatQuarantineEndDate({})).toBe('-');
+    });
+  });
+
+  describe('localDayStartISO / localDayEndISO', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('returns non-bare-date input unchanged', () => {
+      expect(localDayStartISO('')).toBe('');
+      expect(localDayEndISO('')).toBe('');
+      expect(localDayStartISO('not-a-date')).toBe('not-a-date');
+      expect(localDayStartISO('2024-01-15T10:00:00Z')).toBe('2024-01-15T10:00:00Z');
+      expect(localDayEndISO('2024-01-15T10:00:00Z')).toBe('2024-01-15T10:00:00Z');
+    });
+
+    describe('in America/Chicago (UTC-6 in January, standard time)', () => {
+      beforeEach(() => {
+        vi.stubEnv('TZ', 'America/Chicago');
+      });
+
+      it('resolves start-of-day to the correct UTC instant', () => {
+        expect(localDayStartISO('2024-01-15')).toBe('2024-01-15T06:00:00.000Z');
+      });
+
+      it('resolves end-of-day to the correct UTC instant', () => {
+        expect(localDayEndISO('2024-01-15')).toBe('2024-01-16T05:59:59.999Z');
+      });
+    });
+
+    describe('in Asia/Kolkata (UTC+5:30, no DST)', () => {
+      beforeEach(() => {
+        vi.stubEnv('TZ', 'Asia/Kolkata');
+      });
+
+      it('resolves start-of-day to the correct UTC instant', () => {
+        expect(localDayStartISO('2024-01-15')).toBe('2024-01-14T18:30:00.000Z');
+      });
+
+      it('resolves end-of-day to the correct UTC instant', () => {
+        expect(localDayEndISO('2024-01-15')).toBe('2024-01-15T18:29:59.999Z');
+      });
+    });
+
+    describe('in UTC', () => {
+      beforeEach(() => {
+        vi.stubEnv('TZ', 'UTC');
+      });
+
+      it('start/end of day match the bare UTC boundary exactly', () => {
+        expect(localDayStartISO('2024-01-15')).toBe('2024-01-15T00:00:00.000Z');
+        expect(localDayEndISO('2024-01-15')).toBe('2024-01-15T23:59:59.999Z');
+      });
+    });
+
+    it('end-of-day is exactly 1ms before the next day\'s start-of-day, regardless of zone', () => {
+      vi.stubEnv('TZ', 'America/Chicago');
+      const end = new Date(localDayEndISO('2024-03-05')).getTime();
+      const nextDayStart = new Date(localDayStartISO('2024-03-06')).getTime();
+      expect(nextDayStart - end).toBe(1);
     });
   });
 

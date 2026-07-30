@@ -15,7 +15,7 @@ import ErrorState from '../components/ErrorState';
 import GroupSearch from '../components/GroupSearch';
 import Modal from '../components/Modal';
 import ScriptsList from '../components/ScriptsList';
-import { calculateAge, formatAge, formatQuarantineEndDate } from '../utils/dateUtils';
+import { calculateAge, formatAge, formatQuarantineEndDate, localDayStartISO, localDayEndISO } from '../utils/dateUtils';
 import { formatAnimalStatus } from '../utils/animalUtils';
 import QuarantineApprovalBadge from '../components/QuarantineApprovalBadge';
 import { formatDisplayName } from '../utils/formatName';
@@ -296,8 +296,13 @@ const GroupPage: React.FC = () => {
         animal: filterAnimal ? Number(filterAnimal) : undefined,
         tags: filterTags.length > 0 ? filterTags.join(',') : undefined,
         rating: filterRating || undefined,
-        from: filterDateFrom || undefined,
-        to: filterDateTo || undefined,
+        // Sent as full local-day-boundary instants, not the bare YYYY-MM-DD
+        // the date inputs hold - the backend compares against precise
+        // created_at timestamps, and this browser is the only place that
+        // actually knows the volunteer's current local timezone (see
+        // localDayStartISO/localDayEndISO in dateUtils.ts).
+        from: filterDateFrom ? localDayStartISO(filterDateFrom) : undefined,
+        to: filterDateTo ? localDayEndISO(filterDateTo) : undefined,
       });
 
       if (reset) {
