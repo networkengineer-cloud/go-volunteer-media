@@ -45,6 +45,41 @@ function parseDateOnly(dateString?: string): Date | null {
   return isNaN(date.getTime()) ? null : date;
 }
 
+// Shared by localDayStartISO/localDayEndISO: anchors a bare YYYY-MM-DD string
+// to a specific time-of-day using the same trick as parseDateOnly (appending
+// a zone-less time makes the browser parse it as *local* time, not UTC), then
+// converts that local instant to its UTC ISO representation. This is the
+// piece parseDateOnly doesn't need but a date-range filter does: the backend
+// compares against precise created_at instants, so a day boundary has to be
+// resolved to a real instant somewhere, and the browser is the only place
+// that actually knows the user's current local timezone - resolving it here
+// means the backend never has to guess. A value that isn't a bare
+// YYYY-MM-DD (e.g. already a full timestamp, or empty) is returned
+// unchanged, since it either already names a precise instant or isn't a
+// valid date-only value to begin with.
+function localDayBoundaryISO(dateString: string, timeOfDay: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return dateString;
+  const date = new Date(`${dateString}T${timeOfDay}`);
+  if (isNaN(date.getTime())) return dateString;
+  return date.toISOString();
+}
+
+// Converts a bare YYYY-MM-DD string (e.g. from an <input type="date">) into
+// the UTC instant marking the start of that calendar date in the browser's
+// local timezone - what an activity-feed "from" filter should mean for
+// whoever is actually picking the date, regardless of what timezone the
+// backend runs in.
+export function localDayStartISO(dateString: string): string {
+  return localDayBoundaryISO(dateString, '00:00:00.000');
+}
+
+// Same as localDayStartISO, but for the end of the calendar date (23:59:59.999
+// local) - so a "to" filter includes the entire selected day, not just its
+// first instant.
+export function localDayEndISO(dateString: string): string {
+  return localDayBoundaryISO(dateString, '23:59:59.999');
+}
+
 // Shared computation for calculateQuarantineEndDate / calculateQuarantineEndDateISO:
 // 10 days after the start date, shifted forward if it falls on a weekend.
 function addQuarantineDays(startDateString?: string): Date | null {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import GroupPage from './GroupPage';
 import { groupsApi, animalsApi, authApi } from '../api/client';
@@ -11,8 +11,9 @@ import { ToastProvider } from '../contexts/ToastContext';
 
 // Mock the API client. GroupPage's 'animals' view only needs group/membership/animal
 // data plus the site-wide group switcher list and the length-of-stay preference; the
-// activity/members/documents view APIs are intentionally left unmocked since this test
-// never navigates to those tabs.
+// members/documents view APIs are intentionally left unmocked since this test never
+// navigates to those tabs. getActivityFeed is mocked too, for the 'activity' view
+// tests further below.
 vi.mock('../api/client', () => ({
   authApi: {
     getCurrentUser: vi.fn(),
@@ -22,21 +23,25 @@ vi.mock('../api/client', () => ({
     getById: vi.fn(),
     getMembership: vi.fn(),
     getAll: vi.fn(),
+    getActivityFeed: vi.fn(),
   },
   animalsApi: {
     getAll: vi.fn(),
   },
 }));
 
-// Mock useParams/useSearchParams so the page loads group id=1 directly into the
-// 'animals' view (its default view is 'activity', which pulls in a much larger set
-// of APIs this test doesn't care about).
+// useSearchParams is routed through a controllable mock (mockUseSearchParams -
+// the "mock" prefix is required for vitest to allow referencing it from inside
+// this hoisted factory) so most tests can load group id=1 directly into the
+// 'animals' view, while the 'activity' view tests further below can switch it
+// to 'view=activity' without needing a real navigation.
+const mockUseSearchParams = vi.fn();
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
     ...actual,
     useParams: () => ({ id: '1' }),
-    useSearchParams: () => [new URLSearchParams('view=animals'), vi.fn()],
+    useSearchParams: () => mockUseSearchParams(),
   };
 });
 
@@ -108,6 +113,10 @@ describe('GroupPage', () => {
     vi.mocked(animalsApi.getAll).mockResolvedValue({
       data: [quarantinedAnimal],
     } as AxiosResponse<Animal[]>);
+
+    // Default view for most tests below; the 'activity' view tests further
+    // down override this in their own beforeEach.
+    mockUseSearchParams.mockReturnValue([new URLSearchParams('view=animals'), vi.fn()]);
   });
 
   const renderGroupPage = () => {
@@ -324,6 +333,144 @@ describe('GroupPage', () => {
 
       expect(screen.getByText('Fido')).toBeInTheDocument();
       expect(screen.queryByText('Rex')).not.toBeInTheDocument();
+    });
+  });
+
+  // Regression coverage for a timezone bug found reviewing the activity-feed
+  // date-range filter: the backend interprets a bare YYYY-MM-DD as UTC
+  // midnight, but every real user is in some other timezone - so sending the
+  // date-picker's raw value produced a day boundary off by the user's UTC
+  // offset (see localDayStartISO/localDayEndISO in dateUtils.ts). Fixed by
+  // converting each bound to a full UTC-instant ISO timestamp, computed from
+  // the *local* start/end of that calendar day, before it ever leaves the
+  // browser.
+  describe('activity feed date-range filter (timezone-aware)', () => {
+    beforeEach(() => {
+      // Deliberately non-UTC (standard time, no DST edge) - if GroupPage ever
+      // regressed to sending the bare date-picker value, or swapped which
+      // helper backs which field, this is what would catch it: the whole
+      // point of this test is that "from"/"to" must NOT equal the bare
+      // '2024-01-15'/'2024-01-20' the user typed.
+      vi.stubEnv('TZ', 'America/Chicago');
+      mockUseSearchParams.mockReturnValue([new URLSearchParams('view=activity'), vi.fn()]);
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: { items: [], total: 0, limit: 20, offset: 0, hasMore: false, summary: {} },
+      } as unknown as AxiosResponse);
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('sends full local-day-boundary UTC instants for from/to, not the bare date-picker value', async () => {
+      renderGroupPage();
+      await screen.findByLabelText('Filter from date');
+
+      fireEvent.change(screen.getByLabelText('Filter from date'), { target: { value: '2024-01-15' } });
+      fireEvent.change(screen.getByLabelText('Filter to date'), { target: { value: '2024-01-20' } });
+
+      await waitFor(() => {
+        expect(groupsApi.getActivityFeed).toHaveBeenLastCalledWith(1, expect.objectContaining({
+          // Local midnight of 2024-01-15 in America/Chicago (UTC-6, standard
+          // time) is 2024-01-15T06:00:00.000Z.
+          from: '2024-01-15T06:00:00.000Z',
+          // Local end-of-day (23:59:59.999) of 2024-01-20 in America/Chicago
+          // is 2024-01-21T05:59:59.999Z - one day later in UTC, and NOT the
+          // bare '2024-01-20' a UTC-anchored interpretation would produce.
+          to: '2024-01-21T05:59:59.999Z',
+        }));
+      });
+    });
+
+    it('omits from/to entirely when the date filters are empty, unlike the tags/rating/animal filters', async () => {
+      renderGroupPage();
+      await screen.findByLabelText('Filter from date');
+
+      await waitFor(() => {
+        expect(groupsApi.getActivityFeed).toHaveBeenCalled();
+      });
+
+      const lastCall = vi.mocked(groupsApi.getActivityFeed).mock.calls.at(-1);
+      expect(lastCall?.[1]?.from).toBeUndefined();
+      expect(lastCall?.[1]?.to).toBeUndefined();
+    });
+  });
+
+  // Regression coverage for a request-cancellation gap found while verifying
+  // the timezone fix above: loadActivityFeed had no AbortController, unlike
+  // GroupSearch.tsx's/loadAnimals' pattern - so a superseded request (e.g.
+  // changing the type filter while an earlier load was still in flight)
+  // could resolve after a newer one and overwrite it with stale activity
+  // items.
+  describe('activity feed request cancellation', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      mockUseSearchParams.mockReturnValue([new URLSearchParams('view=activity'), vi.fn()]);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const flush = async () => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    };
+
+    it('does not let a superseded (aborted) request overwrite fresher activity items', async () => {
+      let capturedFirstSignal: AbortSignal | undefined;
+      let resolveFirst: (value: AxiosResponse) => void = () => {};
+      const staleResponse = {
+        data: {
+          items: [{ id: 1, type: 'comment', content: 'stale comment', created_at: '2026-01-01T00:00:00Z' }],
+          total: 1, limit: 20, offset: 0, hasMore: false, summary: {},
+        },
+      } as unknown as AxiosResponse;
+      const freshResponse = {
+        data: {
+          items: [{ id: 2, type: 'comment', content: 'fresh comment', created_at: '2026-01-02T00:00:00Z' }],
+          total: 1, limit: 20, offset: 0, hasMore: false, summary: {},
+        },
+      } as unknown as AxiosResponse;
+
+      // First call (the initial mount's loadActivityFeed): stays pending
+      // until resolveFirst is invoked, but rejects immediately - the way a
+      // real aborted axios request would - if its signal fires first.
+      vi.mocked(groupsApi.getActivityFeed)
+        .mockImplementationOnce((_groupId, options) => {
+          capturedFirstSignal = options?.signal;
+          return new Promise<AxiosResponse>((resolve, reject) => {
+            resolveFirst = resolve;
+            options?.signal?.addEventListener('abort', () => reject(new CanceledError()));
+          });
+        })
+        // Second call (triggered by the type-filter change below): resolves
+        // normally with different data.
+        .mockResolvedValueOnce(freshResponse);
+
+      renderGroupPage();
+      await flush();
+      expect(capturedFirstSignal).toBeDefined();
+      expect(capturedFirstSignal?.aborted).toBe(false);
+
+      // Fires the second loadActivityFeed call before the first has
+      // resolved - this must abort the first.
+      fireEvent.change(screen.getByLabelText('Filter activity by type'), { target: { value: 'comments' } });
+      await flush();
+
+      expect(capturedFirstSignal?.aborted).toBe(true);
+      expect(screen.getByText('fresh comment')).toBeInTheDocument();
+
+      // The first (now-aborted) request resolving late must not overwrite
+      // the fresher data already rendered.
+      await act(async () => {
+        resolveFirst(staleResponse);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(screen.getByText('fresh comment')).toBeInTheDocument();
+      expect(screen.queryByText('stale comment')).not.toBeInTheDocument();
     });
   });
 });
