@@ -366,6 +366,130 @@ func TestActivityFeed_Postgres_RatingFilterMatchesOriginalSemantics(t *testing.T
 	})
 }
 
+// TestActivityFeed_Postgres_RatingFilterExcludesAnnouncements guards against
+// the same class of bug as TestActivityFeed_Postgres_TagFilterExcludesAnnouncements:
+// announcements don't have a session rating any more than they have tags
+// (models.Update has no rating/metadata concept at all), so an active rating
+// filter must exclude announcements entirely. This seeds one rated comment,
+// one unrated comment, and one announcement, then asserts a rating= request
+// returns only the rated comment.
+func TestActivityFeed_Postgres_RatingFilterExcludesAnnouncements(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newActivityFeedTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+
+	ratedComment := models.AnimalComment{
+		AnimalID: animal.ID,
+		UserID:   f.user.ID,
+		Content:  "great session today",
+		Metadata: &models.SessionMetadata{SessionRating: 5},
+	}
+	if err := f.tx.Create(&ratedComment).Error; err != nil {
+		t.Fatalf("create rated comment: %v", err)
+	}
+	if err := f.tx.Create(&models.AnimalComment{AnimalID: animal.ID, UserID: f.user.ID, Content: "unrated comment"}).Error; err != nil {
+		t.Fatalf("create unrated comment: %v", err)
+	}
+	if err := f.tx.Create(&models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "Shelter closed Monday", Content: "Closed for the holiday"}).Error; err != nil {
+		t.Fatalf("create announcement: %v", err)
+	}
+
+	body := f.feedRequest(t, "rating=5")
+
+	items, _ := body["items"].([]interface{})
+	for _, raw := range items {
+		item := raw.(map[string]interface{})
+		if item["type"] != "comment" {
+			t.Fatalf("expected only comments when a rating filter is active, got item of type %q: %v", item["type"], item)
+		}
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected exactly 1 item (the rated comment), got %d: %v", len(items), items)
+	}
+	if got := int(body["total"].(float64)); got != 1 {
+		t.Fatalf("expected total=1 (only the rated comment counted, announcement excluded), got %d", got)
+	}
+}
+
+// TestActivityFeed_Postgres_DateRangeFilterAppliesToBothCommentsAndAnnouncements
+// verifies the from/to date-range filter is symmetric across both item
+// types, unlike the tags/rating filters (which are comment-only concepts
+// that must exclude announcements entirely). created_at is a universal
+// concept on both models.AnimalComment and models.Update, so the correct
+// behavior is for the same window to narrow both sides - not exclude either
+// one. Seeds one in-range and one out-of-range item of each type, then
+// asserts a from/to request returns exactly the two in-range items.
+func TestActivityFeed_Postgres_DateRangeFilterAppliesToBothCommentsAndAnnouncements(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newActivityFeedTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+
+	windowStart := time.Now().Add(-2 * time.Hour)
+	windowEnd := time.Now().Add(-1 * time.Hour)
+	inRange := windowStart.Add(30 * time.Minute)   // inside [windowStart, windowEnd]
+	outOfRange := windowStart.Add(-30 * time.Minute) // before windowStart
+
+	setCreatedAt := func(model interface{}, ts time.Time) {
+		if err := f.tx.Model(model).UpdateColumn("created_at", ts).Error; err != nil {
+			t.Fatalf("set created_at: %v", err)
+		}
+	}
+
+	inRangeComment := models.AnimalComment{AnimalID: animal.ID, UserID: f.user.ID, Content: "in-range comment"}
+	if err := f.tx.Create(&inRangeComment).Error; err != nil {
+		t.Fatalf("create in-range comment: %v", err)
+	}
+	setCreatedAt(&inRangeComment, inRange)
+
+	outOfRangeComment := models.AnimalComment{AnimalID: animal.ID, UserID: f.user.ID, Content: "out-of-range comment"}
+	if err := f.tx.Create(&outOfRangeComment).Error; err != nil {
+		t.Fatalf("create out-of-range comment: %v", err)
+	}
+	setCreatedAt(&outOfRangeComment, outOfRange)
+
+	inRangeUpdate := models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "In range", Content: "in-range announcement"}
+	if err := f.tx.Create(&inRangeUpdate).Error; err != nil {
+		t.Fatalf("create in-range announcement: %v", err)
+	}
+	setCreatedAt(&inRangeUpdate, inRange)
+
+	outOfRangeUpdate := models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "Out of range", Content: "out-of-range announcement"}
+	if err := f.tx.Create(&outOfRangeUpdate).Error; err != nil {
+		t.Fatalf("create out-of-range announcement: %v", err)
+	}
+	setCreatedAt(&outOfRangeUpdate, outOfRange)
+
+	query := fmt.Sprintf("from=%s&to=%s", windowStart.UTC().Format(time.RFC3339), windowEnd.UTC().Format(time.RFC3339))
+	body := f.feedRequest(t, query)
+
+	items, _ := body["items"].([]interface{})
+	seenTypes := map[string]int{}
+	for _, raw := range items {
+		item := raw.(map[string]interface{})
+		seenTypes[item["type"].(string)]++
+		if item["content"] == "out-of-range comment" || item["content"] == "out-of-range announcement" {
+			t.Fatalf("out-of-range item leaked into date-filtered results: %v", item)
+		}
+	}
+	if seenTypes["comment"] != 1 {
+		t.Fatalf("expected exactly 1 in-range comment, got %d", seenTypes["comment"])
+	}
+	if seenTypes["announcement"] != 1 {
+		t.Fatalf("expected exactly 1 in-range announcement, got %d", seenTypes["announcement"])
+	}
+	if got := int(body["total"].(float64)); got != 2 {
+		t.Fatalf("expected total=2 (one in-range comment + one in-range announcement), got %d", got)
+	}
+}
+
 // TestActivityFeed_Postgres_HasIndexForCommentQuery guards against a future
 // change accidentally dropping the migration this fix relies on: the
 // pre-existing idx_comment_animal_created index is (created_at, animal_id) -
