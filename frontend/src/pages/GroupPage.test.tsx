@@ -395,4 +395,82 @@ describe('GroupPage', () => {
       expect(lastCall?.[1]?.to).toBeUndefined();
     });
   });
+
+  // Regression coverage for a request-cancellation gap found while verifying
+  // the timezone fix above: loadActivityFeed had no AbortController, unlike
+  // GroupSearch.tsx's/loadAnimals' pattern - so a superseded request (e.g.
+  // changing the type filter while an earlier load was still in flight)
+  // could resolve after a newer one and overwrite it with stale activity
+  // items.
+  describe('activity feed request cancellation', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      mockUseSearchParams.mockReturnValue([new URLSearchParams('view=activity'), vi.fn()]);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const flush = async () => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    };
+
+    it('does not let a superseded (aborted) request overwrite fresher activity items', async () => {
+      let capturedFirstSignal: AbortSignal | undefined;
+      let resolveFirst: (value: AxiosResponse) => void = () => {};
+      const staleResponse = {
+        data: {
+          items: [{ id: 1, type: 'comment', content: 'stale comment', created_at: '2026-01-01T00:00:00Z' }],
+          total: 1, limit: 20, offset: 0, hasMore: false, summary: {},
+        },
+      } as unknown as AxiosResponse;
+      const freshResponse = {
+        data: {
+          items: [{ id: 2, type: 'comment', content: 'fresh comment', created_at: '2026-01-02T00:00:00Z' }],
+          total: 1, limit: 20, offset: 0, hasMore: false, summary: {},
+        },
+      } as unknown as AxiosResponse;
+
+      // First call (the initial mount's loadActivityFeed): stays pending
+      // until resolveFirst is invoked, but rejects immediately - the way a
+      // real aborted axios request would - if its signal fires first.
+      vi.mocked(groupsApi.getActivityFeed)
+        .mockImplementationOnce((_groupId, options) => {
+          capturedFirstSignal = options?.signal;
+          return new Promise<AxiosResponse>((resolve, reject) => {
+            resolveFirst = resolve;
+            options?.signal?.addEventListener('abort', () => reject(new CanceledError()));
+          });
+        })
+        // Second call (triggered by the type-filter change below): resolves
+        // normally with different data.
+        .mockResolvedValueOnce(freshResponse);
+
+      renderGroupPage();
+      await flush();
+      expect(capturedFirstSignal).toBeDefined();
+      expect(capturedFirstSignal?.aborted).toBe(false);
+
+      // Fires the second loadActivityFeed call before the first has
+      // resolved - this must abort the first.
+      fireEvent.change(screen.getByLabelText('Filter activity by type'), { target: { value: 'comments' } });
+      await flush();
+
+      expect(capturedFirstSignal?.aborted).toBe(true);
+      expect(screen.getByText('fresh comment')).toBeInTheDocument();
+
+      // The first (now-aborted) request resolving late must not overwrite
+      // the fresher data already rendered.
+      await act(async () => {
+        resolveFirst(staleResponse);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(screen.getByText('fresh comment')).toBeInTheDocument();
+      expect(screen.queryByText('stale comment')).not.toBeInTheDocument();
+    });
+  });
 });

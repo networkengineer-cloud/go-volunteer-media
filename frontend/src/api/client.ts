@@ -566,15 +566,16 @@ export const groupsApi = {
     const params = limit ? { limit } : {};
     return api.get<CommentWithAnimal[]>('/groups/' + id + '/latest-comments', { params });
   },
-  getActivityFeed: (id: number, options?: { 
-    limit?: number; 
-    offset?: number; 
+  getActivityFeed: (id: number, options?: {
+    limit?: number;
+    offset?: number;
     type?: 'all' | 'comments' | 'announcements';
     animal?: number;
     tags?: string;
     rating?: string;
     from?: string;
     to?: string;
+    signal?: AbortSignal;
   }) => {
     const params: Record<string, unknown> = {};
     if (options?.limit) params.limit = options.limit;
@@ -585,7 +586,7 @@ export const groupsApi = {
     if (options?.rating) params.rating = options.rating;
     if (options?.from) params.from = options.from;
     if (options?.to) params.to = options.to;
-    return api.get<ActivityFeedResponse>('/groups/' + id + '/activity-feed', { params });
+    return api.get<ActivityFeedResponse>('/groups/' + id + '/activity-feed', { params, signal: options?.signal });
   },
   create: (name: string, description: string, image_url?: string, hero_image_url?: string, has_protocols?: boolean, groupme_bot_id?: string, groupme_enabled?: boolean) =>
     api.post<Group>('/admin/groups', { name, description, image_url, hero_image_url, has_protocols, groupme_bot_id, groupme_enabled }),

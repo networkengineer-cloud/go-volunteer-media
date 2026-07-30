@@ -278,8 +278,19 @@ const GroupPage: React.FC = () => {
     }
   };
 
-  // Load activity feed with filters (integrated from ActivityFeedPage)
+  // Load activity feed with filters (integrated from ActivityFeedPage).
+  //
+  // Cancels any request already in flight before starting a new one -
+  // matching GroupSearch.tsx's/loadAnimals' AbortController pattern - so a
+  // rapid filter change (e.g. from/to picked in quick succession) can't let
+  // a slower, older response land after a newer one and overwrite it with
+  // stale activity items.
+  const activityAbortControllerRef = useRef<AbortController | null>(null);
   const loadActivityFeed = async (groupId: number, reset = false) => {
+    activityAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    activityAbortControllerRef.current = controller;
+
     if (reset) {
       setActivityLoading(true);
       setActivities([]);
@@ -303,6 +314,7 @@ const GroupPage: React.FC = () => {
         // localDayStartISO/localDayEndISO in dateUtils.ts).
         from: filterDateFrom ? localDayStartISO(filterDateFrom) : undefined,
         to: filterDateTo ? localDayEndISO(filterDateTo) : undefined,
+        signal: controller.signal,
       });
 
       if (reset) {
@@ -310,20 +322,34 @@ const GroupPage: React.FC = () => {
       } else {
         setActivities([...activities, ...response.data.items]);
       }
-      
+
       setActivityTotal(response.data.total);
       setActivityHasMore(response.data.hasMore);
       setActivityError('');
     } catch (err: any) {
+      if (axios.isCancel(err)) return;
       console.error('Failed to load activity feed:', err);
       const errorMessage = err.response?.data?.error || 'Failed to load activity feed. Please try again.';
       setActivityError(errorMessage);
       toast.showError(errorMessage);
     } finally {
-      setActivityLoading(false);
-      setActivityLoadingMore(false);
+      // A superseded (now-aborted) request's `finally` must not flip the
+      // loading flags back off after a newer request already set them -
+      // only the request that's still current should clear them.
+      if (activityAbortControllerRef.current === controller) {
+        setActivityLoading(false);
+        setActivityLoadingMore(false);
+      }
     }
   };
+
+  // Cancel any in-flight activity-feed request on unmount so it can't set
+  // state on an unmounted component.
+  useEffect(() => {
+    return () => {
+      activityAbortControllerRef.current?.abort();
+    };
+  }, []);
 
   const handleLoadMoreActivity = () => {
     if (id) {
