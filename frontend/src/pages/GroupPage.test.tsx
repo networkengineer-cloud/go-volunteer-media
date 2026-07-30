@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import GroupPage from './GroupPage';
 import { groupsApi, animalsApi, authApi } from '../api/client';
 import type { Animal, Group, GroupMembership } from '../api/client';
+import { CanceledError } from 'axios';
 import type { AxiosResponse } from 'axios';
 import { AuthProvider } from '../contexts/AuthContext';
 import { ToastProvider } from '../contexts/ToastContext';
@@ -215,7 +216,114 @@ describe('GroupPage', () => {
       // Exactly once - not twice (the old double-effect bug) - and with the
       // final debounced value, not an intermediate keystroke.
       expect(animalsApi.getAll).toHaveBeenCalledTimes(1);
-      expect(animalsApi.getAll).toHaveBeenLastCalledWith(1, '', 'rex');
+      expect(animalsApi.getAll).toHaveBeenLastCalledWith(1, '', 'rex', { signal: expect.any(AbortSignal) });
+    });
+  });
+
+  // Regression coverage for two further bugs found reviewing the fix above:
+  // (1) "Clear Filters" reset statusFilter and nameSearch together, but
+  // loadAnimals depended on the *debounced* search value, which took up to
+  // NAME_SEARCH_DEBOUNCE_MS to catch up - producing one fetch combining the
+  // new (empty) status with the old (stale) search term, before a second,
+  // corrected fetch landed ~400ms later. (2) loadAnimals had no request
+  // cancellation, unlike GroupSearch.tsx's AbortController pattern, so a
+  // superseded request could resolve after a newer one and overwrite it
+  // with stale data.
+  describe('Clear Filters and request cancellation', () => {
+    const DEBOUNCE_MS = 400; // must match GroupPage.tsx's NAME_SEARCH_DEBOUNCE_MS
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const flush = async () => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    };
+
+    it('produces exactly one fetch with the cleared params when Clear Filters is clicked, not a stale-then-corrected pair', async () => {
+      renderGroupPage();
+      await flush();
+      expect(screen.getByText('Rex')).toBeInTheDocument();
+
+      // Empty results so the "Clear Filters" button (only rendered in the
+      // empty-results state) actually appears once filters are applied.
+      vi.mocked(animalsApi.getAll).mockResolvedValue({ data: [] } as unknown as AxiosResponse<Animal[]>);
+
+      fireEvent.change(screen.getByLabelText('Search animals by name'), { target: { value: 'rex' } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+      });
+      fireEvent.change(screen.getByLabelText('Filter animals by status'), { target: { value: 'available' } });
+      await flush();
+
+      const clearButton = screen.getByRole('button', { name: 'Clear Filters' });
+      vi.mocked(animalsApi.getAll).mockClear();
+
+      fireEvent.click(clearButton);
+
+      // Immediately correct - a single fetch with both filters cleared
+      // together, not a stale-search-term fetch followed by a correction.
+      expect(animalsApi.getAll).toHaveBeenCalledTimes(1);
+      expect(animalsApi.getAll).toHaveBeenLastCalledWith(1, '', '', { signal: expect.any(AbortSignal) });
+
+      // Wait out the full debounce window to confirm nothing extra fires
+      // once it would have caught up - proving the second, corrected fetch
+      // the bug produced is actually gone, not just that the first fetch
+      // happens to look right.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+      });
+      expect(animalsApi.getAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not let a superseded (aborted) request overwrite fresher results', async () => {
+      let capturedFirstSignal: AbortSignal | undefined;
+      let resolveFirst: (value: AxiosResponse<Animal[]>) => void = () => {};
+      const fido: Animal = { ...quarantinedAnimal, id: 2, name: 'Fido', status: 'available' };
+
+      // First call (the initial mount's loadAnimals): stays pending until
+      // resolveFirst is invoked, but rejects immediately - the way a real
+      // aborted axios request would - if its signal fires first.
+      vi.mocked(animalsApi.getAll)
+        .mockImplementationOnce((_groupId, _status, _name, options) => {
+          capturedFirstSignal = options?.signal;
+          return new Promise<AxiosResponse<Animal[]>>((resolve, reject) => {
+            resolveFirst = resolve;
+            options?.signal?.addEventListener('abort', () => reject(new CanceledError()));
+          });
+        })
+        // Second call (triggered by the status-filter change below):
+        // resolves normally with different data.
+        .mockResolvedValueOnce({ data: [fido] } as AxiosResponse<Animal[]>);
+
+      renderGroupPage();
+      await flush();
+      expect(capturedFirstSignal).toBeDefined();
+      expect(capturedFirstSignal?.aborted).toBe(false);
+
+      // Fires the second loadAnimals call before the first has resolved -
+      // this must abort the first.
+      fireEvent.change(screen.getByLabelText('Filter animals by status'), { target: { value: 'available' } });
+      await flush();
+
+      expect(capturedFirstSignal?.aborted).toBe(true);
+      expect(screen.getByText('Fido')).toBeInTheDocument();
+
+      // The first (now-aborted) request resolving late must not overwrite
+      // the fresher data already rendered.
+      await act(async () => {
+        resolveFirst({ data: [quarantinedAnimal] } as AxiosResponse<Animal[]>);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(screen.getByText('Fido')).toBeInTheDocument();
+      expect(screen.queryByText('Rex')).not.toBeInTheDocument();
     });
   });
 });
