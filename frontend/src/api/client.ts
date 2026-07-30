@@ -612,11 +612,11 @@ export const groupsApi = {
 
 // Animals API
 export const animalsApi = {
-  getAll: (groupId: number, status?: string, name?: string) => {
+  getAll: (groupId: number, status?: string, name?: string, options?: { signal?: AbortSignal }) => {
     const params: Record<string, unknown> = {};
     if (status !== undefined) params.status = status;
     if (name) params.name = name;
-    return api.get<Animal[]>('/groups/' + groupId + '/animals', { params });
+    return api.get<Animal[]>('/groups/' + groupId + '/animals', { params, signal: options?.signal });
   },
   getById: (groupId: number, id: number) =>
     api.get<Animal>('/groups/' + groupId + '/animals/' + id),

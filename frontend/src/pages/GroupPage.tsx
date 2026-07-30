@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import axios from 'axios';
 import { groupsApi, animalsApi, authApi, updatesApi, groupDocumentsApi } from '../api/client';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSkillTag, GroupDocument } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { useDebounce } from '../hooks/useDebounce';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
 import AnnouncementForm from '../components/AnnouncementForm';
 import EmptyState from '../components/EmptyState';
@@ -21,6 +23,10 @@ import './GroupPage.css';
 
 type ViewMode = 'activity' | 'animals' | 'protocols' | 'members' | 'documents';
 type FilterType = 'all' | 'comments' | 'announcements';
+
+// Matches GroupSearch.tsx's debounce delay for the same kind of free-text
+// filter input.
+const NAME_SEARCH_DEBOUNCE_MS = 400;
 
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +48,14 @@ const GroupPage: React.FC = () => {
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [nameSearch, setNameSearch] = useState<string>('');
+  const debouncedNameSearch = useDebounce(nameSearch, NAME_SEARCH_DEBOUNCE_MS);
+  // Mirrors debouncedNameSearch for normal typing, but "Clear Filters"
+  // (see handleClearAnimalFilters) also sets this directly - bypassing the
+  // debounce - so a statusFilter reset can't combine with a stale,
+  // not-yet-caught-up search term in the same loadAnimals call. Kept in
+  // sync with debouncedNameSearch by the effect further down, near
+  // loadAnimals.
+  const [effectiveNameSearch, setEffectiveNameSearch] = useState(debouncedNameSearch);
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showProtocolForm, setShowProtocolForm] = useState(false);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
@@ -135,15 +149,46 @@ const GroupPage: React.FC = () => {
     }
   };
 
-  // Load animals with filters
+  // Load animals with filters. Depends on effectiveNameSearch (normally
+  // just debouncedNameSearch, see the sync effect below), not the raw
+  // nameSearch, so this (and anything that depends on it) doesn't get a new
+  // identity - and doesn't refetch - on every keystroke in the name-search
+  // box.
+  //
+  // Cancels any request already in flight before starting a new one -
+  // matching GroupSearch.tsx's AbortController pattern - so a group switch
+  // or rapid filter change can't let a slower, older response land after a
+  // newer one and overwrite it with stale animals.
+  const animalsAbortControllerRef = useRef<AbortController | null>(null);
   const loadAnimals = useCallback(async (groupId: number) => {
+    animalsAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    animalsAbortControllerRef.current = controller;
+
     try {
-      const animalsRes = await animalsApi.getAll(groupId, statusFilter, nameSearch);
+      const animalsRes = await animalsApi.getAll(groupId, statusFilter, effectiveNameSearch, { signal: controller.signal });
       setAnimals(animalsRes.data);
     } catch (error) {
+      if (axios.isCancel(error)) return;
       console.error('Failed to load animals:', error);
     }
-  }, [statusFilter, nameSearch]);
+  }, [statusFilter, effectiveNameSearch]);
+
+  // Cancel any in-flight animals request on unmount so it can't set state
+  // on an unmounted component.
+  useEffect(() => {
+    return () => {
+      animalsAbortControllerRef.current?.abort();
+    };
+  }, []);
+
+  // Keeps effectiveNameSearch in sync with the debounced search value for
+  // normal typing. handleClearAnimalFilters additionally sets
+  // effectiveNameSearch directly, bypassing this, for the one case where
+  // waiting for the debounce to catch up would be wrong (see its comment).
+  useEffect(() => {
+    setEffectiveNameSearch(debouncedNameSearch);
+  }, [debouncedNameSearch]);
 
   // Update view mode when URL search params change
   useEffect(() => {
@@ -157,6 +202,10 @@ const GroupPage: React.FC = () => {
     }
   }, [searchParams, membership]);
 
+  // Once-per-page-visit data: email preferences, group details/membership,
+  // and the full groups list (for the switcher). Deliberately depends only
+  // on `id` - not on loadAnimals - so retyping in the name-search box or
+  // changing the status filter can't re-trigger these unrelated fetches.
   useEffect(() => {
     const loadPreferences = async () => {
       try {
@@ -166,24 +215,35 @@ const GroupPage: React.FC = () => {
         console.error('Failed to load preferences:', error);
       }
     };
-    
+
     loadPreferences();
-    
+
     if (id) {
       loadGroupData(Number(id));
-      // Load animals immediately to show count in tab
-      loadAnimals(Number(id));
     }
     // Load all groups for the switcher
     loadAllGroups();
-  }, [id, loadAnimals]);
+  }, [id]);
 
+  // The one place that triggers loadAnimals: on mount/group switch, and
+  // whenever the status or (debounced) name filter actually changes.
   useEffect(() => {
-    // Reload animals when filters change
     if (id) {
       loadAnimals(Number(id));
     }
   }, [id, loadAnimals]);
+
+  // Clears both animal filters together. Also sets effectiveNameSearch
+  // directly (not just nameSearch), bypassing the debounce - otherwise
+  // statusFilter would clear immediately while effectiveNameSearch kept
+  // its stale pre-clear value for up to NAME_SEARCH_DEBOUNCE_MS, so
+  // loadAnimals would fire once with the wrong combination (new status +
+  // old search term) before self-correcting.
+  const handleClearAnimalFilters = () => {
+    setStatusFilter('');
+    setNameSearch('');
+    setEffectiveNameSearch('');
+  };
 
   const handleGroupSwitch = async (newGroupId: number) => {
     if (newGroupId !== Number(id)) {
@@ -977,10 +1037,7 @@ const GroupPage: React.FC = () => {
                   (statusFilter || nameSearch)
                     ? {
                         label: 'Clear Filters',
-                        onClick: () => {
-                          setStatusFilter('');
-                          setNameSearch('');
-                        },
+                        onClick: handleClearAnimalFilters,
                       }
                     : (membership?.is_group_admin || membership?.is_site_admin)
                       ? {
