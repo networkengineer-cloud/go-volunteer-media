@@ -415,6 +415,60 @@ func TestActivityFeed_Postgres_RatingFilterExcludesAnnouncements(t *testing.T) {
 	}
 }
 
+// TestActivityFeed_Postgres_AnimalFilterExcludesAnnouncements guards against
+// the same class of bug as the tag/rating filters: announcements
+// (models.Update) have no animal association at all - they're group-wide,
+// not scoped to any specific animal - so an active animal filter must
+// exclude announcements entirely, consistent with the same treatment tags
+// and rating already get. There's a dedicated per-animal type filter
+// already (filterType=announcements still shows them) plus semantic search
+// covering animal names in announcement text, so nothing is lost by
+// excluding them here. This seeds two animals (Rex, Fido), a comment on
+// each, and one group-wide announcement, then asserts filtering by Rex
+// returns only Rex's comment - no announcement, no Fido's comment.
+func TestActivityFeed_Postgres_AnimalFilterExcludesAnnouncements(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newActivityFeedTestFixture(t, db)
+
+	rex := models.Animal{GroupID: f.group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&rex).Error; err != nil {
+		t.Fatalf("create animal Rex: %v", err)
+	}
+	fido := models.Animal{GroupID: f.group.ID, Name: "Fido", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&fido).Error; err != nil {
+		t.Fatalf("create animal Fido: %v", err)
+	}
+
+	if err := f.tx.Create(&models.AnimalComment{AnimalID: rex.ID, UserID: f.user.ID, Content: "Rex comment"}).Error; err != nil {
+		t.Fatalf("create Rex comment: %v", err)
+	}
+	if err := f.tx.Create(&models.AnimalComment{AnimalID: fido.ID, UserID: f.user.ID, Content: "Fido comment"}).Error; err != nil {
+		t.Fatalf("create Fido comment: %v", err)
+	}
+	if err := f.tx.Create(&models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "Shelter closed Monday", Content: "Closed for the holiday"}).Error; err != nil {
+		t.Fatalf("create announcement: %v", err)
+	}
+
+	body := f.feedRequest(t, fmt.Sprintf("animal=%d", rex.ID))
+
+	items, _ := body["items"].([]interface{})
+	for _, raw := range items {
+		item := raw.(map[string]interface{})
+		if item["type"] != "comment" {
+			t.Fatalf("expected only comments when an animal filter is active, got item of type %q: %v", item["type"], item)
+		}
+		if item["content"] != "Rex comment" {
+			t.Fatalf("expected only Rex's comment, got: %v", item)
+		}
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected exactly 1 item (Rex's comment), got %d: %v", len(items), items)
+	}
+	if got := int(body["total"].(float64)); got != 1 {
+		t.Fatalf("expected total=1 (only Rex's comment counted, announcement and Fido's comment excluded), got %d", got)
+	}
+}
+
 // TestActivityFeed_Postgres_DateRangeFilterAppliesToBothCommentsAndAnnouncements
 // verifies the from/to date-range filter is symmetric across both item
 // types, unlike the tags/rating filters (which are comment-only concepts

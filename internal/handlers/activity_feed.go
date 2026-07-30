@@ -100,12 +100,13 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		summary := ActivityFeedSummary{}
 
 		// Fetch announcements (Updates) if not filtering for comments only.
-		// Tags and ratings are comment-only concepts (models.Update has
-		// no tag relation and no metadata/rating at all), so an active
-		// tag or rating filter must exclude announcements entirely -
-		// otherwise every announcement in the group is returned
-		// regardless of which tag/rating was requested.
-		if (filterType == "" || filterType == "all" || filterType == "announcements") && filterTags == "" && filterRating == "" {
+		// Tags, ratings, and the animal filter are all comment-only concepts
+		// (models.Update has no tag relation, no metadata/rating, and no
+		// animal association at all - announcements are group-wide), so an
+		// active tag, rating, or animal filter must exclude announcements
+		// entirely - otherwise every announcement in the group is returned
+		// regardless of which tag/rating/animal was requested.
+		if (filterType == "" || filterType == "all" || filterType == "announcements") && filterTags == "" && filterRating == "" && filterAnimal == "" {
 			var updates []models.Update
 			query := db.Where("group_id = ?", groupID)
 
