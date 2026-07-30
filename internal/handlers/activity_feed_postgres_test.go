@@ -25,9 +25,9 @@ type sqlCapturingLogger struct {
 }
 
 func (l *sqlCapturingLogger) LogMode(gormlogger.LogLevel) gormlogger.Interface { return l }
-func (l *sqlCapturingLogger) Info(context.Context, string, ...interface{})    {}
-func (l *sqlCapturingLogger) Warn(context.Context, string, ...interface{})    {}
-func (l *sqlCapturingLogger) Error(context.Context, string, ...interface{})   {}
+func (l *sqlCapturingLogger) Info(context.Context, string, ...interface{})     {}
+func (l *sqlCapturingLogger) Warn(context.Context, string, ...interface{})     {}
+func (l *sqlCapturingLogger) Error(context.Context, string, ...interface{})    {}
 func (l *sqlCapturingLogger) Trace(_ context.Context, _ time.Time, fc func() (string, int64), _ error) {
 	sql, _ := fc()
 	l.statements = append(l.statements, sql)
@@ -475,8 +475,25 @@ func TestActivityFeed_Postgres_AnimalFilterExcludesAnnouncements(t *testing.T) {
 // that must exclude announcements entirely). created_at is a universal
 // concept on both models.AnimalComment and models.Update, so the correct
 // behavior is for the same window to narrow both sides - not exclude either
-// one. Seeds one in-range and one out-of-range item of each type, then
-// asserts a from/to request returns exactly the two in-range items.
+// one.
+//
+// Uses plain YYYY-MM-DD query values, not RFC3339 - that's the actual shape
+// GroupPage.tsx's date-range filter sends (its <input type="date"> fields
+// write e.target.value straight into state with no reformatting; see
+// GroupPage.tsx's date-range-inputs). An earlier version of this test used
+// RFC3339 timestamps, which happened to be the one format the handler could
+// parse - masking a real bug where every genuine UI request (always
+// YYYY-MM-DD) silently failed to parse and the filter no-opped entirely.
+//
+// Seeds an in-range comment and an in-range announcement within [from, to],
+// plus an out-of-range comment and announcement on either side of that
+// window, then asserts a from/to request (in the real UI's format) returns
+// exactly the two in-range items. The in-range announcement is placed late
+// in the day on the `to` date specifically to prove the end date is
+// inclusive of its entire day, not just its first instant (00:00) - a
+// day-only bound has no time component of its own, so "to 2024-01-15" has to
+// mean "through the end of the 15th," matching what a user picking that day
+// in a date picker would expect.
 func TestActivityFeed_Postgres_DateRangeFilterAppliesToBothCommentsAndAnnouncements(t *testing.T) {
 	db := openSearchTestPostgres(t)
 	f := newActivityFeedTestFixture(t, db)
@@ -486,10 +503,15 @@ func TestActivityFeed_Postgres_DateRangeFilterAppliesToBothCommentsAndAnnounceme
 		t.Fatalf("create animal: %v", err)
 	}
 
-	windowStart := time.Now().Add(-2 * time.Hour)
-	windowEnd := time.Now().Add(-1 * time.Hour)
-	inRange := windowStart.Add(30 * time.Minute)   // inside [windowStart, windowEnd]
-	outOfRange := windowStart.Add(-30 * time.Minute) // before windowStart
+	now := time.Now().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	fromDay := today.AddDate(0, 0, -2) // window start, at 00:00
+	toDay := today.AddDate(0, 0, -1)   // window end (a whole day, not an instant)
+
+	inRangeAtStart := fromDay.Add(1 * time.Hour)                   // early on the first in-range day
+	inRangeLateOnToDay := toDay.Add(23*time.Hour + 30*time.Minute) // late on the last in-range day - proves the whole day is included
+	beforeWindow := fromDay.Add(-1 * time.Hour)                    // 1h before the window starts (previous day)
+	afterWindow := toDay.Add(25 * time.Hour)                       // 1h into the day after the window ends
 
 	setCreatedAt := func(model interface{}, ts time.Time) {
 		if err := f.tx.Model(model).UpdateColumn("created_at", ts).Error; err != nil {
@@ -501,27 +523,27 @@ func TestActivityFeed_Postgres_DateRangeFilterAppliesToBothCommentsAndAnnounceme
 	if err := f.tx.Create(&inRangeComment).Error; err != nil {
 		t.Fatalf("create in-range comment: %v", err)
 	}
-	setCreatedAt(&inRangeComment, inRange)
+	setCreatedAt(&inRangeComment, inRangeAtStart)
 
 	outOfRangeComment := models.AnimalComment{AnimalID: animal.ID, UserID: f.user.ID, Content: "out-of-range comment"}
 	if err := f.tx.Create(&outOfRangeComment).Error; err != nil {
 		t.Fatalf("create out-of-range comment: %v", err)
 	}
-	setCreatedAt(&outOfRangeComment, outOfRange)
+	setCreatedAt(&outOfRangeComment, beforeWindow)
 
 	inRangeUpdate := models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "In range", Content: "in-range announcement"}
 	if err := f.tx.Create(&inRangeUpdate).Error; err != nil {
 		t.Fatalf("create in-range announcement: %v", err)
 	}
-	setCreatedAt(&inRangeUpdate, inRange)
+	setCreatedAt(&inRangeUpdate, inRangeLateOnToDay)
 
 	outOfRangeUpdate := models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "Out of range", Content: "out-of-range announcement"}
 	if err := f.tx.Create(&outOfRangeUpdate).Error; err != nil {
 		t.Fatalf("create out-of-range announcement: %v", err)
 	}
-	setCreatedAt(&outOfRangeUpdate, outOfRange)
+	setCreatedAt(&outOfRangeUpdate, afterWindow)
 
-	query := fmt.Sprintf("from=%s&to=%s", windowStart.UTC().Format(time.RFC3339), windowEnd.UTC().Format(time.RFC3339))
+	query := fmt.Sprintf("from=%s&to=%s", fromDay.Format("2006-01-02"), toDay.Format("2006-01-02"))
 	body := f.feedRequest(t, query)
 
 	items, _ := body["items"].([]interface{})
@@ -537,7 +559,7 @@ func TestActivityFeed_Postgres_DateRangeFilterAppliesToBothCommentsAndAnnounceme
 		t.Fatalf("expected exactly 1 in-range comment, got %d", seenTypes["comment"])
 	}
 	if seenTypes["announcement"] != 1 {
-		t.Fatalf("expected exactly 1 in-range announcement, got %d", seenTypes["announcement"])
+		t.Fatalf("expected exactly 1 in-range announcement (including the one placed late on the `to` day), got %d", seenTypes["announcement"])
 	}
 	if got := int(body["total"].(float64)); got != 2 {
 		t.Fatalf("expected total=2 (one in-range comment + one in-range announcement), got %d", got)
