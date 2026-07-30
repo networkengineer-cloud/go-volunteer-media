@@ -79,15 +79,36 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		// Initialize with empty slice to ensure we never return nil
 		activityItems := make([]ActivityItem, 0)
 
-		// Parse date filters
+		// Parse date filters. GroupPage.tsx's date-range filter is backed by
+		// native <input type="date"> fields, which hand back a plain
+		// YYYY-MM-DD string (no reformatting) - not RFC3339. Accepting only
+		// RFC3339 here made the filter a silent no-op for every real user:
+		// time.Parse(time.RFC3339, "2024-01-15") fails, the error was
+		// swallowed, and dateFrom/dateTo just stayed nil. RFC3339 is still
+		// tried first and accepted as-is, in case some other caller sends a
+		// precise instant.
 		var dateFrom, dateTo *time.Time
 		if filterDateFrom != "" {
 			if t, err := time.Parse(time.RFC3339, filterDateFrom); err == nil {
+				dateFrom = &t
+			} else if t, err := time.Parse("2006-01-02", filterDateFrom); err == nil {
 				dateFrom = &t
 			}
 		}
 		if filterDateTo != "" {
 			if t, err := time.Parse(time.RFC3339, filterDateTo); err == nil {
+				dateTo = &t
+			} else if t, err := time.Parse("2006-01-02", filterDateTo); err == nil {
+				// A day-only bound has no time component of its own, so
+				// "to 2024-01-15" has to mean "through the end of the
+				// 15th" - matching what a user picking that day in a date
+				// picker expects - not just its first instant (00:00),
+				// which would exclude the entire day. Advancing to one
+				// nanosecond before the next day keeps the existing
+				// `created_at <= dateTo` comparisons below inclusive of
+				// every moment on the selected day, with no changes
+				// needed at either of those call sites.
+				t = t.Add(24*time.Hour - time.Nanosecond)
 				dateTo = &t
 			}
 		}
@@ -99,8 +120,14 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		var totalAnnouncements int
 		summary := ActivityFeedSummary{}
 
-		// Fetch announcements (Updates) if not filtering for comments only
-		if filterType == "" || filterType == "all" || filterType == "announcements" {
+		// Fetch announcements (Updates) if not filtering for comments only.
+		// Tags, ratings, and the animal filter are all comment-only concepts
+		// (models.Update has no tag relation, no metadata/rating, and no
+		// animal association at all - announcements are group-wide), so an
+		// active tag, rating, or animal filter must exclude announcements
+		// entirely - otherwise every announcement in the group is returned
+		// regardless of which tag/rating/animal was requested.
+		if (filterType == "" || filterType == "all" || filterType == "announcements") && filterTags == "" && filterRating == "" && filterAnimal == "" {
 			var updates []models.Update
 			query := db.Where("group_id = ?", groupID)
 

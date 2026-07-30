@@ -25,9 +25,9 @@ type sqlCapturingLogger struct {
 }
 
 func (l *sqlCapturingLogger) LogMode(gormlogger.LogLevel) gormlogger.Interface { return l }
-func (l *sqlCapturingLogger) Info(context.Context, string, ...interface{})    {}
-func (l *sqlCapturingLogger) Warn(context.Context, string, ...interface{})    {}
-func (l *sqlCapturingLogger) Error(context.Context, string, ...interface{})   {}
+func (l *sqlCapturingLogger) Info(context.Context, string, ...interface{})     {}
+func (l *sqlCapturingLogger) Warn(context.Context, string, ...interface{})     {}
+func (l *sqlCapturingLogger) Error(context.Context, string, ...interface{})    {}
 func (l *sqlCapturingLogger) Trace(_ context.Context, _ time.Time, fc func() (string, int64), _ error) {
 	sql, _ := fc()
 	l.statements = append(l.statements, sql)
@@ -366,6 +366,206 @@ func TestActivityFeed_Postgres_RatingFilterMatchesOriginalSemantics(t *testing.T
 	})
 }
 
+// TestActivityFeed_Postgres_RatingFilterExcludesAnnouncements guards against
+// the same class of bug as TestActivityFeed_Postgres_TagFilterExcludesAnnouncements:
+// announcements don't have a session rating any more than they have tags
+// (models.Update has no rating/metadata concept at all), so an active rating
+// filter must exclude announcements entirely. This seeds one rated comment,
+// one unrated comment, and one announcement, then asserts a rating= request
+// returns only the rated comment.
+func TestActivityFeed_Postgres_RatingFilterExcludesAnnouncements(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newActivityFeedTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+
+	ratedComment := models.AnimalComment{
+		AnimalID: animal.ID,
+		UserID:   f.user.ID,
+		Content:  "great session today",
+		Metadata: &models.SessionMetadata{SessionRating: 5},
+	}
+	if err := f.tx.Create(&ratedComment).Error; err != nil {
+		t.Fatalf("create rated comment: %v", err)
+	}
+	if err := f.tx.Create(&models.AnimalComment{AnimalID: animal.ID, UserID: f.user.ID, Content: "unrated comment"}).Error; err != nil {
+		t.Fatalf("create unrated comment: %v", err)
+	}
+	if err := f.tx.Create(&models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "Shelter closed Monday", Content: "Closed for the holiday"}).Error; err != nil {
+		t.Fatalf("create announcement: %v", err)
+	}
+
+	body := f.feedRequest(t, "rating=5")
+
+	items, _ := body["items"].([]interface{})
+	for _, raw := range items {
+		item := raw.(map[string]interface{})
+		if item["type"] != "comment" {
+			t.Fatalf("expected only comments when a rating filter is active, got item of type %q: %v", item["type"], item)
+		}
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected exactly 1 item (the rated comment), got %d: %v", len(items), items)
+	}
+	if got := int(body["total"].(float64)); got != 1 {
+		t.Fatalf("expected total=1 (only the rated comment counted, announcement excluded), got %d", got)
+	}
+}
+
+// TestActivityFeed_Postgres_AnimalFilterExcludesAnnouncements guards against
+// the same class of bug as the tag/rating filters: announcements
+// (models.Update) have no animal association at all - they're group-wide,
+// not scoped to any specific animal - so an active animal filter must
+// exclude announcements entirely, consistent with the same treatment tags
+// and rating already get. There's a dedicated per-animal type filter
+// already (filterType=announcements still shows them) plus semantic search
+// covering animal names in announcement text, so nothing is lost by
+// excluding them here. This seeds two animals (Rex, Fido), a comment on
+// each, and one group-wide announcement, then asserts filtering by Rex
+// returns only Rex's comment - no announcement, no Fido's comment.
+func TestActivityFeed_Postgres_AnimalFilterExcludesAnnouncements(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newActivityFeedTestFixture(t, db)
+
+	rex := models.Animal{GroupID: f.group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&rex).Error; err != nil {
+		t.Fatalf("create animal Rex: %v", err)
+	}
+	fido := models.Animal{GroupID: f.group.ID, Name: "Fido", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&fido).Error; err != nil {
+		t.Fatalf("create animal Fido: %v", err)
+	}
+
+	if err := f.tx.Create(&models.AnimalComment{AnimalID: rex.ID, UserID: f.user.ID, Content: "Rex comment"}).Error; err != nil {
+		t.Fatalf("create Rex comment: %v", err)
+	}
+	if err := f.tx.Create(&models.AnimalComment{AnimalID: fido.ID, UserID: f.user.ID, Content: "Fido comment"}).Error; err != nil {
+		t.Fatalf("create Fido comment: %v", err)
+	}
+	if err := f.tx.Create(&models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "Shelter closed Monday", Content: "Closed for the holiday"}).Error; err != nil {
+		t.Fatalf("create announcement: %v", err)
+	}
+
+	body := f.feedRequest(t, fmt.Sprintf("animal=%d", rex.ID))
+
+	items, _ := body["items"].([]interface{})
+	for _, raw := range items {
+		item := raw.(map[string]interface{})
+		if item["type"] != "comment" {
+			t.Fatalf("expected only comments when an animal filter is active, got item of type %q: %v", item["type"], item)
+		}
+		if item["content"] != "Rex comment" {
+			t.Fatalf("expected only Rex's comment, got: %v", item)
+		}
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected exactly 1 item (Rex's comment), got %d: %v", len(items), items)
+	}
+	if got := int(body["total"].(float64)); got != 1 {
+		t.Fatalf("expected total=1 (only Rex's comment counted, announcement and Fido's comment excluded), got %d", got)
+	}
+}
+
+// TestActivityFeed_Postgres_DateRangeFilterAppliesToBothCommentsAndAnnouncements
+// verifies the from/to date-range filter is symmetric across both item
+// types, unlike the tags/rating filters (which are comment-only concepts
+// that must exclude announcements entirely). created_at is a universal
+// concept on both models.AnimalComment and models.Update, so the correct
+// behavior is for the same window to narrow both sides - not exclude either
+// one.
+//
+// Uses plain YYYY-MM-DD query values, not RFC3339 - that's the actual shape
+// GroupPage.tsx's date-range filter sends (its <input type="date"> fields
+// write e.target.value straight into state with no reformatting; see
+// GroupPage.tsx's date-range-inputs). An earlier version of this test used
+// RFC3339 timestamps, which happened to be the one format the handler could
+// parse - masking a real bug where every genuine UI request (always
+// YYYY-MM-DD) silently failed to parse and the filter no-opped entirely.
+//
+// Seeds an in-range comment and an in-range announcement within [from, to],
+// plus an out-of-range comment and announcement on either side of that
+// window, then asserts a from/to request (in the real UI's format) returns
+// exactly the two in-range items. The in-range announcement is placed late
+// in the day on the `to` date specifically to prove the end date is
+// inclusive of its entire day, not just its first instant (00:00) - a
+// day-only bound has no time component of its own, so "to 2024-01-15" has to
+// mean "through the end of the 15th," matching what a user picking that day
+// in a date picker would expect.
+func TestActivityFeed_Postgres_DateRangeFilterAppliesToBothCommentsAndAnnouncements(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newActivityFeedTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+
+	now := time.Now().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	fromDay := today.AddDate(0, 0, -2) // window start, at 00:00
+	toDay := today.AddDate(0, 0, -1)   // window end (a whole day, not an instant)
+
+	inRangeAtStart := fromDay.Add(1 * time.Hour)                   // early on the first in-range day
+	inRangeLateOnToDay := toDay.Add(23*time.Hour + 30*time.Minute) // late on the last in-range day - proves the whole day is included
+	beforeWindow := fromDay.Add(-1 * time.Hour)                    // 1h before the window starts (previous day)
+	afterWindow := toDay.Add(25 * time.Hour)                       // 1h into the day after the window ends
+
+	setCreatedAt := func(model interface{}, ts time.Time) {
+		if err := f.tx.Model(model).UpdateColumn("created_at", ts).Error; err != nil {
+			t.Fatalf("set created_at: %v", err)
+		}
+	}
+
+	inRangeComment := models.AnimalComment{AnimalID: animal.ID, UserID: f.user.ID, Content: "in-range comment"}
+	if err := f.tx.Create(&inRangeComment).Error; err != nil {
+		t.Fatalf("create in-range comment: %v", err)
+	}
+	setCreatedAt(&inRangeComment, inRangeAtStart)
+
+	outOfRangeComment := models.AnimalComment{AnimalID: animal.ID, UserID: f.user.ID, Content: "out-of-range comment"}
+	if err := f.tx.Create(&outOfRangeComment).Error; err != nil {
+		t.Fatalf("create out-of-range comment: %v", err)
+	}
+	setCreatedAt(&outOfRangeComment, beforeWindow)
+
+	inRangeUpdate := models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "In range", Content: "in-range announcement"}
+	if err := f.tx.Create(&inRangeUpdate).Error; err != nil {
+		t.Fatalf("create in-range announcement: %v", err)
+	}
+	setCreatedAt(&inRangeUpdate, inRangeLateOnToDay)
+
+	outOfRangeUpdate := models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "Out of range", Content: "out-of-range announcement"}
+	if err := f.tx.Create(&outOfRangeUpdate).Error; err != nil {
+		t.Fatalf("create out-of-range announcement: %v", err)
+	}
+	setCreatedAt(&outOfRangeUpdate, afterWindow)
+
+	query := fmt.Sprintf("from=%s&to=%s", fromDay.Format("2006-01-02"), toDay.Format("2006-01-02"))
+	body := f.feedRequest(t, query)
+
+	items, _ := body["items"].([]interface{})
+	seenTypes := map[string]int{}
+	for _, raw := range items {
+		item := raw.(map[string]interface{})
+		seenTypes[item["type"].(string)]++
+		if item["content"] == "out-of-range comment" || item["content"] == "out-of-range announcement" {
+			t.Fatalf("out-of-range item leaked into date-filtered results: %v", item)
+		}
+	}
+	if seenTypes["comment"] != 1 {
+		t.Fatalf("expected exactly 1 in-range comment, got %d", seenTypes["comment"])
+	}
+	if seenTypes["announcement"] != 1 {
+		t.Fatalf("expected exactly 1 in-range announcement (including the one placed late on the `to` day), got %d", seenTypes["announcement"])
+	}
+	if got := int(body["total"].(float64)); got != 2 {
+		t.Fatalf("expected total=2 (one in-range comment + one in-range announcement), got %d", got)
+	}
+}
+
 // TestActivityFeed_Postgres_HasIndexForCommentQuery guards against a future
 // change accidentally dropping the migration this fix relies on: the
 // pre-existing idx_comment_animal_created index is (created_at, animal_id) -
@@ -461,5 +661,63 @@ func TestActivityFeed_Postgres_TotalCommentsCorrectWithTagFilterGroupBy(t *testi
 	}
 	if body["hasMore"] != true {
 		t.Fatalf("expected hasMore=true (2 of %d tagged comments shown), got %v", numTaggedComments, body["hasMore"])
+	}
+}
+
+// TestActivityFeed_Postgres_TagFilterExcludesAnnouncements guards against a
+// reported bug: filtering the activity feed by a comment tag (e.g.
+// "medical") also returned announcements in the results. Tags are a
+// comment-only concept - models.Update (announcement) has no tag relation at
+// all - so an announcement can never legitimately match a tag filter. The
+// announcement-fetch block in GetGroupActivityFeed was gated only on
+// filterType, never on filterTags, so it kept fetching every announcement in
+// the group regardless of an active tag filter. This seeds one tagged
+// comment, one untagged comment, and one announcement, then asserts a
+// tags= request returns only the tagged comment.
+func TestActivityFeed_Postgres_TagFilterExcludesAnnouncements(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newActivityFeedTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+
+	unique := time.Now().UnixNano()
+	medicalTag := models.CommentTag{Name: fmt.Sprintf("medical%d", unique), Color: "#FF0000"}
+	if err := f.tx.Create(&medicalTag).Error; err != nil {
+		t.Fatalf("create tag: %v", err)
+	}
+
+	taggedComment := models.AnimalComment{
+		AnimalID: animal.ID,
+		UserID:   f.user.ID,
+		Content:  "vet visit notes",
+		Tags:     []models.CommentTag{medicalTag},
+	}
+	if err := f.tx.Create(&taggedComment).Error; err != nil {
+		t.Fatalf("create tagged comment: %v", err)
+	}
+	if err := f.tx.Create(&models.AnimalComment{AnimalID: animal.ID, UserID: f.user.ID, Content: "untagged comment"}).Error; err != nil {
+		t.Fatalf("create untagged comment: %v", err)
+	}
+	if err := f.tx.Create(&models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "Shelter closed Monday", Content: "Closed for the holiday"}).Error; err != nil {
+		t.Fatalf("create announcement: %v", err)
+	}
+
+	body := f.feedRequest(t, fmt.Sprintf("tags=%s", medicalTag.Name))
+
+	items, _ := body["items"].([]interface{})
+	for _, raw := range items {
+		item := raw.(map[string]interface{})
+		if item["type"] != "comment" {
+			t.Fatalf("expected only comments when a tag filter is active, got item of type %q: %v", item["type"], item)
+		}
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected exactly 1 item (the tagged comment), got %d: %v", len(items), items)
+	}
+	if got := int(body["total"].(float64)); got != 1 {
+		t.Fatalf("expected total=1 (only the tagged comment counted, announcement excluded), got %d", got)
 	}
 }
