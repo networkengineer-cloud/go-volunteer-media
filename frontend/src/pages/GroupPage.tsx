@@ -5,6 +5,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSkillTag, GroupDocument } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { useDebounce } from '../hooks/useDebounce';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
 import AnnouncementForm from '../components/AnnouncementForm';
 import EmptyState from '../components/EmptyState';
@@ -21,6 +22,10 @@ import './GroupPage.css';
 
 type ViewMode = 'activity' | 'animals' | 'protocols' | 'members' | 'documents';
 type FilterType = 'all' | 'comments' | 'announcements';
+
+// Matches GroupSearch.tsx's debounce delay for the same kind of free-text
+// filter input.
+const NAME_SEARCH_DEBOUNCE_MS = 400;
 
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +47,7 @@ const GroupPage: React.FC = () => {
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [nameSearch, setNameSearch] = useState<string>('');
+  const debouncedNameSearch = useDebounce(nameSearch, NAME_SEARCH_DEBOUNCE_MS);
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showProtocolForm, setShowProtocolForm] = useState(false);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
@@ -135,15 +141,18 @@ const GroupPage: React.FC = () => {
     }
   };
 
-  // Load animals with filters
+  // Load animals with filters. Depends on debouncedNameSearch, not the raw
+  // nameSearch, so this (and anything that depends on it) doesn't get a new
+  // identity - and doesn't refetch - on every keystroke in the name-search
+  // box.
   const loadAnimals = useCallback(async (groupId: number) => {
     try {
-      const animalsRes = await animalsApi.getAll(groupId, statusFilter, nameSearch);
+      const animalsRes = await animalsApi.getAll(groupId, statusFilter, debouncedNameSearch);
       setAnimals(animalsRes.data);
     } catch (error) {
       console.error('Failed to load animals:', error);
     }
-  }, [statusFilter, nameSearch]);
+  }, [statusFilter, debouncedNameSearch]);
 
   // Update view mode when URL search params change
   useEffect(() => {
@@ -157,6 +166,10 @@ const GroupPage: React.FC = () => {
     }
   }, [searchParams, membership]);
 
+  // Once-per-page-visit data: email preferences, group details/membership,
+  // and the full groups list (for the switcher). Deliberately depends only
+  // on `id` - not on loadAnimals - so retyping in the name-search box or
+  // changing the status filter can't re-trigger these unrelated fetches.
   useEffect(() => {
     const loadPreferences = async () => {
       try {
@@ -166,20 +179,19 @@ const GroupPage: React.FC = () => {
         console.error('Failed to load preferences:', error);
       }
     };
-    
+
     loadPreferences();
-    
+
     if (id) {
       loadGroupData(Number(id));
-      // Load animals immediately to show count in tab
-      loadAnimals(Number(id));
     }
     // Load all groups for the switcher
     loadAllGroups();
-  }, [id, loadAnimals]);
+  }, [id]);
 
+  // The one place that triggers loadAnimals: on mount/group switch, and
+  // whenever the status or (debounced) name filter actually changes.
   useEffect(() => {
-    // Reload animals when filters change
     if (id) {
       loadAnimals(Number(id));
     }
