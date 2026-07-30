@@ -463,3 +463,61 @@ func TestActivityFeed_Postgres_TotalCommentsCorrectWithTagFilterGroupBy(t *testi
 		t.Fatalf("expected hasMore=true (2 of %d tagged comments shown), got %v", numTaggedComments, body["hasMore"])
 	}
 }
+
+// TestActivityFeed_Postgres_TagFilterExcludesAnnouncements guards against a
+// reported bug: filtering the activity feed by a comment tag (e.g.
+// "medical") also returned announcements in the results. Tags are a
+// comment-only concept - models.Update (announcement) has no tag relation at
+// all - so an announcement can never legitimately match a tag filter. The
+// announcement-fetch block in GetGroupActivityFeed was gated only on
+// filterType, never on filterTags, so it kept fetching every announcement in
+// the group regardless of an active tag filter. This seeds one tagged
+// comment, one untagged comment, and one announcement, then asserts a
+// tags= request returns only the tagged comment.
+func TestActivityFeed_Postgres_TagFilterExcludesAnnouncements(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newActivityFeedTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+
+	unique := time.Now().UnixNano()
+	medicalTag := models.CommentTag{Name: fmt.Sprintf("medical%d", unique), Color: "#FF0000"}
+	if err := f.tx.Create(&medicalTag).Error; err != nil {
+		t.Fatalf("create tag: %v", err)
+	}
+
+	taggedComment := models.AnimalComment{
+		AnimalID: animal.ID,
+		UserID:   f.user.ID,
+		Content:  "vet visit notes",
+		Tags:     []models.CommentTag{medicalTag},
+	}
+	if err := f.tx.Create(&taggedComment).Error; err != nil {
+		t.Fatalf("create tagged comment: %v", err)
+	}
+	if err := f.tx.Create(&models.AnimalComment{AnimalID: animal.ID, UserID: f.user.ID, Content: "untagged comment"}).Error; err != nil {
+		t.Fatalf("create untagged comment: %v", err)
+	}
+	if err := f.tx.Create(&models.Update{GroupID: f.group.ID, UserID: f.user.ID, Title: "Shelter closed Monday", Content: "Closed for the holiday"}).Error; err != nil {
+		t.Fatalf("create announcement: %v", err)
+	}
+
+	body := f.feedRequest(t, fmt.Sprintf("tags=%s", medicalTag.Name))
+
+	items, _ := body["items"].([]interface{})
+	for _, raw := range items {
+		item := raw.(map[string]interface{})
+		if item["type"] != "comment" {
+			t.Fatalf("expected only comments when a tag filter is active, got item of type %q: %v", item["type"], item)
+		}
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected exactly 1 item (the tagged comment), got %d: %v", len(items), items)
+	}
+	if got := int(body["total"].(float64)); got != 1 {
+		t.Fatalf("expected total=1 (only the tagged comment counted, announcement excluded), got %d", got)
+	}
+}
