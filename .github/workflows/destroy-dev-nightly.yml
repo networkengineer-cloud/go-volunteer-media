@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 env:
@@ -38,16 +37,6 @@ jobs:
       - name: Terraform Destroy
         run: terraform destroy -auto-approve
         working-directory: ${{ env.WORKING_DIRECTORY }}
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_DEV }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_USE_OIDC: true
-          TF_VAR_resend_api_key: ${{ secrets.DEV_RESEND_API_KEY }}
-          TF_VAR_jwt_secret: ${{ secrets.DEV_JWT_SECRET }}
-          TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
-          TF_VAR_axiom_api_token: ${{ secrets.DEV_AXIOM_API_TOKEN }}
-          TF_VAR_axiom_dataset: ${{ secrets.DEV_AXIOM_DATASET }}
 
       - name: Create Destroy Summary
         run: |
