@@ -39,7 +39,7 @@ jobs:
     - name: Run Go tests
       env:
         JWT_SECRET: ${{ secrets.TEST_JWT_SECRET || 'L5WTt6D+6R55YfKzwqPRAEX5bR0bkNo4i58jYKL0wsk=' }}
-      run: go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
+      run: go test -tags dev ./... -v -race -coverprofile=coverage.out -covermode=atomic
 
     - name: Generate coverage report
       run: go tool cover -html=coverage.out -o coverage.html
@@ -90,13 +90,13 @@ jobs:
         go-version: '1.24'
 
     - name: Run go vet
-      run: go vet ./...
+      run: go vet -tags dev ./...
 
     - name: Run golangci-lint
       uses: golangci/golangci-lint-action@v6
       with:
         version: latest
-        args: --timeout=5m
+        args: --timeout=5m --build-tags=dev
 
   frontend-lint:
     name: Frontend Lint
@@ -198,7 +198,7 @@ jobs:
         SMTP_FROM_EMAIL: test@example.com
         SMTP_FROM_NAME: Test
       run: |
-        go run cmd/api/main.go &
+        go run -tags dev cmd/api/main.go &
         echo $! > backend.pid
         
         # Wait for backend to be ready
