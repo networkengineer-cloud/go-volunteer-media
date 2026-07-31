@@ -6,9 +6,9 @@ on:
     types: [completed]
 
 permissions:
-  id-token: write
   contents: read
   actions: read
+  id-token: write
 
 env:
   TERRAFORM_VERSION: '1.5.7'
@@ -17,10 +17,12 @@ env:
   TF_WORKSPACE: 'volunteer-app-dev'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  APP_NAME: ca-volunteer-media-dev
+  RESOURCE_GROUP: rg-volunteer-media-dev
 
 jobs:
   deploy:
-    name: Terraform Apply (Dev)
+    name: Deploy Dev
     runs-on: ubuntu-latest
     environment: development
     if: github.event.workflow_run.conclusion == 'success'
@@ -57,33 +59,32 @@ jobs:
         working-directory: ${{ env.WORKING_DIRECTORY }}
 
       - name: Terraform Apply
-        id: apply
         run: terraform apply -auto-approve
         working-directory: ${{ env.WORKING_DIRECTORY }}
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_DEV }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_USE_OIDC: true
-          TF_VAR_resend_api_key: ${{ secrets.DEV_RESEND_API_KEY }}
-          TF_VAR_jwt_secret: ${{ secrets.DEV_JWT_SECRET }}
-          TF_VAR_container_image: ${{ steps.image.outputs.ref }}
-          TF_VAR_axiom_api_token: ${{ secrets.DEV_AXIOM_API_TOKEN }}
-          TF_VAR_axiom_dataset: ${{ secrets.DEV_AXIOM_DATASET }}
 
-      - name: Get Outputs
-        id: outputs
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_DEV }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy image to Container App
         run: |
-          echo "container_app_url=$(terraform output -raw container_app_url)" >> $GITHUB_OUTPUT
-        working-directory: ${{ env.WORKING_DIRECTORY }}
-        continue-on-error: true
+          set -euo pipefail
+          MONTH_DAY=$(date +%m%d)
+          GIT_SHORT=$(echo "${{ github.event.workflow_run.head_sha }}" | cut -c1-6)
+          REVISION_SUFFIX="${MONTH_DAY}${GIT_SHORT}"
+          az containerapp update \
+            --name "${{ env.APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --image "${{ steps.image.outputs.ref }}" \
+            --revision-suffix "$REVISION_SUFFIX"
 
       - name: Create Deployment Summary
-        if: steps.outputs.outcome == 'success'
         run: |
           echo "## Dev Auto-Deploy Successful ✅" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Image:** \`${{ steps.image.outputs.ref }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** ${{ steps.outputs.outputs.container_app_url }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "_Will be torn down by the nightly destroy workflow._" >> $GITHUB_STEP_SUMMARY
