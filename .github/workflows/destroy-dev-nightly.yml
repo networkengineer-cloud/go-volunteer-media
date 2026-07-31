@@ -1,0 +1,45 @@
+name: Destroy Dev (Nightly)
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TERRAFORM_VERSION: '1.5.7'
+  WORKING_DIRECTORY: './terraform/environments/dev'
+  TF_CLOUD_ORGANIZATION: 'Networkengineer'
+  TF_WORKSPACE: 'volunteer-app-dev'
+
+jobs:
+  destroy:
+    name: Terraform Destroy (Dev)
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+
+      - name: Create Destroy Summary
+        run: |
+          echo "## Dev Environment Destroyed (Nightly) 🗑️" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Ran at $(date -u +%Y-%m-%dT%H:%M:%SZ). Next merge will redeploy automatically." >> $GITHUB_STEP_SUMMARY
