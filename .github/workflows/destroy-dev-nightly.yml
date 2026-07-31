@@ -1,0 +1,56 @@
+name: Destroy Dev (Nightly)
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TERRAFORM_VERSION: '1.5.7'
+  WORKING_DIRECTORY: './terraform/environments/dev'
+  TF_CLOUD_ORGANIZATION: 'Networkengineer'
+  TF_WORKSPACE: 'volunteer-app-dev'
+
+jobs:
+  destroy:
+    name: Terraform Destroy (Dev)
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_DEV }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_USE_OIDC: true
+          TF_VAR_resend_api_key: ${{ secrets.DEV_RESEND_API_KEY }}
+          TF_VAR_jwt_secret: ${{ secrets.DEV_JWT_SECRET }}
+          TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
+          TF_VAR_axiom_api_token: ${{ secrets.DEV_AXIOM_API_TOKEN }}
+          TF_VAR_axiom_dataset: ${{ secrets.DEV_AXIOM_DATASET }}
+
+      - name: Create Destroy Summary
+        run: |
+          echo "## Dev Environment Destroyed (Nightly) 🗑️" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Ran at $(date -u +%Y-%m-%dT%H:%M:%SZ). Next merge will redeploy automatically." >> $GITHUB_STEP_SUMMARY
