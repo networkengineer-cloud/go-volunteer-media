@@ -142,6 +142,9 @@ jobs:
           TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
           TF_VAR_axiom_api_token: ${{ secrets.DEV_AXIOM_API_TOKEN }}
           TF_VAR_axiom_dataset: ${{ secrets.DEV_AXIOM_DATASET }}
+          TF_VAR_grafana_otlp_endpoint: ${{ secrets.DEV_GRAFANA_OTLP_ENDPOINT }}
+          TF_VAR_grafana_instance_id: ${{ secrets.DEV_GRAFANA_INSTANCE_ID }}
+          TF_VAR_grafana_api_token: ${{ secrets.DEV_GRAFANA_API_TOKEN }}
         continue-on-error: true
       
       - name: Create Plan Summary
@@ -197,6 +200,9 @@ jobs:
           TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
           TF_VAR_axiom_api_token: ${{ secrets.DEV_AXIOM_API_TOKEN }}
           TF_VAR_axiom_dataset: ${{ secrets.DEV_AXIOM_DATASET }}
+          TF_VAR_grafana_otlp_endpoint: ${{ secrets.DEV_GRAFANA_OTLP_ENDPOINT }}
+          TF_VAR_grafana_instance_id: ${{ secrets.DEV_GRAFANA_INSTANCE_ID }}
+          TF_VAR_grafana_api_token: ${{ secrets.DEV_GRAFANA_API_TOKEN }}
 
       - name: Get Outputs
         id: outputs
@@ -273,6 +279,9 @@ jobs:
           TF_VAR_container_image: ${{ secrets.DEV_CONTAINER_IMAGE }}
           TF_VAR_axiom_api_token: ${{ secrets.DEV_AXIOM_API_TOKEN }}
           TF_VAR_axiom_dataset: ${{ secrets.DEV_AXIOM_DATASET }}
+          TF_VAR_grafana_otlp_endpoint: ${{ secrets.DEV_GRAFANA_OTLP_ENDPOINT }}
+          TF_VAR_grafana_instance_id: ${{ secrets.DEV_GRAFANA_INSTANCE_ID }}
+          TF_VAR_grafana_api_token: ${{ secrets.DEV_GRAFANA_API_TOKEN }}
 
       - name: Create Destroy Summary
         run: |

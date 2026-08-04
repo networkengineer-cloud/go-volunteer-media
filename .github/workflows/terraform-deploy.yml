@@ -127,6 +127,9 @@ jobs:
           TF_VAR_container_image: ${{ secrets.CONTAINER_IMAGE }}
           TF_VAR_axiom_api_token: ${{ secrets.AXIOM_API_TOKEN }}
           TF_VAR_axiom_dataset: ${{ secrets.AXIOM_DATASET }}
+          TF_VAR_grafana_otlp_endpoint: ${{ secrets.GRAFANA_OTLP_ENDPOINT }}
+          TF_VAR_grafana_instance_id: ${{ secrets.GRAFANA_INSTANCE_ID }}
+          TF_VAR_grafana_api_token: ${{ secrets.GRAFANA_API_TOKEN }}
         continue-on-error: true
       
       - name: Comment PR with Plan
@@ -196,6 +199,9 @@ jobs:
           TF_VAR_container_image: ${{ secrets.CONTAINER_IMAGE }}
           TF_VAR_axiom_api_token: ${{ secrets.AXIOM_API_TOKEN }}
           TF_VAR_axiom_dataset: ${{ secrets.AXIOM_DATASET }}
+          TF_VAR_grafana_otlp_endpoint: ${{ secrets.GRAFANA_OTLP_ENDPOINT }}
+          TF_VAR_grafana_instance_id: ${{ secrets.GRAFANA_INSTANCE_ID }}
+          TF_VAR_grafana_api_token: ${{ secrets.GRAFANA_API_TOKEN }}
 
       - name: Get Outputs
         id: outputs

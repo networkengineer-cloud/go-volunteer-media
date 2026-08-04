@@ -29,7 +29,16 @@ resend_from_email = "dev@volunteermedia.app"
 # Security
 jwt_secret = "generate-with-openssl-rand-base64-32"  # Separate from prod!
 
-# Observability (Axiom via OpenTelemetry)
+# Observability (Grafana Cloud via OpenTelemetry)
+grafana_otlp_endpoint = "https://otlp-gateway-prod-us-central-0.grafana.net/otlp"  # Grafana Cloud stack's OTLP gateway URL
+grafana_instance_id   = "123456"  # Grafana Cloud stack/instance ID
+grafana_api_token     = "glc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # Grafana Cloud API token (metrics/logs/traces write scope)
+
+# Observability (Axiom via OpenTelemetry) — axiom_api_token has no default,
+# so it's still required to `terraform apply` (it's mirrored into Key Vault
+# regardless), even though it's no longer wired into OTEL_EXPORTER_OTLP_*
+# below (see main.tf). Any placeholder value works if you don't have a real
+# Axiom token anymore.
 axiom_api_token = "xaat-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"  # Get from Axiom Settings > API tokens
 axiom_dataset   = "go-volunteer-media-dev"
 
