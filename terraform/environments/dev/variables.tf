@@ -235,6 +235,28 @@ variable "axiom_metrics_dataset" {
   default     = ""
 }
 
+# Grafana Cloud / OpenTelemetry Configuration
+#
+# The axiom_* variables above are no longer read by the OTLP wiring in
+# main.tf (see the otel-exporter-otlp-headers secret and
+# OTEL_EXPORTER_OTLP_ENDPOINT env var) - left in place rather than deleted,
+# in case Axiom is wanted again as a fallback or point of comparison.
+variable "grafana_otlp_endpoint" {
+  type        = string
+  description = "Grafana Cloud OTLP gateway endpoint for OpenTelemetry export (traces, metrics, logs) - e.g. https://otlp-gateway-prod-us-central-0.grafana.net/otlp. Per-stack/region, unlike Axiom's single shared ingest host, so there's no sensible default."
+}
+
+variable "grafana_instance_id" {
+  type        = string
+  description = "Grafana Cloud stack/instance ID - the username half of the OTLP gateway's HTTP Basic Auth credential"
+}
+
+variable "grafana_api_token" {
+  type        = string
+  description = "Grafana Cloud API token (needs metrics/logs/traces write scope) - the password half of the OTLP gateway's HTTP Basic Auth credential"
+  sensitive   = true
+}
+
 # Monitoring Configuration
 variable "log_retention_days" {
   type        = number

@@ -133,6 +133,15 @@ resource "azurerm_key_vault_secret" "axiom_api_token" {
   depends_on = [azurerm_key_vault_access_policy.terraform]
 }
 
+# Store Grafana Cloud API token in Key Vault
+resource "azurerm_key_vault_secret" "grafana_api_token" {
+  name         = "grafana-api-token"
+  value        = var.grafana_api_token
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_key_vault_access_policy.terraform]
+}
+
 # PostgreSQL Flexible Server with auto-pause capability
 resource "azurerm_postgresql_flexible_server" "main" {
   name                = "psql-${var.project_name}-${var.environment}"
@@ -421,30 +430,18 @@ resource "azurerm_container_app" "main" {
         value = join(",", var.allowed_origins)
       }
 
-      # Monitoring — OpenTelemetry exported to Axiom
+      # Monitoring — OpenTelemetry exported to Grafana Cloud. Grafana's OTLP
+      # gateway takes a single Basic-auth header for all three signals - no
+      # per-signal dataset routing like Axiom needed, so there's no
+      # metrics-specific header/env var pair here anymore.
       env {
         name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
-        value = var.axiom_endpoint
+        value = var.grafana_otlp_endpoint
       }
 
       env {
         name        = "OTEL_EXPORTER_OTLP_HEADERS"
         secret_name = "otel-exporter-otlp-headers"
-      }
-
-      # Axiom requires metrics on their own dataset (type "Metrics", not
-      # "Events") with a dedicated x-axiom-metrics-dataset header — the
-      # generic OTEL_EXPORTER_OTLP_HEADERS above only routes traces/logs
-      # correctly. Per OTel's env var precedence, otlpmetrichttp falls back
-      # to OTEL_EXPORTER_OTLP_HEADERS when this is unset, so metrics export
-      # stays misconfigured (not disabled) until axiom_metrics_dataset is
-      # set — same as before this env var existed, not a regression.
-      dynamic "env" {
-        for_each = var.axiom_metrics_dataset != "" ? [1] : []
-        content {
-          name        = "OTEL_EXPORTER_OTLP_METRICS_HEADERS"
-          secret_name = "otel-exporter-otlp-metrics-headers"
-        }
       }
 
       env {
@@ -502,15 +499,7 @@ resource "azurerm_container_app" "main" {
 
   secret {
     name  = "otel-exporter-otlp-headers"
-    value = "Authorization=Bearer ${var.axiom_api_token},X-Axiom-Dataset=${var.axiom_dataset}"
-  }
-
-  dynamic "secret" {
-    for_each = var.axiom_metrics_dataset != "" ? [var.axiom_metrics_dataset] : []
-    content {
-      name  = "otel-exporter-otlp-metrics-headers"
-      value = "Authorization=Bearer ${var.axiom_api_token},x-axiom-metrics-dataset=${secret.value}"
-    }
+    value = "Authorization=Basic ${base64encode("${var.grafana_instance_id}:${var.grafana_api_token}")}"
   }
 
   # Note: No registry configuration needed - GHCR image is public

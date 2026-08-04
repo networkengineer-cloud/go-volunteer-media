@@ -64,7 +64,17 @@ allowed_origins = [
 # cloudflare_zone_id          = "your-cloudflare-zone-id"
 # cloudflare_api_token        = "cf_api_token_with_dns_edit"
 
-# Observability (Axiom via OpenTelemetry)
+# Observability (Grafana Cloud via OpenTelemetry)
+# Get your instance ID and API token from: https://grafana.com/orgs/<your-org>/stacks (Details > OTLP)
+grafana_otlp_endpoint = "https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
+grafana_instance_id   = "123456"
+grafana_api_token     = "glc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Observability (Axiom via OpenTelemetry) — axiom_api_token has no default,
+# so it's still required to `terraform apply` (it's mirrored into Key Vault
+# regardless), even though it's no longer wired into OTEL_EXPORTER_OTLP_*
+# below (see main.tf). Any placeholder value works if you don't have a real
+# Axiom token anymore.
 # Get your API token from: https://app.axiom.co (Settings > API tokens)
 axiom_api_token = "xaat-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 axiom_dataset   = "go-volunteer-media-prod"
