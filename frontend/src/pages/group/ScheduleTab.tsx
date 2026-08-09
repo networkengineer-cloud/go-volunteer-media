@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import axios from 'axios';
 import { scheduleApi, groupsApi } from '../../api/client';
 import type { GroupMember } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
@@ -33,23 +34,51 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Cancels any in-flight request before starting a new one - matching
+  // GroupPage.tsx's loadAnimals/loadActivityFeed AbortController pattern -
+  // so switching the volunteer picker (or a group/prop change) in quick
+  // succession can't let a slower, older response land after a newer one
+  // and overwrite it with the wrong volunteer's schedule.
+  const loadAbortControllerRef = useRef<AbortController | null>(null);
   const loadSchedule = useCallback(() => {
+    loadAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortControllerRef.current = controller;
+
     setLoading(true);
     setError(null);
     const request = selectedUserId === null
-      ? scheduleApi.getMine(groupId)
-      : scheduleApi.getForMember(groupId, selectedUserId);
+      ? scheduleApi.getMine(groupId, { signal: controller.signal })
+      : scheduleApi.getForMember(groupId, selectedUserId, { signal: controller.signal });
     request
       .then(res => {
         setSelectedSlots(new Set(res.data.slots.map(s => slotKey(s.day_of_week, s.hour))));
       })
-      .catch(() => setError('Unable to load schedule.'))
-      .finally(() => setLoading(false));
+      .catch(err => {
+        if (axios.isCancel(err)) return;
+        setError('Unable to load schedule.');
+      })
+      .finally(() => {
+        // A superseded (now-aborted) request's `finally` must not flip
+        // loading back off after a newer request already set it - only the
+        // request that's still current should clear it.
+        if (loadAbortControllerRef.current === controller) {
+          setLoading(false);
+        }
+      });
   }, [groupId, selectedUserId]);
 
   useEffect(() => {
     loadSchedule();
   }, [loadSchedule]);
+
+  // Cancel any in-flight schedule request on unmount so it can't set state
+  // on an unmounted component.
+  useEffect(() => {
+    return () => {
+      loadAbortControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!canManageMembers) return;

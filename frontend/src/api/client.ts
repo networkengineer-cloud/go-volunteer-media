@@ -626,10 +626,12 @@ export interface ScheduleResponse {
 }
 
 export const scheduleApi = {
-  getMine: (groupId: number) => api.get<ScheduleResponse>(`/groups/${groupId}/schedule/me`),
+  getMine: (groupId: number, options?: { signal?: AbortSignal }) =>
+    api.get<ScheduleResponse>(`/groups/${groupId}/schedule/me`, { signal: options?.signal }),
   updateMine: (groupId: number, slots: ScheduleSlot[]) =>
     api.put<ScheduleResponse>(`/groups/${groupId}/schedule/me`, { slots }),
-  getForMember: (groupId: number, userId: number) => api.get<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`),
+  getForMember: (groupId: number, userId: number, options?: { signal?: AbortSignal }) =>
+    api.get<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`, { signal: options?.signal }),
   updateForMember: (groupId: number, userId: number, slots: ScheduleSlot[]) =>
     api.put<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`, { slots }),
 };
