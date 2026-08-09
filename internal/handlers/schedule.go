@@ -158,3 +158,97 @@ func UpdateMySchedule(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"slots": toScheduleSlotResponses(slots)})
 	}
 }
+
+// GetMemberSchedule returns a specific group member's weekly shift slots.
+// Requires group admin or site admin access. Returns 404 if the target user
+// is not a member of the group.
+func GetMemberSchedule(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
+
+		var membership models.UserGroup
+		if err := db.Where("user_id = ? AND group_id = ?", targetUserID, groupIDParam).First(&membership).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User is not a member of this group"})
+			return
+		}
+
+		var slots []models.ShiftSlot
+		if err := db.Where("user_id = ? AND group_id = ?", targetUserID, groupIDParam).
+			Order("day_of_week, hour").Find(&slots).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch schedule"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"slots": toScheduleSlotResponses(slots)})
+	}
+}
+
+// UpdateMemberSchedule replaces a specific group member's weekly shift
+// slots. Requires group admin or site admin access. Returns 404 if the
+// target user is not a member of the group.
+func UpdateMemberSchedule(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
+
+		var membership models.UserGroup
+		if err := db.Where("user_id = ? AND group_id = ?", targetUserID, groupIDParam).First(&membership).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User is not a member of this group"})
+			return
+		}
+
+		groupIDUint, err := strconv.ParseUint(groupIDParam, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
+		var req updateScheduleRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		if err := validateScheduleSlots(req.Slots); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		slots, err := replaceGroupScheduleForUser(db, uint(targetUserID), uint(groupIDUint), req.Slots)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update schedule"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"slots": toScheduleSlotResponses(slots)})
+	}
+}
