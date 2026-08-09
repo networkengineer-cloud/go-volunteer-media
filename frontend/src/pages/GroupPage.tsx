@@ -59,6 +59,7 @@ const GroupPage: React.FC = () => {
   const [effectiveNameSearch, setEffectiveNameSearch] = useState(debouncedNameSearch);
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showProtocolForm, setShowProtocolForm] = useState(false);
+  const [togglingScheduling, setTogglingScheduling] = useState(false);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; updateId: number | null; title: string }>({
     show: false, updateId: null, title: '',
@@ -276,6 +277,24 @@ const GroupPage: React.FC = () => {
       toast.showSuccess('Announcement deleted');
     } catch {
       toast.showError('Failed to delete announcement');
+    }
+  };
+
+  const handleToggleScheduling = async () => {
+    if (!id || !group) return;
+    const nextEnabled = !group.scheduling_enabled;
+    setTogglingScheduling(true);
+    try {
+      const res = await groupsApi.updateScheduling(Number(id), nextEnabled);
+      setGroup((prev) => (prev ? { ...prev, scheduling_enabled: res.data.scheduling_enabled } : prev));
+      toast.showSuccess(res.data.scheduling_enabled ? 'Scheduling enabled for this group' : 'Scheduling disabled for this group');
+      if (!res.data.scheduling_enabled && viewMode === 'schedule') {
+        setViewMode('activity');
+      }
+    } catch {
+      toast.showError('Failed to update scheduling setting');
+    } finally {
+      setTogglingScheduling(false);
     }
   };
 
@@ -742,6 +761,20 @@ const GroupPage: React.FC = () => {
               <span>Upload Script</span>
             </button>
           )}
+          <button
+            type="button"
+            className="group-admin-link"
+            onClick={handleToggleScheduling}
+            disabled={togglingScheduling}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <span>{group.scheduling_enabled ? 'Disable Scheduling' : 'Enable Scheduling'}</span>
+          </button>
         </div>
       )}
 
