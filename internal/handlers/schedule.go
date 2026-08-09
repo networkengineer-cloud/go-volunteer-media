@@ -185,9 +185,11 @@ func UpdateMySchedule(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// updateSchedulingRequest is the body of PATCH .../scheduling.
+// updateSchedulingRequest is the body of PATCH .../scheduling. Enabled is a
+// pointer so an omitted field is rejected rather than silently defaulting
+// to false (Go's zero value for bool) and disabling the feature.
 type updateSchedulingRequest struct {
-	Enabled bool `json:"enabled"`
+	Enabled *bool `json:"enabled"`
 }
 
 // UpdateGroupScheduling turns the shift-scheduling feature on or off for a
@@ -211,18 +213,23 @@ func UpdateGroupScheduling(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		if req.Enabled == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "enabled is required"})
+			return
+		}
+
 		var group models.Group
 		if err := db.First(&group, groupIDParam).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
-		if err := db.Model(&group).Update("scheduling_enabled", req.Enabled).Error; err != nil {
+		if err := db.Model(&group).Update("scheduling_enabled", *req.Enabled).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update group"})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"scheduling_enabled": req.Enabled})
+		c.JSON(http.StatusOK, gin.H{"scheduling_enabled": *req.Enabled})
 	}
 }
 

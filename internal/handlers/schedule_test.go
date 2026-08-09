@@ -564,6 +564,7 @@ func TestUpdateGroupScheduling(t *testing.T) {
 		body            string
 		expectedStatus  int
 		expectedEnabled bool
+		expectedError   string
 	}{
 		{
 			name: "group admin can enable scheduling",
@@ -615,6 +616,19 @@ func TestUpdateGroupScheduling(t *testing.T) {
 			body:           `{"enabled":true}`,
 			expectedStatus: http.StatusForbidden,
 		},
+		{
+			name: "omitted enabled field is rejected rather than silently disabling",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
+				return groupAdmin, group
+			},
+			isAdmin:        false,
+			body:           `{}`,
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "enabled",
+		},
 	}
 
 	for _, tt := range tests {
@@ -633,6 +647,9 @@ func TestUpdateGroupScheduling(t *testing.T) {
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d: %s", tt.expectedStatus, w.Code, w.Body.String())
 			}
+			if tt.expectedError != "" && !strings.Contains(w.Body.String(), tt.expectedError) {
+				t.Errorf("expected error containing %q, got %q", tt.expectedError, w.Body.String())
+			}
 			if tt.expectedStatus == http.StatusOK {
 				var resp struct {
 					SchedulingEnabled bool `json:"scheduling_enabled"`
@@ -649,6 +666,15 @@ func TestUpdateGroupScheduling(t *testing.T) {
 				}
 				if reloaded.SchedulingEnabled != tt.expectedEnabled {
 					t.Errorf("expected persisted scheduling_enabled=%v, got %v", tt.expectedEnabled, reloaded.SchedulingEnabled)
+				}
+			}
+			if tt.name == "omitted enabled field is rejected rather than silently disabling" {
+				var reloaded models.Group
+				if err := db.First(&reloaded, group.ID).Error; err != nil {
+					t.Fatalf("failed to reload group: %v", err)
+				}
+				if !reloaded.SchedulingEnabled {
+					t.Error("expected scheduling_enabled to remain true (unchanged) after a rejected request, got false")
 				}
 			}
 		})
