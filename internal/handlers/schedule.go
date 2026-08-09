@@ -1,1 +1,160 @@
 package handlers
+
+import (
+	"fmt"
+	"net/http"
+	"strconv"
+
+	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"gorm.io/gorm"
+)
+
+// scheduleSlotInput is one 1-hour slot in an incoming schedule-update request.
+type scheduleSlotInput struct {
+	DayOfWeek int `json:"day_of_week"`
+	Hour      int `json:"hour"`
+}
+
+// updateScheduleRequest is the body of PUT .../schedule/me and .../schedule/:userId.
+// The full slot set replaces whatever was previously stored.
+type updateScheduleRequest struct {
+	Slots []scheduleSlotInput `json:"slots"`
+}
+
+// scheduleSlotResponse is one 1-hour slot in a schedule GET/PUT response.
+type scheduleSlotResponse struct {
+	DayOfWeek int `json:"day_of_week"`
+	Hour      int `json:"hour"`
+}
+
+func toScheduleSlotResponses(slots []models.ShiftSlot) []scheduleSlotResponse {
+	out := make([]scheduleSlotResponse, 0, len(slots))
+	for _, s := range slots {
+		out = append(out, scheduleSlotResponse{DayOfWeek: s.DayOfWeek, Hour: s.Hour})
+	}
+	return out
+}
+
+// validateScheduleSlots checks each slot's day/hour range (day_of_week 0-6,
+// hour 8-17) and rejects duplicate (day_of_week, hour) pairs within the
+// payload.
+func validateScheduleSlots(slots []scheduleSlotInput) error {
+	seen := make(map[[2]int]bool, len(slots))
+	for _, s := range slots {
+		if s.DayOfWeek < 0 || s.DayOfWeek > 6 {
+			return fmt.Errorf("day_of_week must be between 0 and 6, got %d", s.DayOfWeek)
+		}
+		if s.Hour < 8 || s.Hour > 17 {
+			return fmt.Errorf("hour must be between 8 and 17, got %d", s.Hour)
+		}
+		key := [2]int{s.DayOfWeek, s.Hour}
+		if seen[key] {
+			return fmt.Errorf("duplicate slot for day_of_week %d, hour %d", s.DayOfWeek, s.Hour)
+		}
+		seen[key] = true
+	}
+	return nil
+}
+
+// replaceGroupScheduleForUser deletes all existing ShiftSlot rows for the
+// given (userID, groupID) pair and inserts the provided slots in a single
+// transaction, so a schedule update is all-or-nothing.
+func replaceGroupScheduleForUser(db *gorm.DB, userID, groupID uint, slots []scheduleSlotInput) ([]models.ShiftSlot, error) {
+	var result []models.ShiftSlot
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ? AND group_id = ?", userID, groupID).Delete(&models.ShiftSlot{}).Error; err != nil {
+			return err
+		}
+		for _, s := range slots {
+			slot := models.ShiftSlot{UserID: userID, GroupID: groupID, DayOfWeek: s.DayOfWeek, Hour: s.Hour}
+			if err := tx.Create(&slot).Error; err != nil {
+				return err
+			}
+			result = append(result, slot)
+		}
+		return nil
+	})
+	return result, err
+}
+
+// GetMySchedule returns the caller's weekly shift slots for the given group.
+// Requires group membership (or site admin).
+func GetMySchedule(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		var slots []models.ShiftSlot
+		if err := db.Where("user_id = ? AND group_id = ?", userIDUint, groupIDParam).
+			Order("day_of_week, hour").Find(&slots).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch schedule"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"slots": toScheduleSlotResponses(slots)})
+	}
+}
+
+// UpdateMySchedule replaces the caller's weekly shift slots for the given
+// group. Requires group membership (or site admin).
+func UpdateMySchedule(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		userIDUint, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		groupIDUint, err := strconv.ParseUint(groupIDParam, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
+		var req updateScheduleRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		if err := validateScheduleSlots(req.Slots); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		slots, err := replaceGroupScheduleForUser(db, userIDUint, uint(groupIDUint), req.Slots)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update schedule"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"slots": toScheduleSlotResponses(slots)})
+	}
+}
