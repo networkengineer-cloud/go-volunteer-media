@@ -611,6 +611,26 @@ export const groupsApi = {
   },
 };
 
+// Weekly volunteer shift schedule (per group). day_of_week is 0=Sunday..6=Saturday;
+// hour is the slot's start hour, 8..17 (8am-6pm in 1-hour increments).
+export interface ScheduleSlot {
+  day_of_week: number;
+  hour: number;
+}
+
+export interface ScheduleResponse {
+  slots: ScheduleSlot[];
+}
+
+export const scheduleApi = {
+  getMine: (groupId: number) => api.get<ScheduleResponse>(`/groups/${groupId}/schedule/me`),
+  updateMine: (groupId: number, slots: ScheduleSlot[]) =>
+    api.put<ScheduleResponse>(`/groups/${groupId}/schedule/me`, { slots }),
+  getForMember: (groupId: number, userId: number) => api.get<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`),
+  updateForMember: (groupId: number, userId: number, slots: ScheduleSlot[]) =>
+    api.put<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`, { slots }),
+};
+
 // Animals API
 export const animalsApi = {
   getAll: (groupId: number, status?: string, name?: string, options?: { signal?: AbortSignal }) => {
