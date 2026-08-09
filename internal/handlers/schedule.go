@@ -29,6 +29,24 @@ type scheduleSlotResponse struct {
 	Hour      int `json:"hour"`
 }
 
+// requireSchedulingEnabled loads the group's SchedulingEnabled flag and
+// writes a 404 response if the feature is off, mirroring the HasProtocols
+// gate in protocol.go/script.go. Returns false if the response was already
+// written (either because scheduling is disabled or the group lookup
+// failed) — callers should return immediately in that case.
+func requireSchedulingEnabled(c *gin.Context, db *gorm.DB, groupID string) bool {
+	var group models.Group
+	if err := db.Select("scheduling_enabled").First(&group, groupID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+		return false
+	}
+	if !group.SchedulingEnabled {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Scheduling is not enabled for this group"})
+		return false
+	}
+	return true
+}
+
 func toScheduleSlotResponses(slots []models.ShiftSlot) []scheduleSlotResponse {
 	out := make([]scheduleSlotResponse, 0, len(slots))
 	for _, s := range slots {
@@ -94,6 +112,10 @@ func GetMySchedule(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -123,6 +145,10 @@ func UpdateMySchedule(db *gorm.DB) gin.HandlerFunc {
 
 		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
 			return
 		}
 
@@ -159,6 +185,47 @@ func UpdateMySchedule(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// updateSchedulingRequest is the body of PATCH .../scheduling.
+type updateSchedulingRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// UpdateGroupScheduling turns the shift-scheduling feature on or off for a
+// group. Requires group admin or site admin access.
+func UpdateGroupScheduling(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		var req updateSchedulingRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		var group models.Group
+		if err := db.First(&group, groupIDParam).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+
+		if err := db.Model(&group).Update("scheduling_enabled", req.Enabled).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update group"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"scheduling_enabled": req.Enabled})
+	}
+}
+
 // GetMemberSchedule returns a specific group member's weekly shift slots.
 // Requires group admin or site admin access. Returns 404 if the target user
 // is not a member of the group.
@@ -172,6 +239,10 @@ func GetMemberSchedule(db *gorm.DB) gin.HandlerFunc {
 
 		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
 			return
 		}
 
@@ -211,6 +282,10 @@ func UpdateMemberSchedule(db *gorm.DB) gin.HandlerFunc {
 
 		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
 			return
 		}
 

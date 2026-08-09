@@ -14,6 +14,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// createSchedulingEnabledGroup creates a test group with the scheduling
+// feature turned on, since SchedulingEnabled defaults to false and most
+// schedule-endpoint tests are exercising auth/validation behavior, not the
+// feature-gate itself.
+func createSchedulingEnabledGroup(t *testing.T, db *gorm.DB, name, description string) *models.Group {
+	group := CreateTestGroup(t, db, name, description)
+	if err := db.Model(group).Update("scheduling_enabled", true).Error; err != nil {
+		t.Fatalf("failed to enable scheduling for test group: %v", err)
+	}
+	return group
+}
+
 // TestShiftSlotUniqueConstraint verifies the model's composite unique index
 // rejects a duplicate (user_id, group_id, day_of_week, hour) row, and that a
 // distinct slot (different hour) for the same user/group succeeds.
@@ -50,7 +62,7 @@ func TestGetMySchedule(t *testing.T) {
 			name: "member with no slots yet gets an empty list",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
 				return user, group
 			},
@@ -62,8 +74,8 @@ func TestGetMySchedule(t *testing.T) {
 			name: "member sees their own slots for this group only",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
-				otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+				otherGroup := createSchedulingEnabledGroup(t, db, "Cats", "Cat volunteers")
 				AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
 				AddUserToGroupWithAdmin(t, db, user.ID, otherGroup.ID, false)
 				db.Create(&models.ShiftSlot{UserID: user.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 9})
@@ -78,7 +90,7 @@ func TestGetMySchedule(t *testing.T) {
 			name: "non-member is denied",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				return user, group
 			},
 			isAdmin:        false,
@@ -88,7 +100,7 @@ func TestGetMySchedule(t *testing.T) {
 			name: "site admin (non-member) is allowed",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				return admin, group
 			},
 			isAdmin:        true,
@@ -140,7 +152,7 @@ func TestUpdateMySchedule(t *testing.T) {
 			name: "member can set their own schedule",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
 				return user, group
 			},
@@ -152,7 +164,7 @@ func TestUpdateMySchedule(t *testing.T) {
 			name: "replace-all semantics: a second update replaces the first set",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
 				db.Create(&models.ShiftSlot{UserID: user.ID, GroupID: group.ID, DayOfWeek: 0, Hour: 8})
 				return user, group
@@ -165,7 +177,7 @@ func TestUpdateMySchedule(t *testing.T) {
 			name: "invalid day_of_week is rejected",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
 				return user, group
 			},
@@ -178,7 +190,7 @@ func TestUpdateMySchedule(t *testing.T) {
 			name: "invalid hour is rejected",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
 				return user, group
 			},
@@ -191,7 +203,7 @@ func TestUpdateMySchedule(t *testing.T) {
 			name: "duplicate slot in payload is rejected",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
 				return user, group
 			},
@@ -204,7 +216,7 @@ func TestUpdateMySchedule(t *testing.T) {
 			name: "non-member is denied",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				return user, group
 			},
 			isAdmin:        false,
@@ -263,7 +275,7 @@ func TestGetMemberSchedule(t *testing.T) {
 			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
 				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
 				member := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
 				AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
 				db.Create(&models.ShiftSlot{UserID: member.ID, GroupID: group.ID, DayOfWeek: 1, Hour: 8})
@@ -278,7 +290,7 @@ func TestGetMemberSchedule(t *testing.T) {
 			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
 				siteAdmin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
 				member := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
 				return siteAdmin, member, group
 			},
@@ -291,7 +303,7 @@ func TestGetMemberSchedule(t *testing.T) {
 			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
 				regular := CreateTestUser(t, db, "regular", "regular@test.com", "password123", false)
 				member := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, regular.ID, group.ID, false)
 				AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
 				return regular, member, group
@@ -304,7 +316,7 @@ func TestGetMemberSchedule(t *testing.T) {
 			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
 				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
 				nonMember := CreateTestUser(t, db, "outsider", "outsider@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
 				return groupAdmin, nonMember, group
 			},
@@ -360,7 +372,7 @@ func TestUpdateMemberSchedule(t *testing.T) {
 			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
 				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
 				member := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
 				AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
 				return groupAdmin, member, group
@@ -374,7 +386,7 @@ func TestUpdateMemberSchedule(t *testing.T) {
 			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
 				regular := CreateTestUser(t, db, "regular", "regular@test.com", "password123", false)
 				member := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, regular.ID, group.ID, false)
 				AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
 				return regular, member, group
@@ -389,7 +401,7 @@ func TestUpdateMemberSchedule(t *testing.T) {
 			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
 				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
 				nonMember := CreateTestUser(t, db, "outsider", "outsider@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
 				return groupAdmin, nonMember, group
 			},
@@ -402,7 +414,7 @@ func TestUpdateMemberSchedule(t *testing.T) {
 			setupFunc: func(db *gorm.DB) (*models.User, *models.User, *models.Group) {
 				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
 				member := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
-				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
 				AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
 				return groupAdmin, member, group
@@ -435,6 +447,209 @@ func TestUpdateMemberSchedule(t *testing.T) {
 			}
 			if tt.expectedError != "" && !strings.Contains(w.Body.String(), tt.expectedError) {
 				t.Errorf("expected error containing %q, got %q", tt.expectedError, w.Body.String())
+			}
+		})
+	}
+}
+
+// TestScheduleRequiresSchedulingEnabled verifies all four schedule endpoints
+// return 404 for a group where SchedulingEnabled is false (the default),
+// even for a site admin — this is a feature gate, not an authorization gate.
+func TestScheduleRequiresSchedulingEnabled(t *testing.T) {
+	t.Run("GetMySchedule returns 404 when scheduling is disabled for the group", func(t *testing.T) {
+		db := SetupTestDB(t)
+		user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
+
+		c, w := setupGroupTestContext(user.ID, false)
+		c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+		c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/groups/%d/schedule/me", group.ID), nil)
+
+		GetMySchedule(db)(c)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), "Scheduling") {
+			t.Errorf("expected error message to mention scheduling, got %q", w.Body.String())
+		}
+	})
+
+	t.Run("UpdateMySchedule returns 404 when scheduling is disabled for the group", func(t *testing.T) {
+		db := SetupTestDB(t)
+		user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
+
+		c, w := setupGroupTestContext(user.ID, false)
+		c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+		c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/me", group.ID), bytes.NewBufferString(`{"slots":[]}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		UpdateMySchedule(db)(c)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("GetMemberSchedule returns 404 when scheduling is disabled for the group", func(t *testing.T) {
+		db := SetupTestDB(t)
+		groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
+		member := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
+		AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
+
+		c, w := setupGroupTestContext(groupAdmin.ID, false)
+		c.Params = gin.Params{
+			{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+			{Key: "userId", Value: fmt.Sprintf("%d", member.ID)},
+		}
+		c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/groups/%d/schedule/%d", group.ID, member.ID), nil)
+
+		GetMemberSchedule(db)(c)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("UpdateMemberSchedule returns 404 when scheduling is disabled for the group", func(t *testing.T) {
+		db := SetupTestDB(t)
+		groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
+		member := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
+		AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
+
+		c, w := setupGroupTestContext(groupAdmin.ID, false)
+		c.Params = gin.Params{
+			{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+			{Key: "userId", Value: fmt.Sprintf("%d", member.ID)},
+		}
+		c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/%d", group.ID, member.ID), bytes.NewBufferString(`{"slots":[]}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		UpdateMemberSchedule(db)(c)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("site admin still gets 404 when scheduling is disabled (feature gate applies to everyone)", func(t *testing.T) {
+		db := SetupTestDB(t)
+		siteAdmin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+
+		c, w := setupGroupTestContext(siteAdmin.ID, true)
+		c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+		c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/groups/%d/schedule/me", group.ID), nil)
+
+		GetMySchedule(db)(c)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestUpdateGroupScheduling(t *testing.T) {
+	tests := []struct {
+		name            string
+		setupFunc       func(*gorm.DB) (*models.User, *models.Group)
+		isAdmin         bool
+		body            string
+		expectedStatus  int
+		expectedEnabled bool
+	}{
+		{
+			name: "group admin can enable scheduling",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
+				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
+				return groupAdmin, group
+			},
+			isAdmin:         false,
+			body:            `{"enabled":true}`,
+			expectedStatus:  http.StatusOK,
+			expectedEnabled: true,
+		},
+		{
+			name: "group admin can disable scheduling",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
+				return groupAdmin, group
+			},
+			isAdmin:         false,
+			body:            `{"enabled":false}`,
+			expectedStatus:  http.StatusOK,
+			expectedEnabled: false,
+		},
+		{
+			name: "site admin can enable scheduling for a group they're not a member of",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				siteAdmin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				return siteAdmin, group
+			},
+			isAdmin:         true,
+			body:            `{"enabled":true}`,
+			expectedStatus:  http.StatusOK,
+			expectedEnabled: true,
+		},
+		{
+			name: "regular member cannot toggle scheduling",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				regular := CreateTestUser(t, db, "regular", "regular@test.com", "password123", false)
+				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+				AddUserToGroupWithAdmin(t, db, regular.ID, group.ID, false)
+				return regular, group
+			},
+			isAdmin:        false,
+			body:           `{"enabled":true}`,
+			expectedStatus: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := SetupTestDB(t)
+			user, group := tt.setupFunc(db)
+
+			c, w := setupGroupTestContext(user.ID, tt.isAdmin)
+			c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+			c.Request = httptest.NewRequest("PATCH", fmt.Sprintf("/api/groups/%d/scheduling", group.ID), bytes.NewBufferString(tt.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			handler := UpdateGroupScheduling(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+			if tt.expectedStatus == http.StatusOK {
+				var resp struct {
+					SchedulingEnabled bool `json:"scheduling_enabled"`
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("failed to unmarshal response: %v", err)
+				}
+				if resp.SchedulingEnabled != tt.expectedEnabled {
+					t.Errorf("expected scheduling_enabled=%v, got %v", tt.expectedEnabled, resp.SchedulingEnabled)
+				}
+				var reloaded models.Group
+				if err := db.First(&reloaded, group.ID).Error; err != nil {
+					t.Fatalf("failed to reload group: %v", err)
+				}
+				if reloaded.SchedulingEnabled != tt.expectedEnabled {
+					t.Errorf("expected persisted scheduling_enabled=%v, got %v", tt.expectedEnabled, reloaded.SchedulingEnabled)
+				}
 			}
 		})
 	}
