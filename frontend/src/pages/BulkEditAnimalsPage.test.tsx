@@ -40,6 +40,7 @@ const mockGroup: Group = {
   image_url: '',
   hero_image_url: '',
   has_protocols: false,
+  scheduling_enabled: false,
   groupme_enabled: false,
 };
 
