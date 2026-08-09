@@ -665,7 +665,7 @@ const GroupPage: React.FC = () => {
               <span>Documents</span>
             </button>
           )}
-          {(membership?.is_member || membership?.is_site_admin) && (
+          {group.scheduling_enabled && (membership?.is_member || membership?.is_site_admin) && (
             <button
               role="tab"
               aria-selected={viewMode === 'schedule'}
@@ -1582,7 +1582,7 @@ const GroupPage: React.FC = () => {
         </div>
       )}
 
-      {viewMode === 'schedule' && (membership?.is_member || membership?.is_site_admin) && id && (
+      {viewMode === 'schedule' && group.scheduling_enabled && (membership?.is_member || membership?.is_site_admin) && id && (
         <div
           role="tabpanel"
           id="schedule-panel"
