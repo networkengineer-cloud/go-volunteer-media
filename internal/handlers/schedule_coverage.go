@@ -374,3 +374,60 @@ func notifyRequesterOfClaim(db *gorm.DB, emailService *email.Service, groupMeSer
 		}
 	}()
 }
+
+// CancelCoverageRequest withdraws a coverage request. The original
+// requester can cancel it only while still open; a group admin (or site
+// admin) can cancel it at any status.
+func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		callerUserID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		requestID, err := strconv.ParseUint(c.Param("requestId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
+			return
+		}
+
+		var reqRow models.ShiftCoverageRequest
+		if err := db.Where("id = ? AND group_id = ?", requestID, groupIDParam).First(&reqRow).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Coverage request not found"})
+			return
+		}
+
+		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
+		isOwnOpenRequest := reqRow.RequestedByUserID == callerUserID && reqRow.Status == models.CoverageRequestOpen
+		if !isOwnOpenRequest && !isAdminCaller {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot cancel this coverage request"})
+			return
+		}
+		if reqRow.Status == models.CoverageRequestCancelled {
+			c.JSON(http.StatusConflict, gin.H{"error": "Coverage request is already cancelled"})
+			return
+		}
+
+		if err := db.Model(&reqRow).Update("status", models.CoverageRequestCancelled).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel coverage request"})
+			return
+		}
+
+		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
+	}
+}

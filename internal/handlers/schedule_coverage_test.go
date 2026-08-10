@@ -282,3 +282,83 @@ func TestClaimCoverageRequest(t *testing.T) {
 		}
 	})
 }
+
+func performCancelCoverageRequest(db *gorm.DB, callerID uint, isAdmin bool, groupID, requestID uint) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", callerID)
+		c.Set("is_admin", isAdmin)
+		c.Next()
+	})
+	router.DELETE("/groups/:id/schedule/coverage-requests/:requestId", CancelCoverageRequest(db))
+
+	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/groups/%d/schedule/coverage-requests/%d", groupID, requestID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func TestCancelCoverageRequest(t *testing.T) {
+	t.Run("requester can cancel their own open request", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performCancelCoverageRequest(db, requester.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var updated models.ShiftCoverageRequest
+		db.First(&updated, reqRow.ID)
+		if updated.Status != models.CoverageRequestCancelled {
+			t.Fatalf("Expected status cancelled, got %s", updated.Status)
+		}
+	})
+
+	t.Run("requester cannot cancel after it's claimed", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+
+		w := performCancelCoverageRequest(db, requester.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("group admin can cancel any request", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performCancelCoverageRequest(db, admin.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("non-admin, non-requester cannot cancel", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performCancelCoverageRequest(db, other.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}

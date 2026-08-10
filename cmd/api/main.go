@@ -452,6 +452,7 @@ func main() {
 			group.GET("/schedule/overview", handlers.GetGroupScheduleOverview(db))
 			group.POST("/schedule/coverage-requests", handlers.CreateCoverageRequest(db, emailService, groupMeService))
 			group.POST("/schedule/coverage-requests/:requestId/claim", handlers.ClaimCoverageRequest(db, emailService, groupMeService))
+			group.DELETE("/schedule/coverage-requests/:requestId", handlers.CancelCoverageRequest(db))
 			group.GET("/schedule/:userId", handlers.GetMemberSchedule(db))
 			group.PUT("/schedule/:userId", handlers.UpdateMemberSchedule(db))
 
