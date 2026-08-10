@@ -99,4 +99,29 @@ describe('ScheduleOverview', () => {
     fireEvent.mouseDown(document.body);
     await waitFor(() => expect(screen.queryByText('vol1')).not.toBeInTheDocument());
   });
+
+  it('renders every member in a long list even though the popover box is height-capped', async () => {
+    // jsdom doesn't compute layout, so this can't verify the CSS
+    // max-height/overflow-y clamp actually kicks in visually (that's
+    // covered by the Playwright verification instead) - but it does
+    // confirm the popover keeps rendering all members in the DOM (for
+    // scrolling to reveal) rather than e.g. truncating the list to fit.
+    const members = Array.from({ length: 20 }, (_, i) => ({
+      user_id: i + 1,
+      username: `vol${i + 1}`,
+      first_name: `Member`,
+      last_name: `${i + 1}`,
+    }));
+    mockOverview({
+      slots: [{ day_of_week: 2, hour: 9, members }],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={20} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM.*20 available/i });
+    fireEvent.click(cell);
+
+    expect(await screen.findByText('Member 1')).toBeInTheDocument();
+    expect(screen.getByText('Member 20')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(20);
+  });
 });

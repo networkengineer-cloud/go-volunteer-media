@@ -47,6 +47,20 @@
   z-index: 10;
   min-width: 140px;
   max-width: 220px;
+  /* Caps the rendered height regardless of member-list length (unbounded -
+     up to one entry per group member) so ESTIMATED_POPOVER_HEIGHT in
+     ScheduleOverview.tsx's popoverPositionFor() can treat this value as a
+     guaranteed fact rather than a guess: without a cap, a slot with enough
+     available members renders taller than any fixed estimate, the flip
+     logic wrongly concludes there's room below, and the popover clips off
+     the viewport again. Long lists get an internal scrollbar instead of
+     growing the box. 220px comfortably shows ~6-7 names before scrolling
+     and matches the existing max-width for a consistent max footprint.
+     `* { box-sizing: border-box }` (index.css) is in effect globally, so
+     this 220px already includes the padding/border below - no extra
+     bookkeeping needed to keep ESTIMATED_POPOVER_HEIGHT in sync. */
+  max-height: 220px;
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--neutral-300);
   border-radius: 6px;

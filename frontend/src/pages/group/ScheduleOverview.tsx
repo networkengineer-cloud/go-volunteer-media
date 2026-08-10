@@ -34,16 +34,20 @@ const VIEWPORT_MARGIN = 8;
 const POPOVER_WIDTH = 220;
 const POPOVER_HALF_WIDTH = POPOVER_WIDTH / 2;
 
-// The popover's actual height depends on how many members are in the slot
-// (unbounded list length), which we don't know until it renders. Rather
-// than measure post-render (extra state + effect for a one-frame
-// correction), we use a conservative fixed estimate for the flip decision:
-// enough for a handful of names (padding 2x8px + border 2x1px + ~6 lines at
-// ~16px + 5 inter-item gaps at 4px, from the `.schedule-overview__popover`
-// rule in ScheduleOverview.css, is ~120px). This won't be pixel-perfect for
-// slots with many available members, but it reliably keeps the popover
-// on-screen, which is what this fix requires.
-const ESTIMATED_POPOVER_HEIGHT = 120;
+// The popover's member list is unbounded in length, but
+// `.schedule-overview__popover` in ScheduleOverview.css caps the rendered
+// box at `max-height: 220px` (with `overflow-y: auto` so long lists scroll
+// internally instead of growing the box). Because of that cap, this is no
+// longer an estimate of a variable height - it's the guaranteed maximum,
+// so the flip decision below is correct for every member count, not just
+// typical ones.
+//
+// MUST match `.schedule-overview__popover`'s `max-height` in
+// ScheduleOverview.css exactly. `* { box-sizing: border-box }` (index.css)
+// applies globally, so that 220px already includes the popover's own
+// padding/border - nothing to add here. Nothing enforces this link
+// automatically; if the CSS value changes, update this constant too.
+const ESTIMATED_POPOVER_HEIGHT = 220;
 
 // Computes a fixed-position anchor point for the popover, derived from the
 // clicked cell's live bounding rect (so it's correct regardless of scroll
