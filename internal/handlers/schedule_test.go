@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -724,12 +725,25 @@ func TestGetGroupScheduleOverview(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name: "regular member is denied",
+			// Access was widened to any group member (not just group/site
+			// admins) - see TestGetGroupScheduleOverview_NonAdminMemberCanAccess
+			// for a more targeted test of the same behavior.
+			name: "regular member can access",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				regular := CreateTestUser(t, db, "regular", "regular@test.com", "password123", false)
 				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, regular.ID, group.ID, false)
 				return regular, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "non-member is denied",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				outsider := CreateTestUser(t, db, "outsider", "outsider@test.com", "password123", false)
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+				return outsider, group
 			},
 			isAdmin:        false,
 			expectedStatus: http.StatusForbidden,
@@ -828,4 +842,144 @@ func TestGetGroupScheduleOverview(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetGroupScheduleOverview_NonAdminMemberCanAccess(t *testing.T) {
+	db := SetupTestDB(t)
+	member := CreateTestUser(t, db, "member1", "member1@example.com", "password123", false)
+	group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
+	db.Model(group).Update("scheduling_enabled", true)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", member.ID)
+		c.Set("is_admin", false)
+		c.Next()
+	})
+	router.GET("/groups/:id/schedule/overview", GetGroupScheduleOverview(db))
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/schedule/overview", group.ID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 for non-admin member, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetGroupScheduleOverview_EffectiveRoster(t *testing.T) {
+	db := SetupTestDB(t)
+	requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+	claimant := CreateTestUser(t, db, "claimant", "claimant@example.com", "password123", false)
+	viewer := CreateTestUser(t, db, "viewer", "viewer@example.com", "password123", false)
+	group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+	for _, u := range []*models.User{requester, claimant, viewer} {
+		AddUserToGroupWithAdmin(t, db, u.ID, group.ID, false)
+	}
+	db.Model(group).Update("scheduling_enabled", true)
+	db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
+
+	weekStart := time.Now().UTC().Truncate(24 * time.Hour)
+	weekStart = weekStart.AddDate(0, 0, -int(weekStart.Weekday())) // this week's Sunday
+	tuesday := weekStart.AddDate(0, 0, 2)
+
+	t.Run("open request keeps requester listed, flagged needs_coverage", func(t *testing.T) {
+		reqRow := &models.ShiftCoverageRequest{GroupID: group.ID, RequestedByUserID: requester.ID, Date: tuesday, Hour: 10, Status: models.CoverageRequestOpen}
+		db.Create(reqRow)
+		defer db.Delete(reqRow)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", viewer.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.GET("/groups/:id/schedule/overview", GetGroupScheduleOverview(db))
+
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/schedule/overview?week_start=%s", group.ID, weekStart.Format("2006-01-02")), nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var body struct {
+			Slots []scheduleOverviewSlot `json:"slots"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		found := false
+		for _, s := range body.Slots {
+			if s.Date != tuesday.Format("2006-01-02") || s.Hour != 10 {
+				continue
+			}
+			for _, m := range s.Members {
+				if m.UserID == requester.ID {
+					found = true
+					if m.Status != "needs_coverage" {
+						t.Fatalf("Expected requester status needs_coverage, got %s", m.Status)
+					}
+					if !m.Claimable {
+						t.Fatal("Expected viewer to be able to claim")
+					}
+				}
+			}
+		}
+		if !found {
+			t.Fatal("Expected requester to still appear in the roster")
+		}
+	})
+
+	t.Run("claimed request swaps requester for claimant", func(t *testing.T) {
+		claimedAt := time.Now().UTC()
+		reqRow := &models.ShiftCoverageRequest{
+			GroupID: group.ID, RequestedByUserID: requester.ID, Date: tuesday, Hour: 10,
+			Status: models.CoverageRequestClaimed, ClaimedByUserID: &claimant.ID, ClaimedAt: &claimedAt,
+		}
+		db.Create(reqRow)
+		defer db.Delete(reqRow)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", viewer.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.GET("/groups/:id/schedule/overview", GetGroupScheduleOverview(db))
+
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/schedule/overview?week_start=%s", group.ID, weekStart.Format("2006-01-02")), nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		var body struct {
+			Slots []scheduleOverviewSlot `json:"slots"`
+		}
+		json.Unmarshal(w.Body.Bytes(), &body)
+
+		var requesterPresent, claimantPresent bool
+		for _, s := range body.Slots {
+			if s.Date != tuesday.Format("2006-01-02") || s.Hour != 10 {
+				continue
+			}
+			for _, m := range s.Members {
+				if m.UserID == requester.ID {
+					requesterPresent = true
+				}
+				if m.UserID == claimant.ID && m.Status == "covering" {
+					claimantPresent = true
+				}
+			}
+		}
+		if requesterPresent {
+			t.Fatal("Expected requester to be removed from the roster once claimed")
+		}
+		if !claimantPresent {
+			t.Fatal("Expected claimant to appear in the roster, tagged covering")
+		}
+	})
 }

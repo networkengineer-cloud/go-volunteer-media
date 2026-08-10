@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
@@ -335,31 +336,56 @@ func UpdateMemberSchedule(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// scheduleOverviewMember identifies one member available for a given slot in
-// a GetGroupScheduleOverview response. Fields mirror GetGroupMembers'
-// MemberInfo naming so the frontend can reuse its existing display-name
-// fallback logic.
+// scheduleOverviewMember identifies one member's status for a given
+// (date, hour) slot in a GetGroupScheduleOverview response.
 type scheduleOverviewMember struct {
-	UserID    uint   `json:"user_id"`
-	Username  string `json:"username"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
+	UserID            uint   `json:"user_id"`
+	Username          string `json:"username"`
+	FirstName         string `json:"first_name"`
+	LastName          string `json:"last_name"`
+	Status            string `json:"status"` // normal | needs_coverage | covering
+	CoverageRequestID *uint  `json:"coverage_request_id,omitempty"`
+	Claimable         bool   `json:"claimable,omitempty"`
+	Conflict          bool   `json:"conflict,omitempty"`
 }
 
-// scheduleOverviewSlot is one (day_of_week, hour) slot with at least one
-// available member.
+// scheduleOverviewSlot is the effective roster for one specific calendar
+// date + hour within the viewed week.
 type scheduleOverviewSlot struct {
+	Date      string                   `json:"date"`
 	DayOfWeek int                      `json:"day_of_week"`
 	Hour      int                      `json:"hour"`
 	Members   []scheduleOverviewMember `json:"members"`
 }
 
-// GetGroupScheduleOverview returns every group member's weekly shift slots
-// aggregated by (day_of_week, hour), so an admin can see who is available at
-// a glance instead of paging through members one at a time via
-// GetMemberSchedule. Requires group admin or site admin access. Only slots
-// with at least one available member are included, ordered by
-// (day_of_week, hour) ascending.
+type dateHourKey struct {
+	Date string
+	Hour int
+}
+
+// parseWeekStart parses an optional "2006-01-02" week_start query param and
+// snaps it back to that week's Sunday. An empty string defaults to the
+// current week's Sunday (UTC).
+func parseWeekStart(raw string) (time.Time, error) {
+	ref := time.Now().UTC()
+	if raw != "" {
+		parsed, err := time.Parse("2006-01-02", raw)
+		if err != nil {
+			return time.Time{}, err
+		}
+		ref = parsed
+	}
+	ref = ref.Truncate(24 * time.Hour)
+	return ref.AddDate(0, 0, -int(ref.Weekday())), nil
+}
+
+// GetGroupScheduleOverview returns the effective roster for every (date,
+// hour) slot in the requested week: the group's recurring ShiftSlot
+// assignments for that weekday/hour, overlaid with any open or claimed
+// ShiftCoverageRequest for that exact date. Open requests keep the original
+// requester listed (tagged needs_coverage); claimed requests swap the
+// requester for the claimant (tagged covering). Requires group membership
+// (or site admin) - open to every member, not just admins.
 func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
@@ -368,14 +394,26 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
-
 		if !requireSchedulingEnabled(c, db, groupIDParam) {
 			return
 		}
+
+		callerUserID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		weekStart, err := parseWeekStart(c.Query("week_start"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "week_start must be in YYYY-MM-DD format"})
+			return
+		}
+		weekEnd := weekStart.AddDate(0, 0, 6)
 
 		var slots []models.ShiftSlot
 		if err := db.Preload("User").Where("group_id = ?", groupIDParam).
@@ -384,34 +422,111 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		type key struct {
+		type slotBucket struct {
 			DayOfWeek int
 			Hour      int
+			Members   []models.ShiftSlot
 		}
-		order := make([]key, 0)
-		bucketed := make(map[key][]scheduleOverviewMember)
+		order := make([]slotBucket, 0)
+		bucketIndex := make(map[[2]int]int)
 		for _, s := range slots {
-			k := key{DayOfWeek: s.DayOfWeek, Hour: s.Hour}
-			if _, exists := bucketed[k]; !exists {
-				order = append(order, k)
+			key := [2]int{s.DayOfWeek, s.Hour}
+			idx, exists := bucketIndex[key]
+			if !exists {
+				idx = len(order)
+				bucketIndex[key] = idx
+				order = append(order, slotBucket{DayOfWeek: s.DayOfWeek, Hour: s.Hour})
 			}
-			bucketed[k] = append(bucketed[k], scheduleOverviewMember{
-				UserID:    s.UserID,
-				Username:  s.User.Username,
-				FirstName: s.User.FirstName,
-				LastName:  s.User.LastName,
-			})
+			order[idx].Members = append(order[idx].Members, s)
 		}
 
-		result := make([]scheduleOverviewSlot, 0, len(order))
-		for _, k := range order {
-			result = append(result, scheduleOverviewSlot{
-				DayOfWeek: k.DayOfWeek,
-				Hour:      k.Hour,
-				Members:   bucketed[k],
-			})
+		var coverageRequests []models.ShiftCoverageRequest
+		if err := db.Preload("ClaimedByUser").
+			Where("group_id = ? AND date >= ? AND date <= ? AND status != ?",
+				groupIDParam, weekStart, weekEnd, models.CoverageRequestCancelled).
+			Find(&coverageRequests).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch coverage requests"})
+			return
+		}
+		requestsByDateHour := make(map[dateHourKey]models.ShiftCoverageRequest, len(coverageRequests))
+		for _, r := range coverageRequests {
+			requestsByDateHour[dateHourKey{Date: r.Date.Format("2006-01-02"), Hour: r.Hour}] = r
 		}
 
-		c.JSON(http.StatusOK, gin.H{"slots": result})
+		// The viewer's own recurring commitments across every group they're
+		// in, and any request they've already claimed this week - both feed
+		// the per-slot "conflict" flag.
+		var viewerSlots []models.ShiftSlot
+		if err := db.Where("user_id = ?", callerUserID).Find(&viewerSlots).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch schedule overview"})
+			return
+		}
+		viewerBusy := make(map[[2]int]bool, len(viewerSlots))
+		for _, s := range viewerSlots {
+			viewerBusy[[2]int{s.DayOfWeek, s.Hour}] = true
+		}
+		viewerClaimedBusy := make(map[dateHourKey]bool)
+		for _, r := range coverageRequests {
+			if r.Status == models.CoverageRequestClaimed && r.ClaimedByUserID != nil && *r.ClaimedByUserID == callerUserID {
+				viewerClaimedBusy[dateHourKey{Date: r.Date.Format("2006-01-02"), Hour: r.Hour}] = true
+			}
+		}
+
+		result := make([]scheduleOverviewSlot, 0)
+		for _, bucket := range order {
+			for offset := 0; offset < 7; offset++ {
+				date := weekStart.AddDate(0, 0, offset)
+				if int(date.Weekday()) != bucket.DayOfWeek {
+					continue
+				}
+				dateStr := date.Format("2006-01-02")
+				req, hasRequest := requestsByDateHour[dateHourKey{Date: dateStr, Hour: bucket.Hour}]
+				conflict := viewerBusy[[2]int{bucket.DayOfWeek, bucket.Hour}] || viewerClaimedBusy[dateHourKey{Date: dateStr, Hour: bucket.Hour}]
+
+				members := make([]scheduleOverviewMember, 0, len(bucket.Members)+1)
+				for _, s := range bucket.Members {
+					if hasRequest && req.Status == models.CoverageRequestClaimed && req.RequestedByUserID == s.UserID {
+						// This member handed their shift off - drop them,
+						// the claimant is added below instead.
+						continue
+					}
+					m := scheduleOverviewMember{
+						UserID:    s.UserID,
+						Username:  s.User.Username,
+						FirstName: s.User.FirstName,
+						LastName:  s.User.LastName,
+						Status:    "normal",
+					}
+					if hasRequest && req.Status == models.CoverageRequestOpen && req.RequestedByUserID == s.UserID {
+						m.Status = "needs_coverage"
+						reqID := req.ID
+						m.CoverageRequestID = &reqID
+						if s.UserID != callerUserID {
+							m.Claimable = !conflict
+							m.Conflict = conflict
+						}
+					}
+					members = append(members, m)
+				}
+				if hasRequest && req.Status == models.CoverageRequestClaimed && req.ClaimedByUser != nil {
+					members = append(members, scheduleOverviewMember{
+						UserID:    req.ClaimedByUser.ID,
+						Username:  req.ClaimedByUser.Username,
+						FirstName: req.ClaimedByUser.FirstName,
+						LastName:  req.ClaimedByUser.LastName,
+						Status:    "covering",
+					})
+				}
+
+				result = append(result, scheduleOverviewSlot{
+					Date:      dateStr,
+					DayOfWeek: bucket.DayOfWeek,
+					Hour:      bucket.Hour,
+					Members:   members,
+				})
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{"week_start": weekStart.Format("2006-01-02"), "slots": result})
 	}
 }
