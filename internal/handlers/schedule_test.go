@@ -50,6 +50,41 @@ func TestShiftSlotUniqueConstraint(t *testing.T) {
 	}
 }
 
+// TestRemoveMemberFromGroupDeletesShiftSlots verifies that removing a member
+// from a group also deletes their ShiftSlot rows for that group, so a stale
+// schedule doesn't silently resurrect if they rejoin later.
+func TestRemoveMemberFromGroupDeletesShiftSlots(t *testing.T) {
+	db := SetupTestDB(t)
+	admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+	member := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
+	db.Create(&models.ShiftSlot{UserID: member.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 9})
+	db.Create(&models.ShiftSlot{UserID: member.ID, GroupID: group.ID, DayOfWeek: 3, Hour: 10})
+
+	c, w := setupGroupTestContext(admin.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "userId", Value: fmt.Sprintf("%d", member.ID)},
+	}
+	c.Request = httptest.NewRequest("DELETE", fmt.Sprintf("/api/groups/%d/members/%d", group.ID, member.ID), nil)
+
+	handler := RemoveMemberFromGroup(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var remaining []models.ShiftSlot
+	if err := db.Where("user_id = ? AND group_id = ?", member.ID, group.ID).Find(&remaining).Error; err != nil {
+		t.Fatalf("failed to query remaining slots: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Errorf("expected all ShiftSlot rows for the removed member to be deleted, found %d", len(remaining))
+	}
+}
+
 func TestGetMySchedule(t *testing.T) {
 	tests := []struct {
 		name           string

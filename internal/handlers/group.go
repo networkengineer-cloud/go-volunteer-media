@@ -836,8 +836,16 @@ func RemoveMemberFromGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Remove user from group
-		if err := db.Model(&targetUser).Association("Groups").Delete(&group); err != nil {
+		// Remove user from group, along with any shift schedule they set for
+		// it - otherwise the old schedule would silently reappear if they
+		// rejoin the group later.
+		err = db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&targetUser).Association("Groups").Delete(&group); err != nil {
+				return err
+			}
+			return tx.Where("user_id = ? AND group_id = ?", targetUserID, groupID).Delete(&models.ShiftSlot{}).Error
+		})
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove user from group"})
 			return
 		}
