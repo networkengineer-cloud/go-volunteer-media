@@ -449,6 +449,7 @@ func main() {
 			group.PATCH("/scheduling", handlers.UpdateGroupScheduling(db))
 			group.GET("/schedule/me", handlers.GetMySchedule(db))
 			group.PUT("/schedule/me", handlers.UpdateMySchedule(db))
+			group.GET("/schedule/overview", handlers.GetGroupScheduleOverview(db))
 			group.GET("/schedule/:userId", handlers.GetMemberSchedule(db))
 			group.PUT("/schedule/:userId", handlers.UpdateMemberSchedule(db))
 

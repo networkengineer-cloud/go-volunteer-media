@@ -715,3 +715,117 @@ func TestUpdateGroupScheduling(t *testing.T) {
 		})
 	}
 }
+
+func TestGetGroupScheduleOverview(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupFunc      func(*gorm.DB) (contextUser *models.User, group *models.Group)
+		isAdmin        bool
+		expectedStatus int
+	}{
+		{
+			name: "regular member is denied",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				regular := CreateTestUser(t, db, "regular", "regular@test.com", "password123", false)
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+				AddUserToGroupWithAdmin(t, db, regular.ID, group.ID, false)
+				return regular, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name: "scheduling disabled for the group returns 404",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
+				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers") // scheduling left off
+				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
+				return groupAdmin, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			name: "group admin sees empty slots for a group with no shifts set",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
+				return groupAdmin, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "site admin sees slots aggregated across multiple members",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				siteAdmin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+				member1 := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+				member2 := CreateTestUser(t, db, "vol2", "vol2@test.com", "password123", false)
+				AddUserToGroupWithAdmin(t, db, member1.ID, group.ID, false)
+				AddUserToGroupWithAdmin(t, db, member2.ID, group.ID, false)
+				// Both members overlap on (day 2, hour 9); member1 alone on (day 3, hour 10).
+				db.Create(&models.ShiftSlot{UserID: member1.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 9})
+				db.Create(&models.ShiftSlot{UserID: member2.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 9})
+				db.Create(&models.ShiftSlot{UserID: member1.ID, GroupID: group.ID, DayOfWeek: 3, Hour: 10})
+				return siteAdmin, group
+			},
+			isAdmin:        true,
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := SetupTestDB(t)
+			contextUser, group := tt.setupFunc(db)
+
+			c, w := setupGroupTestContext(contextUser.ID, tt.isAdmin)
+			c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+			c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/groups/%d/schedule/overview", group.ID), nil)
+
+			handler := GetGroupScheduleOverview(db)
+			handler(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Fatalf("expected status %d, got %d: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+			if tt.expectedStatus != http.StatusOK {
+				return
+			}
+
+			var resp struct {
+				Slots []scheduleOverviewSlot `json:"slots"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("failed to unmarshal response: %v", err)
+			}
+
+			switch tt.name {
+			case "group admin sees empty slots for a group with no shifts set":
+				if len(resp.Slots) != 0 {
+					t.Errorf("expected 0 slots, got %d", len(resp.Slots))
+				}
+			case "site admin sees slots aggregated across multiple members":
+				if len(resp.Slots) != 2 {
+					t.Fatalf("expected 2 distinct slots, got %d", len(resp.Slots))
+				}
+				overlap := resp.Slots[0]
+				if overlap.DayOfWeek != 2 || overlap.Hour != 9 {
+					t.Errorf("expected first slot to be day 2 hour 9, got day %d hour %d", overlap.DayOfWeek, overlap.Hour)
+				}
+				if len(overlap.Members) != 2 {
+					t.Errorf("expected 2 members on the overlapping slot, got %d", len(overlap.Members))
+				}
+				solo := resp.Slots[1]
+				if solo.DayOfWeek != 3 || solo.Hour != 10 {
+					t.Errorf("expected second slot to be day 3 hour 10, got day %d hour %d", solo.DayOfWeek, solo.Hour)
+				}
+				if len(solo.Members) != 1 || solo.Members[0].Username != "vol1" {
+					t.Errorf("expected solo slot to contain only vol1, got %+v", solo.Members)
+				}
+			}
+		})
+	}
+}
