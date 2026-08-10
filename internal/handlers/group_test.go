@@ -29,7 +29,7 @@ func setupGroupTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Run migrations
-	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{})
+	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{}, &models.ShiftSlot{})
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -814,6 +814,27 @@ func TestRemoveUserFromGroup(t *testing.T) {
 						t.Error("User was not removed from group")
 						break
 					}
+				}
+			},
+		},
+		{
+			name: "shift slots for the group are deleted along with membership",
+			setupFunc: func(db *gorm.DB) (uint, uint) {
+				user := createGroupTestUser(t, db, "regularuser", "user@example.com", false)
+				group := createTestGroup(t, db, "Test Group", "Description")
+				db.Model(&user).Association("Groups").Append(group)
+				db.Create(&models.ShiftSlot{UserID: user.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 9})
+				db.Create(&models.ShiftSlot{UserID: user.ID, GroupID: group.ID, DayOfWeek: 3, Hour: 10})
+				return user.ID, group.ID
+			},
+			expectedStatus: http.StatusOK,
+			checkFunc: func(t *testing.T, db *gorm.DB, userID, groupID uint) {
+				var remaining []models.ShiftSlot
+				if err := db.Where("user_id = ? AND group_id = ?", userID, groupID).Find(&remaining).Error; err != nil {
+					t.Fatalf("Failed to query remaining shift slots: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Errorf("Expected all ShiftSlot rows for the removed user to be deleted, found %d", len(remaining))
 				}
 			},
 		},

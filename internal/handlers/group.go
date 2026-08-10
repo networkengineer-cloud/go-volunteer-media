@@ -339,6 +339,19 @@ func AddUserToGroup(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// removeUserFromGroupAndSchedule removes the group membership association
+// and deletes any ShiftSlot rows the user has for that group, in a single
+// transaction - otherwise a stale schedule would silently reappear if they
+// rejoin the group later.
+func removeUserFromGroupAndSchedule(db *gorm.DB, user *models.User, group *models.Group) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(user).Association("Groups").Delete(group); err != nil {
+			return err
+		}
+		return tx.Where("user_id = ? AND group_id = ?", user.ID, group.ID).Delete(&models.ShiftSlot{}).Error
+	})
+}
+
 // RemoveUserFromGroup removes a user from a group (admin only)
 func RemoveUserFromGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -366,7 +379,7 @@ func RemoveUserFromGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		if err := db.Model(&user).Association("Groups").Delete(&group); err != nil {
+		if err := removeUserFromGroupAndSchedule(db, &user, &group); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove user from group"})
 			return
 		}
@@ -836,16 +849,7 @@ func RemoveMemberFromGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Remove user from group, along with any shift schedule they set for
-		// it - otherwise the old schedule would silently reappear if they
-		// rejoin the group later.
-		err = db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&targetUser).Association("Groups").Delete(&group); err != nil {
-				return err
-			}
-			return tx.Where("user_id = ? AND group_id = ?", targetUserID, groupID).Delete(&models.ShiftSlot{}).Error
-		})
-		if err != nil {
+		if err := removeUserFromGroupAndSchedule(db, &targetUser, &group); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove user from group"})
 			return
 		}
