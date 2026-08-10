@@ -12,9 +12,10 @@ import './ScheduleTab.css';
 export interface ScheduleTabProps {
   groupId: number;
   canManageMembers: boolean;
+  currentUserId: number;
 }
 
-const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) => {
+const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, currentUserId }) => {
   const toast = useToast();
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -71,11 +72,10 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) 
   }, []);
 
   useEffect(() => {
-    if (!canManageMembers) return;
     groupsApi.getMembers(groupId)
       .then(res => setMembers(res.data))
-      .catch(() => { /* picker just won't populate; own-schedule view still works */ });
-  }, [groupId, canManageMembers]);
+      .catch(() => { /* picker/overview member count just won't populate; own-schedule view still works */ });
+  }, [groupId]);
 
   const toggleSlot = (dayOfWeek: number, hour: number) => {
     setSelectedSlots(prev => {
@@ -115,27 +115,25 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) 
 
   return (
     <div className="schedule-tab">
-      {canManageMembers && (
-        <div className="schedule-tab__view-toggle" role="group" aria-label="Schedule view">
-          <button
-            type="button"
-            className={viewMode === 'individual' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setViewMode('individual')}
-          >
-            Individual
-          </button>
-          <button
-            type="button"
-            className={viewMode === 'overview' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setViewMode('overview')}
-          >
-            Overview
-          </button>
-        </div>
-      )}
+      <div className="schedule-tab__view-toggle" role="group" aria-label="Schedule view">
+        <button
+          type="button"
+          className={viewMode === 'individual' ? 'btn-primary' : 'btn-secondary'}
+          onClick={() => setViewMode('individual')}
+        >
+          Individual
+        </button>
+        <button
+          type="button"
+          className={viewMode === 'overview' ? 'btn-primary' : 'btn-secondary'}
+          onClick={() => setViewMode('overview')}
+        >
+          Overview
+        </button>
+      </div>
 
-      {viewMode === 'overview' && canManageMembers ? (
-        <ScheduleOverview groupId={groupId} totalMembers={members.length} />
+      {viewMode === 'overview' ? (
+        <ScheduleOverview groupId={groupId} totalMembers={members.length} currentUserId={currentUserId} />
       ) : (
         <>
           {canManageMembers && (

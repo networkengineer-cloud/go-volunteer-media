@@ -23,7 +23,7 @@ vi.mock('../../api/client', () => ({
 function renderScheduleTab(canManageMembers: boolean) {
   return render(
     <ToastProvider>
-      <ScheduleTab groupId={1} canManageMembers={canManageMembers} />
+      <ScheduleTab groupId={1} canManageMembers={canManageMembers} currentUserId={1} />
     </ToastProvider>
   );
 }
@@ -114,7 +114,7 @@ describe('ScheduleTab', () => {
 
     const { rerender } = render(
       <ToastProvider>
-        <ScheduleTab groupId={1} canManageMembers={false} />
+        <ScheduleTab groupId={1} canManageMembers={false} currentUserId={1} />
       </ToastProvider>
     );
 
@@ -124,7 +124,7 @@ describe('ScheduleTab', () => {
     // Switching to a new group before the first request resolves must abort it.
     rerender(
       <ToastProvider>
-        <ScheduleTab groupId={2} canManageMembers={false} />
+        <ScheduleTab groupId={2} canManageMembers={false} currentUserId={1} />
       </ToastProvider>
     );
     await waitFor(() => expect(capturedFirstSignal?.aborted).toBe(true));
@@ -142,10 +142,13 @@ describe('ScheduleTab', () => {
     expect(screen.getByRole('cell', { name: 'Sun 8:00 AM' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('does not show the individual/overview toggle for a non-admin member', async () => {
-    renderScheduleTab(false);
-    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
-    expect(screen.queryByRole('button', { name: /overview/i })).not.toBeInTheDocument();
+  it('shows the Individual/Overview toggle for non-admin members too', async () => {
+    render(
+      <ToastProvider>
+        <ScheduleTab groupId={7} canManageMembers={false} currentUserId={1} />
+      </ToastProvider>
+    );
+    await waitFor(() => expect(screen.getByRole('group', { name: /schedule view/i })).toBeInTheDocument());
   });
 
   it('a group admin can switch to the overview and back to individual view', async () => {
