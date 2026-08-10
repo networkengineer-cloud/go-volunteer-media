@@ -17,6 +17,12 @@
   color: var(--text-primary);
 }
 
+.schedule-tab__view-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
 .schedule-grid {
   display: grid;
   grid-template-columns: 90px repeat(7, 1fr);
