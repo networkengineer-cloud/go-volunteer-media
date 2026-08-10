@@ -1,10 +1,5 @@
 .schedule-overview {
   padding: 1rem 0;
-  overflow-x: auto;
-}
-
-.schedule-overview .schedule-grid {
-  overflow: visible;
 }
 
 .schedule-overview__cell-wrapper {
@@ -38,9 +33,16 @@
 }
 
 .schedule-overview__popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 50%;
+  /* top/left are set inline from the clicked cell's live bounding rect (see
+     ScheduleOverview.tsx) so the popover is positioned relative to the
+     viewport rather than any scrolling/overflow ancestor - this is what
+     lets it escape .schedule-grid's clipping (overflow-x: auto forces
+     overflow-y: auto per the CSS spec, making it a clipping ancestor for
+     position: absolute descendants). position: fixed is only taken out of
+     that flow when no ancestor sets transform/filter/perspective/
+     will-change; none of .schedule-overview, .schedule-grid, or
+     .schedule-overview__cell-wrapper do. */
+  position: fixed;
   transform: translateX(-50%);
   z-index: 10;
   min-width: 140px;

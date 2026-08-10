@@ -17,6 +17,32 @@ function memberDisplayName(member: ScheduleOverviewMember): string {
   return [member.first_name, member.last_name].filter(Boolean).join(' ') || member.username;
 }
 
+interface PopoverPosition {
+  top: number;
+  left: number;
+}
+
+// The popover's own rendered width isn't known before it renders (it's
+// content-sized up to the 220px max-width in ScheduleOverview.css), so we
+// don't try to compute an exact clamp for its edges. Instead we clamp the
+// raw anchor point itself to a small margin from the viewport edges before
+// the CSS `transform: translateX(-50%)` centers the popover under it. This
+// isn't pixel-perfect at extreme edges (the popover can still peek past the
+// margin by roughly half its width there) but keeps it from running
+// substantially off-screen, which is all this bug requires.
+const VIEWPORT_MARGIN = 8;
+
+// Computes a fixed-position anchor point (bottom-center of the clicked
+// cell), clamped so it won't sit at the very left/right edge of the
+// viewport. Using the button's live bounding rect means this is correct
+// regardless of scroll position within any clipping ancestor.
+function popoverPositionFor(rect: DOMRect): PopoverPosition {
+  const top = rect.bottom + 4;
+  const rawLeft = rect.left + rect.width / 2;
+  const left = Math.min(Math.max(rawLeft, VIEWPORT_MARGIN), window.innerWidth - VIEWPORT_MARGIN);
+  return { top, left };
+}
+
 // Buckets a slot's availability into one of 5 shading tiers based on what
 // fraction of the group is free, so the heatmap reads consistently
 // regardless of group size: 0%, 1-25%, 26-50%, 51-75%, 76-100%.
@@ -34,6 +60,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
+  const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Cancels any in-flight request before starting a new one - matching
@@ -86,10 +113,14 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
     const handleClickOutside = (event: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
         setActiveCellKey(null);
+        setPopoverPosition(null);
       }
     };
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setActiveCellKey(null);
+      if (event.key === 'Escape') {
+        setActiveCellKey(null);
+        setPopoverPosition(null);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEscape);
@@ -157,10 +188,22 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                     role="cell"
                     aria-label={label}
                     className={`schedule-grid__slot schedule-grid__slot--tier-${tier}`}
-                    onClick={() => setActiveCellKey(isActive ? null : key)}
+                    onClick={(event) => {
+                      if (isActive) {
+                        setActiveCellKey(null);
+                        setPopoverPosition(null);
+                      } else {
+                        setPopoverPosition(popoverPositionFor(event.currentTarget.getBoundingClientRect()));
+                        setActiveCellKey(key);
+                      }
+                    }}
                   />
-                  {isActive && (
-                    <div className="schedule-overview__popover" ref={popoverRef}>
+                  {isActive && popoverPosition && (
+                    <div
+                      className="schedule-overview__popover"
+                      ref={popoverRef}
+                      style={{ top: popoverPosition.top, left: popoverPosition.left }}
+                    >
                       <ul>
                         {members.map(member => (
                           <li key={member.user_id}>{memberDisplayName(member)}</li>
