@@ -137,6 +137,12 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const [busyRequestId, setBusyRequestId] = useState<number | null>(null);
+  // Guards handleRequestCoverage the same way busyRequestId guards
+  // handleClaim/handleCancelRequest: keyed by the (date, hour) slot key so
+  // the "Request coverage" button for the in-flight cell disables itself
+  // mid-request, preventing a double-click from firing two concurrent
+  // POSTs (which the DB-level unique index would otherwise let race).
+  const [busyRequestSlotKey, setBusyRequestSlotKey] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Cancels any in-flight request before starting a new one - matching
@@ -227,7 +233,21 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
       .finally(() => setBusyRequestId(null));
   };
 
-  const handleRequestCoverage = (date: string, hour: number) => {
+  const handleCancelRequest = (requestId: number) => {
+    setBusyRequestId(requestId);
+    scheduleApi.cancelCoverageRequest(groupId, requestId)
+      .then(() => {
+        toast.showSuccess('Coverage request cancelled.');
+        setActiveCellKey(null);
+        setPopoverPosition(null);
+        loadOverview();
+      })
+      .catch(() => toast.showError('Failed to cancel coverage request.'))
+      .finally(() => setBusyRequestId(null));
+  };
+
+  const handleRequestCoverage = (slotKeyValue: string, date: string, hour: number) => {
+    setBusyRequestSlotKey(slotKeyValue);
     scheduleApi.createCoverageRequest(groupId, { date, hour })
       .then(() => {
         toast.showSuccess('Coverage requested.');
@@ -235,7 +255,8 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
         setPopoverPosition(null);
         loadOverview();
       })
-      .catch(() => toast.showError('Failed to request coverage.'));
+      .catch(() => toast.showError('Failed to request coverage.'))
+      .finally(() => setBusyRequestSlotKey(null));
   };
 
   if (loading) {
@@ -334,7 +355,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                               {member.status === 'needs_coverage' && <span className="schedule-overview__tag"> needs coverage</span>}
                               {member.status === 'covering' && <span className="schedule-overview__tag"> covering</span>}
                             </span>
-                            {member.status === 'needs_coverage' && member.claimable && member.coverage_request_id !== undefined && (
+                            {member.status === 'needs_coverage' && member.coverage_request_id !== undefined && member.user_id !== currentUserId && (
                               <button
                                 type="button"
                                 className="btn-secondary schedule-overview__action"
@@ -349,9 +370,20 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                               <button
                                 type="button"
                                 className="btn-secondary schedule-overview__action"
-                                onClick={() => handleRequestCoverage(date, hour)}
+                                disabled={busyRequestSlotKey === key}
+                                onClick={() => handleRequestCoverage(key, date, hour)}
                               >
                                 Request coverage
+                              </button>
+                            )}
+                            {member.user_id === currentUserId && member.status === 'needs_coverage' && member.coverage_request_id !== undefined && (
+                              <button
+                                type="button"
+                                className="btn-secondary schedule-overview__action"
+                                disabled={busyRequestId === member.coverage_request_id}
+                                onClick={() => handleCancelRequest(member.coverage_request_id as number)}
+                              >
+                                Cancel request
                               </button>
                             )}
                           </li>

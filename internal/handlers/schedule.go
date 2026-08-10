@@ -93,9 +93,43 @@ func replaceGroupScheduleForUser(db *gorm.DB, userID, groupID uint, slots []sche
 			}
 			result = append(result, slot)
 		}
+		if err := cancelOrphanedRequesterCoverageRequests(tx, userID, groupID); err != nil {
+			return err
+		}
 		return nil
 	})
 	return result, err
+}
+
+// cancelOrphanedRequesterCoverageRequests cancels any non-cancelled
+// ShiftCoverageRequest this user made (as the original requester, not as
+// a claimant - claiming never touches ShiftSlot) whose underlying weekday/
+// hour no longer has a matching ShiftSlot row, so GetGroupScheduleOverview
+// never surfaces a request tied to a shift the requester no longer has.
+// Must run inside the same transaction as the slot replace, after the new
+// slots are inserted.
+func cancelOrphanedRequesterCoverageRequests(tx *gorm.DB, userID, groupID uint) error {
+	var requests []models.ShiftCoverageRequest
+	if err := tx.Where("group_id = ? AND requested_by_user_id = ? AND status != ?",
+		groupID, userID, models.CoverageRequestCancelled).Find(&requests).Error; err != nil {
+		return err
+	}
+	for _, r := range requests {
+		var count int64
+		if err := tx.Model(&models.ShiftSlot{}).
+			Where("group_id = ? AND user_id = ? AND day_of_week = ? AND hour = ?",
+				groupID, userID, int(r.Date.Weekday()), r.Hour).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			if err := tx.Model(&models.ShiftCoverageRequest{ID: r.ID}).
+				Update("status", models.CoverageRequestCancelled).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // GetMySchedule returns the caller's weekly shift slots for the given group.

@@ -86,6 +86,50 @@ func TestRemoveMemberFromGroupDeletesShiftSlots(t *testing.T) {
 	}
 }
 
+// TestRemoveMemberFromGroupCancelsCoverageRequests verifies that removing a
+// member from a group also cancels any non-cancelled ShiftCoverageRequest in
+// that group where the removed member is either the original requester or
+// the claimant. Without this, a removed member who had claimed someone
+// else's open request would keep showing up in the schedule overview
+// roster tagged "covering" even though they're no longer in the group.
+func TestRemoveMemberFromGroupCancelsCoverageRequests(t *testing.T) {
+	db := SetupTestDB(t)
+	admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+	requester := CreateTestUser(t, db, "requester", "requester@test.com", "password123", false)
+	claimant := CreateTestUser(t, db, "claimant", "claimant@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, requester.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, claimant.ID, group.ID, false)
+
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+	if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+		t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+	}
+
+	c, w := setupGroupTestContext(admin.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "userId", Value: fmt.Sprintf("%d", claimant.ID)},
+	}
+	c.Request = httptest.NewRequest("DELETE", fmt.Sprintf("/api/groups/%d/members/%d", group.ID, claimant.ID), nil)
+
+	handler := RemoveMemberFromGroup(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated models.ShiftCoverageRequest
+	if err := db.First(&updated, reqRow.ID).Error; err != nil {
+		t.Fatalf("failed to reload coverage request: %v", err)
+	}
+	if updated.Status != models.CoverageRequestCancelled {
+		t.Fatalf("expected coverage request status to be cancelled after claimant left the group, got %s", updated.Status)
+	}
+}
+
 func TestGetMySchedule(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -295,6 +339,61 @@ func TestUpdateMySchedule(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestUpdateMySchedule_CancelsOrphanedCoverageRequests verifies that
+// editing a recurring schedule cancels any open/claimed
+// ShiftCoverageRequest the user made as the original requester whose
+// weekday/hour no longer has a matching ShiftSlot row after the edit -
+// otherwise GetGroupScheduleOverview can never surface that request again
+// (it can only show a coverage request tied to a weekday/hour that still
+// has a ShiftSlot), silently hiding even an already-claimed request from
+// the only view that shows it. A request for a weekday/hour the user KEPT
+// must NOT be cancelled.
+func TestUpdateMySchedule_CancelsOrphanedCoverageRequests(t *testing.T) {
+	db := SetupTestDB(t)
+	user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
+
+	// Two recurring slots: Tuesday 10am and Wednesday 9am.
+	db.Create(&models.ShiftSlot{UserID: user.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
+	db.Create(&models.ShiftSlot{UserID: user.ID, GroupID: group.ID, DayOfWeek: 3, Hour: 9})
+
+	tuesdayDate, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	wednesdayDate, _ := time.Parse("2006-01-02", nextWeekday(time.Wednesday))
+	orphaned := createOpenCoverageRequest(t, db, group.ID, user.ID, 2, 10, tuesdayDate)
+	kept := createOpenCoverageRequest(t, db, group.ID, user.ID, 3, 9, wednesdayDate)
+
+	// New schedule drops Tuesday 10am but keeps Wednesday 9am.
+	c, w := setupGroupTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/me", group.ID),
+		bytes.NewBufferString(`{"slots":[{"day_of_week":3,"hour":9}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateMySchedule(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updatedOrphaned models.ShiftCoverageRequest
+	if err := db.First(&updatedOrphaned, orphaned.ID).Error; err != nil {
+		t.Fatalf("failed to reload orphaned request: %v", err)
+	}
+	if updatedOrphaned.Status != models.CoverageRequestCancelled {
+		t.Errorf("expected orphaned coverage request (dropped weekday/hour) to be cancelled, got %s", updatedOrphaned.Status)
+	}
+
+	var updatedKept models.ShiftCoverageRequest
+	if err := db.First(&updatedKept, kept.ID).Error; err != nil {
+		t.Fatalf("failed to reload kept request: %v", err)
+	}
+	if updatedKept.Status != models.CoverageRequestOpen {
+		t.Errorf("expected coverage request for a retained weekday/hour to remain open, got %s", updatedKept.Status)
 	}
 }
 
@@ -1051,6 +1150,61 @@ func TestGetGroupScheduleOverview_EffectiveRoster(t *testing.T) {
 		}
 		if *m2.CoverageRequestID != req2.ID {
 			t.Fatalf("Expected requester2's coverage_request_id to be %d, got %d", req2.ID, *m2.CoverageRequestID)
+		}
+	})
+}
+
+// TestParseWeekStart verifies parseWeekStart's Sunday-snapping behavior for
+// a non-Sunday input, and that an empty string defaults to the current
+// week's Sunday. Every existing GetGroupScheduleOverview test either omits
+// week_start or pre-computes a Sunday before passing it, so the snapping
+// logic (ref.AddDate(0, 0, -int(ref.Weekday()))) itself was previously
+// unverified by any test.
+func TestParseWeekStart(t *testing.T) {
+	t.Run("a non-Sunday input snaps back to that week's Sunday", func(t *testing.T) {
+		// 2026-08-12 is a Wednesday; that week's Sunday is 2026-08-09.
+		got, err := parseWeekStart("2026-08-12")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Fatalf("expected %s, got %s", want.Format("2006-01-02"), got.Format("2006-01-02"))
+		}
+		if got.Weekday() != time.Sunday {
+			t.Fatalf("expected result to be a Sunday, got %s", got.Weekday())
+		}
+	})
+
+	t.Run("a Sunday input is returned unchanged", func(t *testing.T) {
+		got, err := parseWeekStart("2026-08-09")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Fatalf("expected %s, got %s", want.Format("2006-01-02"), got.Format("2006-01-02"))
+		}
+	})
+
+	t.Run("an empty string defaults to the current week's Sunday", func(t *testing.T) {
+		got, err := parseWeekStart("")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Weekday() != time.Sunday {
+			t.Fatalf("expected result to be a Sunday, got %s", got.Weekday())
+		}
+		now := time.Now().UTC()
+		wantWeekStart := now.Truncate(24 * time.Hour).AddDate(0, 0, -int(now.Weekday()))
+		if !got.Equal(wantWeekStart) {
+			t.Fatalf("expected %s (this week's Sunday), got %s", wantWeekStart.Format("2006-01-02"), got.Format("2006-01-02"))
+		}
+	})
+
+	t.Run("an invalid date string is rejected", func(t *testing.T) {
+		if _, err := parseWeekStart("not-a-date"); err == nil {
+			t.Fatal("expected an error for an invalid date string")
 		}
 	})
 }

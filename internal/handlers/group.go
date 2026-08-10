@@ -342,13 +342,26 @@ func AddUserToGroup(db *gorm.DB) gin.HandlerFunc {
 // removeUserFromGroupAndSchedule removes the group membership association
 // and deletes any ShiftSlot rows the user has for that group, in a single
 // transaction - otherwise a stale schedule would silently reappear if they
-// rejoin the group later.
+// rejoin the group later. It also blanket-cancels any non-cancelled
+// ShiftCoverageRequest in that group where the user is either the original
+// requester or the claimant: since the user is leaving the group entirely,
+// they can neither need coverage nor provide it there anymore, regardless
+// of whether their old slot or the other party's slot still exists.
+// Without this, a removed member who had claimed someone else's request
+// keeps showing up in the schedule overview roster tagged "covering" even
+// though they're no longer even in the group.
 func removeUserFromGroupAndSchedule(db *gorm.DB, user *models.User, group *models.Group) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(user).Association("Groups").Delete(group); err != nil {
 			return err
 		}
-		return tx.Where("user_id = ? AND group_id = ?", user.ID, group.ID).Delete(&models.ShiftSlot{}).Error
+		if err := tx.Where("user_id = ? AND group_id = ?", user.ID, group.ID).Delete(&models.ShiftSlot{}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&models.ShiftCoverageRequest{}).
+			Where("group_id = ? AND status != ? AND (requested_by_user_id = ? OR claimed_by_user_id = ?)",
+				group.ID, models.CoverageRequestCancelled, user.ID, user.ID).
+			Update("status", models.CoverageRequestCancelled).Error
 	})
 }
 

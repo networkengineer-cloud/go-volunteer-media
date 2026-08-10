@@ -10,6 +10,7 @@ vi.mock('../../api/client', () => ({
     getOverview: vi.fn(),
     claimCoverageRequest: vi.fn(),
     createCoverageRequest: vi.fn(),
+    cancelCoverageRequest: vi.fn(),
   },
 }));
 
@@ -213,5 +214,119 @@ describe('ScheduleOverview', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('disables the Request coverage button while its own POST is in flight, so a double-click cannot fire two requests', async () => {
+    // Backend fix: a partial unique index backstops the DB against a
+    // duplicate-request race, but the friendly first line of defense is the
+    // UI never firing a second POST in the first place - mirroring how
+    // handleClaim already guards via busyRequestId. Resolve the mocked
+    // createCoverageRequest call manually so we can assert the disabled
+    // state while the first request is still pending.
+    let resolveCreate: (() => void) | undefined;
+    vi.mocked(scheduleApi.createCoverageRequest).mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = () => resolve({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
+      })
+    );
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z')); // a Monday
+    try {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 1, username: 'me', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const requestButton = await screen.findByRole('button', { name: /request coverage/i });
+
+      fireEvent.click(requestButton);
+      fireEvent.click(requestButton);
+
+      expect(scheduleApi.createCoverageRequest).toHaveBeenCalledTimes(1);
+      expect(requestButton).toBeDisabled();
+
+      // Flush the pending promise and its .then/.finally chain (which
+      // closes the popover) so no state update leaks past this test.
+      resolveCreate?.();
+      await waitFor(() => expect(requestButton).not.toBeInTheDocument());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('renders the Claim button disabled with a tooltip for a conflicting request, instead of hiding it', async () => {
+    // The backend sets claimable = !conflict, so claimable and conflict are
+    // never both true for a needs_coverage entry that isn't the viewer's
+    // own - meaning a render condition gated on `member.claimable` can never
+    // reach the button's own conflict-disabled/tooltip branch. That left a
+    // member with a real scheduling conflict seeing no button and no
+    // explanation at all. The fix drops the claimable gate from visibility
+    // and lets `conflict` continue to drive disabled/tooltip.
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 2, username: 'vol2', status: 'needs_coverage', coverage_request_id: 42, claimable: false, conflict: true },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /needs coverage/i });
+    fireEvent.click(cell);
+
+    const claimButton = await screen.findByRole('button', { name: /claim/i });
+    expect(claimButton).toBeDisabled();
+    expect(claimButton).toHaveAttribute('title', 'You already have a conflicting shift at this time');
+  });
+
+  it('shows a Cancel request button on the caller\'s own open request and cancels it on click', async () => {
+    // The backend CancelCoverageRequest endpoint and scheduleApi client
+    // method were already fully tested, but nothing in the UI called them -
+    // once a volunteer requested coverage there was no way to undo it. This
+    // covers the minimum viable UI path: the requester's own open
+    // (needs_coverage) row gets a Cancel request button.
+    vi.mocked(scheduleApi.cancelCoverageRequest).mockResolvedValue({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 1, username: 'me', status: 'needs_coverage', coverage_request_id: 99 },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /needs coverage/i });
+    fireEvent.click(cell);
+    const cancelButton = await screen.findByRole('button', { name: /cancel request/i });
+    fireEvent.click(cancelButton);
+
+    await waitFor(() => expect(scheduleApi.cancelCoverageRequest).toHaveBeenCalledWith(7, 99));
+  });
+
+  it('does not show a Claim button on the caller\'s own needs_coverage row', async () => {
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 1, username: 'me', status: 'needs_coverage', coverage_request_id: 99 },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /needs coverage/i });
+    fireEvent.click(cell);
+    await screen.findByRole('button', { name: /cancel request/i });
+
+    expect(screen.queryByRole('button', { name: /^claim$/i })).not.toBeInTheDocument();
   });
 });

@@ -29,7 +29,7 @@ func setupGroupTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Run migrations
-	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{}, &models.ShiftSlot{})
+	err = db.AutoMigrate(&models.User{}, &models.Group{}, &models.UserGroup{}, &models.ShiftSlot{}, &models.ShiftCoverageRequest{})
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
 	}

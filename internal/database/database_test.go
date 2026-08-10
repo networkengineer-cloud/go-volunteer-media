@@ -1,9 +1,11 @@
 package database
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/driver/sqlite"
@@ -125,6 +127,83 @@ func TestCreateDefaultAnimalTags_RespectsDeletedTag(t *testing.T) {
 	}
 	if !rows[0].DeletedAt.Valid {
 		t.Fatalf("expected iso tag to remain soft-deleted after rerun, but deleted_at was cleared")
+	}
+}
+
+// TestCreateCustomIndexes_CoverageRequestActiveUnique verifies the partial
+// unique index (idx_coverage_request_active_unique) that backstops
+// CreateCoverageRequest's app-level check-then-create logic in
+// internal/handlers/schedule_coverage.go. A transaction alone does not make
+// that check-then-insert atomic under READ COMMITTED (Postgres in
+// production), so two concurrent creates for the same (group,
+// requested_by_user_id, date, hour) can both pass the app-level check and
+// both insert. This test bypasses the app-level check entirely (two direct
+// db.Create calls) to isolate and confirm the DB-level backstop actually
+// rejects the second insert - and that a cancelled row for the same key
+// does NOT block a fresh active one, since the index is scoped to
+// status <> 'cancelled'.
+func TestCreateCustomIndexes_CoverageRequestActiveUnique(t *testing.T) {
+	// Use a per-test-run unique shared-cache DSN so this test's tables don't
+	// collide with TestCreateDefaultAnimalTags_RespectsDeletedTag, which
+	// uses the same "file::memory:?cache=shared" pattern.
+	dsn := fmt.Sprintf("file:coverage_idx_test_%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite db: %v", err)
+	}
+
+	if err := db.AutoMigrate(&models.User{}, &models.Group{}, &models.ShiftCoverageRequest{}); err != nil {
+		t.Fatalf("failed to automigrate: %v", err)
+	}
+	if err := createCustomIndexes(db); err != nil {
+		t.Fatalf("createCustomIndexes failed: %v", err)
+	}
+
+	user := models.User{Username: "vol1", Email: "vol1@test.com", Password: "hashed"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	group := models.Group{Name: "Dogs"}
+	if err := db.Create(&group).Error; err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+
+	date := time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC)
+	first := models.ShiftCoverageRequest{
+		GroupID:           group.ID,
+		RequestedByUserID: user.ID,
+		Date:              date,
+		Hour:              10,
+		Status:            models.CoverageRequestOpen,
+	}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("expected first insert to succeed, got: %v", err)
+	}
+
+	second := models.ShiftCoverageRequest{
+		GroupID:           group.ID,
+		RequestedByUserID: user.ID,
+		Date:              date,
+		Hour:              10,
+		Status:            models.CoverageRequestOpen,
+	}
+	if err := db.Create(&second).Error; err == nil {
+		t.Fatal("expected second insert for the same (group, user, date, hour) to be rejected by the unique index, got no error")
+	}
+
+	// A cancelled row for the same key must not block a fresh active one.
+	if err := db.Model(&first).Update("status", models.CoverageRequestCancelled).Error; err != nil {
+		t.Fatalf("failed to cancel first request: %v", err)
+	}
+	third := models.ShiftCoverageRequest{
+		GroupID:           group.ID,
+		RequestedByUserID: user.ID,
+		Date:              date,
+		Hour:              10,
+		Status:            models.CoverageRequestOpen,
+	}
+	if err := db.Create(&third).Error; err != nil {
+		t.Fatalf("expected insert after cancelling the conflicting row to succeed, got: %v", err)
 	}
 }
 
