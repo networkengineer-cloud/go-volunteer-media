@@ -412,22 +412,60 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// State check first: an already-cancelled request is a 409 conflict
+		// for anyone, not an authorization failure for the owner. Checking
+		// this before the ownership/admin gate matches the state-before-
+		// identity ordering ClaimCoverageRequest uses above (errRequestNotOpen
+		// before errSelfClaim) - otherwise a non-admin owner whose own
+		// already-cancelled request they try to cancel again would fail the
+		// "is it still open" authorization check and get a misleading 403.
+		if reqRow.Status == models.CoverageRequestCancelled {
+			c.JSON(http.StatusConflict, gin.H{"error": "Coverage request is already cancelled"})
+			return
+		}
+
 		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
 		isOwnOpenRequest := reqRow.RequestedByUserID == callerUserID && reqRow.Status == models.CoverageRequestOpen
 		if !isOwnOpenRequest && !isAdminCaller {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot cancel this coverage request"})
 			return
 		}
-		if reqRow.Status == models.CoverageRequestCancelled {
-			c.JSON(http.StatusConflict, gin.H{"error": "Coverage request is already cancelled"})
-			return
-		}
 
-		if err := db.Model(&reqRow).Update("status", models.CoverageRequestCancelled).Error; err != nil {
+		// Conditional update, gated on the state actually authorized above,
+		// closes the race with a concurrent claim (or cancel) landing between
+		// the read above and this write - same technique as the conditional
+		// update in ClaimCoverageRequest. A non-admin owner may only flip
+		// open -> cancelled; an admin may flip open or claimed -> cancelled.
+		var result *gorm.DB
+		if isAdminCaller {
+			result = db.Model(&models.ShiftCoverageRequest{}).
+				Where("id = ? AND status IN ?", reqRow.ID, []models.CoverageRequestStatus{models.CoverageRequestOpen, models.CoverageRequestClaimed}).
+				Update("status", models.CoverageRequestCancelled)
+		} else {
+			result = db.Model(&models.ShiftCoverageRequest{}).
+				Where("id = ? AND requested_by_user_id = ? AND status = ?", reqRow.ID, callerUserID, models.CoverageRequestOpen).
+				Update("status", models.CoverageRequestCancelled)
+		}
+		if result.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel coverage request"})
 			return
 		}
+		if result.RowsAffected == 0 {
+			// Someone else changed the request's state between our read and
+			// this write. For an admin, the only remaining state given the
+			// (open, claimed) guard is "already cancelled". For a non-admin
+			// owner, it most likely means someone claimed it out from under
+			// them (or cancelled it) - either way it's no longer cancellable
+			// by them.
+			if isAdminCaller {
+				c.JSON(http.StatusConflict, gin.H{"error": "Coverage request is already cancelled"})
+			} else {
+				c.JSON(http.StatusConflict, gin.H{"error": "Coverage request is no longer open"})
+			}
+			return
+		}
 
+		reqRow.Status = models.CoverageRequestCancelled
 		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
 	}
 }
