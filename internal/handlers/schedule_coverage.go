@@ -287,13 +287,29 @@ func ClaimCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServi
 				return errClaimConflict
 			}
 
+			// Conditional update, gated on status still being open, is what
+			// actually closes the race between two concurrent claimants who
+			// both passed the checks above under READ COMMITTED (Postgres in
+			// production) - the earlier status check is just a cheap
+			// fast-path rejection, not the correctness guarantee.
 			now := time.Now().UTC()
+			result := tx.Model(&models.ShiftCoverageRequest{}).
+				Where("id = ? AND status = ?", reqRow.ID, models.CoverageRequestOpen).
+				Updates(map[string]interface{}{
+					"status":             models.CoverageRequestClaimed,
+					"claimed_by_user_id": callerUserID,
+					"claimed_at":         now,
+				})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return errRequestNotOpen
+			}
+
 			reqRow.Status = models.CoverageRequestClaimed
 			reqRow.ClaimedByUserID = &callerUserID
 			reqRow.ClaimedAt = &now
-			if err := tx.Save(&reqRow).Error; err != nil {
-				return err
-			}
 			claimed = reqRow
 			return nil
 		})
