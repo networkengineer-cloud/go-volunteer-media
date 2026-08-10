@@ -22,24 +22,48 @@ interface PopoverPosition {
   left: number;
 }
 
-// The popover's own rendered width isn't known before it renders (it's
-// content-sized up to the 220px max-width in ScheduleOverview.css), so we
-// don't try to compute an exact clamp for its edges. Instead we clamp the
-// raw anchor point itself to a small margin from the viewport edges before
-// the CSS `transform: translateX(-50%)` centers the popover under it. This
-// isn't pixel-perfect at extreme edges (the popover can still peek past the
-// margin by roughly half its width there) but keeps it from running
-// substantially off-screen, which is all this bug requires.
 const VIEWPORT_MARGIN = 8;
 
-// Computes a fixed-position anchor point (bottom-center of the clicked
-// cell), clamped so it won't sit at the very left/right edge of the
-// viewport. Using the button's live bounding rect means this is correct
-// regardless of scroll position within any clipping ancestor.
+// The popover is horizontally centered on the anchor point via the CSS
+// `transform: translateX(-50%)`, so its rendered left/right edges sit
+// `POPOVER_WIDTH / 2` away from whatever `left` we compute here. We clamp
+// against the *widest* it can ever render - `max-width` from
+// ScheduleOverview.css (140px min-width / 220px max-width; content-sized
+// in between) - so the clamp holds even for popovers with long member
+// lists that hit the max-width.
+const POPOVER_WIDTH = 220;
+const POPOVER_HALF_WIDTH = POPOVER_WIDTH / 2;
+
+// The popover's actual height depends on how many members are in the slot
+// (unbounded list length), which we don't know until it renders. Rather
+// than measure post-render (extra state + effect for a one-frame
+// correction), we use a conservative fixed estimate for the flip decision:
+// enough for a handful of names (padding 2x8px + border 2x1px + ~6 lines at
+// ~16px + 5 inter-item gaps at 4px, from the `.schedule-overview__popover`
+// rule in ScheduleOverview.css, is ~120px). This won't be pixel-perfect for
+// slots with many available members, but it reliably keeps the popover
+// on-screen, which is what this fix requires.
+const ESTIMATED_POPOVER_HEIGHT = 120;
+
+// Computes a fixed-position anchor point for the popover, derived from the
+// clicked cell's live bounding rect (so it's correct regardless of scroll
+// position within any clipping ancestor). Clamps both axes against the
+// viewport:
+//  - Vertically, flips the popover above the cell when there isn't enough
+//    room below for the estimated popover height.
+//  - Horizontally, accounts for the popover's own (max) rendered width when
+//    clamping, not just the raw anchor point, since the anchor is the
+//    horizontal *center* of the popover, not its edge.
 function popoverPositionFor(rect: DOMRect): PopoverPosition {
-  const top = rect.bottom + 4;
+  const spaceBelow = window.innerHeight - rect.bottom - 4;
+  const top = spaceBelow >= ESTIMATED_POPOVER_HEIGHT
+    ? rect.bottom + 4
+    : Math.max(VIEWPORT_MARGIN, rect.top - 4 - ESTIMATED_POPOVER_HEIGHT);
+
   const rawLeft = rect.left + rect.width / 2;
-  const left = Math.min(Math.max(rawLeft, VIEWPORT_MARGIN), window.innerWidth - VIEWPORT_MARGIN);
+  const minLeft = VIEWPORT_MARGIN + POPOVER_HALF_WIDTH;
+  const maxLeft = window.innerWidth - VIEWPORT_MARGIN - POPOVER_HALF_WIDTH;
+  const left = Math.min(Math.max(rawLeft, minLeft), maxLeft);
   return { top, left };
 }
 
