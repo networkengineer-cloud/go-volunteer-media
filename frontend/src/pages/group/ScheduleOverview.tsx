@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { scheduleApi } from '../../api/client';
 import type { ScheduleOverviewMember } from '../../api/client';
 import { DAYS, HOURS, slotKey, formatHourLabel } from './scheduleGrid';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
+import './ScheduleTab.css';
 import './ScheduleOverview.css';
 
 export interface ScheduleOverviewProps {
@@ -35,8 +36,18 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
-  const loadOverview = () => {
+  // Cancels any in-flight request before starting a new one - matching
+  // ScheduleTab.tsx's loadSchedule AbortController pattern - so both the
+  // initial mount fetch and a user-triggered retry go through the same
+  // ref-guarded controller: whichever request is superseded gets aborted,
+  // and only the request still current when it finishes is allowed to
+  // clear `loading`.
+  const loadAbortControllerRef = useRef<AbortController | null>(null);
+  const loadOverview = useCallback(() => {
+    loadAbortControllerRef.current?.abort();
     const controller = new AbortController();
+    loadAbortControllerRef.current = controller;
+
     setLoading(true);
     setError(null);
     scheduleApi.getOverview(groupId, { signal: controller.signal })
@@ -51,15 +62,24 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
         if (axios.isCancel(err)) return;
         setError('Unable to load schedule overview.');
       })
-      .finally(() => setLoading(false));
-    return controller;
-  };
+      .finally(() => {
+        if (loadAbortControllerRef.current === controller) {
+          setLoading(false);
+        }
+      });
+  }, [groupId]);
 
   useEffect(() => {
-    const controller = loadOverview();
-    return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId]);
+    loadOverview();
+  }, [loadOverview]);
+
+  // Cancel any in-flight overview request on unmount so it can't set state
+  // on an unmounted component.
+  useEffect(() => {
+    return () => {
+      loadAbortControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (activeCellKey === null) return;
