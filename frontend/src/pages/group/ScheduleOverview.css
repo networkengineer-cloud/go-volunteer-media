@@ -1,9 +1,19 @@
 .schedule-overview {
   padding: 1rem 0;
+  overflow-x: auto;
+}
+
+.schedule-overview .schedule-grid {
+  overflow: visible;
 }
 
 .schedule-overview__cell-wrapper {
   position: relative;
+  display: flex;
+}
+
+.schedule-overview__cell-wrapper .schedule-grid__slot {
+  flex: 1;
 }
 
 .schedule-grid__slot--tier-0 {

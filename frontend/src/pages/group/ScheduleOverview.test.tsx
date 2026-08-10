@@ -71,6 +71,21 @@ describe('ScheduleOverview', () => {
     expect(await screen.findByText('vol1')).toBeInTheDocument();
   });
 
+  it('falls back to a data-derived denominator when totalMembers is 0 but slots have members', async () => {
+    mockOverview({
+      slots: [
+        { day_of_week: 2, hour: 9, members: [{ user_id: 1, username: 'vol1' }, { user_id: 2, username: 'vol2' }] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={0} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM.*2 available/i });
+    // totalMembers is 0 (unreliable), so the fallback denominator is derived
+    // from the fetched data: max slot size of 2, so 2/2 = 100% = tier-4.
+    expect(cell).not.toHaveClass('schedule-grid__slot--tier-0');
+    expect(cell).toHaveClass('schedule-grid__slot--tier-4');
+  });
+
   it('clicking outside the popover closes it', async () => {
     mockOverview({
       slots: [{ day_of_week: 2, hour: 9, members: [{ user_id: 1, username: 'vol1' }] }],

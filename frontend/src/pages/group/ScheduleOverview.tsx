@@ -107,6 +107,15 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
     return <ErrorState message={error} onRetry={loadOverview} />;
   }
 
+  // If the caller couldn't supply a member count (e.g. its own member-list
+  // fetch failed or hadn't resolved yet), fall back to a denominator derived
+  // from the fetched slot data itself rather than trusting `totalMembers`
+  // blindly - otherwise every cell renders as tier-0 ("nobody available")
+  // even when real availability data exists.
+  const effectiveTotal = totalMembers > 0
+    ? totalMembers
+    : Math.max(0, ...Array.from(membersBySlot.values()).map(m => m.length));
+
   return (
     <div className="schedule-overview">
       <div className="schedule-grid" role="table" aria-label="Weekly availability overview">
@@ -126,7 +135,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
             {DAYS.map((_, dayOfWeek) => {
               const key = slotKey(dayOfWeek, hour);
               const members = membersBySlot.get(key) ?? [];
-              const tier = tierFor(members.length, totalMembers);
+              const tier = tierFor(members.length, effectiveTotal);
               const label = `${DAYS[dayOfWeek]} ${formatHourLabel(hour)}, ${members.length} available`;
               const isActive = activeCellKey === key;
 
