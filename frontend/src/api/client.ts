@@ -625,6 +625,23 @@ export interface ScheduleResponse {
   slots: ScheduleSlot[];
 }
 
+export interface ScheduleOverviewMember {
+  user_id: number;
+  username: string;
+  first_name?: string;
+  last_name?: string;
+}
+
+export interface ScheduleOverviewSlot {
+  day_of_week: number;
+  hour: number;
+  members: ScheduleOverviewMember[];
+}
+
+export interface ScheduleOverviewResponse {
+  slots: ScheduleOverviewSlot[];
+}
+
 export const scheduleApi = {
   getMine: (groupId: number, options?: { signal?: AbortSignal }) =>
     api.get<ScheduleResponse>(`/groups/${groupId}/schedule/me`, { signal: options?.signal }),
@@ -634,6 +651,8 @@ export const scheduleApi = {
     api.get<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`, { signal: options?.signal }),
   updateForMember: (groupId: number, userId: number, slots: ScheduleSlot[]) =>
     api.put<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`, { slots }),
+  getOverview: (groupId: number, options?: { signal?: AbortSignal }) =>
+    api.get<ScheduleOverviewResponse>(`/groups/${groupId}/schedule/overview`, { signal: options?.signal }),
 };
 
 // Animals API

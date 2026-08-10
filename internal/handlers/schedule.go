@@ -334,3 +334,84 @@ func UpdateMemberSchedule(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"slots": toScheduleSlotResponses(slots)})
 	}
 }
+
+// scheduleOverviewMember identifies one member available for a given slot in
+// a GetGroupScheduleOverview response. Fields mirror GetGroupMembers'
+// MemberInfo naming so the frontend can reuse its existing display-name
+// fallback logic.
+type scheduleOverviewMember struct {
+	UserID    uint   `json:"user_id"`
+	Username  string `json:"username"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+}
+
+// scheduleOverviewSlot is one (day_of_week, hour) slot with at least one
+// available member.
+type scheduleOverviewSlot struct {
+	DayOfWeek int                      `json:"day_of_week"`
+	Hour      int                      `json:"hour"`
+	Members   []scheduleOverviewMember `json:"members"`
+}
+
+// GetGroupScheduleOverview returns every group member's weekly shift slots
+// aggregated by (day_of_week, hour), so an admin can see who is available at
+// a glance instead of paging through members one at a time via
+// GetMemberSchedule. Requires group admin or site admin access. Only slots
+// with at least one available member are included, ordered by
+// (day_of_week, hour) ascending.
+func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		var slots []models.ShiftSlot
+		if err := db.Preload("User").Where("group_id = ?", groupIDParam).
+			Order("day_of_week, hour").Find(&slots).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch schedule overview"})
+			return
+		}
+
+		type key struct {
+			DayOfWeek int
+			Hour      int
+		}
+		order := make([]key, 0)
+		bucketed := make(map[key][]scheduleOverviewMember)
+		for _, s := range slots {
+			k := key{DayOfWeek: s.DayOfWeek, Hour: s.Hour}
+			if _, exists := bucketed[k]; !exists {
+				order = append(order, k)
+			}
+			bucketed[k] = append(bucketed[k], scheduleOverviewMember{
+				UserID:    s.UserID,
+				Username:  s.User.Username,
+				FirstName: s.User.FirstName,
+				LastName:  s.User.LastName,
+			})
+		}
+
+		result := make([]scheduleOverviewSlot, 0, len(order))
+		for _, k := range order {
+			result = append(result, scheduleOverviewSlot{
+				DayOfWeek: k.DayOfWeek,
+				Hour:      k.Hour,
+				Members:   bucketed[k],
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{"slots": result})
+	}
+}

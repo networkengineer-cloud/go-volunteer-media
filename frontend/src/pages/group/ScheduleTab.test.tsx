@@ -4,7 +4,7 @@ import ScheduleTab from './ScheduleTab';
 import { scheduleApi, groupsApi } from '../../api/client';
 import { CanceledError } from 'axios';
 import type { AxiosResponse } from 'axios';
-import type { ScheduleResponse, GroupMember } from '../../api/client';
+import type { ScheduleResponse, GroupMember, ScheduleOverviewResponse } from '../../api/client';
 import { ToastProvider } from '../../contexts/ToastContext';
 
 vi.mock('../../api/client', () => ({
@@ -13,6 +13,7 @@ vi.mock('../../api/client', () => ({
     updateMine: vi.fn(),
     getForMember: vi.fn(),
     updateForMember: vi.fn(),
+    getOverview: vi.fn(),
   },
   groupsApi: {
     getMembers: vi.fn(),
@@ -32,6 +33,7 @@ describe('ScheduleTab', () => {
     vi.mocked(scheduleApi.getMine).mockResolvedValue({ data: { slots: [] } } as unknown as AxiosResponse<ScheduleResponse>);
     vi.mocked(scheduleApi.updateMine).mockResolvedValue({ data: { slots: [] } } as unknown as AxiosResponse<ScheduleResponse>);
     vi.mocked(groupsApi.getMembers).mockResolvedValue({ data: [] } as unknown as AxiosResponse<GroupMember[]>);
+    vi.mocked(scheduleApi.getOverview).mockResolvedValue({ data: { slots: [] } } as unknown as AxiosResponse<ScheduleOverviewResponse>);
   });
 
   it('loads and displays the caller\'s own schedule by default', async () => {
@@ -138,5 +140,29 @@ describe('ScheduleTab', () => {
 
     expect(screen.getByRole('cell', { name: 'Sat 5:00 PM' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('cell', { name: 'Sun 8:00 AM' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('does not show the individual/overview toggle for a non-admin member', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /overview/i })).not.toBeInTheDocument();
+  });
+
+  it('a group admin can switch to the overview and back to individual view', async () => {
+    vi.mocked(groupsApi.getMembers).mockResolvedValue({
+      data: [{ user_id: 42, username: 'vol2', is_group_admin: false, is_site_admin: false, email: '', skill_tags: [] }],
+    } as unknown as AxiosResponse<GroupMember[]>);
+
+    renderScheduleTab(true);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /overview/i }));
+
+    await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalledWith(1, expect.objectContaining({ signal: expect.any(AbortSignal) })));
+    expect(screen.queryByLabelText(/viewing schedule for/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /save schedule/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /individual/i }));
+    expect(await screen.findByLabelText(/viewing schedule for/i)).toBeInTheDocument();
   });
 });

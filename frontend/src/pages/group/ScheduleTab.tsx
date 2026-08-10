@@ -5,24 +5,13 @@ import type { GroupMember } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
+import ScheduleOverview from './ScheduleOverview';
+import { DAYS, HOURS, slotKey, formatHourLabel } from './scheduleGrid';
 import './ScheduleTab.css';
 
 export interface ScheduleTabProps {
   groupId: number;
   canManageMembers: boolean;
-}
-
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
-
-function slotKey(dayOfWeek: number, hour: number): string {
-  return `${dayOfWeek}-${hour}`;
-}
-
-function formatHourLabel(hour: number): string {
-  const period = hour < 12 ? 'AM' : 'PM';
-  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-  return `${displayHour}:00 ${period}`;
 }
 
 const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) => {
@@ -33,6 +22,7 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [viewMode, setViewMode] = useState<'individual' | 'overview'>('individual');
 
   // Cancels any in-flight request before starting a new one - matching
   // GroupPage.tsx's loadAnimals/loadActivityFeed AbortController pattern -
@@ -126,59 +116,84 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) 
   return (
     <div className="schedule-tab">
       {canManageMembers && (
-        <div className="schedule-tab__picker">
-          <label htmlFor="schedule-member-select">Viewing schedule for</label>
-          <select
-            id="schedule-member-select"
-            value={selectedUserId ?? ''}
-            onChange={e => setSelectedUserId(e.target.value === '' ? null : Number(e.target.value))}
+        <div className="schedule-tab__view-toggle" role="group" aria-label="Schedule view">
+          <button
+            type="button"
+            className={viewMode === 'individual' ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => setViewMode('individual')}
           >
-            <option value="">My Schedule</option>
-            {members.map(m => (
-              <option key={m.user_id} value={m.user_id}>
-                {[m.first_name, m.last_name].filter(Boolean).join(' ') || m.username}
-              </option>
-            ))}
-          </select>
+            Individual
+          </button>
+          <button
+            type="button"
+            className={viewMode === 'overview' ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => setViewMode('overview')}
+          >
+            Overview
+          </button>
         </div>
       )}
 
-      <div className="schedule-grid" role="table" aria-label="Weekly shift schedule">
-        <div className="schedule-grid__row schedule-grid__row--header" role="row">
-          <div className="schedule-grid__cell schedule-grid__cell--corner" role="columnheader" />
-          {DAYS.map(day => (
-            <div key={day} className="schedule-grid__cell schedule-grid__cell--header" role="columnheader">
-              {day}
+      {viewMode === 'overview' && canManageMembers ? (
+        <ScheduleOverview groupId={groupId} totalMembers={members.length} />
+      ) : (
+        <>
+          {canManageMembers && (
+            <div className="schedule-tab__picker">
+              <label htmlFor="schedule-member-select">Viewing schedule for</label>
+              <select
+                id="schedule-member-select"
+                value={selectedUserId ?? ''}
+                onChange={e => setSelectedUserId(e.target.value === '' ? null : Number(e.target.value))}
+              >
+                <option value="">My Schedule</option>
+                {members.map(m => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {[m.first_name, m.last_name].filter(Boolean).join(' ') || m.username}
+                  </option>
+                ))}
+              </select>
             </div>
-          ))}
-        </div>
-        {HOURS.map(hour => (
-          <div key={hour} className="schedule-grid__row" role="row">
-            <div className="schedule-grid__cell schedule-grid__cell--header" role="rowheader">
-              {formatHourLabel(hour)}
-            </div>
-            {DAYS.map((_, dayOfWeek) => {
-              const key = slotKey(dayOfWeek, hour);
-              const active = selectedSlots.has(key);
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="cell"
-                  className={`schedule-grid__slot ${active ? 'schedule-grid__slot--active' : ''}`}
-                  aria-pressed={active}
-                  aria-label={`${DAYS[dayOfWeek]} ${formatHourLabel(hour)}`}
-                  onClick={() => toggleSlot(dayOfWeek, hour)}
-                />
-              );
-            })}
-          </div>
-        ))}
-      </div>
+          )}
 
-      <button type="button" className="btn-primary schedule-tab__save" onClick={handleSave} disabled={saving}>
-        {saving ? 'Saving…' : 'Save Schedule'}
-      </button>
+          <div className="schedule-grid" role="table" aria-label="Weekly shift schedule">
+            <div className="schedule-grid__row schedule-grid__row--header" role="row">
+              <div className="schedule-grid__cell schedule-grid__cell--corner" role="columnheader" />
+              {DAYS.map(day => (
+                <div key={day} className="schedule-grid__cell schedule-grid__cell--header" role="columnheader">
+                  {day}
+                </div>
+              ))}
+            </div>
+            {HOURS.map(hour => (
+              <div key={hour} className="schedule-grid__row" role="row">
+                <div className="schedule-grid__cell schedule-grid__cell--header" role="rowheader">
+                  {formatHourLabel(hour)}
+                </div>
+                {DAYS.map((_, dayOfWeek) => {
+                  const key = slotKey(dayOfWeek, hour);
+                  const active = selectedSlots.has(key);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      role="cell"
+                      className={`schedule-grid__slot ${active ? 'schedule-grid__slot--active' : ''}`}
+                      aria-pressed={active}
+                      aria-label={`${DAYS[dayOfWeek]} ${formatHourLabel(hour)}`}
+                      onClick={() => toggleSlot(dayOfWeek, hour)}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          <button type="button" className="btn-primary schedule-tab__save" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Schedule'}
+          </button>
+        </>
+      )}
     </div>
   );
 };
