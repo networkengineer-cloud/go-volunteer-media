@@ -451,6 +451,7 @@ func main() {
 			group.PUT("/schedule/me", handlers.UpdateMySchedule(db))
 			group.GET("/schedule/overview", handlers.GetGroupScheduleOverview(db))
 			group.POST("/schedule/coverage-requests", handlers.CreateCoverageRequest(db, emailService, groupMeService))
+			group.POST("/schedule/coverage-requests/:requestId/claim", handlers.ClaimCoverageRequest(db, emailService, groupMeService))
 			group.GET("/schedule/:userId", handlers.GetMemberSchedule(db))
 			group.PUT("/schedule/:userId", handlers.UpdateMemberSchedule(db))
 

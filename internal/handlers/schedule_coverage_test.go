@@ -176,3 +176,109 @@ func TestCreateCoverageRequest(t *testing.T) {
 		}
 	})
 }
+
+func performClaimCoverageRequest(db *gorm.DB, callerID uint, groupID, requestID uint) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", callerID)
+		c.Set("is_admin", false)
+		c.Next()
+	})
+	router.POST("/groups/:id/schedule/coverage-requests/:requestId/claim", ClaimCoverageRequest(db, nil, nil))
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/%d/claim", groupID, requestID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func createOpenCoverageRequest(t *testing.T, db *gorm.DB, groupID, userID uint, dayOfWeek, hour int, date time.Time) *models.ShiftCoverageRequest {
+	req := &models.ShiftCoverageRequest{
+		GroupID:           groupID,
+		RequestedByUserID: userID,
+		Date:              date,
+		Hour:              hour,
+		Status:            models.CoverageRequestOpen,
+	}
+	if err := db.Create(req).Error; err != nil {
+		t.Fatalf("Failed to create coverage request: %v", err)
+	}
+	return req
+}
+
+func TestClaimCoverageRequest(t *testing.T) {
+	t.Run("happy path claims and updates status", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var updated models.ShiftCoverageRequest
+		if err := db.First(&updated, reqRow.ID).Error; err != nil {
+			t.Fatalf("Failed to reload request: %v", err)
+		}
+		if updated.Status != models.CoverageRequestClaimed {
+			t.Fatalf("Expected status claimed, got %s", updated.Status)
+		}
+		if updated.ClaimedByUserID == nil || *updated.ClaimedByUserID != claimant.ID {
+			t.Fatalf("Expected claimed_by_user_id %d, got %v", claimant.ID, updated.ClaimedByUserID)
+		}
+	})
+
+	t.Run("rejects claiming an already-claimed request", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		thirdUser := CreateTestUser(t, db, "third", "third@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, thirdUser.ID, group.ID, false)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		first := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID)
+		if first.Code != http.StatusOK {
+			t.Fatalf("Expected first claim to succeed, got %d: %s", first.Code, first.Body.String())
+		}
+		second := performClaimCoverageRequest(db, thirdUser.ID, group.ID, reqRow.ID)
+		if second.Code != http.StatusConflict {
+			t.Fatalf("Expected 409 on second claim, got %d: %s", second.Code, second.Body.String())
+		}
+	})
+
+	t.Run("rejects the requester claiming their own request", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performClaimCoverageRequest(db, requester.ID, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("rejects a claimant with a conflicting shift at that exact date/hour", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		// claimant already has their own Tuesday 10am shift in a different group.
+		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		AddUserToGroupWithAdmin(t, db, claimant.ID, otherGroup.ID, false)
+		if err := db.Create(&models.ShiftSlot{UserID: claimant.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10}).Error; err != nil {
+			t.Fatalf("Failed to create conflicting shift slot: %v", err)
+		}
+
+		w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusConflict {
+			t.Fatalf("Expected 409 on conflict, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}

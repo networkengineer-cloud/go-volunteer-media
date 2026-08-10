@@ -219,3 +219,142 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		}
 	}
 }
+
+// ClaimCoverageRequest lets any group member (other than the original
+// requester) take an open coverage request, provided they don't already
+// have a conflicting shift at that exact date/hour in any group. Requires
+// group membership (or site admin).
+func ClaimCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rawDB := db
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		callerUserID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		requestID, err := strconv.ParseUint(c.Param("requestId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
+			return
+		}
+
+		var claimed models.ShiftCoverageRequest
+		err = db.Transaction(func(tx *gorm.DB) error {
+			var reqRow models.ShiftCoverageRequest
+			if err := tx.Where("id = ? AND group_id = ?", requestID, groupIDParam).First(&reqRow).Error; err != nil {
+				return errRequestNotFound
+			}
+			if reqRow.Status != models.CoverageRequestOpen {
+				return errRequestNotOpen
+			}
+			if reqRow.RequestedByUserID == callerUserID {
+				return errSelfClaim
+			}
+
+			// Conflict check spans every group the claimant belongs to - a
+			// real-world time conflict doesn't respect group boundaries.
+			var conflictCount int64
+			if err := tx.Model(&models.ShiftSlot{}).
+				Where("user_id = ? AND day_of_week = ? AND hour = ?", callerUserID, int(reqRow.Date.Weekday()), reqRow.Hour).
+				Count(&conflictCount).Error; err != nil {
+				return err
+			}
+			if conflictCount > 0 {
+				return errClaimConflict
+			}
+			if err := tx.Model(&models.ShiftCoverageRequest{}).
+				Where("claimed_by_user_id = ? AND date = ? AND hour = ? AND status = ?",
+					callerUserID, reqRow.Date, reqRow.Hour, models.CoverageRequestClaimed).
+				Count(&conflictCount).Error; err != nil {
+				return err
+			}
+			if conflictCount > 0 {
+				return errClaimConflict
+			}
+
+			now := time.Now().UTC()
+			reqRow.Status = models.CoverageRequestClaimed
+			reqRow.ClaimedByUserID = &callerUserID
+			reqRow.ClaimedAt = &now
+			if err := tx.Save(&reqRow).Error; err != nil {
+				return err
+			}
+			claimed = reqRow
+			return nil
+		})
+
+		switch {
+		case errors.Is(err, errRequestNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": errRequestNotFound.Error()})
+			return
+		case errors.Is(err, errRequestNotOpen):
+			c.JSON(http.StatusConflict, gin.H{"error": errRequestNotOpen.Error()})
+			return
+		case errors.Is(err, errSelfClaim):
+			c.JSON(http.StatusBadRequest, gin.H{"error": errSelfClaim.Error()})
+			return
+		case errors.Is(err, errClaimConflict):
+			c.JSON(http.StatusConflict, gin.H{"error": errClaimConflict.Error()})
+			return
+		case err != nil:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to claim coverage request"})
+			return
+		}
+
+		c.JSON(http.StatusOK, toCoverageRequestResponse(claimed))
+
+		notifyRequesterOfClaim(rawDB, emailService, groupMeService, claimed, callerUserID)
+	}
+}
+
+// notifyRequesterOfClaim tells the original requester their shift is
+// covered. Runs in the background so it never delays the HTTP response.
+func notifyRequesterOfClaim(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, req models.ShiftCoverageRequest, claimantID uint) {
+	if emailService == nil && groupMeService == nil {
+		return
+	}
+	go func() {
+		bgCtx := context.Background()
+		logger := logging.WithContext(bgCtx)
+
+		var requester, claimant models.User
+		if err := db.WithContext(bgCtx).First(&requester, req.RequestedByUserID).Error; err != nil {
+			logger.Error("Failed to load requester for coverage claim notification", err)
+			return
+		}
+		if err := db.WithContext(bgCtx).First(&claimant, claimantID).Error; err != nil {
+			logger.Error("Failed to load claimant for coverage claim notification", err)
+			return
+		}
+
+		title := "Your shift is covered"
+		content := fmt.Sprintf("%s will cover your %s shift on %s.",
+			displayName(claimant), formatHourAMPM(req.Hour), req.Date.Format("Monday, January 2"))
+
+		if emailService != nil && emailService.IsConfigured() && requester.EmailNotificationsEnabled {
+			if err := emailService.SendAnnouncementEmail(bgCtx, requester.Email, title, content); err != nil {
+				logger.Error("Failed to send coverage claim email", err)
+			}
+		}
+		if groupMeService != nil {
+			if err := sendUpdateToGroupMe(bgCtx, db, groupMeService, req.GroupID, title, content); err != nil {
+				logger.Error("Failed to send coverage claim GroupMe message", err)
+			}
+		}
+	}()
+}
