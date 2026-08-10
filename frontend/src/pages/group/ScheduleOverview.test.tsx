@@ -182,18 +182,36 @@ describe('ScheduleOverview', () => {
   });
 
   it('shows a Request coverage button next to the current user\'s own name on a future date', async () => {
-    mockOverview({
-      week_start: '2026-08-09',
-      slots: [
-        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
-          { user_id: 1, username: 'me', status: 'normal' },
-        ] },
-      ],
-    });
-    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+    // The component only renders the currently-displayed week by default
+    // (defaulting to the real current week), and "future" is checked
+    // against the real clock - so a hardcoded fixture date is only
+    // future-and-in-the-rendered-week on some days of the year, and would
+    // start failing permanently once real "today" passes it (or even
+    // sooner, on any day where Tuesday of the current week has already
+    // passed). Pin the clock instead: only `Date` is faked here (not
+    // `setTimeout`/timers), so `findByRole`/`waitFor`'s internal real-timer
+    // polling keeps working, while the component's `currentWeekStart()` and
+    // "is this date in the future" check both resolve against this fixed
+    // Monday - making 2026-08-11 (that Monday's Tuesday) deterministically
+    // future, forever.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z')); // a Monday
+    try {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 1, username: 'me', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
 
-    const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
-    fireEvent.click(cell);
-    expect(await screen.findByRole('button', { name: /request coverage/i })).toBeInTheDocument();
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      expect(await screen.findByRole('button', { name: /request coverage/i })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
