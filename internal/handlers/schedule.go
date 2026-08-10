@@ -363,6 +363,12 @@ type dateHourKey struct {
 	Hour int
 }
 
+type dateHourUserKey struct {
+	Date   string
+	Hour   int
+	UserID uint
+}
+
 // parseWeekStart parses an optional "2006-01-02" week_start query param and
 // snaps it back to that week's Sunday. An empty string defaults to the
 // current week's Sunday (UTC).
@@ -448,9 +454,21 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch coverage requests"})
 			return
 		}
-		requestsByDateHour := make(map[dateHourKey]models.ShiftCoverageRequest, len(coverageRequests))
+		// Keyed by requester so multiple members sharing the same recurring
+		// (day_of_week, hour) bucket can each have their own coverage
+		// request for the same calendar date without clobbering each
+		// other. claimedByDateHour is grouped separately (not keyed by
+		// requester) since a "covering" entry is added per-claim, not
+		// per-original-member.
+		requestsByDateHourUser := make(map[dateHourUserKey]models.ShiftCoverageRequest, len(coverageRequests))
+		claimedByDateHour := make(map[dateHourKey][]models.ShiftCoverageRequest)
 		for _, r := range coverageRequests {
-			requestsByDateHour[dateHourKey{Date: r.Date.Format("2006-01-02"), Hour: r.Hour}] = r
+			dateStr := r.Date.Format("2006-01-02")
+			requestsByDateHourUser[dateHourUserKey{Date: dateStr, Hour: r.Hour, UserID: r.RequestedByUserID}] = r
+			if r.Status == models.CoverageRequestClaimed {
+				key := dateHourKey{Date: dateStr, Hour: r.Hour}
+				claimedByDateHour[key] = append(claimedByDateHour[key], r)
+			}
 		}
 
 		// The viewer's own recurring commitments across every group they're
@@ -480,14 +498,14 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 					continue
 				}
 				dateStr := date.Format("2006-01-02")
-				req, hasRequest := requestsByDateHour[dateHourKey{Date: dateStr, Hour: bucket.Hour}]
 				conflict := viewerBusy[[2]int{bucket.DayOfWeek, bucket.Hour}] || viewerClaimedBusy[dateHourKey{Date: dateStr, Hour: bucket.Hour}]
 
 				members := make([]scheduleOverviewMember, 0, len(bucket.Members)+1)
 				for _, s := range bucket.Members {
-					if hasRequest && req.Status == models.CoverageRequestClaimed && req.RequestedByUserID == s.UserID {
+					req, hasRequest := requestsByDateHourUser[dateHourUserKey{Date: dateStr, Hour: bucket.Hour, UserID: s.UserID}]
+					if hasRequest && req.Status == models.CoverageRequestClaimed {
 						// This member handed their shift off - drop them,
-						// the claimant is added below instead.
+						// the claimant(s) are added below instead.
 						continue
 					}
 					m := scheduleOverviewMember{
@@ -497,7 +515,7 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 						LastName:  s.User.LastName,
 						Status:    "normal",
 					}
-					if hasRequest && req.Status == models.CoverageRequestOpen && req.RequestedByUserID == s.UserID {
+					if hasRequest && req.Status == models.CoverageRequestOpen {
 						m.Status = "needs_coverage"
 						reqID := req.ID
 						m.CoverageRequestID = &reqID
@@ -508,12 +526,15 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 					}
 					members = append(members, m)
 				}
-				if hasRequest && req.Status == models.CoverageRequestClaimed && req.ClaimedByUser != nil {
+				for _, r := range claimedByDateHour[dateHourKey{Date: dateStr, Hour: bucket.Hour}] {
+					if r.ClaimedByUser == nil {
+						continue
+					}
 					members = append(members, scheduleOverviewMember{
-						UserID:    req.ClaimedByUser.ID,
-						Username:  req.ClaimedByUser.Username,
-						FirstName: req.ClaimedByUser.FirstName,
-						LastName:  req.ClaimedByUser.LastName,
+						UserID:    r.ClaimedByUser.ID,
+						Username:  r.ClaimedByUser.Username,
+						FirstName: r.ClaimedByUser.FirstName,
+						LastName:  r.ClaimedByUser.LastName,
 						Status:    "covering",
 					})
 				}

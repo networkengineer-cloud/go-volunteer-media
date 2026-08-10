@@ -872,14 +872,20 @@ func TestGetGroupScheduleOverview_NonAdminMemberCanAccess(t *testing.T) {
 func TestGetGroupScheduleOverview_EffectiveRoster(t *testing.T) {
 	db := SetupTestDB(t)
 	requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+	requester2 := CreateTestUser(t, db, "requester2", "requester2@example.com", "password123", false)
 	claimant := CreateTestUser(t, db, "claimant", "claimant@example.com", "password123", false)
 	viewer := CreateTestUser(t, db, "viewer", "viewer@example.com", "password123", false)
 	group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
-	for _, u := range []*models.User{requester, claimant, viewer} {
+	for _, u := range []*models.User{requester, requester2, claimant, viewer} {
 		AddUserToGroupWithAdmin(t, db, u.ID, group.ID, false)
 	}
 	db.Model(group).Update("scheduling_enabled", true)
 	db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
+	// requester2 shares the exact same recurring (day_of_week, hour) bucket
+	// as requester - this is what makes it possible for two different
+	// members to each file their own coverage request for the same
+	// calendar date/hour.
+	db.Create(&models.ShiftSlot{UserID: requester2.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
 
 	weekStart := time.Now().UTC().Truncate(24 * time.Hour)
 	weekStart = weekStart.AddDate(0, 0, -int(weekStart.Weekday())) // this week's Sunday
@@ -980,6 +986,71 @@ func TestGetGroupScheduleOverview_EffectiveRoster(t *testing.T) {
 		}
 		if !claimantPresent {
 			t.Fatal("Expected claimant to appear in the roster, tagged covering")
+		}
+	})
+
+	t.Run("two members sharing the same bucket each get their own open request", func(t *testing.T) {
+		req1 := &models.ShiftCoverageRequest{GroupID: group.ID, RequestedByUserID: requester.ID, Date: tuesday, Hour: 10, Status: models.CoverageRequestOpen}
+		req2 := &models.ShiftCoverageRequest{GroupID: group.ID, RequestedByUserID: requester2.ID, Date: tuesday, Hour: 10, Status: models.CoverageRequestOpen}
+		db.Create(req1)
+		db.Create(req2)
+		defer db.Delete(req1)
+		defer db.Delete(req2)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", viewer.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.GET("/groups/:id/schedule/overview", GetGroupScheduleOverview(db))
+
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/schedule/overview?week_start=%s", group.ID, weekStart.Format("2006-01-02")), nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var body struct {
+			Slots []scheduleOverviewSlot `json:"slots"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+
+		var m1, m2 *scheduleOverviewMember
+		for i, s := range body.Slots {
+			if s.Date != tuesday.Format("2006-01-02") || s.Hour != 10 {
+				continue
+			}
+			for j, m := range s.Members {
+				if m.UserID == requester.ID {
+					m1 = &body.Slots[i].Members[j]
+				}
+				if m.UserID == requester2.ID {
+					m2 = &body.Slots[i].Members[j]
+				}
+			}
+		}
+		if m1 == nil || m2 == nil {
+			t.Fatalf("Expected both requester and requester2 to appear in the roster, got requester=%v requester2=%v", m1, m2)
+		}
+		if m1.Status != "needs_coverage" || m2.Status != "needs_coverage" {
+			t.Fatalf("Expected both members tagged needs_coverage, got requester=%s requester2=%s", m1.Status, m2.Status)
+		}
+		if m1.CoverageRequestID == nil || m2.CoverageRequestID == nil {
+			t.Fatal("Expected both members to carry a coverage_request_id")
+		}
+		if *m1.CoverageRequestID == *m2.CoverageRequestID {
+			t.Fatal("Expected requester and requester2 to reference distinct coverage requests")
+		}
+		if *m1.CoverageRequestID != req1.ID {
+			t.Fatalf("Expected requester's coverage_request_id to be %d, got %d", req1.ID, *m1.CoverageRequestID)
+		}
+		if *m2.CoverageRequestID != req2.ID {
+			t.Fatalf("Expected requester2's coverage_request_id to be %d, got %d", req2.ID, *m2.CoverageRequestID)
 		}
 	})
 }
