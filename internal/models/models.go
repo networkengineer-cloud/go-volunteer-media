@@ -65,23 +65,24 @@ type APIToken struct {
 
 // Group represents a volunteer group (dogs, cats, modsquad, etc.)
 type Group struct {
-	ID             uint            `gorm:"primaryKey" json:"id"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt  `gorm:"index" json:"-"`
-	Name           string          `gorm:"uniqueIndex;not null" json:"name"`
-	Description    string          `json:"description"`
-	ImageURL       string          `json:"image_url"`
-	HeroImageURL   string          `json:"hero_image_url"`
-	HasProtocols   bool            `gorm:"column:has_protocols;default:false" json:"has_protocols"`     // Enable protocols feature for this group
-	GroupMeBotID   string          `gorm:"column:groupme_bot_id" json:"-"`                              // GroupMe Bot ID — omitted from API responses; exposed via adminGroupResponse only
-	GroupMeEnabled bool            `gorm:"column:groupme_enabled;default:false" json:"groupme_enabled"` // Enable GroupMe integration for this group
-	Users          []User          `gorm:"many2many:user_groups;" json:"users,omitempty"`
-	Animals        []Animal        `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
-	Updates        []Update        `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
-	Protocols      []Protocol      `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
-	Scripts        []Script        `gorm:"foreignKey:GroupID" json:"scripts,omitempty"`
-	Documents      []GroupDocument `gorm:"foreignKey:GroupID" json:"documents,omitempty"`
+	ID                uint            `gorm:"primaryKey" json:"id"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
+	DeletedAt         gorm.DeletedAt  `gorm:"index" json:"-"`
+	Name              string          `gorm:"uniqueIndex;not null" json:"name"`
+	Description       string          `json:"description"`
+	ImageURL          string          `json:"image_url"`
+	HeroImageURL      string          `json:"hero_image_url"`
+	HasProtocols      bool            `gorm:"column:has_protocols;default:false" json:"has_protocols"`           // Enable protocols feature for this group
+	SchedulingEnabled bool            `gorm:"column:scheduling_enabled;default:false" json:"scheduling_enabled"` // Enable volunteer shift scheduling feature for this group
+	GroupMeBotID      string          `gorm:"column:groupme_bot_id" json:"-"`                                    // GroupMe Bot ID — omitted from API responses; exposed via adminGroupResponse only
+	GroupMeEnabled    bool            `gorm:"column:groupme_enabled;default:false" json:"groupme_enabled"`       // Enable GroupMe integration for this group
+	Users             []User          `gorm:"many2many:user_groups;" json:"users,omitempty"`
+	Animals           []Animal        `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
+	Updates           []Update        `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
+	Protocols         []Protocol      `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
+	Scripts           []Script        `gorm:"foreignKey:GroupID" json:"scripts,omitempty"`
+	Documents         []GroupDocument `gorm:"foreignKey:GroupID" json:"documents,omitempty"`
 }
 
 // Animal represents an animal in a group
@@ -511,4 +512,20 @@ type UserGroup struct {
 	IsGroupAdmin bool      `gorm:"default:false;index:idx_user_groups_user_admin" json:"is_group_admin"` // User has admin privileges for this specific group
 	User         User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Group        Group     `gorm:"foreignKey:GroupID" json:"group,omitempty"`
+}
+
+// ShiftSlot represents a single 1-hour block of a volunteer's recurring
+// weekly shift schedule within a specific group. Rows are sparse — a row
+// only exists for an hour the volunteer is signed up for. day_of_week is
+// 0=Sunday..6=Saturday; hour is the slot's start hour, 8..17 (8am-6pm).
+type ShiftSlot struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	UserID    uint      `gorm:"not null;uniqueIndex:idx_shift_slot_unique;index:idx_shift_slot_user" json:"user_id"`
+	GroupID   uint      `gorm:"not null;uniqueIndex:idx_shift_slot_unique;index:idx_shift_slot_group" json:"group_id"`
+	DayOfWeek int       `gorm:"not null;uniqueIndex:idx_shift_slot_unique" json:"day_of_week"`
+	Hour      int       `gorm:"not null;uniqueIndex:idx_shift_slot_unique" json:"hour"`
+	User      User      `gorm:"foreignKey:UserID" json:"-"`
+	Group     Group     `gorm:"foreignKey:GroupID" json:"-"`
 }

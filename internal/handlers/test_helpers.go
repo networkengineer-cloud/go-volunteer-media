@@ -54,6 +54,7 @@ func SetupTestDB(t *testing.T) *gorm.DB {
 		&models.AnimalTag{},
 		&models.AnimalNameHistory{},
 		&models.APIToken{},
+		&models.ShiftSlot{},
 	)
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)

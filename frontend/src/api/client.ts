@@ -162,6 +162,7 @@ export interface Group {
   image_url: string;
   hero_image_url: string;
   has_protocols: boolean;
+  scheduling_enabled: boolean;
   groupme_bot_id?: string; // Only present in admin responses; hidden from regular group members
   groupme_enabled: boolean;
 }
@@ -562,6 +563,8 @@ export const groupsApi = {
   getAll: () => api.get<Group[]>('/groups'),
   getById: (id: number) => api.get<Group>('/groups/' + id),
   getMembership: (id: number) => api.get<GroupMembership>('/groups/' + id + '/membership'),
+  updateScheduling: (id: number, enabled: boolean) =>
+    api.patch<{ scheduling_enabled: boolean }>(`/groups/${id}/scheduling`, { enabled }),
   getLatestComments: (id: number, limit?: number) => {
     const params = limit ? { limit } : {};
     return api.get<CommentWithAnimal[]>('/groups/' + id + '/latest-comments', { params });
@@ -609,6 +612,28 @@ export const groupsApi = {
     formData.append('image', file);
     return api.post<{ url: string }>('/admin/groups/upload-image', formData);
   },
+};
+
+// Weekly volunteer shift schedule (per group). day_of_week is 0=Sunday..6=Saturday;
+// hour is the slot's start hour, 8..17 (8am-6pm in 1-hour increments).
+export interface ScheduleSlot {
+  day_of_week: number;
+  hour: number;
+}
+
+export interface ScheduleResponse {
+  slots: ScheduleSlot[];
+}
+
+export const scheduleApi = {
+  getMine: (groupId: number, options?: { signal?: AbortSignal }) =>
+    api.get<ScheduleResponse>(`/groups/${groupId}/schedule/me`, { signal: options?.signal }),
+  updateMine: (groupId: number, slots: ScheduleSlot[]) =>
+    api.put<ScheduleResponse>(`/groups/${groupId}/schedule/me`, { slots }),
+  getForMember: (groupId: number, userId: number, options?: { signal?: AbortSignal }) =>
+    api.get<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`, { signal: options?.signal }),
+  updateForMember: (groupId: number, userId: number, slots: ScheduleSlot[]) =>
+    api.put<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`, { slots }),
 };
 
 // Animals API

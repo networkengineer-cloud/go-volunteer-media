@@ -19,9 +19,10 @@ import { calculateAge, formatAge, formatQuarantineEndDate, localDayStartISO, loc
 import { formatAnimalStatus } from '../utils/animalUtils';
 import QuarantineApprovalBadge from '../components/QuarantineApprovalBadge';
 import { formatDisplayName } from '../utils/formatName';
+import ScheduleTab from './group/ScheduleTab';
 import './GroupPage.css';
 
-type ViewMode = 'activity' | 'animals' | 'protocols' | 'members' | 'documents';
+type ViewMode = 'activity' | 'animals' | 'protocols' | 'members' | 'documents' | 'schedule';
 type FilterType = 'all' | 'comments' | 'announcements';
 
 // Matches GroupSearch.tsx's debounce delay for the same kind of free-text
@@ -58,6 +59,7 @@ const GroupPage: React.FC = () => {
   const [effectiveNameSearch, setEffectiveNameSearch] = useState(debouncedNameSearch);
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showProtocolForm, setShowProtocolForm] = useState(false);
+  const [togglingScheduling, setTogglingScheduling] = useState(false);
   const [showLengthOfStay, setShowLengthOfStay] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; updateId: number | null; title: string }>({
     show: false, updateId: null, title: '',
@@ -195,9 +197,9 @@ const GroupPage: React.FC = () => {
     const viewParam = searchParams.get('view') as ViewMode;
     if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols' || viewParam === 'documents')) {
       setViewMode(viewParam);
-    } else if (viewParam === 'members' && (membership?.is_member || membership?.is_site_admin)) {
+    } else if ((viewParam === 'members' || viewParam === 'schedule') && (membership?.is_member || membership?.is_site_admin)) {
       setViewMode(viewParam);
-    } else if (viewParam === 'members' && !membership?.is_member && !membership?.is_site_admin) {
+    } else if ((viewParam === 'members' || viewParam === 'schedule') && !membership?.is_member && !membership?.is_site_admin) {
       setViewMode('activity');
     }
   }, [searchParams, membership]);
@@ -275,6 +277,24 @@ const GroupPage: React.FC = () => {
       toast.showSuccess('Announcement deleted');
     } catch {
       toast.showError('Failed to delete announcement');
+    }
+  };
+
+  const handleToggleScheduling = async () => {
+    if (!id || !group) return;
+    const nextEnabled = !group.scheduling_enabled;
+    setTogglingScheduling(true);
+    try {
+      const res = await groupsApi.updateScheduling(Number(id), nextEnabled);
+      setGroup((prev) => (prev ? { ...prev, scheduling_enabled: res.data.scheduling_enabled } : prev));
+      toast.showSuccess(res.data.scheduling_enabled ? 'Scheduling enabled for this group' : 'Scheduling disabled for this group');
+      if (!res.data.scheduling_enabled && viewMode === 'schedule') {
+        setViewMode('activity');
+      }
+    } catch {
+      toast.showError('Failed to update scheduling setting');
+    } finally {
+      setTogglingScheduling(false);
     }
   };
 
@@ -664,6 +684,24 @@ const GroupPage: React.FC = () => {
               <span>Documents</span>
             </button>
           )}
+          {group.scheduling_enabled && (membership?.is_member || membership?.is_site_admin) && (
+            <button
+              role="tab"
+              aria-selected={viewMode === 'schedule'}
+              aria-controls="schedule-panel"
+              id="schedule-tab"
+              className={`group-tab ${viewMode === 'schedule' ? 'group-tab--active' : ''}`}
+              onClick={() => setViewMode('schedule')}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+              <span>Schedule</span>
+            </button>
+          )}
         </div>
         {showTabsChevron && (
           <button
@@ -723,6 +761,20 @@ const GroupPage: React.FC = () => {
               <span>Upload Script</span>
             </button>
           )}
+          <button
+            type="button"
+            className="group-admin-link"
+            onClick={handleToggleScheduling}
+            disabled={togglingScheduling}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <span>{group.scheduling_enabled ? 'Disable Scheduling' : 'Enable Scheduling'}</span>
+          </button>
         </div>
       )}
 
@@ -1560,6 +1612,20 @@ const GroupPage: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {viewMode === 'schedule' && group.scheduling_enabled && (membership?.is_member || membership?.is_site_admin) && id && (
+        <div
+          role="tabpanel"
+          id="schedule-panel"
+          aria-labelledby="schedule-tab"
+          className="group-content"
+        >
+          <ScheduleTab
+            groupId={Number(id)}
+            canManageMembers={!!(membership?.is_group_admin || membership?.is_site_admin)}
+          />
         </div>
       )}
 

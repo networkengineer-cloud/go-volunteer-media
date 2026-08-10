@@ -446,6 +446,12 @@ func main() {
 			group.POST("/members/:userId/promote", handlers.PromoteMemberToGroupAdmin(db))
 			group.POST("/members/:userId/demote", handlers.DemoteMemberFromGroupAdmin(db))
 
+			group.PATCH("/scheduling", handlers.UpdateGroupScheduling(db))
+			group.GET("/schedule/me", handlers.GetMySchedule(db))
+			group.PUT("/schedule/me", handlers.UpdateMySchedule(db))
+			group.GET("/schedule/:userId", handlers.GetMemberSchedule(db))
+			group.PUT("/schedule/:userId", handlers.UpdateMemberSchedule(db))
+
 			// Content moderation - group admin or site admin can view deleted content
 			group.GET("/deleted-comments", handlers.GetDeletedComments(db))
 			group.GET("/deleted-images", handlers.GetDeletedImages(db))

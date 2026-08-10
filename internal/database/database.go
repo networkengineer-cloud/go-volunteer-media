@@ -202,6 +202,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.AnimalBQIncident{},
 		&models.GroupDocument{},
 		&models.APIToken{},
+		&models.ShiftSlot{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
