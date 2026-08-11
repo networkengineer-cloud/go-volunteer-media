@@ -126,14 +126,14 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
       <div className="schedule-tab__view-toggle" role="group" aria-label="Schedule view">
         <button
           type="button"
-          className={viewMode === 'individual' ? 'btn-primary' : 'btn-secondary'}
+          className={`schedule-tab__view-toggle-btn ${viewMode === 'individual' ? 'schedule-tab__view-toggle-btn--active' : ''}`}
           onClick={() => setViewMode('individual')}
         >
           Individual
         </button>
         <button
           type="button"
-          className={viewMode === 'overview' ? 'btn-primary' : 'btn-secondary'}
+          className={`schedule-tab__view-toggle-btn ${viewMode === 'overview' ? 'schedule-tab__view-toggle-btn--active' : ''}`}
           onClick={() => setViewMode('overview')}
         >
           Overview
