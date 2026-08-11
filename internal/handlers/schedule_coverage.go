@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -68,6 +69,23 @@ func displayName(u models.User) string {
 		return name
 	}
 	return u.Username
+}
+
+// buildCoverageRequestSummary renders one requester's currently-open
+// coverage requests as a single bulk notification body, so a member with
+// several shifts needing coverage produces one accurate email/GroupMe post
+// listing all of them instead of a separate, fragmented message per shift.
+func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCoverageRequest) string {
+	if len(requests) == 1 {
+		r := requests[0]
+		return fmt.Sprintf("%s needs coverage for their %s shift on %s.",
+			requesterName, formatHourAMPM(r.Hour), r.Date.Format("Monday, January 2"))
+	}
+	lines := make([]string, 0, len(requests))
+	for _, r := range requests {
+		lines = append(lines, fmt.Sprintf("- %s at %s", r.Date.Format("Monday, January 2"), formatHourAMPM(r.Hour)))
+	}
+	return fmt.Sprintf("%s needs coverage for %d shifts:\n%s", requesterName, len(requests), strings.Join(lines, "\n"))
 }
 
 // formatHourAMPM renders a 24-hour ShiftSlot/CoverageRequest hour (8..17)
@@ -197,27 +215,36 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 
 		c.JSON(http.StatusCreated, toCoverageRequestResponse(created))
 
-		// Cooldown: skip the group-wide broadcast (but the request itself is
-		// already created above) if this same user created another coverage
-		// request in this group within the last 5 minutes. Otherwise a member
-		// could cancel-and-recreate their own open request repeatedly, re-
-		// firing the group-wide email/GroupMe blast every time - a fan-out
-		// path that, before this feature, was only reachable via admin-gated
-		// /announcements endpoints. Runs on the outer (non-transaction) db
-		// since the transaction has already committed by this point, matching
-		// how the notification goroutines below already run post-commit.
+		// Cooldown: throttle (not silence) the group-wide broadcast if this
+		// same user created another coverage request in this group within
+		// the last minute, so a rapid double-submission doesn't fire two
+		// near-identical emails/GroupMe posts back to back. Short on purpose:
+		// its only job is absorbing accidental double-clicks, not gatekeeping
+		// a legitimate second request for a different shift moments later -
+		// whenever a notification IS sent (see below), it always lists every
+		// currently-open request this user has in the group, not just the
+		// one that triggered it, so nothing is ever silently left out of the
+		// email because it happened to land inside the cooldown window. Runs
+		// on the outer (non-transaction) db since the transaction has
+		// already committed by this point, matching how the notification
+		// goroutines below already run post-commit.
+		const coverageNotificationCooldown = 60 * time.Second
 		var recentCount int64
 		if err := rawDB.Model(&models.ShiftCoverageRequest{}).
 			Where("group_id = ? AND requested_by_user_id = ? AND id != ? AND created_at > ?",
-				groupIDUint, targetUserID, created.ID, time.Now().Add(-5*time.Minute)).
+				groupIDUint, targetUserID, created.ID, time.Now().Add(-coverageNotificationCooldown)).
 			Count(&recentCount).Error; err == nil && recentCount == 0 {
 			var requester models.User
 			var grp models.Group
+			var openRequests []models.ShiftCoverageRequest
 			rawDB.First(&requester, targetUserID)
 			rawDB.Select("name").First(&grp, groupIDUint)
+			rawDB.Where("group_id = ? AND requested_by_user_id = ? AND status = ?",
+				groupIDUint, targetUserID, models.CoverageRequestOpen).
+				Order("date, hour").Find(&openRequests)
+
 			title := fmt.Sprintf("Coverage needed in %s", grp.Name)
-			content := fmt.Sprintf("%s needs coverage for their %s shift on %s.",
-				displayName(requester), formatHourAMPM(req.Hour), date.Format("Monday, January 2"))
+			content := buildCoverageRequestSummary(displayName(requester), openRequests)
 
 			if emailService != nil && emailService.IsConfigured() {
 				go func() {

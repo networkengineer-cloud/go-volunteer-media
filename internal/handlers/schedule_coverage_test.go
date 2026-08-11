@@ -248,6 +248,33 @@ func TestCreateCoverageRequest(t *testing.T) {
 	})
 }
 
+func TestBuildCoverageRequestSummary(t *testing.T) {
+	t.Run("a single open request renders as one sentence, not a list", func(t *testing.T) {
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: date, Hour: 10},
+		})
+		want := fmt.Sprintf("Jane Doe needs coverage for their 10:00 AM shift on %s.", date.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("multiple open requests render as one bulk list, not separate messages", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: tue, Hour: 10},
+			{Date: thu, Hour: 14},
+		})
+		want := fmt.Sprintf("Jane Doe needs coverage for 2 shifts:\n- %s at 10:00 AM\n- %s at 2:00 PM",
+			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+}
+
 func performClaimCoverageRequest(db *gorm.DB, callerID uint, groupID, requestID uint) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
