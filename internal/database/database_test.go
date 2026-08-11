@@ -364,8 +364,13 @@ func TestDBLogLevel_Parsing(t *testing.T) {
 // meaningful, so it runs (and actually enforces something) in every `go
 // test ./...` invocation, everywhere.
 func TestLocalTimeIsUTC(t *testing.T) {
+	// This is a pointer-identity check, not a name/offset check - on an
+	// already-UTC host, a deleted init() would still print "time.Local =
+	// UTC" (Go's fallback local-zone name), which reads as a passing value
+	// even though it's the wrong *Location. Printing both pointers makes a
+	// failure unambiguous regardless of the host's own timezone.
 	if time.Local != time.UTC {
-		t.Fatalf("time.Local = %v, want UTC - this package's init() must force UTC so gorm.io/driver/postgres (via pgx) decodes timestamptz columns as UTC instead of the process's local timezone", time.Local)
+		t.Fatalf("time.Local (name %v, pointer %p) is not the time.UTC Location (pointer %p) - this package's init() must force time.Local = time.UTC so gorm.io/driver/postgres (via pgx) decodes timestamptz columns as UTC instead of the process's local timezone", time.Local, time.Local, time.UTC)
 	}
 }
 

@@ -100,10 +100,10 @@ func TestGetGroupScheduleOverview_Postgres_ClaimedRequestShowsAsCovering(t *test
 	// A future Tuesday, computed relative to whenever this test actually
 	// runs (nextWeekday is the same helper every other coverage-request
 	// test in this package uses for exactly this reason) - createOneCoverageRequest
-	// rejects a same-day-or-past date, so a hard-coded date here would start
-	// failing - with a misleading "expected 201, got 400" error that points
-	// nowhere near the timezone fix this test exists to guard - the day
-	// after whatever date got hard-coded.
+	// rejects a past date, so a hard-coded date here would start failing
+	// the day after whatever date got hard-coded, with a misleading
+	// "expected 201, got 400" error that points nowhere near the
+	// timezone fix this test exists to guard.
 	date := nextWeekday(time.Tuesday)
 	parsedDate, err := time.Parse("2006-01-02", date)
 	if err != nil {
