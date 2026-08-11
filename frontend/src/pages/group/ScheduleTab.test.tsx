@@ -168,4 +168,32 @@ describe('ScheduleTab', () => {
     fireEvent.click(screen.getByRole('button', { name: /individual/i }));
     expect(await screen.findByLabelText(/viewing schedule for/i)).toBeInTheDocument();
   });
+
+  it('opens the bulk request-coverage form when viewing my own schedule, and hides it when viewing another member\'s', async () => {
+    vi.mocked(scheduleApi.getMine).mockResolvedValue({
+      data: { slots: [{ day_of_week: 2, hour: 9 }] },
+    } as unknown as AxiosResponse<ScheduleResponse>);
+    vi.mocked(groupsApi.getMembers).mockResolvedValue({
+      data: [{ user_id: 2, username: 'vol2', is_group_admin: false, is_site_admin: false, email: '', skill_tags: [] }],
+    } as unknown as AxiosResponse<GroupMember[]>);
+    vi.mocked(scheduleApi.getForMember).mockResolvedValue({
+      data: { slots: [] },
+    } as unknown as AxiosResponse<ScheduleResponse>);
+
+    render(
+      <ToastProvider>
+        <ScheduleTab groupId={7} canManageMembers={true} currentUserId={1} />
+      </ToastProvider>
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: /request coverage for a date range/i })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /request coverage for a date range/i }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText(/start date/i)).toBeInTheDocument();
+
+    // Closing and switching to another member's schedule hides the button.
+    fireEvent.click(screen.getByRole('button', { name: /close modal/i }));
+    fireEvent.change(screen.getByLabelText(/viewing schedule for/i), { target: { value: '2' } });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /request coverage for a date range/i })).not.toBeInTheDocument());
+  });
 });

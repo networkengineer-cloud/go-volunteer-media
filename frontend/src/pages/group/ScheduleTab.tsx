@@ -6,6 +6,8 @@ import { useToast } from '../../hooks/useToast';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
 import ScheduleOverview from './ScheduleOverview';
+import Modal from '../../components/Modal';
+import RequestCoverageRangeForm from './RequestCoverageRangeForm';
 import { DAYS, HOURS, slotKey, formatHourLabel } from './scheduleGrid';
 import './ScheduleTab.css';
 
@@ -24,6 +26,7 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState<'individual' | 'overview'>('individual');
+  const [showRequestRangeModal, setShowRequestRangeModal] = useState(false);
 
   // Cancels any in-flight request before starting a new one - matching
   // GroupPage.tsx's loadAnimals/loadActivityFeed AbortController pattern -
@@ -190,8 +193,34 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
           <button type="button" className="btn-primary schedule-tab__save" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save Schedule'}
           </button>
+
+          {selectedUserId === null && (
+            <button
+              type="button"
+              className="btn-secondary schedule-tab__request-range"
+              onClick={() => setShowRequestRangeModal(true)}
+            >
+              Request Coverage for a Date Range
+            </button>
+          )}
         </>
       )}
+
+      <Modal
+        isOpen={showRequestRangeModal}
+        onClose={() => setShowRequestRangeModal(false)}
+        title="Request Coverage for a Date Range"
+      >
+        <RequestCoverageRangeForm
+          groupId={groupId}
+          slots={Array.from(selectedSlots).map(key => {
+            const [dayOfWeek, hour] = key.split('-').map(Number);
+            return { day_of_week: dayOfWeek, hour };
+          })}
+          onSuccess={() => setShowRequestRangeModal(false)}
+          onCancel={() => setShowRequestRangeModal(false)}
+        />
+      </Modal>
     </div>
   );
 };
