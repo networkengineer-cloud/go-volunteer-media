@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { scheduleApi } from '../../api/client';
 import type { ScheduleOverviewMember } from '../../api/client';
+import { useToast } from '../../hooks/useToast';
 import { DAYS, HOURS, slotKey, formatHourLabel } from './scheduleGrid';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
@@ -11,6 +12,7 @@ import './ScheduleOverview.css';
 export interface ScheduleOverviewProps {
   groupId: number;
   totalMembers: number;
+  currentUserId: number;
 }
 
 function memberDisplayName(member: ScheduleOverviewMember): string {
@@ -83,20 +85,70 @@ function tierFor(count: number, totalMembers: number): number {
   return 4;
 }
 
-const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembers }) => {
+// dateForWeekStart returns the ISO date (YYYY-MM-DD) for the given offset
+// (0-6) within the week starting at weekStart. Computed via UTC-anchored
+// Date arithmetic (rather than local-time Date parsing) so DST transitions
+// in the viewer's timezone can never shift the result by a day.
+function dateForWeekStart(weekStart: string, dayOfWeek: number): string {
+  const [y, m, d] = weekStart.split('-').map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d));
+  start.setUTCDate(start.getUTCDate() + dayOfWeek);
+  return start.toISOString().slice(0, 10);
+}
+
+function addDays(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatWeekLabel(weekStart: string): string {
+  const start = new Date(`${weekStart}T00:00:00Z`);
+  const end = new Date(`${addDays(weekStart, 6)}T00:00:00Z`);
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', timeZone: 'UTC' };
+  return `Week of ${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
+}
+
+// currentWeekStart returns the ISO date (YYYY-MM-DD) of the Sunday that
+// starts "this week" in the viewer's local timezone.
+function currentWeekStart(): string {
+  const now = new Date();
+  const utcToday = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  utcToday.setUTCDate(utcToday.getUTCDate() - utcToday.getUTCDay());
+  return utcToday.toISOString().slice(0, 10);
+}
+
+// todayIso returns "today" (UTC calendar date, matching the backend's
+// same-day-or-later check in CreateCoverageRequest) as an ISO YYYY-MM-DD
+// string, for comparing against slot dates.
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembers, currentUserId }) => {
+  const toast = useToast();
+  const [weekStart, setWeekStart] = useState<string>(currentWeekStart());
   const [membersBySlot, setMembersBySlot] = useState<Map<string, ScheduleOverviewMember[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
+  const [busyRequestId, setBusyRequestId] = useState<number | null>(null);
+  // Guards handleRequestCoverage the same way busyRequestId guards
+  // handleClaim/handleCancelRequest: keyed by the (date, hour) slot key so
+  // the "Request coverage" button for the in-flight cell disables itself
+  // mid-request, preventing a double-click from firing two concurrent
+  // POSTs (which the DB-level unique index would otherwise let race).
+  const [busyRequestSlotKey, setBusyRequestSlotKey] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Cancels any in-flight request before starting a new one - matching
   // ScheduleTab.tsx's loadSchedule AbortController pattern - so both the
-  // initial mount fetch and a user-triggered retry go through the same
-  // ref-guarded controller: whichever request is superseded gets aborted,
-  // and only the request still current when it finishes is allowed to
-  // clear `loading`.
+  // initial mount fetch and a user-triggered retry (or week navigation) go
+  // through the same ref-guarded controller: whichever request is
+  // superseded gets aborted, and only the request still current when it
+  // finishes is allowed to clear `loading`.
   const loadAbortControllerRef = useRef<AbortController | null>(null);
   const loadOverview = useCallback(() => {
     loadAbortControllerRef.current?.abort();
@@ -105,7 +157,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
 
     setLoading(true);
     setError(null);
-    scheduleApi.getOverview(groupId, { signal: controller.signal })
+    scheduleApi.getOverview(groupId, { weekStart, signal: controller.signal })
       .then(res => {
         const map = new Map<string, ScheduleOverviewMember[]>();
         res.data.slots.forEach(slot => {
@@ -122,7 +174,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
           setLoading(false);
         }
       });
-  }, [groupId]);
+  }, [groupId, weekStart]);
 
   useEffect(() => {
     loadOverview();
@@ -135,6 +187,14 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
       loadAbortControllerRef.current?.abort();
     };
   }, []);
+
+  // Changing weeks invalidates whatever cell was open (its data belongs to
+  // the previous week), so close the popover to avoid showing stale
+  // members/actions against the wrong date.
+  useEffect(() => {
+    setActiveCellKey(null);
+    setPopoverPosition(null);
+  }, [weekStart]);
 
   useEffect(() => {
     if (activeCellKey === null) return;
@@ -158,6 +218,54 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
     };
   }, [activeCellKey]);
 
+  const handleClaim = (requestId: number) => {
+    setBusyRequestId(requestId);
+    scheduleApi.claimCoverageRequest(groupId, requestId)
+      .then(() => {
+        toast.showSuccess('Shift claimed.');
+        setActiveCellKey(null);
+        setPopoverPosition(null);
+        loadOverview();
+      })
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to claim shift.');
+        loadOverview();
+      })
+      .finally(() => setBusyRequestId(null));
+  };
+
+  const handleCancelRequest = (requestId: number) => {
+    setBusyRequestId(requestId);
+    scheduleApi.cancelCoverageRequest(groupId, requestId)
+      .then(() => {
+        toast.showSuccess('Coverage request cancelled.');
+        setActiveCellKey(null);
+        setPopoverPosition(null);
+        loadOverview();
+      })
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to cancel coverage request.');
+        loadOverview();
+      })
+      .finally(() => setBusyRequestId(null));
+  };
+
+  const handleRequestCoverage = (slotKeyValue: string, date: string, hour: number) => {
+    setBusyRequestSlotKey(slotKeyValue);
+    scheduleApi.createCoverageRequest(groupId, { date, hour })
+      .then(() => {
+        toast.showSuccess('Coverage requested.');
+        setActiveCellKey(null);
+        setPopoverPosition(null);
+        loadOverview();
+      })
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to request coverage.');
+        loadOverview();
+      })
+      .finally(() => setBusyRequestSlotKey(null));
+  };
+
   if (loading) {
     return <SkeletonLoader variant="card" count={1} />;
   }
@@ -175,14 +283,26 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
     ? totalMembers
     : Math.max(0, ...Array.from(membersBySlot.values()).map(m => m.length));
 
+  const today = todayIso();
+
   return (
     <div className="schedule-overview">
+      <div className="schedule-overview__week-nav">
+        <button type="button" className="btn-secondary" onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Previous week">
+          ◀
+        </button>
+        <span>{formatWeekLabel(weekStart)}</span>
+        <button type="button" className="btn-secondary" onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="Next week">
+          ▶
+        </button>
+      </div>
+
       <div className="schedule-grid" role="table" aria-label="Weekly availability overview">
         <div className="schedule-grid__row schedule-grid__row--header" role="row">
           <div className="schedule-grid__cell schedule-grid__cell--corner" role="columnheader" />
-          {DAYS.map(day => (
+          {DAYS.map((day, dayOfWeek) => (
             <div key={day} className="schedule-grid__cell schedule-grid__cell--header" role="columnheader">
-              {day}
+              {day} {new Date(`${dateForWeekStart(weekStart, dayOfWeek)}T00:00:00Z`).getUTCDate()}
             </div>
           ))}
         </div>
@@ -195,7 +315,9 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
               const key = slotKey(dayOfWeek, hour);
               const members = membersBySlot.get(key) ?? [];
               const tier = tierFor(members.length, effectiveTotal);
-              const label = `${DAYS[dayOfWeek]} ${formatHourLabel(hour)}, ${members.length} available`;
+              const date = dateForWeekStart(weekStart, dayOfWeek);
+              const needsCoverage = members.some(m => m.status === 'needs_coverage');
+              const label = `${DAYS[dayOfWeek]} ${formatHourLabel(hour)}, ${members.length} available${needsCoverage ? ', needs coverage' : ''}`;
               const isActive = activeCellKey === key;
 
               if (members.length === 0) {
@@ -215,7 +337,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                     type="button"
                     role="cell"
                     aria-label={label}
-                    className={`schedule-grid__slot schedule-grid__slot--tier-${tier}`}
+                    className={`schedule-grid__slot schedule-grid__slot--tier-${tier}${needsCoverage ? ' schedule-grid__slot--needs-coverage' : ''}`}
                     onClick={(event) => {
                       if (isActive) {
                         setActiveCellKey(null);
@@ -234,7 +356,44 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                     >
                       <ul>
                         {members.map(member => (
-                          <li key={member.user_id}>{memberDisplayName(member)}</li>
+                          <li key={member.user_id} className="schedule-overview__popover-row">
+                            <span>
+                              {memberDisplayName(member)}
+                              {member.status === 'needs_coverage' && <span className="schedule-overview__tag"> needs coverage</span>}
+                              {member.status === 'covering' && <span className="schedule-overview__tag"> covering</span>}
+                            </span>
+                            {member.status === 'needs_coverage' && member.coverage_request_id !== undefined && member.user_id !== currentUserId && (
+                              <button
+                                type="button"
+                                className="btn-secondary schedule-overview__action"
+                                disabled={busyRequestId !== null || member.conflict}
+                                title={member.conflict ? 'You already have a conflicting shift at this time' : undefined}
+                                onClick={() => handleClaim(member.coverage_request_id as number)}
+                              >
+                                Claim
+                              </button>
+                            )}
+                            {member.user_id === currentUserId && member.status === 'normal' && date >= today && (
+                              <button
+                                type="button"
+                                className="btn-secondary schedule-overview__action"
+                                disabled={busyRequestSlotKey === key}
+                                onClick={() => handleRequestCoverage(key, date, hour)}
+                              >
+                                Request coverage
+                              </button>
+                            )}
+                            {member.user_id === currentUserId && member.status === 'needs_coverage' && member.coverage_request_id !== undefined && (
+                              <button
+                                type="button"
+                                className="btn-secondary schedule-overview__action"
+                                disabled={busyRequestId === member.coverage_request_id}
+                                onClick={() => handleCancelRequest(member.coverage_request_id as number)}
+                              >
+                                Cancel request
+                              </button>
+                            )}
+                          </li>
                         ))}
                       </ul>
                     </div>

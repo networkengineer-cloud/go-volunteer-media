@@ -1,28 +1,33 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { scheduleApi, groupsApi } from '../../api/client';
-import type { GroupMember } from '../../api/client';
+import type { GroupMember, ScheduleSlot } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
 import ScheduleOverview from './ScheduleOverview';
+import Modal from '../../components/Modal';
+import RequestCoverageRangeForm from './RequestCoverageRangeForm';
 import { DAYS, HOURS, slotKey, formatHourLabel } from './scheduleGrid';
 import './ScheduleTab.css';
 
 export interface ScheduleTabProps {
   groupId: number;
   canManageMembers: boolean;
+  currentUserId: number;
 }
 
-const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) => {
+const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, currentUserId }) => {
   const toast = useToast();
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
+  const [savedSlots, setSavedSlots] = useState<ScheduleSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState<'individual' | 'overview'>('individual');
+  const [showRequestRangeModal, setShowRequestRangeModal] = useState(false);
 
   // Cancels any in-flight request before starting a new one - matching
   // GroupPage.tsx's loadAnimals/loadActivityFeed AbortController pattern -
@@ -43,6 +48,7 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) 
     request
       .then(res => {
         setSelectedSlots(new Set(res.data.slots.map(s => slotKey(s.day_of_week, s.hour))));
+        setSavedSlots(res.data.slots);
       })
       .catch(err => {
         if (axios.isCancel(err)) return;
@@ -71,11 +77,10 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) 
   }, []);
 
   useEffect(() => {
-    if (!canManageMembers) return;
     groupsApi.getMembers(groupId)
       .then(res => setMembers(res.data))
-      .catch(() => { /* picker just won't populate; own-schedule view still works */ });
-  }, [groupId, canManageMembers]);
+      .catch(() => { /* picker/overview member count just won't populate; own-schedule view still works */ });
+  }, [groupId]);
 
   const toggleSlot = (dayOfWeek: number, hour: number) => {
     setSelectedSlots(prev => {
@@ -100,7 +105,10 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) 
       ? scheduleApi.updateMine(groupId, slots)
       : scheduleApi.updateForMember(groupId, selectedUserId, slots);
     request
-      .then(() => toast.showSuccess('Schedule saved.'))
+      .then(() => {
+        toast.showSuccess('Schedule saved.');
+        setSavedSlots(slots.map(s => ({ day_of_week: s.day_of_week, hour: s.hour })));
+      })
       .catch(() => toast.showError('Failed to save schedule.'))
       .finally(() => setSaving(false));
   };
@@ -115,27 +123,25 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) 
 
   return (
     <div className="schedule-tab">
-      {canManageMembers && (
-        <div className="schedule-tab__view-toggle" role="group" aria-label="Schedule view">
-          <button
-            type="button"
-            className={viewMode === 'individual' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setViewMode('individual')}
-          >
-            Individual
-          </button>
-          <button
-            type="button"
-            className={viewMode === 'overview' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setViewMode('overview')}
-          >
-            Overview
-          </button>
-        </div>
-      )}
+      <div className="schedule-tab__view-toggle" role="group" aria-label="Schedule view">
+        <button
+          type="button"
+          className={viewMode === 'individual' ? 'btn-primary' : 'btn-secondary'}
+          onClick={() => setViewMode('individual')}
+        >
+          Individual
+        </button>
+        <button
+          type="button"
+          className={viewMode === 'overview' ? 'btn-primary' : 'btn-secondary'}
+          onClick={() => setViewMode('overview')}
+        >
+          Overview
+        </button>
+      </div>
 
-      {viewMode === 'overview' && canManageMembers ? (
-        <ScheduleOverview groupId={groupId} totalMembers={members.length} />
+      {viewMode === 'overview' ? (
+        <ScheduleOverview groupId={groupId} totalMembers={members.length} currentUserId={currentUserId} />
       ) : (
         <>
           {canManageMembers && (
@@ -192,8 +198,30 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers }) 
           <button type="button" className="btn-primary schedule-tab__save" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save Schedule'}
           </button>
+
+          {selectedUserId === null && (
+            <button
+              type="button"
+              className="btn-secondary schedule-tab__request-range"
+              onClick={() => setShowRequestRangeModal(true)}
+            >
+              Request Coverage for a Date Range
+            </button>
+          )}
         </>
       )}
+
+      <Modal
+        isOpen={showRequestRangeModal}
+        onClose={() => setShowRequestRangeModal(false)}
+        title="Request Coverage for a Date Range"
+      >
+        <RequestCoverageRangeForm
+          groupId={groupId}
+          slots={savedSlots}
+          onCancel={() => setShowRequestRangeModal(false)}
+        />
+      </Modal>
     </div>
   );
 };

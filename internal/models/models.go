@@ -529,3 +529,33 @@ type ShiftSlot struct {
 	User      User      `gorm:"foreignKey:UserID" json:"-"`
 	Group     Group     `gorm:"foreignKey:GroupID" json:"-"`
 }
+
+// CoverageRequestStatus is the lifecycle state of a ShiftCoverageRequest.
+type CoverageRequestStatus string
+
+const (
+	CoverageRequestOpen      CoverageRequestStatus = "open"
+	CoverageRequestClaimed   CoverageRequestStatus = "claimed"
+	CoverageRequestCancelled CoverageRequestStatus = "cancelled"
+)
+
+// ShiftCoverageRequest is a one-off exception against a specific calendar
+// occurrence of a volunteer's recurring ShiftSlot. It never modifies
+// ShiftSlot itself - the recurring pattern stays the source of truth for
+// every date except the one named here. Date is date-only (time component
+// truncated to UTC midnight).
+type ShiftCoverageRequest struct {
+	ID                uint                  `gorm:"primaryKey" json:"id"`
+	CreatedAt         time.Time             `json:"created_at"`
+	UpdatedAt         time.Time             `json:"updated_at"`
+	GroupID           uint                  `gorm:"not null;index:idx_coverage_request_group_date" json:"group_id"`
+	RequestedByUserID uint                  `gorm:"not null;index" json:"requested_by_user_id"`
+	Date              time.Time             `gorm:"not null;index:idx_coverage_request_group_date" json:"date"`
+	Hour              int                   `gorm:"not null" json:"hour"`
+	Status            CoverageRequestStatus `gorm:"not null;default:open;index" json:"status"`
+	ClaimedByUserID   *uint                 `json:"claimed_by_user_id"`
+	ClaimedAt         *time.Time            `json:"claimed_at"`
+	RequestedByUser   User                  `gorm:"foreignKey:RequestedByUserID" json:"-"`
+	ClaimedByUser     *User                 `gorm:"foreignKey:ClaimedByUserID" json:"-"`
+	Group             Group                 `gorm:"foreignKey:GroupID" json:"-"`
+}

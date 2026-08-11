@@ -28,6 +28,38 @@ import (
 // only needs updating in two places instead of four.
 const vectorEmbeddingDimension = 1024
 
+// gorm.io/driver/postgres (via pgx) decodes `timestamptz` columns into
+// time.Time using time.Local, not UTC - so without this, any date/time
+// value read back from Postgres comes back shifted to whatever the
+// OS/container's local timezone is, silently breaking any .Format()/
+// .Weekday() call on it (e.g. ShiftCoverageRequest.Date's date-keyed
+// lookups in GetGroupScheduleOverview, notification content, weekday-based
+// conflict checks) whenever that local timezone isn't already UTC. This
+// codebase's date/time handling is UTC-anchored throughout by design (see
+// e.g. ShiftSlot's day-of-week convention) - this makes that actually true
+// for every timestamptz read, not just freshly-parsed values.
+//
+// An init() (rather than a line in cmd/api/main.go) so every path that
+// touches Postgres gets it - the production binary, cmd/seed, and the
+// *_postgres_test.go files (which open their own *gorm.DB directly,
+// bypassing Initialize() below) all import this package, so this runs
+// exactly once before any of them read a single row. SQLite (used by every
+// other test) doesn't exhibit this driver behavior, which is why this went
+// undetected until a real Postgres run.
+//
+// pgx does offer a narrower, connection-scoped fix (registering a
+// TimestamptzCodec with ScanLocation: time.UTC on the type map), which
+// would avoid this process-global mutation - deliberately not used here
+// because it requires building an explicit pgx connector instead of
+// `postgres.Open(dsn)`, and the *_postgres_test.go files each call
+// gorm.Open(postgres.Open(dsn), ...) directly, so they'd need that same
+// connector wiring duplicated rather than getting the fix for free via
+// this package's init(). See TestLocalTimeIsUTC in database_test.go for
+// the (non-Postgres, always-run) regression guard for this line.
+func init() {
+	time.Local = time.UTC
+}
+
 // Initialize creates and returns a database connection
 func Initialize() (*gorm.DB, error) {
 	dbHost := os.Getenv("DB_HOST")
@@ -203,6 +235,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.GroupDocument{},
 		&models.APIToken{},
 		&models.ShiftSlot{},
+		&models.ShiftCoverageRequest{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -678,6 +711,46 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.WithField("error", err.Error()).Warn("Failed to create index idx_animal_comments_animal_deleted_created")
 	} else {
 		logging.Info("Created index idx_animal_comments_animal_deleted_created")
+	}
+
+	// Partial unique index backstopping the app-level check-then-create logic
+	// in CreateCoverageRequest against a race under READ COMMITTED (Postgres
+	// in production): a transaction alone doesn't make that check-then-insert
+	// atomic, so two concurrent creates for the same (group, user, date,
+	// hour) can both pass the app-level check and both insert. This index
+	// rejects the second insert at the DB level as a last line of defense.
+	// Scoped to non-cancelled rows so a cancelled request never blocks a
+	// fresh one for the same slot.
+	coverageRequestActiveUniqueIndexQuery := `
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_request_active_unique
+		ON shift_coverage_requests (group_id, requested_by_user_id, date, hour)
+		WHERE status <> 'cancelled'
+	`
+	if err := db.Exec(coverageRequestActiveUniqueIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create partial unique index on shift_coverage_requests")
+	} else {
+		logging.Info("Created partial unique index idx_coverage_request_active_unique")
+	}
+
+	// Partial unique index backstopping the app-level check-then-write logic
+	// in ClaimCoverageRequest against a race between two concurrent claims by
+	// the SAME user for two DIFFERENT open requests at the same (date, hour):
+	// that check is a plain count-then-write across different rows (not a
+	// conditional update gated on a single row's state, unlike the per-
+	// request claim itself), so under READ COMMITTED (Postgres in
+	// production) both claims can pass the check and both succeed. This
+	// index rejects the second claim at the DB level as a last line of
+	// defense. Scoped to claimed rows only, so an open or cancelled request
+	// never counts against it.
+	coverageRequestClaimedUniqueIndexQuery := `
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_request_claimed_unique
+		ON shift_coverage_requests (claimed_by_user_id, date, hour)
+		WHERE status = 'claimed'
+	`
+	if err := db.Exec(coverageRequestClaimedUniqueIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create partial unique index idx_coverage_request_claimed_unique")
+	} else {
+		logging.Info("Created partial unique index idx_coverage_request_claimed_unique")
 	}
 
 	logging.Info("Custom indexes creation completed")

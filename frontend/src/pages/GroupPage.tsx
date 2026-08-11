@@ -31,7 +31,7 @@ const NAME_SEARCH_DEBOUNCE_MS = 400;
 
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  useAuth(); // Ensure user is authenticated
+  const { user } = useAuth(); // Ensure user is authenticated; also need their id for schedule actions
   const navigate = useNavigate();
   const toast = useToast();
   const [searchParams] = useSearchParams();
@@ -1625,6 +1625,7 @@ const GroupPage: React.FC = () => {
           <ScheduleTab
             groupId={Number(id)}
             canManageMembers={!!(membership?.is_group_admin || membership?.is_site_admin)}
+            currentUserId={user?.id ?? 0}
           />
         </div>
       )}

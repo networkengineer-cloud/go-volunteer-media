@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -82,6 +83,50 @@ func TestRemoveMemberFromGroupDeletesShiftSlots(t *testing.T) {
 	}
 	if len(remaining) != 0 {
 		t.Errorf("expected all ShiftSlot rows for the removed member to be deleted, found %d", len(remaining))
+	}
+}
+
+// TestRemoveMemberFromGroupCancelsCoverageRequests verifies that removing a
+// member from a group also cancels any non-cancelled ShiftCoverageRequest in
+// that group where the removed member is either the original requester or
+// the claimant. Without this, a removed member who had claimed someone
+// else's open request would keep showing up in the schedule overview
+// roster tagged "covering" even though they're no longer in the group.
+func TestRemoveMemberFromGroupCancelsCoverageRequests(t *testing.T) {
+	db := SetupTestDB(t)
+	admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+	requester := CreateTestUser(t, db, "requester", "requester@test.com", "password123", false)
+	claimant := CreateTestUser(t, db, "claimant", "claimant@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, requester.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, claimant.ID, group.ID, false)
+
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+	if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+		t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+	}
+
+	c, w := setupGroupTestContext(admin.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "userId", Value: fmt.Sprintf("%d", claimant.ID)},
+	}
+	c.Request = httptest.NewRequest("DELETE", fmt.Sprintf("/api/groups/%d/members/%d", group.ID, claimant.ID), nil)
+
+	handler := RemoveMemberFromGroup(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated models.ShiftCoverageRequest
+	if err := db.First(&updated, reqRow.ID).Error; err != nil {
+		t.Fatalf("failed to reload coverage request: %v", err)
+	}
+	if updated.Status != models.CoverageRequestCancelled {
+		t.Fatalf("expected coverage request status to be cancelled after claimant left the group, got %s", updated.Status)
 	}
 }
 
@@ -294,6 +339,162 @@ func TestUpdateMySchedule(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestUpdateMySchedule_CancelsOrphanedCoverageRequests verifies that
+// editing a recurring schedule cancels any open/claimed
+// ShiftCoverageRequest the user made as the original requester whose
+// weekday/hour no longer has a matching ShiftSlot row after the edit -
+// otherwise GetGroupScheduleOverview can never surface that request again
+// (it can only show a coverage request tied to a weekday/hour that still
+// has a ShiftSlot), silently hiding even an already-claimed request from
+// the only view that shows it. A request for a weekday/hour the user KEPT
+// must NOT be cancelled.
+func TestUpdateMySchedule_CancelsOrphanedCoverageRequests(t *testing.T) {
+	db := SetupTestDB(t)
+	user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
+
+	// Two recurring slots: Tuesday 10am and Wednesday 9am.
+	db.Create(&models.ShiftSlot{UserID: user.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
+	db.Create(&models.ShiftSlot{UserID: user.ID, GroupID: group.ID, DayOfWeek: 3, Hour: 9})
+
+	tuesdayDate, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	wednesdayDate, _ := time.Parse("2006-01-02", nextWeekday(time.Wednesday))
+	orphaned := createOpenCoverageRequest(t, db, group.ID, user.ID, 2, 10, tuesdayDate)
+	kept := createOpenCoverageRequest(t, db, group.ID, user.ID, 3, 9, wednesdayDate)
+
+	// New schedule drops Tuesday 10am but keeps Wednesday 9am.
+	c, w := setupGroupTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/me", group.ID),
+		bytes.NewBufferString(`{"slots":[{"day_of_week":3,"hour":9}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateMySchedule(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updatedOrphaned models.ShiftCoverageRequest
+	if err := db.First(&updatedOrphaned, orphaned.ID).Error; err != nil {
+		t.Fatalf("failed to reload orphaned request: %v", err)
+	}
+	if updatedOrphaned.Status != models.CoverageRequestCancelled {
+		t.Errorf("expected orphaned coverage request (dropped weekday/hour) to be cancelled, got %s", updatedOrphaned.Status)
+	}
+
+	var updatedKept models.ShiftCoverageRequest
+	if err := db.First(&updatedKept, kept.ID).Error; err != nil {
+		t.Fatalf("failed to reload kept request: %v", err)
+	}
+	if updatedKept.Status != models.CoverageRequestOpen {
+		t.Errorf("expected coverage request for a retained weekday/hour to remain open, got %s", updatedKept.Status)
+	}
+}
+
+// TestUpdateMemberSchedule_CancelsRedundantClaimsForNewSlots verifies the
+// root-cause fix for a claimant later gaining a conflicting ShiftSlot:
+// Alice requests coverage for her Tuesday 10am shift, Bob claims it (Bob
+// has no Tuesday 10am ShiftSlot of his own at that point). An admin then
+// edits Bob's schedule to add a Tuesday 10am slot. Without cancelling the
+// redundant claim, Bob would render twice in GetGroupScheduleOverview for
+// that slot - once as a normal member (his new ShiftSlot), once as
+// "covering" (his old claim).
+func TestUpdateMemberSchedule_CancelsRedundantClaimsForNewSlots(t *testing.T) {
+	db := SetupTestDB(t)
+	admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+	alice := CreateTestUser(t, db, "alice", "alice@test.com", "password123", false)
+	bob := CreateTestUser(t, db, "bob", "bob@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, alice.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, bob.ID, group.ID, false)
+
+	db.Create(&models.ShiftSlot{UserID: alice.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
+
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	reqRow := createOpenCoverageRequest(t, db, group.ID, alice.ID, 2, 10, date)
+	if claim := performClaimCoverageRequest(db, bob.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+		t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+	}
+
+	// Admin adds Bob to Tuesday 10am, colliding with the claim he already
+	// holds for that weekday/hour.
+	c, w := setupGroupTestContext(admin.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "userId", Value: fmt.Sprintf("%d", bob.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/%d", group.ID, bob.ID),
+		bytes.NewBufferString(`{"slots":[{"day_of_week":2,"hour":10}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateMemberSchedule(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated models.ShiftCoverageRequest
+	if err := db.First(&updated, reqRow.ID).Error; err != nil {
+		t.Fatalf("failed to reload coverage request: %v", err)
+	}
+	if updated.Status != models.CoverageRequestCancelled {
+		t.Errorf("expected the redundant claim to be cancelled once the claimant gained a colliding ShiftSlot, got %s", updated.Status)
+	}
+}
+
+// TestUpdateMemberSchedule_KeepsClaimsForDifferentSlots is the companion
+// case to TestUpdateMemberSchedule_CancelsRedundantClaimsForNewSlots: a
+// claim for a weekday/hour that does NOT collide with the newly-added slot
+// must survive the schedule edit.
+func TestUpdateMemberSchedule_KeepsClaimsForDifferentSlots(t *testing.T) {
+	db := SetupTestDB(t)
+	admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+	alice := CreateTestUser(t, db, "alice", "alice@test.com", "password123", false)
+	bob := CreateTestUser(t, db, "bob", "bob@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, alice.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, bob.ID, group.ID, false)
+
+	// Alice's shift needing coverage is Wednesday 9am, not Tuesday 10am.
+	db.Create(&models.ShiftSlot{UserID: alice.ID, GroupID: group.ID, DayOfWeek: 3, Hour: 9})
+
+	wedDate, _ := time.Parse("2006-01-02", nextWeekday(time.Wednesday))
+	reqRow := createOpenCoverageRequest(t, db, group.ID, alice.ID, 3, 9, wedDate)
+	if claim := performClaimCoverageRequest(db, bob.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+		t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+	}
+
+	// Admin adds Bob to Tuesday 10am - a different weekday/hour than his
+	// Wednesday 9am claim, so the claim must not be cancelled.
+	c, w := setupGroupTestContext(admin.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "userId", Value: fmt.Sprintf("%d", bob.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/%d", group.ID, bob.ID),
+		bytes.NewBufferString(`{"slots":[{"day_of_week":2,"hour":10}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateMemberSchedule(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated models.ShiftCoverageRequest
+	if err := db.First(&updated, reqRow.ID).Error; err != nil {
+		t.Fatalf("failed to reload coverage request: %v", err)
+	}
+	if updated.Status != models.CoverageRequestClaimed {
+		t.Errorf("expected the claim for a non-colliding weekday/hour to survive, got %s", updated.Status)
 	}
 }
 
@@ -724,12 +925,25 @@ func TestGetGroupScheduleOverview(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name: "regular member is denied",
+			// Access was widened to any group member (not just group/site
+			// admins) - see TestGetGroupScheduleOverview_NonAdminMemberCanAccess
+			// for a more targeted test of the same behavior.
+			name: "regular member can access",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				regular := CreateTestUser(t, db, "regular", "regular@test.com", "password123", false)
 				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, regular.ID, group.ID, false)
 				return regular, group
+			},
+			isAdmin:        false,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "non-member is denied",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				outsider := CreateTestUser(t, db, "outsider", "outsider@test.com", "password123", false)
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+				return outsider, group
 			},
 			isAdmin:        false,
 			expectedStatus: http.StatusForbidden,
@@ -828,4 +1042,270 @@ func TestGetGroupScheduleOverview(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetGroupScheduleOverview_NonAdminMemberCanAccess(t *testing.T) {
+	db := SetupTestDB(t)
+	member := CreateTestUser(t, db, "member1", "member1@example.com", "password123", false)
+	group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, member.ID, group.ID, false)
+	db.Model(group).Update("scheduling_enabled", true)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", member.ID)
+		c.Set("is_admin", false)
+		c.Next()
+	})
+	router.GET("/groups/:id/schedule/overview", GetGroupScheduleOverview(db))
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/schedule/overview", group.ID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 for non-admin member, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetGroupScheduleOverview_EffectiveRoster(t *testing.T) {
+	db := SetupTestDB(t)
+	requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+	requester2 := CreateTestUser(t, db, "requester2", "requester2@example.com", "password123", false)
+	claimant := CreateTestUser(t, db, "claimant", "claimant@example.com", "password123", false)
+	viewer := CreateTestUser(t, db, "viewer", "viewer@example.com", "password123", false)
+	group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+	for _, u := range []*models.User{requester, requester2, claimant, viewer} {
+		AddUserToGroupWithAdmin(t, db, u.ID, group.ID, false)
+	}
+	db.Model(group).Update("scheduling_enabled", true)
+	db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
+	// requester2 shares the exact same recurring (day_of_week, hour) bucket
+	// as requester - this is what makes it possible for two different
+	// members to each file their own coverage request for the same
+	// calendar date/hour.
+	db.Create(&models.ShiftSlot{UserID: requester2.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
+
+	weekStart := time.Now().UTC().Truncate(24 * time.Hour)
+	weekStart = weekStart.AddDate(0, 0, -int(weekStart.Weekday())) // this week's Sunday
+	tuesday := weekStart.AddDate(0, 0, 2)
+
+	t.Run("open request keeps requester listed, flagged needs_coverage", func(t *testing.T) {
+		reqRow := &models.ShiftCoverageRequest{GroupID: group.ID, RequestedByUserID: requester.ID, Date: tuesday, Hour: 10, Status: models.CoverageRequestOpen}
+		db.Create(reqRow)
+		defer db.Delete(reqRow)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", viewer.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.GET("/groups/:id/schedule/overview", GetGroupScheduleOverview(db))
+
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/schedule/overview?week_start=%s", group.ID, weekStart.Format("2006-01-02")), nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var body struct {
+			Slots []scheduleOverviewSlot `json:"slots"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		found := false
+		for _, s := range body.Slots {
+			if s.Date != tuesday.Format("2006-01-02") || s.Hour != 10 {
+				continue
+			}
+			for _, m := range s.Members {
+				if m.UserID == requester.ID {
+					found = true
+					if m.Status != "needs_coverage" {
+						t.Fatalf("Expected requester status needs_coverage, got %s", m.Status)
+					}
+					if !m.Claimable {
+						t.Fatal("Expected viewer to be able to claim")
+					}
+				}
+			}
+		}
+		if !found {
+			t.Fatal("Expected requester to still appear in the roster")
+		}
+	})
+
+	t.Run("claimed request swaps requester for claimant", func(t *testing.T) {
+		claimedAt := time.Now().UTC()
+		reqRow := &models.ShiftCoverageRequest{
+			GroupID: group.ID, RequestedByUserID: requester.ID, Date: tuesday, Hour: 10,
+			Status: models.CoverageRequestClaimed, ClaimedByUserID: &claimant.ID, ClaimedAt: &claimedAt,
+		}
+		db.Create(reqRow)
+		defer db.Delete(reqRow)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", viewer.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.GET("/groups/:id/schedule/overview", GetGroupScheduleOverview(db))
+
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/schedule/overview?week_start=%s", group.ID, weekStart.Format("2006-01-02")), nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		var body struct {
+			Slots []scheduleOverviewSlot `json:"slots"`
+		}
+		json.Unmarshal(w.Body.Bytes(), &body)
+
+		var requesterPresent, claimantPresent bool
+		for _, s := range body.Slots {
+			if s.Date != tuesday.Format("2006-01-02") || s.Hour != 10 {
+				continue
+			}
+			for _, m := range s.Members {
+				if m.UserID == requester.ID {
+					requesterPresent = true
+				}
+				if m.UserID == claimant.ID && m.Status == "covering" {
+					claimantPresent = true
+				}
+			}
+		}
+		if requesterPresent {
+			t.Fatal("Expected requester to be removed from the roster once claimed")
+		}
+		if !claimantPresent {
+			t.Fatal("Expected claimant to appear in the roster, tagged covering")
+		}
+	})
+
+	t.Run("two members sharing the same bucket each get their own open request", func(t *testing.T) {
+		req1 := &models.ShiftCoverageRequest{GroupID: group.ID, RequestedByUserID: requester.ID, Date: tuesday, Hour: 10, Status: models.CoverageRequestOpen}
+		req2 := &models.ShiftCoverageRequest{GroupID: group.ID, RequestedByUserID: requester2.ID, Date: tuesday, Hour: 10, Status: models.CoverageRequestOpen}
+		db.Create(req1)
+		db.Create(req2)
+		defer db.Delete(req1)
+		defer db.Delete(req2)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", viewer.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.GET("/groups/:id/schedule/overview", GetGroupScheduleOverview(db))
+
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/schedule/overview?week_start=%s", group.ID, weekStart.Format("2006-01-02")), nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var body struct {
+			Slots []scheduleOverviewSlot `json:"slots"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+
+		var m1, m2 *scheduleOverviewMember
+		for i, s := range body.Slots {
+			if s.Date != tuesday.Format("2006-01-02") || s.Hour != 10 {
+				continue
+			}
+			for j, m := range s.Members {
+				if m.UserID == requester.ID {
+					m1 = &body.Slots[i].Members[j]
+				}
+				if m.UserID == requester2.ID {
+					m2 = &body.Slots[i].Members[j]
+				}
+			}
+		}
+		if m1 == nil || m2 == nil {
+			t.Fatalf("Expected both requester and requester2 to appear in the roster, got requester=%v requester2=%v", m1, m2)
+		}
+		if m1.Status != "needs_coverage" || m2.Status != "needs_coverage" {
+			t.Fatalf("Expected both members tagged needs_coverage, got requester=%s requester2=%s", m1.Status, m2.Status)
+		}
+		if m1.CoverageRequestID == nil || m2.CoverageRequestID == nil {
+			t.Fatal("Expected both members to carry a coverage_request_id")
+		}
+		if *m1.CoverageRequestID == *m2.CoverageRequestID {
+			t.Fatal("Expected requester and requester2 to reference distinct coverage requests")
+		}
+		if *m1.CoverageRequestID != req1.ID {
+			t.Fatalf("Expected requester's coverage_request_id to be %d, got %d", req1.ID, *m1.CoverageRequestID)
+		}
+		if *m2.CoverageRequestID != req2.ID {
+			t.Fatalf("Expected requester2's coverage_request_id to be %d, got %d", req2.ID, *m2.CoverageRequestID)
+		}
+	})
+}
+
+// TestParseWeekStart verifies parseWeekStart's Sunday-snapping behavior for
+// a non-Sunday input, and that an empty string defaults to the current
+// week's Sunday. Every existing GetGroupScheduleOverview test either omits
+// week_start or pre-computes a Sunday before passing it, so the snapping
+// logic (ref.AddDate(0, 0, -int(ref.Weekday()))) itself was previously
+// unverified by any test.
+func TestParseWeekStart(t *testing.T) {
+	t.Run("a non-Sunday input snaps back to that week's Sunday", func(t *testing.T) {
+		// 2026-08-12 is a Wednesday; that week's Sunday is 2026-08-09.
+		got, err := parseWeekStart("2026-08-12")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Fatalf("expected %s, got %s", want.Format("2006-01-02"), got.Format("2006-01-02"))
+		}
+		if got.Weekday() != time.Sunday {
+			t.Fatalf("expected result to be a Sunday, got %s", got.Weekday())
+		}
+	})
+
+	t.Run("a Sunday input is returned unchanged", func(t *testing.T) {
+		got, err := parseWeekStart("2026-08-09")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Fatalf("expected %s, got %s", want.Format("2006-01-02"), got.Format("2006-01-02"))
+		}
+	})
+
+	t.Run("an empty string defaults to the current week's Sunday", func(t *testing.T) {
+		got, err := parseWeekStart("")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Weekday() != time.Sunday {
+			t.Fatalf("expected result to be a Sunday, got %s", got.Weekday())
+		}
+		now := time.Now().UTC()
+		wantWeekStart := now.Truncate(24 * time.Hour).AddDate(0, 0, -int(now.Weekday()))
+		if !got.Equal(wantWeekStart) {
+			t.Fatalf("expected %s (this week's Sunday), got %s", wantWeekStart.Format("2006-01-02"), got.Format("2006-01-02"))
+		}
+	})
+
+	t.Run("an invalid date string is rejected", func(t *testing.T) {
+		if _, err := parseWeekStart("not-a-date"); err == nil {
+			t.Fatal("expected an error for an invalid date string")
+		}
+	})
 }

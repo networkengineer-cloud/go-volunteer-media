@@ -36,6 +36,9 @@ import (
 )
 
 func main() {
+	// time.Local is forced to UTC in internal/database's init() (imported
+	// below via internal/database) - see that file for why.
+
 	// Load environment variables first so everything below — logging,
 	// telemetry, database config — observes vars set only in .env, not just
 	// the process environment. The "no .env file" notice itself is logged
@@ -450,6 +453,10 @@ func main() {
 			group.GET("/schedule/me", handlers.GetMySchedule(db))
 			group.PUT("/schedule/me", handlers.UpdateMySchedule(db))
 			group.GET("/schedule/overview", handlers.GetGroupScheduleOverview(db))
+			group.POST("/schedule/coverage-requests", handlers.CreateCoverageRequest(db, emailService, groupMeService))
+			group.POST("/schedule/coverage-requests/batch", handlers.CreateCoverageRequestsBatch(db, emailService, groupMeService))
+			group.POST("/schedule/coverage-requests/:requestId/claim", handlers.ClaimCoverageRequest(db, emailService, groupMeService))
+			group.DELETE("/schedule/coverage-requests/:requestId", handlers.CancelCoverageRequest(db))
 			group.GET("/schedule/:userId", handlers.GetMemberSchedule(db))
 			group.PUT("/schedule/:userId", handlers.UpdateMemberSchedule(db))
 

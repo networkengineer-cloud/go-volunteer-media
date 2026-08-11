@@ -630,16 +630,48 @@ export interface ScheduleOverviewMember {
   username: string;
   first_name?: string;
   last_name?: string;
+  status: 'normal' | 'needs_coverage' | 'covering';
+  coverage_request_id?: number;
+  claimable?: boolean;
+  conflict?: boolean;
 }
 
 export interface ScheduleOverviewSlot {
+  date: string;
   day_of_week: number;
   hour: number;
   members: ScheduleOverviewMember[];
 }
 
 export interface ScheduleOverviewResponse {
+  week_start: string;
   slots: ScheduleOverviewSlot[];
+}
+
+export interface CoverageRequest {
+  id: number;
+  group_id: number;
+  requested_by_user_id: number;
+  date: string;
+  hour: number;
+  status: 'open' | 'claimed' | 'cancelled';
+  claimed_by_user_id: number | null;
+}
+
+export interface CoverageRequestBatchItem {
+  date: string;
+  hour: number;
+}
+
+export interface CoverageRequestBatchSkipped {
+  date: string;
+  hour: number;
+  reason: string;
+}
+
+export interface CoverageRequestBatchResult {
+  created: CoverageRequest[];
+  skipped: CoverageRequestBatchSkipped[];
 }
 
 export const scheduleApi = {
@@ -651,8 +683,23 @@ export const scheduleApi = {
     api.get<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`, { signal: options?.signal }),
   updateForMember: (groupId: number, userId: number, slots: ScheduleSlot[]) =>
     api.put<ScheduleResponse>(`/groups/${groupId}/schedule/${userId}`, { slots }),
-  getOverview: (groupId: number, options?: { signal?: AbortSignal }) =>
-    api.get<ScheduleOverviewResponse>(`/groups/${groupId}/schedule/overview`, { signal: options?.signal }),
+  getOverview: (groupId: number, options?: { weekStart?: string; signal?: AbortSignal }) =>
+    api.get<ScheduleOverviewResponse>(`/groups/${groupId}/schedule/overview`, {
+      params: options?.weekStart ? { week_start: options.weekStart } : undefined,
+      signal: options?.signal,
+    }),
+  createCoverageRequest: (groupId: number, payload: { date: string; hour: number; userId?: number }) =>
+    api.post<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests`, {
+      date: payload.date,
+      hour: payload.hour,
+      user_id: payload.userId,
+    }),
+  claimCoverageRequest: (groupId: number, requestId: number) =>
+    api.post<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/claim`),
+  cancelCoverageRequest: (groupId: number, requestId: number) =>
+    api.delete<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}`),
+  createCoverageRequestsBatch: (groupId: number, requests: CoverageRequestBatchItem[]) =>
+    api.post<CoverageRequestBatchResult>(`/groups/${groupId}/schedule/coverage-requests/batch`, { requests }),
 };
 
 // Animals API

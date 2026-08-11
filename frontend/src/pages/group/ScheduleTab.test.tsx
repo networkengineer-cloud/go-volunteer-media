@@ -23,7 +23,7 @@ vi.mock('../../api/client', () => ({
 function renderScheduleTab(canManageMembers: boolean) {
   return render(
     <ToastProvider>
-      <ScheduleTab groupId={1} canManageMembers={canManageMembers} />
+      <ScheduleTab groupId={1} canManageMembers={canManageMembers} currentUserId={1} />
     </ToastProvider>
   );
 }
@@ -114,7 +114,7 @@ describe('ScheduleTab', () => {
 
     const { rerender } = render(
       <ToastProvider>
-        <ScheduleTab groupId={1} canManageMembers={false} />
+        <ScheduleTab groupId={1} canManageMembers={false} currentUserId={1} />
       </ToastProvider>
     );
 
@@ -124,7 +124,7 @@ describe('ScheduleTab', () => {
     // Switching to a new group before the first request resolves must abort it.
     rerender(
       <ToastProvider>
-        <ScheduleTab groupId={2} canManageMembers={false} />
+        <ScheduleTab groupId={2} canManageMembers={false} currentUserId={1} />
       </ToastProvider>
     );
     await waitFor(() => expect(capturedFirstSignal?.aborted).toBe(true));
@@ -142,10 +142,13 @@ describe('ScheduleTab', () => {
     expect(screen.getByRole('cell', { name: 'Sun 8:00 AM' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('does not show the individual/overview toggle for a non-admin member', async () => {
-    renderScheduleTab(false);
-    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
-    expect(screen.queryByRole('button', { name: /overview/i })).not.toBeInTheDocument();
+  it('shows the Individual/Overview toggle for non-admin members too', async () => {
+    render(
+      <ToastProvider>
+        <ScheduleTab groupId={7} canManageMembers={false} currentUserId={1} />
+      </ToastProvider>
+    );
+    await waitFor(() => expect(screen.getByRole('group', { name: /schedule view/i })).toBeInTheDocument());
   });
 
   it('a group admin can switch to the overview and back to individual view', async () => {
@@ -164,5 +167,87 @@ describe('ScheduleTab', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /individual/i }));
     expect(await screen.findByLabelText(/viewing schedule for/i)).toBeInTheDocument();
+  });
+
+  it('opens the bulk request-coverage form when viewing my own schedule, and hides it when viewing another member\'s', async () => {
+    vi.mocked(scheduleApi.getMine).mockResolvedValue({
+      data: { slots: [{ day_of_week: 2, hour: 9 }] },
+    } as unknown as AxiosResponse<ScheduleResponse>);
+    vi.mocked(groupsApi.getMembers).mockResolvedValue({
+      data: [{ user_id: 2, username: 'vol2', is_group_admin: false, is_site_admin: false, email: '', skill_tags: [] }],
+    } as unknown as AxiosResponse<GroupMember[]>);
+    vi.mocked(scheduleApi.getForMember).mockResolvedValue({
+      data: { slots: [] },
+    } as unknown as AxiosResponse<ScheduleResponse>);
+
+    render(
+      <ToastProvider>
+        <ScheduleTab groupId={7} canManageMembers={true} currentUserId={1} />
+      </ToastProvider>
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: /request coverage for a date range/i })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /request coverage for a date range/i }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText(/start date/i)).toBeInTheDocument();
+
+    // Closing and switching to another member's schedule hides the button.
+    fireEvent.click(screen.getByRole('button', { name: /close modal/i }));
+    fireEvent.change(screen.getByLabelText(/viewing schedule for/i), { target: { value: '2' } });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /request coverage for a date range/i })).not.toBeInTheDocument());
+  });
+
+  it('offers the request-coverage form only the persisted schedule, not an unsaved toggle', async () => {
+    // Regression test: the "Request Coverage for a Date Range" button sits
+    // directly below "Save Schedule", so "toggle a cell, then open Request
+    // Coverage without saving" is a natural flow. The form's candidate list
+    // must reflect only what's actually persisted server-side (savedSlots),
+    // not the live, possibly-unsaved grid selection - otherwise the form
+    // pre-checks occurrences the backend will just skip (unsaved additions)
+    // or silently drops real shifts (unsaved removals).
+    //
+    // The assertions below depend on 2026-08-11/2026-08-12 being real
+    // "today or later" occurrences (computeCandidateOccurrences drops
+    // anything before today), so the system clock is pinned here - matching
+    // RequestCoverageRangeForm.test.tsx's convention - rather than relying
+    // on the real wall clock, which would make this test start failing the
+    // day after the pinned date.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      vi.mocked(scheduleApi.getMine).mockResolvedValue({
+        data: { slots: [{ day_of_week: 2, hour: 9 }] }, // Tuesday 9am, persisted
+      } as unknown as AxiosResponse<ScheduleResponse>);
+
+      render(
+        <ToastProvider>
+          <ScheduleTab groupId={7} canManageMembers={false} currentUserId={1} />
+        </ToastProvider>
+      );
+      await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+      // Toggle on an additional, unsaved cell (Wednesday 10am) without saving.
+      const unsavedCell = await screen.findByRole('cell', { name: 'Wed 10:00 AM' });
+      fireEvent.click(unsavedCell);
+      expect(unsavedCell).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.click(screen.getByRole('button', { name: /request coverage for a date range/i }));
+      await screen.findByRole('dialog');
+
+      // Pick a date range spanning the persisted Tuesday slot's one occurrence
+      // (2026-08-11) and the unsaved Wednesday toggle's occurrence the next
+      // day (2026-08-12).
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-12' } });
+
+      // Only the persisted Tuesday 9am occurrence should be offered - the
+      // unsaved Wednesday 10am toggle must not appear as a candidate.
+      const candidates = await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
+      expect(candidates).toHaveLength(1);
+      expect(screen.getByRole('checkbox', { name: /9:00 AM/ })).toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /10:00 AM/ })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -83,3 +83,35 @@
 [data-theme='dark'] .schedule-grid__slot--tier-0 {
   border-color: var(--neutral-300);
 }
+
+.schedule-overview__week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.schedule-grid__slot--needs-coverage {
+  outline: 2px solid var(--warning);
+  outline-offset: -2px;
+}
+
+.schedule-overview__popover-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.schedule-overview__tag {
+  font-size: 0.75rem;
+  color: var(--warning);
+}
+
+.schedule-overview__action {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
