@@ -96,6 +96,9 @@ func replaceGroupScheduleForUser(db *gorm.DB, userID, groupID uint, slots []sche
 		if err := cancelOrphanedRequesterCoverageRequests(tx, userID, groupID); err != nil {
 			return err
 		}
+		if err := cancelRedundantClaimsForNewSlots(tx, userID, groupID, slots); err != nil {
+			return err
+		}
 		return nil
 	})
 	return result, err
@@ -123,6 +126,38 @@ func cancelOrphanedRequesterCoverageRequests(tx *gorm.DB, userID, groupID uint) 
 			return err
 		}
 		if count == 0 {
+			if err := tx.Model(&models.ShiftCoverageRequest{ID: r.ID}).
+				Update("status", models.CoverageRequestCancelled).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// cancelRedundantClaimsForNewSlots cancels any ShiftCoverageRequest this
+// user has CLAIMED (covering someone else's shift) whose weekday/hour now
+// collides with a slot they just added to their own recurring schedule.
+// Once they're recurring on that slot themselves, the one-off "covering"
+// arrangement for the same weekday/hour is redundant and would otherwise
+// render them twice in the effective roster - once as a normal member,
+// once as the covering claimant.
+func cancelRedundantClaimsForNewSlots(tx *gorm.DB, userID, groupID uint, slots []scheduleSlotInput) error {
+	if len(slots) == 0 {
+		return nil
+	}
+	newSlotKeys := make(map[[2]int]bool, len(slots))
+	for _, s := range slots {
+		newSlotKeys[[2]int{s.DayOfWeek, s.Hour}] = true
+	}
+
+	var claims []models.ShiftCoverageRequest
+	if err := tx.Where("group_id = ? AND claimed_by_user_id = ? AND status = ?",
+		groupID, userID, models.CoverageRequestClaimed).Find(&claims).Error; err != nil {
+		return err
+	}
+	for _, r := range claims {
+		if newSlotKeys[[2]int{int(r.Date.Weekday()), r.Hour}] {
 			if err := tx.Model(&models.ShiftCoverageRequest{ID: r.ID}).
 				Update("status", models.CoverageRequestCancelled).Error; err != nil {
 				return err
@@ -560,10 +595,22 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 					}
 					members = append(members, m)
 				}
+				// Dedupe-by-user_id guard: even with the root-cause fix in
+				// replaceGroupScheduleForUser (cancelRedundantClaimsForNewSlots),
+				// this backstop ensures no future code path can ever produce a
+				// duplicate member in one slot's output - e.g. a "normal" entry
+				// from a ShiftSlot and a "covering" entry from a stale claim for
+				// the same user would otherwise both render, causing a duplicate
+				// React key and double-counted availability tallies.
+				seenUserIDs := make(map[uint]bool, len(members))
+				for _, m := range members {
+					seenUserIDs[m.UserID] = true
+				}
 				for _, r := range claimedByDateHour[dateHourKey{Date: dateStr, Hour: bucket.Hour}] {
-					if r.ClaimedByUser == nil {
+					if r.ClaimedByUser == nil || seenUserIDs[r.ClaimedByUser.ID] {
 						continue
 					}
+					seenUserIDs[r.ClaimedByUser.ID] = true
 					members = append(members, scheduleOverviewMember{
 						UserID:    r.ClaimedByUser.ID,
 						Username:  r.ClaimedByUser.Username,

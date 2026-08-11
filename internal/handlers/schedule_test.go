@@ -397,6 +397,107 @@ func TestUpdateMySchedule_CancelsOrphanedCoverageRequests(t *testing.T) {
 	}
 }
 
+// TestUpdateMemberSchedule_CancelsRedundantClaimsForNewSlots verifies the
+// root-cause fix for a claimant later gaining a conflicting ShiftSlot:
+// Alice requests coverage for her Tuesday 10am shift, Bob claims it (Bob
+// has no Tuesday 10am ShiftSlot of his own at that point). An admin then
+// edits Bob's schedule to add a Tuesday 10am slot. Without cancelling the
+// redundant claim, Bob would render twice in GetGroupScheduleOverview for
+// that slot - once as a normal member (his new ShiftSlot), once as
+// "covering" (his old claim).
+func TestUpdateMemberSchedule_CancelsRedundantClaimsForNewSlots(t *testing.T) {
+	db := SetupTestDB(t)
+	admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+	alice := CreateTestUser(t, db, "alice", "alice@test.com", "password123", false)
+	bob := CreateTestUser(t, db, "bob", "bob@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, alice.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, bob.ID, group.ID, false)
+
+	db.Create(&models.ShiftSlot{UserID: alice.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
+
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	reqRow := createOpenCoverageRequest(t, db, group.ID, alice.ID, 2, 10, date)
+	if claim := performClaimCoverageRequest(db, bob.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+		t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+	}
+
+	// Admin adds Bob to Tuesday 10am, colliding with the claim he already
+	// holds for that weekday/hour.
+	c, w := setupGroupTestContext(admin.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "userId", Value: fmt.Sprintf("%d", bob.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/%d", group.ID, bob.ID),
+		bytes.NewBufferString(`{"slots":[{"day_of_week":2,"hour":10}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateMemberSchedule(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated models.ShiftCoverageRequest
+	if err := db.First(&updated, reqRow.ID).Error; err != nil {
+		t.Fatalf("failed to reload coverage request: %v", err)
+	}
+	if updated.Status != models.CoverageRequestCancelled {
+		t.Errorf("expected the redundant claim to be cancelled once the claimant gained a colliding ShiftSlot, got %s", updated.Status)
+	}
+}
+
+// TestUpdateMemberSchedule_KeepsClaimsForDifferentSlots is the companion
+// case to TestUpdateMemberSchedule_CancelsRedundantClaimsForNewSlots: a
+// claim for a weekday/hour that does NOT collide with the newly-added slot
+// must survive the schedule edit.
+func TestUpdateMemberSchedule_KeepsClaimsForDifferentSlots(t *testing.T) {
+	db := SetupTestDB(t)
+	admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+	alice := CreateTestUser(t, db, "alice", "alice@test.com", "password123", false)
+	bob := CreateTestUser(t, db, "bob", "bob@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, alice.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, bob.ID, group.ID, false)
+
+	// Alice's shift needing coverage is Wednesday 9am, not Tuesday 10am.
+	db.Create(&models.ShiftSlot{UserID: alice.ID, GroupID: group.ID, DayOfWeek: 3, Hour: 9})
+
+	wedDate, _ := time.Parse("2006-01-02", nextWeekday(time.Wednesday))
+	reqRow := createOpenCoverageRequest(t, db, group.ID, alice.ID, 3, 9, wedDate)
+	if claim := performClaimCoverageRequest(db, bob.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+		t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+	}
+
+	// Admin adds Bob to Tuesday 10am - a different weekday/hour than his
+	// Wednesday 9am claim, so the claim must not be cancelled.
+	c, w := setupGroupTestContext(admin.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "userId", Value: fmt.Sprintf("%d", bob.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/%d", group.ID, bob.ID),
+		bytes.NewBufferString(`{"slots":[{"day_of_week":2,"hour":10}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateMemberSchedule(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated models.ShiftCoverageRequest
+	if err := db.First(&updated, reqRow.ID).Error; err != nil {
+		t.Fatalf("failed to reload coverage request: %v", err)
+	}
+	if updated.Status != models.CoverageRequestClaimed {
+		t.Errorf("expected the claim for a non-colliding weekday/hour to survive, got %s", updated.Status)
+	}
+}
+
 func TestGetMemberSchedule(t *testing.T) {
 	tests := []struct {
 		name           string
