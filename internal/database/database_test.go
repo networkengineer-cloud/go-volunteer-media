@@ -353,6 +353,22 @@ func TestDBLogLevel_Parsing(t *testing.T) {
 	}
 }
 
+// TestLocalTimeIsUTC guards this package's init() (see database.go): if
+// that line is ever removed, this is the only test in the whole repo that
+// would actually catch it. The *_postgres_test.go files that exercise the
+// real bug this fixes (a timestamptz round-tripping through pgx comes back
+// in time.Local, not UTC) only run in CI's e2e job, which never runs `go
+// test`, and even where they do run, GitHub Actions runners default to UTC
+// - so they'd pass identically whether or not the fix is in place. This
+// test needs no Postgres and no particular process timezone to be
+// meaningful, so it runs (and actually enforces something) in every `go
+// test ./...` invocation, everywhere.
+func TestLocalTimeIsUTC(t *testing.T) {
+	if time.Local != time.UTC {
+		t.Fatalf("time.Local = %v, want UTC - this package's init() must force UTC so gorm.io/driver/postgres (via pgx) decodes timestamptz columns as UTC instead of the process's local timezone", time.Local)
+	}
+}
+
 func TestConfigureTracing_RegistersPluginWithoutError(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
@@ -365,4 +381,3 @@ func TestConfigureTracing_RegistersPluginWithoutError(t *testing.T) {
 		t.Fatalf("configureTracing returned error: %v", err)
 	}
 }
-

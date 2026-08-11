@@ -97,9 +97,20 @@ func TestGetGroupScheduleOverview_Postgres_ClaimedRequestShowsAsCovering(t *test
 		t.Fatalf("enable scheduling: %v", err)
 	}
 
-	// 2026-08-11 is a Tuesday (weekday 2).
-	date := "2026-08-11"
-	if err := tx.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10}).Error; err != nil {
+	// A future Tuesday, computed relative to whenever this test actually
+	// runs (nextWeekday is the same helper every other coverage-request
+	// test in this package uses for exactly this reason) - createOneCoverageRequest
+	// rejects a same-day-or-past date, so a hard-coded date here would start
+	// failing - with a misleading "expected 201, got 400" error that points
+	// nowhere near the timezone fix this test exists to guard - the day
+	// after whatever date got hard-coded.
+	date := nextWeekday(time.Tuesday)
+	parsedDate, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		t.Fatalf("parse computed date: %v", err)
+	}
+	dayOfWeek := int(parsedDate.Weekday())
+	if err := tx.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: dayOfWeek, Hour: 10}).Error; err != nil {
 		t.Fatalf("create shift slot: %v", err)
 	}
 
@@ -118,7 +129,7 @@ func TestGetGroupScheduleOverview_Postgres_ClaimedRequestShowsAsCovering(t *test
 		t.Fatalf("expected 200 claiming coverage request, got %d: %s", claimResp.Code, claimResp.Body.String())
 	}
 
-	weekStart := "2026-08-09" // the Sunday that starts 2026-08-11's week
+	weekStart := parsedDate.AddDate(0, 0, -dayOfWeek).Format("2006-01-02") // the Sunday that starts date's week
 	overview := performGetGroupScheduleOverview(tx, requester.ID, group.ID, weekStart)
 	if overview.Code != http.StatusOK {
 		t.Fatalf("expected 200 fetching overview, got %d: %s", overview.Code, overview.Body.String())

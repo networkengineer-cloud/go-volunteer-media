@@ -46,6 +46,16 @@ const vectorEmbeddingDimension = 1024
 // exactly once before any of them read a single row. SQLite (used by every
 // other test) doesn't exhibit this driver behavior, which is why this went
 // undetected until a real Postgres run.
+//
+// pgx does offer a narrower, connection-scoped fix (registering a
+// TimestamptzCodec with ScanLocation: time.UTC on the type map), which
+// would avoid this process-global mutation - deliberately not used here
+// because it requires building an explicit pgx connector instead of
+// `postgres.Open(dsn)`, and the *_postgres_test.go files each call
+// gorm.Open(postgres.Open(dsn), ...) directly, so they'd need that same
+// connector wiring duplicated rather than getting the fix for free via
+// this package's init(). See TestLocalTimeIsUTC in database_test.go for
+// the (non-Postgres, always-run) regression guard for this line.
 func init() {
 	time.Local = time.UTC
 }
