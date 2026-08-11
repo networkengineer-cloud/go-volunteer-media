@@ -21,6 +21,7 @@ import (
 var (
 	errNoMatchingSlot   = errors.New("no matching recurring shift for that date and hour")
 	errDuplicateRequest = errors.New("a coverage request already exists for that date and hour")
+	errPastDate         = errors.New("date must not be in the past")
 	errRequestNotFound  = errors.New("coverage request not found")
 	errRequestNotOpen   = errors.New("coverage request is no longer open")
 	errSelfClaim        = errors.New("cannot claim your own coverage request")
@@ -102,6 +103,95 @@ func formatHourAMPM(hour int) string {
 	return fmt.Sprintf("%d:00 %s", displayHour, period)
 }
 
+// createOneCoverageRequest validates and creates a single coverage
+// request: the date must not be in the past, the target user must have a
+// matching ShiftSlot for the date's weekday and the given hour, and there
+// must not already be an active (non-cancelled) request for that exact
+// date/hour. Returns the created row, or one of the sentinel errors
+// errPastDate / errNoMatchingSlot / errDuplicateRequest. Runs its own
+// transaction - a caller creating several requests (see
+// CreateCoverageRequestsBatch) calls this once per item rather than
+// wrapping the whole batch in one transaction, so one item's failure
+// doesn't roll back the others.
+func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date time.Time, hour int) (models.ShiftCoverageRequest, error) {
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	if date.Before(today) {
+		return models.ShiftCoverageRequest{}, errPastDate
+	}
+
+	var created models.ShiftCoverageRequest
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var slot models.ShiftSlot
+		if err := tx.Where("user_id = ? AND group_id = ? AND day_of_week = ? AND hour = ?",
+			targetUserID, groupIDUint, int(date.Weekday()), hour).First(&slot).Error; err != nil {
+			return errNoMatchingSlot
+		}
+
+		var existing models.ShiftCoverageRequest
+		err := tx.Where("group_id = ? AND requested_by_user_id = ? AND date = ? AND hour = ? AND status != ?",
+			groupIDUint, targetUserID, date, hour, models.CoverageRequestCancelled).
+			First(&existing).Error
+		if err == nil {
+			return errDuplicateRequest
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		created = models.ShiftCoverageRequest{
+			GroupID:           groupIDUint,
+			RequestedByUserID: targetUserID,
+			Date:              date,
+			Hour:              hour,
+			Status:            models.CoverageRequestOpen,
+		}
+		return tx.Create(&created).Error
+	})
+	return created, err
+}
+
+// notifyGroupOfOpenCoverageRequests sends one bulk notification listing
+// every currently-open coverage request the given user has in the group -
+// not just whatever was just created - so the group always sees the
+// complete, accurate picture in a single email/GroupMe post rather than
+// one fragment per request. No-ops if the user currently has no open
+// requests. Runs on rawDB (the unscoped db captured before the handler's
+// middleware.GetDB shadow) since callers invoke this after their own
+// create(s) have already committed.
+func notifyGroupOfOpenCoverageRequests(rawDB *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, groupIDUint, targetUserID uint) {
+	var requester models.User
+	var grp models.Group
+	var openRequests []models.ShiftCoverageRequest
+	rawDB.First(&requester, targetUserID)
+	rawDB.Select("name").First(&grp, groupIDUint)
+	rawDB.Where("group_id = ? AND requested_by_user_id = ? AND status = ?",
+		groupIDUint, targetUserID, models.CoverageRequestOpen).
+		Order("date, hour").Find(&openRequests)
+	if len(openRequests) == 0 {
+		return
+	}
+
+	title := fmt.Sprintf("Coverage needed in %s", grp.Name)
+	content := buildCoverageRequestSummary(displayName(requester), openRequests)
+
+	if emailService != nil && emailService.IsConfigured() {
+		go func() {
+			bgCtx := context.Background()
+			if err := sendGroupAnnouncementEmails(bgCtx, rawDB, emailService, groupIDUint, title, content); err != nil {
+				logging.WithContext(bgCtx).Error("Error sending coverage request emails", err)
+			}
+		}()
+	}
+	if groupMeService != nil {
+		go func() {
+			bgCtx := context.Background()
+			if err := sendUpdateToGroupMe(bgCtx, rawDB, groupMeService, groupIDUint, title, content); err != nil {
+				logging.WithContext(bgCtx).Error("Error sending coverage request to GroupMe", err)
+			}
+		}()
+	}
+}
+
 // CreateCoverageRequest flags a specific future occurrence of the caller's
 // (or, for a group admin, another member's) recurring shift as needing
 // coverage. Requires group membership (or site admin) for self-requests;
@@ -148,16 +238,9 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 			targetUserID = *req.UserID
 		}
 
-		// time.Parse("2006-01-02", ...) already yields UTC midnight, matching
-		// how ShiftCoverageRequest.Date is stored and compared throughout.
 		date, err := time.Parse("2006-01-02", req.Date)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "date must be in YYYY-MM-DD format"})
-			return
-		}
-		today := time.Now().UTC().Truncate(24 * time.Hour)
-		if date.Before(today) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "date must not be in the past"})
 			return
 		}
 		if req.Hour < 8 || req.Hour > 17 {
@@ -172,36 +255,11 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		}
 		groupIDUint := uint(groupIDUint64)
 
-		var created models.ShiftCoverageRequest
-		err = db.Transaction(func(tx *gorm.DB) error {
-			var slot models.ShiftSlot
-			if err := tx.Where("user_id = ? AND group_id = ? AND day_of_week = ? AND hour = ?",
-				targetUserID, groupIDUint, int(date.Weekday()), req.Hour).First(&slot).Error; err != nil {
-				return errNoMatchingSlot
-			}
-
-			var existing models.ShiftCoverageRequest
-			err := tx.Where("group_id = ? AND requested_by_user_id = ? AND date = ? AND hour = ? AND status != ?",
-				groupIDUint, targetUserID, date, req.Hour, models.CoverageRequestCancelled).
-				First(&existing).Error
-			if err == nil {
-				return errDuplicateRequest
-			}
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return err
-			}
-
-			created = models.ShiftCoverageRequest{
-				GroupID:           groupIDUint,
-				RequestedByUserID: targetUserID,
-				Date:              date,
-				Hour:              req.Hour,
-				Status:            models.CoverageRequestOpen,
-			}
-			return tx.Create(&created).Error
-		})
-
+		created, err := createOneCoverageRequest(db, groupIDUint, targetUserID, date, req.Hour)
 		switch {
+		case errors.Is(err, errPastDate):
+			c.JSON(http.StatusBadRequest, gin.H{"error": errPastDate.Error()})
+			return
 		case errors.Is(err, errNoMatchingSlot):
 			c.JSON(http.StatusBadRequest, gin.H{"error": errNoMatchingSlot.Error()})
 			return
@@ -227,41 +285,14 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		// email because it happened to land inside the cooldown window. Runs
 		// on the outer (non-transaction) db since the transaction has
 		// already committed by this point, matching how the notification
-		// goroutines below already run post-commit.
+		// helper below already runs post-commit.
 		const coverageNotificationCooldown = 60 * time.Second
 		var recentCount int64
 		if err := rawDB.Model(&models.ShiftCoverageRequest{}).
 			Where("group_id = ? AND requested_by_user_id = ? AND id != ? AND created_at > ?",
 				groupIDUint, targetUserID, created.ID, time.Now().Add(-coverageNotificationCooldown)).
 			Count(&recentCount).Error; err == nil && recentCount == 0 {
-			var requester models.User
-			var grp models.Group
-			var openRequests []models.ShiftCoverageRequest
-			rawDB.First(&requester, targetUserID)
-			rawDB.Select("name").First(&grp, groupIDUint)
-			rawDB.Where("group_id = ? AND requested_by_user_id = ? AND status = ?",
-				groupIDUint, targetUserID, models.CoverageRequestOpen).
-				Order("date, hour").Find(&openRequests)
-
-			title := fmt.Sprintf("Coverage needed in %s", grp.Name)
-			content := buildCoverageRequestSummary(displayName(requester), openRequests)
-
-			if emailService != nil && emailService.IsConfigured() {
-				go func() {
-					bgCtx := context.Background()
-					if err := sendGroupAnnouncementEmails(bgCtx, rawDB, emailService, groupIDUint, title, content); err != nil {
-						logging.WithContext(bgCtx).Error("Error sending coverage request emails", err)
-					}
-				}()
-			}
-			if groupMeService != nil {
-				go func() {
-					bgCtx := context.Background()
-					if err := sendUpdateToGroupMe(bgCtx, rawDB, groupMeService, groupIDUint, title, content); err != nil {
-						logging.WithContext(bgCtx).Error("Error sending coverage request to GroupMe", err)
-					}
-				}()
-			}
+			notifyGroupOfOpenCoverageRequests(rawDB, emailService, groupMeService, groupIDUint, targetUserID)
 		}
 	}
 }
