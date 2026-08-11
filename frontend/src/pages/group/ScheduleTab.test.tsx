@@ -205,36 +205,49 @@ describe('ScheduleTab', () => {
     // not the live, possibly-unsaved grid selection - otherwise the form
     // pre-checks occurrences the backend will just skip (unsaved additions)
     // or silently drops real shifts (unsaved removals).
-    vi.mocked(scheduleApi.getMine).mockResolvedValue({
-      data: { slots: [{ day_of_week: 2, hour: 9 }] }, // Tuesday 9am, persisted
-    } as unknown as AxiosResponse<ScheduleResponse>);
+    //
+    // The assertions below depend on 2026-08-11/2026-08-12 being real
+    // "today or later" occurrences (computeCandidateOccurrences drops
+    // anything before today), so the system clock is pinned here - matching
+    // RequestCoverageRangeForm.test.tsx's convention - rather than relying
+    // on the real wall clock, which would make this test start failing the
+    // day after the pinned date.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      vi.mocked(scheduleApi.getMine).mockResolvedValue({
+        data: { slots: [{ day_of_week: 2, hour: 9 }] }, // Tuesday 9am, persisted
+      } as unknown as AxiosResponse<ScheduleResponse>);
 
-    render(
-      <ToastProvider>
-        <ScheduleTab groupId={7} canManageMembers={false} currentUserId={1} />
-      </ToastProvider>
-    );
-    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+      render(
+        <ToastProvider>
+          <ScheduleTab groupId={7} canManageMembers={false} currentUserId={1} />
+        </ToastProvider>
+      );
+      await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
 
-    // Toggle on an additional, unsaved cell (Wednesday 10am) without saving.
-    const unsavedCell = await screen.findByRole('cell', { name: 'Wed 10:00 AM' });
-    fireEvent.click(unsavedCell);
-    expect(unsavedCell).toHaveAttribute('aria-pressed', 'true');
+      // Toggle on an additional, unsaved cell (Wednesday 10am) without saving.
+      const unsavedCell = await screen.findByRole('cell', { name: 'Wed 10:00 AM' });
+      fireEvent.click(unsavedCell);
+      expect(unsavedCell).toHaveAttribute('aria-pressed', 'true');
 
-    fireEvent.click(screen.getByRole('button', { name: /request coverage for a date range/i }));
-    await screen.findByRole('dialog');
+      fireEvent.click(screen.getByRole('button', { name: /request coverage for a date range/i }));
+      await screen.findByRole('dialog');
 
-    // Pick a date range spanning the persisted Tuesday slot's one occurrence
-    // (2026-08-11) and the unsaved Wednesday toggle's occurrence the next
-    // day (2026-08-12).
-    fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
-    fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-12' } });
+      // Pick a date range spanning the persisted Tuesday slot's one occurrence
+      // (2026-08-11) and the unsaved Wednesday toggle's occurrence the next
+      // day (2026-08-12).
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-12' } });
 
-    // Only the persisted Tuesday 9am occurrence should be offered - the
-    // unsaved Wednesday 10am toggle must not appear as a candidate.
-    const candidates = await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
-    expect(candidates).toHaveLength(1);
-    expect(screen.getByRole('checkbox', { name: /9:00 AM/ })).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox', { name: /10:00 AM/ })).not.toBeInTheDocument();
+      // Only the persisted Tuesday 9am occurrence should be offered - the
+      // unsaved Wednesday 10am toggle must not appear as a candidate.
+      const candidates = await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
+      expect(candidates).toHaveLength(1);
+      expect(screen.getByRole('checkbox', { name: /9:00 AM/ })).toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /10:00 AM/ })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

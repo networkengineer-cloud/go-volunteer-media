@@ -164,4 +164,39 @@ describe('RequestCoverageRangeForm', () => {
       vi.useRealTimers();
     }
   });
+
+  it('shows the selected count and blocks submit once the selection exceeds the batch cap', async () => {
+    // Regression test: MAX_RANGE_DAYS (90 days) alone doesn't guarantee the
+    // occurrence count stays under the backend's 200-item cap - a busy
+    // recurring schedule over a wide-but-legal range can still exceed it.
+    // Every weekday at every hour (8am-5pm = 10 hours x 7 days = 70 slots)
+    // over a 30-day range produces ~300 occurrences, comfortably over 200.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      const busySlots: ScheduleSlot[] = [];
+      for (let day = 0; day <= 6; day++) {
+        for (let hour = 8; hour <= 17; hour++) {
+          busySlots.push({ day_of_week: day, hour });
+        }
+      }
+
+      render(<RequestCoverageRangeForm groupId={7} slots={busySlots} />);
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-09-09' } });
+
+      await waitFor(() => expect(screen.getByText(/\d+ selected/i)).toBeInTheDocument());
+      expect(screen.getByText(/^(2\d{2}|[3-9]\d{2}) selected$/i)).toBeInTheDocument();
+      expect(screen.getByText(/at most 200 shifts/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /request coverage/i })).toBeDisabled();
+
+      // Deselecting enough occurrences to drop back under the cap clears
+      // the warning and re-enables submit.
+      fireEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
+      expect(screen.getByText(/0 selected/i)).toBeInTheDocument();
+      expect(screen.queryByText(/at most 200 shifts/i)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

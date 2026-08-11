@@ -659,7 +659,11 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 					Date: item.date.Format("2006-01-02"), Hour: item.hour, Reason: err.Error(),
 				})
 			case err != nil:
-				logging.Error("Failed to create coverage request in batch", err)
+				logging.WithContext(c.Request.Context()).WithFields(map[string]interface{}{
+					"group_id": groupIDUint,
+					"date":     item.date.Format("2006-01-02"),
+					"hour":     item.hour,
+				}).Error("Failed to create coverage request in batch", err)
 				response.Skipped = append(response.Skipped, coverageRequestBatchSkipped{
 					Date: item.date.Format("2006-01-02"), Hour: item.hour, Reason: "internal error, please try again",
 				})

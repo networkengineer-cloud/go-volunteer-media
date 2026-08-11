@@ -13,6 +13,14 @@ export interface RequestCoverageRangeFormProps {
 }
 
 const MAX_RANGE_DAYS = 90;
+// Must match maxBatchItems in internal/handlers/schedule_coverage.go's
+// CreateCoverageRequestsBatch - a wide date range with a busy recurring
+// schedule (e.g. 90 days x several shifts/week) can exceed the backend's
+// cap even though it's within MAX_RANGE_DAYS, so this is enforced
+// separately, with the selected count always visible so an over-cap
+// selection is something the user can actually act on rather than a bare
+// rejected-batch error.
+const MAX_BATCH_ITEMS = 200;
 
 interface Occurrence {
   date: string;
@@ -112,6 +120,10 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
       toast.showError('Select at least one shift.');
       return;
     }
+    if (requests.length > MAX_BATCH_ITEMS) {
+      toast.showError(`You can request coverage for at most ${MAX_BATCH_ITEMS} shifts at once.`);
+      return;
+    }
     setSubmitting(true);
     scheduleApi.createCoverageRequestsBatch(groupId, requests)
       .then(res => {
@@ -183,7 +195,15 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
               <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all" />
               Select all
             </label>
+            <span className="request-coverage-range-form__count">
+              {checkedKeys.size} selected
+            </span>
           </div>
+          {checkedKeys.size > MAX_BATCH_ITEMS && (
+            <p className="request-coverage-range-form__warning">
+              You can request coverage for at most {MAX_BATCH_ITEMS} shifts at once — uncheck {checkedKeys.size - MAX_BATCH_ITEMS} to continue.
+            </p>
+          )}
           <ul className="request-coverage-range-form__list">
             {candidates.map(o => {
               const key = occurrenceKey(o);
@@ -218,7 +238,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
           type="button"
           className="btn-primary"
           onClick={handleSubmit}
-          disabled={submitting || rangeTooLong || checkedKeys.size === 0}
+          disabled={submitting || rangeTooLong || checkedKeys.size === 0 || checkedKeys.size > MAX_BATCH_ITEMS}
         >
           {submitting ? 'Requesting…' : 'Request Coverage'}
         </button>

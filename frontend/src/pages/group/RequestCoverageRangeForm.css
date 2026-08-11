@@ -21,7 +21,15 @@
 }
 
 .request-coverage-range-form__select-all {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 0.9rem;
+}
+
+.request-coverage-range-form__count {
+  color: var(--text-secondary, var(--neutral-500, #6b7280));
+  font-size: 0.85rem;
 }
 
 .request-coverage-range-form__list {
