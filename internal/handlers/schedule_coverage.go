@@ -546,3 +546,120 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
 	}
 }
+
+type createCoverageRequestBatchItem struct {
+	Date string `json:"date"`
+	Hour int    `json:"hour"`
+}
+
+type createCoverageRequestBatchRequest struct {
+	Requests []createCoverageRequestBatchItem `json:"requests"`
+}
+
+type coverageRequestBatchSkipped struct {
+	Date   string `json:"date"`
+	Hour   int    `json:"hour"`
+	Reason string `json:"reason"`
+}
+
+type coverageRequestBatchResponse struct {
+	Created []coverageRequestResponse     `json:"created"`
+	Skipped []coverageRequestBatchSkipped `json:"skipped"`
+}
+
+// CreateCoverageRequestsBatch flags several future occurrences of the
+// caller's own recurring shifts as needing coverage in one call, so a
+// volunteer requesting coverage for multiple shifts (e.g. "I'm out all of
+// next week") triggers exactly one group notification instead of one per
+// shift. Self-service only - always creates on behalf of the caller, no
+// on-behalf-of-another-member support (unlike CreateCoverageRequest).
+// Items that fail per-item validation (no matching slot, already an
+// active request, past date) are skipped and reported rather than failing
+// the whole batch; a structurally invalid item (bad date format,
+// out-of-range hour) fails the whole request with 400, since that's a
+// payload error, not a per-item business-rule rejection. Requires group
+// membership (or site admin).
+func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rawDB := db
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		callerUserID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		var req createCoverageRequestBatchRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+		if len(req.Requests) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "requests must not be empty"})
+			return
+		}
+
+		groupIDUint64, err := strconv.ParseUint(groupIDParam, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+		groupIDUint := uint(groupIDUint64)
+
+		type parsedItem struct {
+			date time.Time
+			hour int
+		}
+		parsedItems := make([]parsedItem, 0, len(req.Requests))
+		for _, item := range req.Requests {
+			date, err := time.Parse("2006-01-02", item.Date)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid date %q: must be in YYYY-MM-DD format", item.Date)})
+				return
+			}
+			if item.Hour < 8 || item.Hour > 17 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid hour %d: must be between 8 and 17", item.Hour)})
+				return
+			}
+			parsedItems = append(parsedItems, parsedItem{date: date, hour: item.Hour})
+		}
+
+		response := coverageRequestBatchResponse{
+			Created: make([]coverageRequestResponse, 0, len(parsedItems)),
+			Skipped: make([]coverageRequestBatchSkipped, 0),
+		}
+		for _, item := range parsedItems {
+			created, err := createOneCoverageRequest(db, groupIDUint, callerUserID, item.date, item.hour)
+			switch {
+			case errors.Is(err, errPastDate), errors.Is(err, errNoMatchingSlot), errors.Is(err, errDuplicateRequest):
+				response.Skipped = append(response.Skipped, coverageRequestBatchSkipped{
+					Date: item.date.Format("2006-01-02"), Hour: item.hour, Reason: err.Error(),
+				})
+			case err != nil:
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create coverage requests"})
+				return
+			default:
+				response.Created = append(response.Created, toCoverageRequestResponse(created))
+			}
+		}
+
+		c.JSON(http.StatusOK, response)
+
+		if len(response.Created) > 0 {
+			notifyGroupOfOpenCoverageRequests(rawDB, emailService, groupMeService, groupIDUint, callerUserID)
+		}
+	}
+}
