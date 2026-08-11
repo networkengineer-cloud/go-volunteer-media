@@ -658,6 +658,22 @@ export interface CoverageRequest {
   claimed_by_user_id: number | null;
 }
 
+export interface CoverageRequestBatchItem {
+  date: string;
+  hour: number;
+}
+
+export interface CoverageRequestBatchSkipped {
+  date: string;
+  hour: number;
+  reason: string;
+}
+
+export interface CoverageRequestBatchResult {
+  created: CoverageRequest[];
+  skipped: CoverageRequestBatchSkipped[];
+}
+
 export const scheduleApi = {
   getMine: (groupId: number, options?: { signal?: AbortSignal }) =>
     api.get<ScheduleResponse>(`/groups/${groupId}/schedule/me`, { signal: options?.signal }),
@@ -682,6 +698,8 @@ export const scheduleApi = {
     api.post<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/claim`),
   cancelCoverageRequest: (groupId: number, requestId: number) =>
     api.delete<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}`),
+  createCoverageRequestsBatch: (groupId: number, requests: CoverageRequestBatchItem[]) =>
+    api.post<CoverageRequestBatchResult>(`/groups/${groupId}/schedule/coverage-requests/batch`, { requests }),
 };
 
 // Animals API
