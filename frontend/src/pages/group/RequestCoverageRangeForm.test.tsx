@@ -17,19 +17,29 @@ vi.mock('../../hooks/useToast', () => ({
 
 describe('computeCandidateOccurrences', () => {
   it('finds every occurrence of the recurring slots within the range', () => {
-    // 2026-08-11 is a Tuesday; 2026-08-13 is a Thursday.
-    const slots: ScheduleSlot[] = [
-      { day_of_week: 2, hour: 10 }, // Tuesday 10am
-      { day_of_week: 4, hour: 14 }, // Thursday 2pm
-    ];
-    const result = computeCandidateOccurrences(slots, '2026-08-11', '2026-08-20');
-    // Expect Tuesdays 8/11 and 8/18, Thursdays 8/13 and 8/20.
-    expect(result).toEqual([
-      { date: '2026-08-11', hour: 10 },
-      { date: '2026-08-13', hour: 14 },
-      { date: '2026-08-18', hour: 10 },
-      { date: '2026-08-20', hour: 14 },
-    ]);
+    // Pin "now" safely before the fixture range so the past-date exclusion
+    // in computeCandidateOccurrences never drops 2026-08-11 depending on
+    // the real wall clock (matches the vi.useFakeTimers({toFake: ['Date']})
+    // + try/finally convention used in ScheduleOverview.test.tsx).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      // 2026-08-11 is a Tuesday; 2026-08-13 is a Thursday.
+      const slots: ScheduleSlot[] = [
+        { day_of_week: 2, hour: 10 }, // Tuesday 10am
+        { day_of_week: 4, hour: 14 }, // Thursday 2pm
+      ];
+      const result = computeCandidateOccurrences(slots, '2026-08-11', '2026-08-20');
+      // Expect Tuesdays 8/11 and 8/18, Thursdays 8/13 and 8/20.
+      expect(result).toEqual([
+        { date: '2026-08-11', hour: 10 },
+        { date: '2026-08-13', hour: 14 },
+        { date: '2026-08-18', hour: 10 },
+        { date: '2026-08-20', hour: 14 },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('excludes dates before today even if within the given range', () => {
@@ -53,37 +63,56 @@ describe('RequestCoverageRangeForm', () => {
   });
 
   it('pre-checks every computed occurrence and lets select-all toggle them', async () => {
-    render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
-    fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
-    fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-18' } });
+    // Same pinning rationale as the computeCandidateOccurrences test above:
+    // this test's expected checkbox count (2) depends on 2026-08-11 not
+    // being excluded by the component's own past-date filtering, which
+    // reads the real wall clock unless pinned.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-18' } });
 
-    const checkboxes = await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
-    expect(checkboxes).toHaveLength(2);
-    checkboxes.forEach(cb => expect(cb).toBeChecked());
+      const checkboxes = await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
+      expect(checkboxes).toHaveLength(2);
+      checkboxes.forEach(cb => expect(cb).toBeChecked());
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
-    checkboxes.forEach(cb => expect(cb).not.toBeChecked());
+      fireEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
+      checkboxes.forEach(cb => expect(cb).not.toBeChecked());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('submits only the checked occurrences and shows the created/skipped summary', async () => {
-    const result: CoverageRequestBatchResult = {
-      created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', claimed_by_user_id: null }],
-      skipped: [{ date: '2026-08-18', hour: 10, reason: 'a coverage request already exists for that date and hour' }],
-    };
-    vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({ data: result } as AxiosResponse<CoverageRequestBatchResult>);
+    // Pinned for the same reason: the submitted payload asserted below
+    // includes 2026-08-11, which only survives the component's past-date
+    // filtering when "today" is pinned on or before that date.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      const result: CoverageRequestBatchResult = {
+        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', claimed_by_user_id: null }],
+        skipped: [{ date: '2026-08-18', hour: 10, reason: 'a coverage request already exists for that date and hour' }],
+      };
+      vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({ data: result } as AxiosResponse<CoverageRequestBatchResult>);
 
-    render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
-    fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
-    fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-18' } });
-    await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
+      render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-18' } });
+      await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
 
-    fireEvent.click(screen.getByRole('button', { name: /request coverage/i }));
+      fireEvent.click(screen.getByRole('button', { name: /request coverage/i }));
 
-    await waitFor(() => expect(scheduleApi.createCoverageRequestsBatch).toHaveBeenCalledWith(7, [
-      { date: '2026-08-11', hour: 10 },
-      { date: '2026-08-18', hour: 10 },
-    ]));
-    expect(await screen.findByText(/requested coverage for 1 shift/i)).toBeInTheDocument();
-    expect(screen.getByText(/1 skipped/i)).toBeInTheDocument();
+      await waitFor(() => expect(scheduleApi.createCoverageRequestsBatch).toHaveBeenCalledWith(7, [
+        { date: '2026-08-11', hour: 10 },
+        { date: '2026-08-18', hour: 10 },
+      ]));
+      expect(await screen.findByText(/requested coverage for 1 shift/i)).toBeInTheDocument();
+      expect(screen.getByText(/1 skipped/i)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
