@@ -138,8 +138,8 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 			return
 		}
 		today := time.Now().UTC().Truncate(24 * time.Hour)
-		if !date.After(today) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "date must be in the future"})
+		if date.Before(today) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "date must not be in the past"})
 			return
 		}
 		if req.Hour < 8 || req.Hour > 17 {
@@ -197,25 +197,44 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 
 		c.JSON(http.StatusCreated, toCoverageRequestResponse(created))
 
-		title := "Coverage needed"
-		content := fmt.Sprintf("A volunteer needs coverage for their %s shift on %s.",
-			formatHourAMPM(req.Hour), date.Format("Monday, January 2"))
+		// Cooldown: skip the group-wide broadcast (but the request itself is
+		// already created above) if this same user created another coverage
+		// request in this group within the last 5 minutes. Otherwise a member
+		// could cancel-and-recreate their own open request repeatedly, re-
+		// firing the group-wide email/GroupMe blast every time - a fan-out
+		// path that, before this feature, was only reachable via admin-gated
+		// /announcements endpoints. Runs on the outer (non-transaction) db
+		// since the transaction has already committed by this point, matching
+		// how the notification goroutines below already run post-commit.
+		var recentCount int64
+		if err := rawDB.Model(&models.ShiftCoverageRequest{}).
+			Where("group_id = ? AND requested_by_user_id = ? AND id != ? AND created_at > ?",
+				groupIDUint, targetUserID, created.ID, time.Now().Add(-5*time.Minute)).
+			Count(&recentCount).Error; err == nil && recentCount == 0 {
+			var requester models.User
+			var grp models.Group
+			rawDB.First(&requester, targetUserID)
+			rawDB.Select("name").First(&grp, groupIDUint)
+			title := fmt.Sprintf("Coverage needed in %s", grp.Name)
+			content := fmt.Sprintf("%s needs coverage for their %s shift on %s.",
+				displayName(requester), formatHourAMPM(req.Hour), date.Format("Monday, January 2"))
 
-		if emailService != nil && emailService.IsConfigured() {
-			go func() {
-				bgCtx := context.Background()
-				if err := sendGroupAnnouncementEmails(bgCtx, rawDB, emailService, groupIDUint, title, content); err != nil {
-					logging.WithContext(bgCtx).Error("Error sending coverage request emails", err)
-				}
-			}()
-		}
-		if groupMeService != nil {
-			go func() {
-				bgCtx := context.Background()
-				if err := sendUpdateToGroupMe(bgCtx, rawDB, groupMeService, groupIDUint, title, content); err != nil {
-					logging.WithContext(bgCtx).Error("Error sending coverage request to GroupMe", err)
-				}
-			}()
+			if emailService != nil && emailService.IsConfigured() {
+				go func() {
+					bgCtx := context.Background()
+					if err := sendGroupAnnouncementEmails(bgCtx, rawDB, emailService, groupIDUint, title, content); err != nil {
+						logging.WithContext(bgCtx).Error("Error sending coverage request emails", err)
+					}
+				}()
+			}
+			if groupMeService != nil {
+				go func() {
+					bgCtx := context.Background()
+					if err := sendUpdateToGroupMe(bgCtx, rawDB, groupMeService, groupIDUint, title, content); err != nil {
+						logging.WithContext(bgCtx).Error("Error sending coverage request to GroupMe", err)
+					}
+				}()
+			}
 		}
 	}
 }

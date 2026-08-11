@@ -14,8 +14,10 @@ vi.mock('../../api/client', () => ({
   },
 }));
 
+const mockShowSuccess = vi.fn();
+const mockShowError = vi.fn();
 vi.mock('../../hooks/useToast', () => ({
-  useToast: () => ({ showSuccess: vi.fn(), showError: vi.fn() }),
+  useToast: () => ({ showSuccess: mockShowSuccess, showError: mockShowError }),
 }));
 
 function mockOverview(data: ScheduleOverviewResponse) {
@@ -25,6 +27,8 @@ function mockOverview(data: ScheduleOverviewResponse) {
 describe('ScheduleOverview', () => {
   beforeEach(() => {
     mockOverview({ week_start: '2026-08-09', slots: [] });
+    mockShowSuccess.mockClear();
+    mockShowError.mockClear();
   });
 
   it('loads the overview for the given group and week on mount', async () => {
@@ -310,6 +314,103 @@ describe('ScheduleOverview', () => {
     fireEvent.click(cancelButton);
 
     await waitFor(() => expect(scheduleApi.cancelCoverageRequest).toHaveBeenCalledWith(7, 99));
+  });
+
+  it('shows a Request coverage button for the current user\'s own name on the same day (today counts as future)', async () => {
+    // Backend fix: CreateCoverageRequest now allows same-day-or-later
+    // (date.Before(today) rejects only the past), matching the product
+    // decision that requesting coverage for later today is a normal use
+    // case. The frontend's button-visibility condition changed from
+    // `date > today` to `date >= today` to match - this pins the clock to
+    // exactly the slot's own date/time so `date === today` is exercised.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-11T12:00:00Z')); // the Tuesday itself
+    try {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 1, username: 'me', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      expect(await screen.findByRole('button', { name: /request coverage/i })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('disables every Claim button in the popover while any claim is in flight, not just the one clicked', async () => {
+    // Backend hardening: idx_coverage_request_claimed_unique now backstops
+    // the DB against the same user claiming two different requests at the
+    // same (date, hour), but the UI previously only disabled the specific
+    // button clicked (busyRequestId === member.coverage_request_id), so a
+    // second Claim button in the same popover stayed clickable while the
+    // first claim was still in flight.
+    let resolveClaim: (() => void) | undefined;
+    vi.mocked(scheduleApi.claimCoverageRequest).mockReturnValue(
+      new Promise((resolve) => {
+        resolveClaim = () => resolve({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
+      })
+    );
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 2, username: 'vol2', status: 'needs_coverage', coverage_request_id: 42, claimable: true },
+          { user_id: 3, username: 'vol3', status: 'needs_coverage', coverage_request_id: 43, claimable: true },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /needs coverage/i });
+    fireEvent.click(cell);
+    const claimButtons = await screen.findAllByRole('button', { name: /claim/i });
+    expect(claimButtons).toHaveLength(2);
+
+    const overviewCallsBefore = vi.mocked(scheduleApi.getOverview).mock.calls.length;
+    fireEvent.click(claimButtons[0]);
+
+    expect(claimButtons[0]).toBeDisabled();
+    expect(claimButtons[1]).toBeDisabled();
+
+    resolveClaim?.();
+    await waitFor(() => expect(vi.mocked(scheduleApi.getOverview).mock.calls.length).toBe(overviewCallsBefore + 1));
+  });
+
+  it('surfaces the backend error message when a claim fails, and reloads the overview', async () => {
+    // Established codebase convention (see GroupPage.tsx, Settings.tsx):
+    // surface err.response.data.error over a generic fallback string, and
+    // reload data on failure so the UI doesn't show a stale state (e.g. a
+    // claim that silently failed but still looks available).
+    vi.mocked(scheduleApi.claimCoverageRequest).mockRejectedValue({
+      response: { data: { error: 'Request is no longer open' } },
+    });
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 2, username: 'vol2', status: 'needs_coverage', coverage_request_id: 42, claimable: true },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /needs coverage/i });
+    fireEvent.click(cell);
+    const claimButton = await screen.findByRole('button', { name: /claim/i });
+    const overviewCallsBefore = vi.mocked(scheduleApi.getOverview).mock.calls.length;
+    fireEvent.click(claimButton);
+
+    await waitFor(() => expect(mockShowError).toHaveBeenCalledWith('Request is no longer open'));
+    // The catch block calls loadOverview() so a failed claim doesn't leave
+    // stale UI state (e.g. a button that stays disabled-looking).
+    await waitFor(() => expect(vi.mocked(scheduleApi.getOverview).mock.calls.length).toBe(overviewCallsBefore + 1));
   });
 
   it('does not show a Claim button on the caller\'s own needs_coverage row', async () => {

@@ -119,13 +119,11 @@ function currentWeekStart(): string {
   return utcToday.toISOString().slice(0, 10);
 }
 
-// todayIso returns "today" (viewer's local date) as an ISO YYYY-MM-DD
-// string, for comparing against slot dates (which are also plain
-// YYYY-MM-DD, with no time component) to decide whether a date is in the
-// future.
+// todayIso returns "today" (UTC calendar date, matching the backend's
+// same-day-or-later check in CreateCoverageRequest) as an ISO YYYY-MM-DD
+// string, for comparing against slot dates.
 function todayIso(): string {
-  const now = new Date();
-  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().slice(0, 10);
+  return new Date().toISOString().slice(0, 10);
 }
 
 const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembers, currentUserId }) => {
@@ -229,7 +227,10 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
         setPopoverPosition(null);
         loadOverview();
       })
-      .catch(() => toast.showError('Failed to claim shift.'))
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to claim shift.');
+        loadOverview();
+      })
       .finally(() => setBusyRequestId(null));
   };
 
@@ -242,7 +243,10 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
         setPopoverPosition(null);
         loadOverview();
       })
-      .catch(() => toast.showError('Failed to cancel coverage request.'))
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to cancel coverage request.');
+        loadOverview();
+      })
       .finally(() => setBusyRequestId(null));
   };
 
@@ -255,7 +259,10 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
         setPopoverPosition(null);
         loadOverview();
       })
-      .catch(() => toast.showError('Failed to request coverage.'))
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to request coverage.');
+        loadOverview();
+      })
       .finally(() => setBusyRequestSlotKey(null));
   };
 
@@ -359,14 +366,14 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                               <button
                                 type="button"
                                 className="btn-secondary schedule-overview__action"
-                                disabled={busyRequestId === member.coverage_request_id || member.conflict}
+                                disabled={busyRequestId !== null || member.conflict}
                                 title={member.conflict ? 'You already have a conflicting shift at this time' : undefined}
                                 onClick={() => handleClaim(member.coverage_request_id as number)}
                               >
                                 Claim
                               </button>
                             )}
-                            {member.user_id === currentUserId && member.status === 'normal' && date > today && (
+                            {member.user_id === currentUserId && member.status === 'normal' && date >= today && (
                               <button
                                 type="button"
                                 className="btn-secondary schedule-overview__action"

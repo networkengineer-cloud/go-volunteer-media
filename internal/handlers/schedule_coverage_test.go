@@ -112,16 +112,45 @@ func TestCreateCoverageRequest(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects a past or same-day date", func(t *testing.T) {
+	t.Run("rejects a past date", func(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, _, group := setupCoverageTestGroup(t, db)
-		today := time.Now().UTC().Format("2006-01-02")
+		yesterday := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
 
-		body := fmt.Sprintf(`{"date":"%s","hour":10}`, today)
+		body := fmt.Sprintf(`{"date":"%s","hour":10}`, yesterday)
 		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
 
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("accepts a same-day date", func(t *testing.T) {
+		// Same-day requests are legitimate (e.g. realizing this afternoon you
+		// can't make a shift later today) and must match the frontend's UTC
+		// calendar-date notion of "today" exactly. The requester needs a
+		// ShiftSlot matching today's actual weekday/hour, not the fixed
+		// Tuesday 10am slot setupCoverageTestGroup wires up, since "today"
+		// varies with when the test runs.
+		db := SetupTestDB(t)
+		requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, requester.ID, group.ID, false)
+		if err := db.Model(group).Update("scheduling_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable scheduling: %v", err)
+		}
+		now := time.Now().UTC()
+		slot := &models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: int(now.Weekday()), Hour: 10}
+		if err := db.Create(slot).Error; err != nil {
+			t.Fatalf("Failed to create shift slot: %v", err)
+		}
+		today := now.Format("2006-01-02")
+
+		body := fmt.Sprintf(`{"date":"%s","hour":10}`, today)
+		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 
@@ -160,6 +189,48 @@ func TestCreateCoverageRequest(t *testing.T) {
 		}
 		if created.RequestedByUserID != requester.ID {
 			t.Fatalf("Expected request to be for requester %d, got %d", requester.ID, created.RequestedByUserID)
+		}
+	})
+
+	t.Run("second request within the cooldown window still succeeds", func(t *testing.T) {
+		// Guards the notification-cooldown check added in CreateCoverageRequest:
+		// the recent-request count query now runs unconditionally (even with
+		// nil emailService/groupMeService, as performCreateCoverageRequest
+		// always passes), so a rapid cancel-and-recreate cycle by the same
+		// user must not error or panic - it should just skip notifications,
+		// which this test can't directly observe without mocking the
+		// email/GroupMe services, so it asserts the structural outcome
+		// instead: both rows get created successfully.
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"date":"%s","hour":10}`, date)
+
+		first := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+		if first.Code != http.StatusCreated {
+			t.Fatalf("Expected first request to succeed, got %d: %s", first.Code, first.Body.String())
+		}
+		var firstCreated models.ShiftCoverageRequest
+		if err := db.Where("group_id = ? AND requested_by_user_id = ?", group.ID, requester.ID).First(&firstCreated).Error; err != nil {
+			t.Fatalf("Expected first request to be persisted: %v", err)
+		}
+		if err := db.Model(&firstCreated).Update("status", models.CoverageRequestCancelled).Error; err != nil {
+			t.Fatalf("Failed to cancel first request: %v", err)
+		}
+
+		second := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+		if second.Code != http.StatusCreated {
+			t.Fatalf("Expected second request within cooldown to still succeed, got %d: %s", second.Code, second.Body.String())
+		}
+
+		var count int64
+		if err := db.Model(&models.ShiftCoverageRequest{}).
+			Where("group_id = ? AND requested_by_user_id = ?", group.ID, requester.ID).
+			Count(&count).Error; err != nil {
+			t.Fatalf("Failed to count requests: %v", err)
+		}
+		if count != 2 {
+			t.Fatalf("Expected 2 requests to exist (one cancelled, one active), got %d", count)
 		}
 	})
 
