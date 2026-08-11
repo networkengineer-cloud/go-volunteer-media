@@ -700,6 +700,27 @@ func createCustomIndexes(db *gorm.DB) error {
 		logging.Info("Created partial unique index idx_coverage_request_active_unique")
 	}
 
+	// Partial unique index backstopping the app-level check-then-write logic
+	// in ClaimCoverageRequest against a race between two concurrent claims by
+	// the SAME user for two DIFFERENT open requests at the same (date, hour):
+	// that check is a plain count-then-write across different rows (not a
+	// conditional update gated on a single row's state, unlike the per-
+	// request claim itself), so under READ COMMITTED (Postgres in
+	// production) both claims can pass the check and both succeed. This
+	// index rejects the second claim at the DB level as a last line of
+	// defense. Scoped to claimed rows only, so an open or cancelled request
+	// never counts against it.
+	coverageRequestClaimedUniqueIndexQuery := `
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_request_claimed_unique
+		ON shift_coverage_requests (claimed_by_user_id, date, hour)
+		WHERE status = 'claimed'
+	`
+	if err := db.Exec(coverageRequestClaimedUniqueIndexQuery).Error; err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to create partial unique index idx_coverage_request_claimed_unique")
+	} else {
+		logging.Info("Created partial unique index idx_coverage_request_claimed_unique")
+	}
+
 	logging.Info("Custom indexes creation completed")
 	return nil
 }

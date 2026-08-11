@@ -207,6 +207,93 @@ func TestCreateCustomIndexes_CoverageRequestActiveUnique(t *testing.T) {
 	}
 }
 
+// TestCreateCustomIndexes_CoverageRequestClaimedUnique verifies the partial
+// unique index (idx_coverage_request_claimed_unique) that backstops
+// ClaimCoverageRequest's app-level check-then-write logic in
+// internal/handlers/schedule_coverage.go. That check is a plain
+// count-then-write across different rows (not a conditional update gated on
+// a single row's state, unlike the per-request claim update itself), so
+// under READ COMMITTED (Postgres in production) two concurrent claims by the
+// SAME user for two DIFFERENT open requests at the same (date, hour) can
+// both pass the check and both succeed. This test bypasses the app-level
+// check entirely (two direct db.Create calls for claimed rows) to isolate
+// and confirm the DB-level backstop actually rejects the second insert -
+// and that an open (non-claimed) row for the same claimant/date/hour does
+// NOT block it, since the index is scoped to status = 'claimed'.
+func TestCreateCustomIndexes_CoverageRequestClaimedUnique(t *testing.T) {
+	// Use a per-test-run unique shared-cache DSN so this test's tables don't
+	// collide with other tests using the same "file::memory:?cache=shared"
+	// pattern.
+	dsn := fmt.Sprintf("file:coverage_claimed_idx_test_%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite db: %v", err)
+	}
+
+	if err := db.AutoMigrate(&models.User{}, &models.Group{}, &models.ShiftCoverageRequest{}); err != nil {
+		t.Fatalf("failed to automigrate: %v", err)
+	}
+	if err := createCustomIndexes(db); err != nil {
+		t.Fatalf("createCustomIndexes failed: %v", err)
+	}
+
+	alice := models.User{Username: "alice", Email: "alice@test.com", Password: "hashed"}
+	if err := db.Create(&alice).Error; err != nil {
+		t.Fatalf("failed to create user alice: %v", err)
+	}
+	bob := models.User{Username: "bob", Email: "bob@test.com", Password: "hashed"}
+	if err := db.Create(&bob).Error; err != nil {
+		t.Fatalf("failed to create user bob: %v", err)
+	}
+	claimant := models.User{Username: "claimant", Email: "claimant@test.com", Password: "hashed"}
+	if err := db.Create(&claimant).Error; err != nil {
+		t.Fatalf("failed to create claimant: %v", err)
+	}
+	group := models.Group{Name: "Dogs"}
+	if err := db.Create(&group).Error; err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+
+	date := time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC)
+
+	// Two DIFFERENT requests (different requesters), same claimant, same
+	// (date, hour). The first claim should succeed.
+	first := models.ShiftCoverageRequest{
+		GroupID:           group.ID,
+		RequestedByUserID: alice.ID,
+		Date:              date,
+		Hour:              10,
+		Status:            models.CoverageRequestClaimed,
+		ClaimedByUserID:   &claimant.ID,
+	}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("expected first claimed insert to succeed, got: %v", err)
+	}
+
+	// A second, still-open request for a different requester at the same
+	// (date, hour) must not be blocked by the claimed-only index.
+	second := models.ShiftCoverageRequest{
+		GroupID:           group.ID,
+		RequestedByUserID: bob.ID,
+		Date:              date,
+		Hour:              10,
+		Status:            models.CoverageRequestOpen,
+	}
+	if err := db.Create(&second).Error; err != nil {
+		t.Fatalf("expected second (still-open) insert to succeed, got: %v", err)
+	}
+
+	// Now claim the second request with the SAME claimant at the same
+	// (date, hour) as the first claim - this is exactly the double-claim
+	// race the index defends against, and must be rejected.
+	if err := db.Model(&second).Updates(map[string]interface{}{
+		"status":             models.CoverageRequestClaimed,
+		"claimed_by_user_id": claimant.ID,
+	}).Error; err == nil {
+		t.Fatal("expected second claim for the same (claimant, date, hour) to be rejected by the unique index, got no error")
+	}
+}
+
 func TestDBLogLevel_Parsing(t *testing.T) {
 	tests := []struct {
 		name     string
