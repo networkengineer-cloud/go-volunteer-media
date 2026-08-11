@@ -288,11 +288,11 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   return (
     <div className="schedule-overview">
       <div className="schedule-overview__week-nav">
-        <button type="button" className="btn-secondary" onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Previous week">
+        <button type="button" className="schedule-overview__week-nav-btn" onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Previous week">
           ◀
         </button>
         <span>{formatWeekLabel(weekStart)}</span>
-        <button type="button" className="btn-secondary" onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="Next week">
+        <button type="button" className="schedule-overview__week-nav-btn" onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="Next week">
           ▶
         </button>
       </div>
