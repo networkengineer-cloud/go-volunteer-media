@@ -36,6 +36,9 @@ import (
 )
 
 func main() {
+	// time.Local is forced to UTC in internal/database's init() (imported
+	// below via internal/database) - see that file for why.
+
 	// Load environment variables first so everything below — logging,
 	// telemetry, database config — observes vars set only in .env, not just
 	// the process environment. The "no .env file" notice itself is logged

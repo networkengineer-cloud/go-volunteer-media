@@ -28,6 +28,28 @@ import (
 // only needs updating in two places instead of four.
 const vectorEmbeddingDimension = 1024
 
+// gorm.io/driver/postgres (via pgx) decodes `timestamptz` columns into
+// time.Time using time.Local, not UTC - so without this, any date/time
+// value read back from Postgres comes back shifted to whatever the
+// OS/container's local timezone is, silently breaking any .Format()/
+// .Weekday() call on it (e.g. ShiftCoverageRequest.Date's date-keyed
+// lookups in GetGroupScheduleOverview, notification content, weekday-based
+// conflict checks) whenever that local timezone isn't already UTC. This
+// codebase's date/time handling is UTC-anchored throughout by design (see
+// e.g. ShiftSlot's day-of-week convention) - this makes that actually true
+// for every timestamptz read, not just freshly-parsed values.
+//
+// An init() (rather than a line in cmd/api/main.go) so every path that
+// touches Postgres gets it - the production binary, cmd/seed, and the
+// *_postgres_test.go files (which open their own *gorm.DB directly,
+// bypassing Initialize() below) all import this package, so this runs
+// exactly once before any of them read a single row. SQLite (used by every
+// other test) doesn't exhibit this driver behavior, which is why this went
+// undetected until a real Postgres run.
+func init() {
+	time.Local = time.UTC
+}
+
 // Initialize creates and returns a database connection
 func Initialize() (*gorm.DB, error) {
 	dbHost := os.Getenv("DB_HOST")
