@@ -196,4 +196,45 @@ describe('ScheduleTab', () => {
     fireEvent.change(screen.getByLabelText(/viewing schedule for/i), { target: { value: '2' } });
     await waitFor(() => expect(screen.queryByRole('button', { name: /request coverage for a date range/i })).not.toBeInTheDocument());
   });
+
+  it('offers the request-coverage form only the persisted schedule, not an unsaved toggle', async () => {
+    // Regression test: the "Request Coverage for a Date Range" button sits
+    // directly below "Save Schedule", so "toggle a cell, then open Request
+    // Coverage without saving" is a natural flow. The form's candidate list
+    // must reflect only what's actually persisted server-side (savedSlots),
+    // not the live, possibly-unsaved grid selection - otherwise the form
+    // pre-checks occurrences the backend will just skip (unsaved additions)
+    // or silently drops real shifts (unsaved removals).
+    vi.mocked(scheduleApi.getMine).mockResolvedValue({
+      data: { slots: [{ day_of_week: 2, hour: 9 }] }, // Tuesday 9am, persisted
+    } as unknown as AxiosResponse<ScheduleResponse>);
+
+    render(
+      <ToastProvider>
+        <ScheduleTab groupId={7} canManageMembers={false} currentUserId={1} />
+      </ToastProvider>
+    );
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    // Toggle on an additional, unsaved cell (Wednesday 10am) without saving.
+    const unsavedCell = await screen.findByRole('cell', { name: 'Wed 10:00 AM' });
+    fireEvent.click(unsavedCell);
+    expect(unsavedCell).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: /request coverage for a date range/i }));
+    await screen.findByRole('dialog');
+
+    // Pick a date range spanning the persisted Tuesday slot's one occurrence
+    // (2026-08-11) and the unsaved Wednesday toggle's occurrence the next
+    // day (2026-08-12).
+    fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+    fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-12' } });
+
+    // Only the persisted Tuesday 9am occurrence should be offered - the
+    // unsaved Wednesday 10am toggle must not appear as a candidate.
+    const candidates = await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
+    expect(candidates).toHaveLength(1);
+    expect(screen.getByRole('checkbox', { name: /9:00 AM/ })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /10:00 AM/ })).not.toBeInTheDocument();
+  });
 });

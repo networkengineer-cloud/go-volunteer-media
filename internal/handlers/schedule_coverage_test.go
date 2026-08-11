@@ -553,6 +553,27 @@ func TestCreateCoverageRequestsBatch(t *testing.T) {
 		}
 	})
 
+	t.Run("a batch exceeding the item cap is rejected and creates nothing", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+
+		items := make([]string, 0, 201)
+		for i := 0; i < 201; i++ {
+			items = append(items, `{"date":"2027-01-01","hour":10}`)
+		}
+		body := fmt.Sprintf(`{"requests":[%s]}`, strings.Join(items, ","))
+		w := performCreateCoverageRequestsBatch(db, requester.ID, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+		var count int64
+		db.Model(&models.ShiftCoverageRequest{}).Where("group_id = ?", group.ID).Count(&count)
+		if count != 0 {
+			t.Fatalf("Expected no requests created when the batch exceeds the item cap, got %d", count)
+		}
+	})
+
 	t.Run("a structurally invalid item rejects the whole batch", func(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, _, group := setupCoverageTestGroup(t, db)

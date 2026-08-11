@@ -115,4 +115,53 @@ describe('RequestCoverageRangeForm', () => {
       vi.useRealTimers();
     }
   });
+
+  it('shows the result screen even when a consumer passes onSuccess, and Done calls onCancel not onSuccess', async () => {
+    // Regression test for the onSuccess/result-screen race: ScheduleTab used
+    // to pass an onSuccess that closed its modal, and because React batches
+    // setResult(...) and onSuccess?.() from the same submit handler, the
+    // parent's onSuccess-driven unmount raced the result screen's paint -
+    // in practice the modal closed before the created/skipped summary (and
+    // its "Done" button) ever became visible. ScheduleTab has since stopped
+    // passing onSuccess at all (relying solely on onCancel to close), but
+    // this component still accepts onSuccess as an optional prop for other
+    // future consumers, so it must keep behaving correctly when one is
+    // supplied: the result screen must actually render (not be skipped or
+    // torn down by onSuccess having fired), and re-reading the component's
+    // current code confirms the "Done" button's onClick invokes onCancel,
+    // not onSuccess - so clicking it must not fire onSuccess again.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      const result: CoverageRequestBatchResult = {
+        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', claimed_by_user_id: null }],
+        skipped: [],
+      };
+      vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({ data: result } as AxiosResponse<CoverageRequestBatchResult>);
+
+      const onSuccess = vi.fn();
+      const onCancel = vi.fn();
+      render(<RequestCoverageRangeForm groupId={7} slots={slots} onSuccess={onSuccess} onCancel={onCancel} />);
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-11' } });
+      await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
+
+      fireEvent.click(screen.getByRole('button', { name: /request coverage/i }));
+
+      // The result screen must actually be visible - this is the part that
+      // was previously dead code in the real app because ScheduleTab's old
+      // onSuccess handler unmounted the form (via closing the Modal) before
+      // this ever painted.
+      expect(await screen.findByText(/requested coverage for 1 shift/i)).toBeInTheDocument();
+      expect(onSuccess).toHaveBeenCalledTimes(1);
+      expect(onCancel).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: /done/i }));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      // Done must not invoke onSuccess again - it only calls onCancel.
+      expect(onSuccess).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

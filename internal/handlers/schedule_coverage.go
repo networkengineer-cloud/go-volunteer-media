@@ -275,18 +275,23 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 
 		// Cooldown: throttle (not silence) the group-wide broadcast if this
 		// same user created another coverage request in this group within
-		// the last minute, so a rapid double-submission doesn't fire two
-		// near-identical emails/GroupMe posts back to back. Short on purpose:
-		// its only job is absorbing accidental double-clicks, not gatekeeping
-		// a legitimate second request for a different shift moments later -
-		// whenever a notification IS sent (see below), it always lists every
-		// currently-open request this user has in the group, not just the
-		// one that triggered it, so nothing is ever silently left out of the
-		// email because it happened to land inside the cooldown window. Runs
-		// on the outer (non-transaction) db since the transaction has
-		// already committed by this point, matching how the notification
-		// helper below already runs post-commit.
-		const coverageNotificationCooldown = 60 * time.Second
+		// the last few seconds, so a rapid double-submission (e.g. a network
+		// retry on a slow connection) doesn't fire two near-identical emails/
+		// GroupMe posts back to back. Deliberately short: a real, separate
+		// request even a few seconds later should still notify normally.
+		//
+		// KNOWN LIMITATION: this checks "was another row created recently,"
+		// not "was a notification actually sent recently." If a batch create
+		// (CreateCoverageRequestsBatch, which always notifies unconditionally)
+		// is immediately followed by a single create within this window, the
+		// single create's notification is suppressed even though the group
+		// was never told about that specific new item. A fully correct fix
+		// needs a persisted "last notified at" timestamp per (user, group),
+		// which is out of scope here - this short window just keeps the
+		// practical blast radius small. Runs on the outer (non-transaction)
+		// db since the transaction has already committed by this point,
+		// matching how the notification helper below already runs post-commit.
+		const coverageNotificationCooldown = 5 * time.Second
 		var recentCount int64
 		if err := rawDB.Model(&models.ShiftCoverageRequest{}).
 			Where("group_id = ? AND requested_by_user_id = ? AND id != ? AND created_at > ?",
@@ -609,6 +614,11 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 		}
 		if len(req.Requests) == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "requests must not be empty"})
+			return
+		}
+		const maxBatchItems = 200
+		if len(req.Requests) > maxBatchItems {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("requests must not exceed %d items", maxBatchItems)})
 			return
 		}
 

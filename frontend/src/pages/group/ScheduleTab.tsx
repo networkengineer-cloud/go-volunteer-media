@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { scheduleApi, groupsApi } from '../../api/client';
-import type { GroupMember } from '../../api/client';
+import type { GroupMember, ScheduleSlot } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
@@ -22,6 +22,7 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
+  const [savedSlots, setSavedSlots] = useState<ScheduleSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -47,6 +48,7 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
     request
       .then(res => {
         setSelectedSlots(new Set(res.data.slots.map(s => slotKey(s.day_of_week, s.hour))));
+        setSavedSlots(res.data.slots);
       })
       .catch(err => {
         if (axios.isCancel(err)) return;
@@ -103,7 +105,10 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
       ? scheduleApi.updateMine(groupId, slots)
       : scheduleApi.updateForMember(groupId, selectedUserId, slots);
     request
-      .then(() => toast.showSuccess('Schedule saved.'))
+      .then(() => {
+        toast.showSuccess('Schedule saved.');
+        setSavedSlots(slots.map(s => ({ day_of_week: s.day_of_week, hour: s.hour })));
+      })
       .catch(() => toast.showError('Failed to save schedule.'))
       .finally(() => setSaving(false));
   };
@@ -213,11 +218,7 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
       >
         <RequestCoverageRangeForm
           groupId={groupId}
-          slots={Array.from(selectedSlots).map(key => {
-            const [dayOfWeek, hour] = key.split('-').map(Number);
-            return { day_of_week: dayOfWeek, hour };
-          })}
-          onSuccess={() => setShowRequestRangeModal(false)}
+          slots={savedSlots}
           onCancel={() => setShowRequestRangeModal(false)}
         />
       </Modal>
