@@ -119,16 +119,29 @@
   color: var(--text-primary);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0.625rem 1.25rem;
   font-weight: 600;
-  font-size: 0.9375rem;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.schedule-tab .btn-secondary:hover,
-.schedule-overview .btn-secondary:hover {
+/* Popover action buttons (.schedule-overview__action) keep their own
+   smaller sizing from ScheduleOverview.css -- excluded here so this
+   scoped rule doesn't out-specificity that padding/font-size. */
+.schedule-tab .btn-secondary:not(.schedule-overview__action),
+.schedule-overview .btn-secondary:not(.schedule-overview__action) {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9375rem;
+}
+
+.schedule-tab .btn-secondary:hover:not(:disabled),
+.schedule-overview .btn-secondary:hover:not(:disabled) {
   background: var(--neutral-50);
+}
+
+.schedule-tab .btn-secondary:disabled,
+.schedule-overview .btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .schedule-tab .btn-secondary:focus-visible,
