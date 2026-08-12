@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import RequestCoverageRangeForm, { computeCandidateOccurrences } from './RequestCoverageRangeForm';
+import Modal from '../../components/Modal';
 import { scheduleApi } from '../../api/client';
 import type { AxiosResponse } from 'axios';
 import type { CoverageRequestBatchResult, ScheduleSlot } from '../../api/client';
@@ -198,5 +199,35 @@ describe('RequestCoverageRangeForm', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('styles the Cancel button correctly even though Modal renders it via a portal outside .schedule-tab', () => {
+    // Regression test: ScheduleTab.css's .schedule-tab .btn-secondary rule
+    // is a descendant selector, but Modal renders its children via
+    // createPortal(..., document.body) - so when this form is opened from
+    // ScheduleTab (as it always is in the real app), the Cancel button ends
+    // up as a DOM sibling of .schedule-tab, not a descendant of it, and
+    // that scoped rule can never match it regardless of the React
+    // component tree. The fix must not depend on DOM-tree ancestry, so
+    // this test renders through the real Modal - inside a real
+    // .schedule-tab wrapper, matching how ScheduleTab.tsx actually uses
+    // it - to prove the button is styled correctly wherever the portal
+    // happens to place it.
+    render(
+      <div className="schedule-tab">
+        <Modal isOpen={true} onClose={() => {}} title="Request Coverage for a Date Range">
+          <RequestCoverageRangeForm groupId={7} slots={slots} onCancel={() => {}} />
+        </Modal>
+      </div>
+    );
+
+    const cancelButton = screen.getByRole('button', { name: /cancel/i });
+    expect(cancelButton).toHaveClass('request-coverage-range-form__cancel-btn');
+
+    // Confirms the portal actually did what this test exists to guard
+    // against: the button is NOT inside .schedule-tab in the DOM, so any
+    // fix relying on a `.schedule-tab .btn-secondary`-style descendant
+    // selector would silently fail to reach it.
+    expect(cancelButton.closest('.schedule-tab')).toBeNull();
   });
 });
