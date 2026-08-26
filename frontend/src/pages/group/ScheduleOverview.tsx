@@ -369,7 +369,9 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                       {visibleMembers.map(member => (
                         <span key={member.user_id} className="schedule-overview__name">
                           {shortDisplayName(member)}
-                          {member.status === 'needs_coverage' && ' ⚠'}
+                          {member.status === 'needs_coverage' && (
+                            <span className="schedule-overview__tag" aria-hidden="true"> ⚠</span>
+                          )}
                         </span>
                       ))}
                       {overflowCount > 0 && (

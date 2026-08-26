@@ -40,15 +40,25 @@
 /* Overview slots hold member names now (not just heatmap color), so they
    need to grow to fit text and left-align content instead of centering an
    empty square. Scoped to .schedule-overview so ScheduleTab's own (still
-   empty, fixed-height) individual-view slots are unaffected. */
+   empty, fixed-height) individual-view slots are unaffected.
+
+   `.schedule-grid__row { display: contents }` makes each slot a direct
+   grid item of `.schedule-grid`, and grid items get an automatic min-width
+   equal to their content's min-content size unless the item's own overflow
+   is non-visible - without `overflow: hidden`/`min-width: 0` here, a single
+   long unbroken name (e.g. a long surname) would force this slot (and its
+   1fr column) to grow to fit it instead of the child's `text-overflow:
+   ellipsis` ever kicking in. */
 .schedule-overview .schedule-grid__slot {
   height: auto;
   min-height: 32px;
+  min-width: 0;
   padding: 3px 4px;
   display: flex;
   align-items: flex-start;
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .schedule-overview__names {

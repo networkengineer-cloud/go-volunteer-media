@@ -130,6 +130,36 @@ describe('ScheduleOverview', () => {
     await waitFor(() => expect(screen.queryByRole('list')).not.toBeInTheDocument());
   });
 
+  it('caps the names shown directly in a cell and collapses the rest into a "+N more" indicator', async () => {
+    const members = Array.from({ length: 5 }, (_, i) => ({
+      user_id: i + 2,
+      username: `vol${i + 1}`,
+      first_name: `Member`,
+      last_name: `${i + 1}`,
+      status: 'normal' as const,
+    }));
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [{ date: '2026-08-11', day_of_week: 2, hour: 9, members }],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={5} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM.*5 available/i });
+
+    // Only the first MAX_VISIBLE_NAMES (3) render inline in the cell...
+    expect(within(cell).getByText('Member 1.')).toBeInTheDocument();
+    expect(within(cell).getByText('Member 2.')).toBeInTheDocument();
+    expect(within(cell).getByText('Member 3.')).toBeInTheDocument();
+    expect(within(cell).queryByText('Member 4.')).not.toBeInTheDocument();
+    expect(within(cell).getByText('+2 more')).toBeInTheDocument();
+
+    // ...but all 5 are still available via the popover.
+    fireEvent.click(cell);
+    const popover = await screen.findByRole('list');
+    expect(within(popover).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(popover).getByText('Member 4')).toBeInTheDocument();
+  });
+
   it('renders every member in a long list even though the popover box is height-capped', async () => {
     // jsdom doesn't compute layout, so this can't verify the CSS
     // max-height/overflow-y clamp actually kicks in visually (that's
