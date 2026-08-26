@@ -907,7 +907,19 @@ func CancelCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
 			result := db.Model(&models.ShiftCoverageRequest{}).
 				Where("id = ? AND status = ?", reqRow.ID, models.CoverageRequestOpen).
 				Update("status", models.CoverageRequestCancelled)
-			if result.Error != nil || result.RowsAffected == 0 {
+			if result.Error != nil {
+				logging.WithContext(c.Request.Context()).WithFields(map[string]interface{}{
+					"group_id":   groupIDParam,
+					"request_id": requestID,
+				}).Error("Failed to cancel coverage request in batch", result.Error)
+				response.Skipped = append(response.Skipped, coverageRequestCancelBatchSkipped{ID: requestID, Reason: "internal error, please try again"})
+				continue
+			}
+			if result.RowsAffected == 0 {
+				// Someone else changed the request's state between our read
+				// above and this write (a concurrent claim or cancel) - same
+				// race window CancelCoverageRequest closes for the single-item
+				// case.
 				response.Skipped = append(response.Skipped, coverageRequestCancelBatchSkipped{ID: requestID, Reason: "coverage request is no longer open"})
 				continue
 			}
