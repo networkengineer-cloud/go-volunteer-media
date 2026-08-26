@@ -56,3 +56,34 @@
   justify-content: flex-end;
   gap: 0.5rem;
 }
+
+/* Styled directly on its own class rather than via a `.schedule-tab
+   .btn-secondary`-style descendant selector: Modal renders this form's
+   content through a React portal to document.body, so it's never a DOM
+   descendant of .schedule-tab regardless of the component tree, and a
+   scoped descendant selector can never reach it. */
+.request-coverage-range-form__cancel-btn {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9375rem;
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.request-coverage-range-form__cancel-btn:hover:not(:disabled) {
+  background: var(--neutral-50);
+}
+
+.request-coverage-range-form__cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.request-coverage-range-form__cancel-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}

@@ -231,7 +231,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
       )}
 
       <div className="request-coverage-range-form__actions">
-        <button type="button" className="btn-secondary" onClick={onCancel} disabled={submitting}>
+        <button type="button" className="request-coverage-range-form__cancel-btn" onClick={onCancel} disabled={submitting}>
           Cancel
         </button>
         <button

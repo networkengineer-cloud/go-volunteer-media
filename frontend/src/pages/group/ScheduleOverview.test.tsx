@@ -36,6 +36,14 @@ describe('ScheduleOverview', () => {
     await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalledWith(7, expect.objectContaining({ signal: expect.any(AbortSignal) })));
   });
 
+  it('styles the week navigation arrows as compact icon buttons', async () => {
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+    await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalled());
+
+    expect(screen.getByRole('button', { name: 'Previous week' })).toHaveClass('schedule-overview__week-nav-btn');
+    expect(screen.getByRole('button', { name: 'Next week' })).toHaveClass('schedule-overview__week-nav-btn');
+  });
+
   it('renders a tier class proportional to how many members are available', async () => {
     mockOverview({
       week_start: '2026-08-09',

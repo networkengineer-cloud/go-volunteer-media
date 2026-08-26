@@ -169,6 +169,21 @@ describe('ScheduleTab', () => {
     expect(await screen.findByLabelText(/viewing schedule for/i)).toBeInTheDocument();
   });
 
+  it('applies the active toggle style to the selected view', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    const individualButton = screen.getByRole('button', { name: /individual/i });
+    const overviewButton = screen.getByRole('button', { name: /overview/i });
+    expect(individualButton).toHaveClass('schedule-tab__view-toggle-btn--active');
+    expect(overviewButton).not.toHaveClass('schedule-tab__view-toggle-btn--active');
+
+    fireEvent.click(overviewButton);
+
+    await waitFor(() => expect(overviewButton).toHaveClass('schedule-tab__view-toggle-btn--active'));
+    expect(individualButton).not.toHaveClass('schedule-tab__view-toggle-btn--active');
+  });
+
   it('opens the bulk request-coverage form when viewing my own schedule, and hides it when viewing another member\'s', async () => {
     vi.mocked(scheduleApi.getMine).mockResolvedValue({
       data: { slots: [{ day_of_week: 2, hour: 9 }] },

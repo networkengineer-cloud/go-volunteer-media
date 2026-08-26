@@ -18,9 +18,39 @@
 }
 
 .schedule-tab__view-toggle {
-  display: flex;
-  gap: 0.5rem;
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
   margin-bottom: 1rem;
+}
+
+.schedule-tab__view-toggle-btn {
+  padding: 0.5rem 1.25rem;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.schedule-tab__view-toggle-btn:hover {
+  background: var(--neutral-50);
+  color: var(--text-primary);
+}
+
+.schedule-tab__view-toggle-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+.schedule-tab__view-toggle-btn--active,
+.schedule-tab__view-toggle-btn--active:hover {
+  background: var(--brand);
+  color: var(--brand-contrast);
 }
 
 .schedule-grid {
@@ -81,4 +111,41 @@
 
 [data-theme='dark'] .schedule-grid__slot {
   border-color: var(--neutral-300);
+}
+
+.schedule-tab .btn-secondary,
+.schedule-overview .btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* Popover action buttons (.schedule-overview__action) keep their own
+   smaller sizing from ScheduleOverview.css -- excluded here so this
+   scoped rule doesn't out-specificity that padding/font-size. */
+.schedule-tab .btn-secondary:not(.schedule-overview__action),
+.schedule-overview .btn-secondary:not(.schedule-overview__action) {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9375rem;
+}
+
+.schedule-tab .btn-secondary:hover:not(:disabled),
+.schedule-overview .btn-secondary:hover:not(:disabled) {
+  background: var(--neutral-50);
+}
+
+.schedule-tab .btn-secondary:disabled,
+.schedule-overview .btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.schedule-tab .btn-secondary:focus-visible,
+.schedule-overview .btn-secondary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
