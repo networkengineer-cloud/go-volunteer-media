@@ -32,9 +32,28 @@
   background: var(--brand);
 }
 
-.schedule-grid__slot--tier-3,
+/* Tier-3/4 cells now render real member-name text (not just an empty
+   colored square), so the text color needs to pass WCAG AA (4.5:1) against
+   each tier's actual mixed background - which isn't the same call in both
+   themes. Verified via relative-luminance contrast math:
+     light tier-3 (~rgb(77,151,135)): white ~3.45:1 (fails) / dark ~5.1:1 (passes)
+     dark  tier-3 (~rgb(9,130,105)):  white ~4.76:1 (passes)
+     light tier-4 (solid brand #006b54): white ~6.5:1 (passes)
+     dark  tier-4 (solid brand #00a87e): white ~3.0:1 (fails) / dark ~6.9:1 (passes) */
+.schedule-grid__slot--tier-3 {
+  color: #111827;
+}
+
+[data-theme='dark'] .schedule-grid__slot--tier-3 {
+  color: var(--brand-contrast);
+}
+
 .schedule-grid__slot--tier-4 {
-  color: #fff;
+  color: var(--brand-contrast);
+}
+
+[data-theme='dark'] .schedule-grid__slot--tier-4 {
+  color: #111827;
 }
 
 /* Overview slots hold member names now (not just heatmap color), so they
