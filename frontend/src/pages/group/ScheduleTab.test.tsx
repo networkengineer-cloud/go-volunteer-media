@@ -213,9 +213,9 @@ describe('ScheduleTab', () => {
   });
 
   it('offers the request-coverage form only the persisted schedule, not an unsaved toggle', async () => {
-    // Regression test: the "Request Coverage for a Date Range" button sits
-    // directly below "Save Schedule", so "toggle a cell, then open Request
-    // Coverage without saving" is a natural flow. The form's candidate list
+    // Regression test: "toggle a cell, then open Request Coverage without
+    // saving" is a natural flow regardless of the button's position on the
+    // page. The form's candidate list
     // must reflect only what's actually persisted server-side (savedSlots),
     // not the live, possibly-unsaved grid selection - otherwise the form
     // pre-checks occurrences the backend will just skip (unsaved additions)

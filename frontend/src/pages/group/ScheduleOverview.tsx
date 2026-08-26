@@ -19,6 +19,20 @@ function memberDisplayName(member: ScheduleOverviewMember): string {
   return [member.first_name, member.last_name].filter(Boolean).join(' ') || member.username;
 }
 
+// Compact name shown directly in a cell (e.g. "Jane D.") so who's scheduled
+// is visible at a glance, without the click the full popover requires.
+// Deliberately distinct from memberDisplayName's full "First Last" - keeps
+// cells narrow and avoids duplicate-text ambiguity with the popover.
+function shortDisplayName(member: ScheduleOverviewMember): string {
+  if (!member.first_name) return member.username;
+  return member.last_name ? `${member.first_name} ${member.last_name.charAt(0)}.` : member.first_name;
+}
+
+// Caps how many names render inline per cell before collapsing the rest
+// into a "+N more" indicator, so a heavily-staffed slot can't blow out the
+// row height for the whole week.
+const MAX_VISIBLE_NAMES = 3;
+
 interface PopoverPosition {
   top: number;
   left: number;
@@ -331,6 +345,9 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                 );
               }
 
+              const visibleMembers = members.slice(0, MAX_VISIBLE_NAMES);
+              const overflowCount = members.length - visibleMembers.length;
+
               return (
                 <div key={key} className="schedule-overview__cell-wrapper">
                   <button
@@ -347,7 +364,23 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                         setActiveCellKey(key);
                       }
                     }}
-                  />
+                  >
+                    <span className="schedule-overview__names">
+                      {visibleMembers.map(member => (
+                        <span key={member.user_id} className="schedule-overview__name">
+                          {shortDisplayName(member)}
+                          {member.status === 'needs_coverage' && (
+                            <span className="schedule-overview__tag" aria-hidden="true"> ⚠</span>
+                          )}
+                        </span>
+                      ))}
+                      {overflowCount > 0 && (
+                        <span className="schedule-overview__name schedule-overview__name--more">
+                          +{overflowCount} more
+                        </span>
+                      )}
+                    </span>
+                  </button>
                   {isActive && popoverPosition && (
                     <div
                       className="schedule-overview__popover"

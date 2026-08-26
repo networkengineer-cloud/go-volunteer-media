@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import ScheduleOverview from './ScheduleOverview';
 import { scheduleApi } from '../../api/client';
 import type { AxiosResponse } from 'axios';
@@ -93,9 +93,14 @@ describe('ScheduleOverview', () => {
     render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
 
     const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM.*1 available/i });
+    // The cell shows who's scheduled directly, without needing a click.
+    expect(within(cell).getByText('vol1')).toBeInTheDocument();
+
     fireEvent.click(cell);
 
-    expect(await screen.findByText('vol1')).toBeInTheDocument();
+    // The popover repeats the same fallback name alongside its actions.
+    const popover = await screen.findByRole('list');
+    expect(within(popover).getByText('vol1')).toBeInTheDocument();
   });
 
   it('falls back to a data-derived denominator when totalMembers is 0 but slots have members', async () => {
@@ -126,10 +131,41 @@ describe('ScheduleOverview', () => {
 
     const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM.*1 available/i });
     fireEvent.click(cell);
-    expect(await screen.findByText('vol1')).toBeInTheDocument();
+    const popover = await screen.findByRole('list');
+    expect(within(popover).getByText('vol1')).toBeInTheDocument();
 
     fireEvent.mouseDown(document.body);
-    await waitFor(() => expect(screen.queryByText('vol1')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('list')).not.toBeInTheDocument());
+  });
+
+  it('caps the names shown directly in a cell and collapses the rest into a "+N more" indicator', async () => {
+    const members = Array.from({ length: 5 }, (_, i) => ({
+      user_id: i + 2,
+      username: `vol${i + 1}`,
+      first_name: `Member`,
+      last_name: `${i + 1}`,
+      status: 'normal' as const,
+    }));
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [{ date: '2026-08-11', day_of_week: 2, hour: 9, members }],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={5} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM.*5 available/i });
+
+    // Only the first MAX_VISIBLE_NAMES (3) render inline in the cell...
+    expect(within(cell).getByText('Member 1.')).toBeInTheDocument();
+    expect(within(cell).getByText('Member 2.')).toBeInTheDocument();
+    expect(within(cell).getByText('Member 3.')).toBeInTheDocument();
+    expect(within(cell).queryByText('Member 4.')).not.toBeInTheDocument();
+    expect(within(cell).getByText('+2 more')).toBeInTheDocument();
+
+    // ...but all 5 are still available via the popover.
+    fireEvent.click(cell);
+    const popover = await screen.findByRole('list');
+    expect(within(popover).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(popover).getByText('Member 4')).toBeInTheDocument();
   });
 
   it('renders every member in a long list even though the popover box is height-capped', async () => {
