@@ -796,3 +796,185 @@ func TestCreateCoverageRequestsBatch(t *testing.T) {
 		}
 	})
 }
+
+func performCancelCoverageRequestsBatch(db *gorm.DB, callerID uint, isAdmin bool, groupID uint, body string) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", callerID)
+		c.Set("is_admin", isAdmin)
+		c.Next()
+	})
+	router.POST("/groups/:id/schedule/coverage-requests/cancel-batch", CancelCoverageRequestsBatch(db))
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/cancel-batch", groupID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func TestCancelCoverageRequestsBatch(t *testing.T) {
+	t.Run("requester can bulk-cancel their own open requests", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 4, Hour: 14}).Error; err != nil {
+			t.Fatalf("Failed to create second shift slot: %v", err)
+		}
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		reqA := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+		reqB := createOpenCoverageRequest(t, db, group.ID, requester.ID, 4, 14, thu)
+
+		body := fmt.Sprintf(`{"request_ids":[%d,%d]}`, reqA.ID, reqB.ID)
+		w := performCancelCoverageRequestsBatch(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestCancelBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Cancelled) != 2 {
+			t.Fatalf("Expected 2 cancelled, got %d", len(resp.Cancelled))
+		}
+		if len(resp.Skipped) != 0 {
+			t.Fatalf("Expected 0 skipped, got %d", len(resp.Skipped))
+		}
+		var updatedA, updatedB models.ShiftCoverageRequest
+		db.First(&updatedA, reqA.ID)
+		db.First(&updatedB, reqB.ID)
+		if updatedA.Status != models.CoverageRequestCancelled || updatedB.Status != models.CoverageRequestCancelled {
+			t.Fatalf("Expected both requests cancelled, got %s and %s", updatedA.Status, updatedB.Status)
+		}
+	})
+
+	t.Run("an already-claimed request is skipped while the rest still cancel", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 4, Hour: 14}).Error; err != nil {
+			t.Fatalf("Failed to create second shift slot: %v", err)
+		}
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		claimed := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, claimed.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+		stillOpen := createOpenCoverageRequest(t, db, group.ID, requester.ID, 4, 14, thu)
+
+		body := fmt.Sprintf(`{"request_ids":[%d,%d]}`, claimed.ID, stillOpen.ID)
+		w := performCancelCoverageRequestsBatch(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestCancelBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Cancelled) != 1 || resp.Cancelled[0].ID != stillOpen.ID {
+			t.Fatalf("Expected only the still-open request cancelled, got %+v", resp.Cancelled)
+		}
+		if len(resp.Skipped) != 1 || resp.Skipped[0].ID != claimed.ID {
+			t.Fatalf("Expected the claimed request to be reported skipped, got %+v", resp.Skipped)
+		}
+	})
+
+	t.Run("group admin can bulk-cancel another member's open requests", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+
+		body := fmt.Sprintf(`{"request_ids":[%d]}`, reqRow.ID)
+		w := performCancelCoverageRequestsBatch(db, admin.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestCancelBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Cancelled) != 1 {
+			t.Fatalf("Expected 1 cancelled, got %d", len(resp.Cancelled))
+		}
+	})
+
+	t.Run("non-admin, non-requester's items are skipped rather than failing the batch", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+
+		body := fmt.Sprintf(`{"request_ids":[%d]}`, reqRow.ID)
+		w := performCancelCoverageRequestsBatch(db, other.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestCancelBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Cancelled) != 0 || len(resp.Skipped) != 1 {
+			t.Fatalf("Expected the item skipped, not cancelled or errored, got cancelled=%d skipped=%d", len(resp.Cancelled), len(resp.Skipped))
+		}
+		var unchanged models.ShiftCoverageRequest
+		db.First(&unchanged, reqRow.ID)
+		if unchanged.Status != models.CoverageRequestOpen {
+			t.Fatalf("Expected the request to remain open, got %s", unchanged.Status)
+		}
+	})
+
+	t.Run("empty request_ids is rejected", func(t *testing.T) {
+		db := SetupTestDB(t)
+		_, _, group := setupCoverageTestGroup(t, db)
+		w := performCancelCoverageRequestsBatch(db, 1, false, group.ID, `{"request_ids":[]}`)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("a batch exceeding the item cap is rejected and cancels nothing", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+
+		ids := make([]string, 0, 201)
+		for i := 0; i < 201; i++ {
+			ids = append(ids, "999999")
+		}
+		body := fmt.Sprintf(`{"request_ids":[%s]}`, strings.Join(ids, ","))
+		w := performCancelCoverageRequestsBatch(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+		var unchanged models.ShiftCoverageRequest
+		db.First(&unchanged, reqRow.ID)
+		if unchanged.Status != models.CoverageRequestOpen {
+			t.Fatalf("Expected the unrelated request untouched, got %s", unchanged.Status)
+		}
+	})
+
+	t.Run("non-member is denied", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		outsider := CreateTestUser(t, db, "outsider", "outsider@example.com", "password123", false)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+
+		body := fmt.Sprintf(`{"request_ids":[%d]}`, reqRow.ID)
+		w := performCancelCoverageRequestsBatch(db, outsider.ID, false, group.ID, body)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}

@@ -153,7 +153,7 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
       )}
 
       {viewMode === 'needs-coverage' && (
-        <NeedsCoverageList groupId={groupId} currentUserId={currentUserId} />
+        <NeedsCoverageList groupId={groupId} currentUserId={currentUserId} canManageMembers={canManageMembers} />
       )}
 
       {viewMode === 'individual' && (
