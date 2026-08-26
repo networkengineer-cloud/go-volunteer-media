@@ -684,6 +684,16 @@ export interface CoverageRequestListItem {
   claimable: boolean;
 }
 
+export interface CoverageRequestCancelBatchSkipped {
+  id: number;
+  reason: string;
+}
+
+export interface CoverageRequestCancelBatchResult {
+  cancelled: CoverageRequest[];
+  skipped: CoverageRequestCancelBatchSkipped[];
+}
+
 export const scheduleApi = {
   getMine: (groupId: number, options?: { signal?: AbortSignal }) =>
     api.get<ScheduleResponse>(`/groups/${groupId}/schedule/me`, { signal: options?.signal }),
@@ -710,6 +720,8 @@ export const scheduleApi = {
     api.delete<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}`),
   createCoverageRequestsBatch: (groupId: number, requests: CoverageRequestBatchItem[]) =>
     api.post<CoverageRequestBatchResult>(`/groups/${groupId}/schedule/coverage-requests/batch`, { requests }),
+  cancelCoverageRequestsBatch: (groupId: number, requestIds: number[]) =>
+    api.post<CoverageRequestCancelBatchResult>(`/groups/${groupId}/schedule/coverage-requests/cancel-batch`, { request_ids: requestIds }),
   listCoverageRequests: (groupId: number, options?: { signal?: AbortSignal }) =>
     api.get<CoverageRequestListItem[]>(`/groups/${groupId}/schedule/coverage-requests`, { signal: options?.signal }),
 };

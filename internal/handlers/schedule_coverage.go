@@ -807,3 +807,127 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 		}
 	}
 }
+
+type cancelCoverageRequestsBatchRequest struct {
+	RequestIDs []uint `json:"request_ids"`
+}
+
+type coverageRequestCancelBatchSkipped struct {
+	ID     uint   `json:"id"`
+	Reason string `json:"reason"`
+}
+
+type coverageRequestCancelBatchResponse struct {
+	Cancelled []coverageRequestResponse           `json:"cancelled"`
+	Skipped   []coverageRequestCancelBatchSkipped `json:"skipped"`
+}
+
+// CancelCoverageRequestsBatch cancels several of the caller's own open
+// coverage requests in one call, so withdrawing from a whole date range
+// (e.g. "I requested coverage for two weeks but I'm back early") doesn't
+// require cancelling one shift at a time. A group admin may also bulk-
+// cancel other members' open requests (e.g. clearing stale requests for a
+// member who left). Deliberately open-status only, for both self and
+// admin - once a request is claimed, withdrawing it is a one-at-a-time
+// action elsewhere (CancelCoverageRequest via the schedule overview), not
+// a bulk one, since it means un-committing another volunteer who already
+// stepped up. Per-item failures (not found, not open, not authorized) are
+// skipped and reported rather than failing the whole batch, matching
+// CreateCoverageRequestsBatch's partial-success shape.
+func CancelCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		callerUserID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		var req cancelCoverageRequestsBatchRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+		if len(req.RequestIDs) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "request_ids must not be empty"})
+			return
+		}
+		const maxBatchItems = 200
+		if len(req.RequestIDs) > maxBatchItems {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("request_ids must not exceed %d items", maxBatchItems)})
+			return
+		}
+
+		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
+
+		response := coverageRequestCancelBatchResponse{
+			Cancelled: make([]coverageRequestResponse, 0, len(req.RequestIDs)),
+			Skipped:   make([]coverageRequestCancelBatchSkipped, 0),
+		}
+		for _, requestID := range req.RequestIDs {
+			var reqRow models.ShiftCoverageRequest
+			if err := db.Where("id = ? AND group_id = ?", requestID, groupIDParam).First(&reqRow).Error; err != nil {
+				response.Skipped = append(response.Skipped, coverageRequestCancelBatchSkipped{ID: requestID, Reason: "coverage request not found"})
+				continue
+			}
+
+			isOwnRequest := reqRow.RequestedByUserID == callerUserID
+			if !isOwnRequest && !isAdminCaller {
+				response.Skipped = append(response.Skipped, coverageRequestCancelBatchSkipped{ID: requestID, Reason: "not authorized to cancel this request"})
+				continue
+			}
+			if reqRow.Status != models.CoverageRequestOpen {
+				reason := "coverage request is no longer open"
+				switch reqRow.Status {
+				case models.CoverageRequestClaimed:
+					reason = "coverage request has already been claimed"
+				case models.CoverageRequestCancelled:
+					reason = "coverage request is already cancelled"
+				}
+				response.Skipped = append(response.Skipped, coverageRequestCancelBatchSkipped{ID: requestID, Reason: reason})
+				continue
+			}
+
+			// Conditional update gated on status = open closes the race with a
+			// concurrent claim/cancel landing between the read above and this
+			// write, same technique as the single-item CancelCoverageRequest.
+			result := db.Model(&models.ShiftCoverageRequest{}).
+				Where("id = ? AND status = ?", reqRow.ID, models.CoverageRequestOpen).
+				Update("status", models.CoverageRequestCancelled)
+			if result.Error != nil {
+				logging.WithContext(c.Request.Context()).WithFields(map[string]interface{}{
+					"group_id":   groupIDParam,
+					"request_id": requestID,
+				}).Error("Failed to cancel coverage request in batch", result.Error)
+				response.Skipped = append(response.Skipped, coverageRequestCancelBatchSkipped{ID: requestID, Reason: "internal error, please try again"})
+				continue
+			}
+			if result.RowsAffected == 0 {
+				// Someone else changed the request's state between our read
+				// above and this write (a concurrent claim or cancel) - same
+				// race window CancelCoverageRequest closes for the single-item
+				// case.
+				response.Skipped = append(response.Skipped, coverageRequestCancelBatchSkipped{ID: requestID, Reason: "coverage request is no longer open"})
+				continue
+			}
+
+			reqRow.Status = models.CoverageRequestCancelled
+			response.Cancelled = append(response.Cancelled, toCoverageRequestResponse(reqRow))
+		}
+
+		c.JSON(http.StatusOK, response)
+	}
+}
