@@ -6,6 +6,7 @@ import { useToast } from '../../hooks/useToast';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
 import ScheduleOverview from './ScheduleOverview';
+import NeedsCoverageList from './NeedsCoverageList';
 import Modal from '../../components/Modal';
 import RequestCoverageRangeForm from './RequestCoverageRangeForm';
 import { DAYS, HOURS, slotKey, formatHourLabel } from './scheduleGrid';
@@ -26,7 +27,7 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [viewMode, setViewMode] = useState<'individual' | 'overview'>('individual');
+  const [viewMode, setViewMode] = useState<'individual' | 'overview' | 'needs-coverage'>('individual');
   const [showRequestRangeModal, setShowRequestRangeModal] = useState(false);
 
   // Cancels any in-flight request before starting a new one - matching
@@ -138,11 +139,24 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
         >
           Overview
         </button>
+        <button
+          type="button"
+          className={`schedule-tab__view-toggle-btn ${viewMode === 'needs-coverage' ? 'schedule-tab__view-toggle-btn--active' : ''}`}
+          onClick={() => setViewMode('needs-coverage')}
+        >
+          Needs Coverage
+        </button>
       </div>
 
-      {viewMode === 'overview' ? (
+      {viewMode === 'overview' && (
         <ScheduleOverview groupId={groupId} totalMembers={members.length} currentUserId={currentUserId} />
-      ) : (
+      )}
+
+      {viewMode === 'needs-coverage' && (
+        <NeedsCoverageList groupId={groupId} currentUserId={currentUserId} />
+      )}
+
+      {viewMode === 'individual' && (
         <>
           {selectedUserId === null && (
             <button
