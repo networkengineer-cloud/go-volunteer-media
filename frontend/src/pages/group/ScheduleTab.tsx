@@ -144,6 +144,16 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
         <ScheduleOverview groupId={groupId} totalMembers={members.length} currentUserId={currentUserId} />
       ) : (
         <>
+          {selectedUserId === null && (
+            <button
+              type="button"
+              className="btn-secondary schedule-tab__request-range"
+              onClick={() => setShowRequestRangeModal(true)}
+            >
+              Request Coverage for a Date Range
+            </button>
+          )}
+
           {canManageMembers && (
             <div className="schedule-tab__picker">
               <label htmlFor="schedule-member-select">Viewing schedule for</label>
@@ -198,16 +208,6 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
           <button type="button" className="btn-primary schedule-tab__save" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save Schedule'}
           </button>
-
-          {selectedUserId === null && (
-            <button
-              type="button"
-              className="btn-secondary schedule-tab__request-range"
-              onClick={() => setShowRequestRangeModal(true)}
-            >
-              Request Coverage for a Date Range
-            </button>
-          )}
         </>
       )}
 

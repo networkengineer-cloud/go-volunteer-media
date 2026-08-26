@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import ScheduleOverview from './ScheduleOverview';
 import { scheduleApi } from '../../api/client';
 import type { AxiosResponse } from 'axios';
@@ -85,9 +85,14 @@ describe('ScheduleOverview', () => {
     render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
 
     const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM.*1 available/i });
+    // The cell shows who's scheduled directly, without needing a click.
+    expect(within(cell).getByText('vol1')).toBeInTheDocument();
+
     fireEvent.click(cell);
 
-    expect(await screen.findByText('vol1')).toBeInTheDocument();
+    // The popover repeats the same fallback name alongside its actions.
+    const popover = await screen.findByRole('list');
+    expect(within(popover).getByText('vol1')).toBeInTheDocument();
   });
 
   it('falls back to a data-derived denominator when totalMembers is 0 but slots have members', async () => {
@@ -118,10 +123,11 @@ describe('ScheduleOverview', () => {
 
     const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM.*1 available/i });
     fireEvent.click(cell);
-    expect(await screen.findByText('vol1')).toBeInTheDocument();
+    const popover = await screen.findByRole('list');
+    expect(within(popover).getByText('vol1')).toBeInTheDocument();
 
     fireEvent.mouseDown(document.body);
-    await waitFor(() => expect(screen.queryByText('vol1')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('list')).not.toBeInTheDocument());
   });
 
   it('renders every member in a long list even though the popover box is height-capped', async () => {

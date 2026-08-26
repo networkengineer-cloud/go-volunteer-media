@@ -79,6 +79,11 @@
   margin-top: 1rem;
 }
 
+.schedule-tab__request-range {
+  display: block;
+  margin-bottom: 1rem;
+}
+
 [data-theme='dark'] .schedule-grid__slot {
   border-color: var(--neutral-300);
 }

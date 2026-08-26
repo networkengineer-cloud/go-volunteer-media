@@ -32,6 +32,44 @@
   background: var(--brand);
 }
 
+.schedule-grid__slot--tier-3,
+.schedule-grid__slot--tier-4 {
+  color: #fff;
+}
+
+/* Overview slots hold member names now (not just heatmap color), so they
+   need to grow to fit text and left-align content instead of centering an
+   empty square. Scoped to .schedule-overview so ScheduleTab's own (still
+   empty, fixed-height) individual-view slots are unaffected. */
+.schedule-overview .schedule-grid__slot {
+  height: auto;
+  min-height: 32px;
+  padding: 3px 4px;
+  display: flex;
+  align-items: flex-start;
+  text-align: left;
+  cursor: pointer;
+}
+
+.schedule-overview__names {
+  display: block;
+  width: 100%;
+}
+
+.schedule-overview__name {
+  display: block;
+  font-size: 0.65rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-overview__name--more {
+  font-style: italic;
+  opacity: 0.85;
+}
+
 .schedule-overview__popover {
   /* top/left are set inline from the clicked cell's live bounding rect (see
      ScheduleOverview.tsx) so the popover is positioned relative to the
