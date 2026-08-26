@@ -56,6 +56,16 @@ func toCoverageRequestResponse(r models.ShiftCoverageRequest) coverageRequestRes
 	}
 }
 
+type coverageRequestListItem struct {
+	ID                uint   `json:"id"`
+	GroupID           uint   `json:"group_id"`
+	RequestedByUserID uint   `json:"requested_by_user_id"`
+	RequestedByName   string `json:"requested_by_name"`
+	Date              string `json:"date"`
+	Hour              int    `json:"hour"`
+	Claimable         bool   `json:"claimable"`
+}
+
 // displayName mirrors the first/last-name-with-username-fallback logic used
 // for member display names elsewhere, for use in notification text.
 func displayName(u models.User) string {
@@ -455,6 +465,124 @@ func notifyRequesterOfClaim(db *gorm.DB, emailService *email.Service, groupMeSer
 			}
 		}
 	}()
+}
+
+// slotConflictKey/claimConflictKey key the maps loadUserConflictKeys
+// returns: weekday+hour for a recurring ShiftSlot, and date+hour for an
+// already-claimed ShiftCoverageRequest.
+func slotConflictKey(dayOfWeek, hour int) string {
+	return fmt.Sprintf("%d-%d", dayOfWeek, hour)
+}
+
+func claimConflictKey(date time.Time, hour int) string {
+	return fmt.Sprintf("%s-%d", date.Format("2006-01-02"), hour)
+}
+
+// loadUserConflictKeys loads every recurring ShiftSlot and already-claimed
+// ShiftCoverageRequest userID has (in any group - a real-world time
+// conflict doesn't respect group boundaries), keyed for O(1) lookup. Two
+// queries regardless of how many coverage requests are being checked
+// against them, so ListCoverageRequests can annotate every row in the
+// group without a per-row round trip.
+func loadUserConflictKeys(db *gorm.DB, userID uint) (slotKeys, claimKeys map[string]struct{}, err error) {
+	var slots []models.ShiftSlot
+	if err := db.Where("user_id = ?", userID).Find(&slots).Error; err != nil {
+		return nil, nil, err
+	}
+	slotKeys = make(map[string]struct{}, len(slots))
+	for _, s := range slots {
+		slotKeys[slotConflictKey(s.DayOfWeek, s.Hour)] = struct{}{}
+	}
+
+	var claimed []models.ShiftCoverageRequest
+	if err := db.Where("claimed_by_user_id = ? AND status = ?", userID, models.CoverageRequestClaimed).Find(&claimed).Error; err != nil {
+		return nil, nil, err
+	}
+	claimKeys = make(map[string]struct{}, len(claimed))
+	for _, r := range claimed {
+		claimKeys[claimConflictKey(r.Date, r.Hour)] = struct{}{}
+	}
+	return slotKeys, claimKeys, nil
+}
+
+// isRequestClaimableGiven reports whether userID could claim req right
+// now, given userID's own conflict keys (see loadUserConflictKeys): not
+// their own request, and no conflicting ShiftSlot or already-claimed
+// coverage request at that exact date/hour. Mirrors the checks
+// ClaimCoverageRequest itself makes inside its transaction; this read-only
+// version is for annotating list results and is not the source of the
+// atomicity guarantee - the conditional update in ClaimCoverageRequest is.
+func isRequestClaimableGiven(req models.ShiftCoverageRequest, userID uint, slotKeys, claimKeys map[string]struct{}) bool {
+	if req.RequestedByUserID == userID {
+		return false
+	}
+	if _, conflict := slotKeys[slotConflictKey(int(req.Date.Weekday()), req.Hour)]; conflict {
+		return false
+	}
+	_, conflict := claimKeys[claimConflictKey(req.Date, req.Hour)]
+	return !conflict
+}
+
+// ListCoverageRequests returns every currently-open, not-yet-past coverage
+// request in the group, soonest first, so members can see at a glance what
+// still needs a volunteer without having to spot it in the schedule
+// overview heatmap. Each item is annotated with whether the viewer could
+// claim it, so the frontend can disable the Claim button without a second
+// round trip. Requires group membership (or site admin).
+func ListCoverageRequests(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		callerUserID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		today := time.Now().UTC().Truncate(24 * time.Hour)
+		var requests []models.ShiftCoverageRequest
+		if err := db.Preload("RequestedByUser").
+			Where("group_id = ? AND status = ? AND date >= ?", groupIDParam, models.CoverageRequestOpen, today).
+			Order("date, hour").
+			Find(&requests).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load coverage requests"})
+			return
+		}
+
+		slotKeys, claimKeys, err := loadUserConflictKeys(db, callerUserID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load coverage requests"})
+			return
+		}
+
+		items := make([]coverageRequestListItem, 0, len(requests))
+		for _, r := range requests {
+			claimable := isRequestClaimableGiven(r, callerUserID, slotKeys, claimKeys)
+			items = append(items, coverageRequestListItem{
+				ID:                r.ID,
+				GroupID:           r.GroupID,
+				RequestedByUserID: r.RequestedByUserID,
+				RequestedByName:   displayName(r.RequestedByUser),
+				Date:              r.Date.Format("2006-01-02"),
+				Hour:              r.Hour,
+				Claimable:         claimable,
+			})
+		}
+
+		c.JSON(http.StatusOK, items)
+	}
 }
 
 // CancelCoverageRequest withdraws a coverage request. The original

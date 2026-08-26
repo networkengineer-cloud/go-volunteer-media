@@ -479,6 +479,200 @@ func performCreateCoverageRequestsBatch(db *gorm.DB, callerID uint, groupID uint
 	return w
 }
 
+func performListCoverageRequests(db *gorm.DB, callerID uint, isAdmin bool, groupID uint) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", callerID)
+		c.Set("is_admin", isAdmin)
+		c.Next()
+	})
+	router.GET("/groups/:id/schedule/coverage-requests", ListCoverageRequests(db))
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/schedule/coverage-requests", groupID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func TestListCoverageRequests(t *testing.T) {
+	t.Run("returns an open upcoming request with requester name and claimable true for another member", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performListCoverageRequests(db, other.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var items []coverageRequestListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(items) != 1 {
+			t.Fatalf("Expected 1 open request, got %d", len(items))
+		}
+		if items[0].RequestedByName != "requester" {
+			t.Fatalf("Expected requested_by_name %q, got %q", "requester", items[0].RequestedByName)
+		}
+		if !items[0].Claimable {
+			t.Fatalf("Expected claimable true for another member")
+		}
+	})
+
+	t.Run("excludes claimed and cancelled requests", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		thirdUser := CreateTestUser(t, db, "third", "third@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, thirdUser.ID, group.ID, false)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+
+		claimedReq := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, claimedReq.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+		cancelledReq := createOpenCoverageRequest(t, db, group.ID, requester.ID, 4, 14, tue.AddDate(0, 0, 2))
+		if cancel := performCancelCoverageRequest(db, requester.ID, false, group.ID, cancelledReq.ID); cancel.Code != http.StatusOK {
+			t.Fatalf("Expected cancel to succeed, got %d: %s", cancel.Code, cancel.Body.String())
+		}
+
+		w := performListCoverageRequests(db, thirdUser.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var items []coverageRequestListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(items) != 0 {
+			t.Fatalf("Expected 0 open requests, got %d", len(items))
+		}
+	})
+
+	t.Run("excludes a request whose date has since passed", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		yesterday := time.Now().UTC().AddDate(0, 0, -1).Truncate(24 * time.Hour)
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, int(yesterday.Weekday()), 10, yesterday)
+
+		w := performListCoverageRequests(db, other.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var items []coverageRequestListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(items) != 0 {
+			t.Fatalf("Expected past-dated request to be excluded, got %d", len(items))
+		}
+	})
+
+	t.Run("marks the requester's own request as not claimable", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performListCoverageRequests(db, requester.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var items []coverageRequestListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(items) != 1 {
+			t.Fatalf("Expected 1 open request, got %d", len(items))
+		}
+		if items[0].Claimable {
+			t.Fatalf("Expected claimable false for the requester's own request")
+		}
+	})
+
+	t.Run("marks as not claimable when the viewer has a conflicting shift at that date/hour", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		AddUserToGroupWithAdmin(t, db, other.ID, otherGroup.ID, false)
+		if err := db.Create(&models.ShiftSlot{UserID: other.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10}).Error; err != nil {
+			t.Fatalf("Failed to create conflicting shift slot: %v", err)
+		}
+
+		w := performListCoverageRequests(db, other.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var items []coverageRequestListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(items) != 1 {
+			t.Fatalf("Expected 1 open request, got %d", len(items))
+		}
+		if items[0].Claimable {
+			t.Fatalf("Expected claimable false when the viewer has a conflicting shift")
+		}
+	})
+
+	t.Run("marks as not claimable when the viewer already has a different claimed request at that date/hour", func(t *testing.T) {
+		// Distinct from the ShiftSlot-conflict case above: this exercises the
+		// claimKeys half of loadUserConflictKeys/isRequestClaimableGiven,
+		// which a recurring-slot conflict never touches.
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		thirdUser := CreateTestUser(t, db, "third", "third@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, thirdUser.ID, group.ID, false)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+
+		// other already covers requester's Tuesday 10am shift.
+		firstReq := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, other.ID, group.ID, firstReq.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+
+		// thirdUser separately needs coverage for that exact same date/hour.
+		secondReq := createOpenCoverageRequest(t, db, group.ID, thirdUser.ID, 2, 10, date)
+
+		w := performListCoverageRequests(db, other.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var items []coverageRequestListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(items) != 1 || items[0].ID != secondReq.ID {
+			t.Fatalf("Expected exactly thirdUser's open request, got %+v", items)
+		}
+		if items[0].Claimable {
+			t.Fatalf("Expected claimable false since the viewer already has a claimed shift at that date/hour")
+		}
+	})
+
+	t.Run("non-member is denied", func(t *testing.T) {
+		db := SetupTestDB(t)
+		_, _, group := setupCoverageTestGroup(t, db)
+		outsider := CreateTestUser(t, db, "outsider", "outsider@example.com", "password123", false)
+
+		w := performListCoverageRequests(db, outsider.ID, false, group.ID)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
 func TestCreateCoverageRequestsBatch(t *testing.T) {
 	t.Run("happy path creates multiple open requests and reports none skipped", func(t *testing.T) {
 		db := SetupTestDB(t)

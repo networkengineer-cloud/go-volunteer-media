@@ -1,0 +1,55 @@
+.needs-coverage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.needs-coverage-list__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--neutral-200);
+}
+
+.needs-coverage-list__row:last-child {
+  border-bottom: none;
+}
+
+.needs-coverage-list__details {
+  color: var(--text-primary);
+}
+
+.needs-coverage-list__name {
+  font-weight: 600;
+}
+
+/* Descendant selector (not just .needs-coverage-list__claim), so this has
+   strictly higher specificity (0,2,0) than any single-class
+   `.btn-secondary` rule (0,1,0) elsewhere in the app and wins regardless
+   of module import/cascade order - a single-class override here would
+   only tie on specificity and be at the mercy of load order instead.
+   Same technique as .schedule-overview__cell-wrapper .schedule-grid__slot
+   in ScheduleOverview.css. */
+.needs-coverage-list .needs-coverage-list__claim {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.75rem;
+  /* Some unrelated page's globally-scoped `.btn-secondary` rule sets
+     width: 100% and, since no other `.btn-secondary` rule in the app
+     happens to redeclare `width`, that declaration wins by default even
+     here (CSS cascades per-property, not per-rule) - explicit auto is
+     what actually stops this button from stretching to fill the row. */
+  width: auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.needs-coverage-list__empty {
+  color: var(--text-secondary);
+  padding: 1rem 0;
+}
+
+[data-theme='dark'] .needs-coverage-list__row {
+  border-color: var(--neutral-300);
+}

@@ -4,7 +4,7 @@ import ScheduleTab from './ScheduleTab';
 import { scheduleApi, groupsApi } from '../../api/client';
 import { CanceledError } from 'axios';
 import type { AxiosResponse } from 'axios';
-import type { ScheduleResponse, GroupMember, ScheduleOverviewResponse } from '../../api/client';
+import type { ScheduleResponse, GroupMember, ScheduleOverviewResponse, CoverageRequestListItem } from '../../api/client';
 import { ToastProvider } from '../../contexts/ToastContext';
 
 vi.mock('../../api/client', () => ({
@@ -14,6 +14,7 @@ vi.mock('../../api/client', () => ({
     getForMember: vi.fn(),
     updateForMember: vi.fn(),
     getOverview: vi.fn(),
+    listCoverageRequests: vi.fn(),
   },
   groupsApi: {
     getMembers: vi.fn(),
@@ -34,6 +35,7 @@ describe('ScheduleTab', () => {
     vi.mocked(scheduleApi.updateMine).mockResolvedValue({ data: { slots: [] } } as unknown as AxiosResponse<ScheduleResponse>);
     vi.mocked(groupsApi.getMembers).mockResolvedValue({ data: [] } as unknown as AxiosResponse<GroupMember[]>);
     vi.mocked(scheduleApi.getOverview).mockResolvedValue({ data: { slots: [] } } as unknown as AxiosResponse<ScheduleOverviewResponse>);
+    vi.mocked(scheduleApi.listCoverageRequests).mockResolvedValue({ data: [] } as unknown as AxiosResponse<CoverageRequestListItem[]>);
   });
 
   it('loads and displays the caller\'s own schedule by default', async () => {
@@ -182,6 +184,17 @@ describe('ScheduleTab', () => {
 
     await waitFor(() => expect(overviewButton).toHaveClass('schedule-tab__view-toggle-btn--active'));
     expect(individualButton).not.toHaveClass('schedule-tab__view-toggle-btn--active');
+  });
+
+  it('offers a Needs Coverage toggle that loads the open-requests list', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /needs coverage/i }));
+
+    await waitFor(() => expect(scheduleApi.listCoverageRequests).toHaveBeenCalledWith(1, expect.objectContaining({ signal: expect.any(AbortSignal) })));
+    expect(await screen.findByText(/no shifts currently need coverage/i)).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /weekly shift schedule/i })).not.toBeInTheDocument();
   });
 
   it('opens the bulk request-coverage form when viewing my own schedule, and hides it when viewing another member\'s', async () => {
