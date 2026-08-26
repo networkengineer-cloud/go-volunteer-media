@@ -25,13 +25,13 @@
   font-weight: 600;
 }
 
-/* Descendant selector (not just .needs-coverage-list__claim) so this
-   reliably beats the global `.btn-primary, .btn-secondary` rule despite
-   equal specificity - ties go to whichever rule loads later in the
-   cascade, which depends on module import order rather than anything
-   visible here. Same technique as
-   .schedule-overview__cell-wrapper .schedule-grid__slot in
-   ScheduleOverview.css. */
+/* Descendant selector (not just .needs-coverage-list__claim), so this has
+   strictly higher specificity (0,2,0) than any single-class
+   `.btn-secondary` rule (0,1,0) elsewhere in the app and wins regardless
+   of module import/cascade order - a single-class override here would
+   only tie on specificity and be at the mercy of load order instead.
+   Same technique as .schedule-overview__cell-wrapper .schedule-grid__slot
+   in ScheduleOverview.css. */
 .needs-coverage-list .needs-coverage-list__claim {
   font-size: 0.8rem;
   padding: 0.25rem 0.75rem;

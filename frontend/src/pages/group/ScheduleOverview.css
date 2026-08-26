@@ -39,7 +39,7 @@
      light tier-3 (~rgb(77,151,135)): white ~3.45:1 (fails) / dark ~5.1:1 (passes)
      dark  tier-3 (~rgb(9,130,105)):  white ~4.76:1 (passes)
      light tier-4 (solid brand #006b54): white ~6.5:1 (passes)
-     dark  tier-4 (solid brand #00a87e): white ~3.0:1 (fails) / dark ~6.9:1 (passes) */
+     dark  tier-4 (solid brand #00a87e): white ~3.0:1 (fails) / dark ~5.8:1 (passes) */
 .schedule-grid__slot--tier-3 {
   color: #111827;
 }

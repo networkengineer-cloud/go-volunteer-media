@@ -624,6 +624,42 @@ func TestListCoverageRequests(t *testing.T) {
 		}
 	})
 
+	t.Run("marks as not claimable when the viewer already has a different claimed request at that date/hour", func(t *testing.T) {
+		// Distinct from the ShiftSlot-conflict case above: this exercises the
+		// claimKeys half of loadUserConflictKeys/isRequestClaimableGiven,
+		// which a recurring-slot conflict never touches.
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		thirdUser := CreateTestUser(t, db, "third", "third@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, thirdUser.ID, group.ID, false)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+
+		// other already covers requester's Tuesday 10am shift.
+		firstReq := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, other.ID, group.ID, firstReq.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+
+		// thirdUser separately needs coverage for that exact same date/hour.
+		secondReq := createOpenCoverageRequest(t, db, group.ID, thirdUser.ID, 2, 10, date)
+
+		w := performListCoverageRequests(db, other.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var items []coverageRequestListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(items) != 1 || items[0].ID != secondReq.ID {
+			t.Fatalf("Expected exactly thirdUser's open request, got %+v", items)
+		}
+		if items[0].Claimable {
+			t.Fatalf("Expected claimable false since the viewer already has a claimed shift at that date/hour")
+		}
+	})
+
 	t.Run("non-member is denied", func(t *testing.T) {
 		db := SetupTestDB(t)
 		_, _, group := setupCoverageTestGroup(t, db)
