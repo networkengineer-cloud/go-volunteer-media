@@ -19,6 +19,11 @@ set -euo pipefail
 #   REPO: ghcr.io/networkengineer-cloud/go-volunteer-media
 #   APP_NAME: Override app name (default: ca-volunteer-media-{env})
 #   RG: Override resource group (default: rg-volunteer-media-{env})
+#   VITE_LAUNCHDARKLY_CLIENT_ID: LaunchDarkly client-side ID baked into the
+#     frontend bundle at build time (not read at container runtime - Vite
+#     inlines VITE_-prefixed vars during `vite build`). Not a secret: LD's
+#     client-side ID is designed to be exposed in browser JS. Leave unset
+#     to build without LaunchDarkly, same as before this var existed.
 
 # Defaults
 ENVIRONMENT="dev"
@@ -26,6 +31,7 @@ IMAGE_TAG=""
 REPO="${REPO:-ghcr.io/networkengineer-cloud/go-volunteer-media}"
 APP_NAME=""
 RG=""
+VITE_LAUNCHDARKLY_CLIENT_ID="${VITE_LAUNCHDARKLY_CLIENT_ID:-}"
 ROLLBACK_REVISION=""
 LIST_REVISIONS=false
 SKIP_BUILD=false
@@ -161,6 +167,7 @@ if [[ "${SKIP_BUILD}" == false ]]; then
   docker build --platform linux/amd64 \
     --cache-from "${REPO}:${IMAGE_TAG}" \
     --build-arg GIT_SHA="${GIT_SHA}" \
+    --build-arg VITE_LAUNCHDARKLY_CLIENT_ID="${VITE_LAUNCHDARKLY_CLIENT_ID}" \
     -t "${FULL_IMAGE_TAG}" \
     -t "${REPO}:${IMAGE_TAG}" \
     --label "revision=${REVISION_TAG}" \
