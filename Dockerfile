@@ -4,6 +4,14 @@ FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
+# Vite inlines VITE_-prefixed env vars into import.meta.env.* at build time
+# (not read at container runtime), and .env files are excluded from the
+# build context by .dockerignore - so this must arrive as a build-arg from
+# CI (build-image.yml) rather than a .env file. Not a secret: LaunchDarkly's
+# client-side ID is designed to be exposed in browser JS.
+ARG VITE_LAUNCHDARKLY_CLIENT_ID=""
+ENV VITE_LAUNCHDARKLY_CLIENT_ID=${VITE_LAUNCHDARKLY_CLIENT_ID}
+
 # Copy frontend files
 COPY frontend/package*.json ./
 COPY frontend/ ./
