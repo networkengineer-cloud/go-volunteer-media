@@ -9,6 +9,16 @@ import type { AxiosResponse } from 'axios';
 import { AuthProvider } from '../contexts/AuthContext';
 import { ToastProvider } from '../contexts/ToastContext';
 
+// GroupPage isn't wrapped in a real LDProvider here (that only happens in App.tsx),
+// so useFlags() would otherwise return {} and hide LD-gated UI like the Schedule
+// tab. Routed through a controllable mock (mockUseFlags) defaulting to flag-on,
+// so most tests exercise the same group.scheduling_enabled/membership logic
+// they did before the flag existed, while a dedicated test below can flip it off.
+const mockUseFlags = vi.fn(() => ({ scheduleTabAccess: true }));
+vi.mock('launchdarkly-react-client-sdk', () => ({
+  useFlags: () => mockUseFlags(),
+}));
+
 // Mock the API client. GroupPage's 'animals' view only needs group/membership/animal
 // data plus the site-wide group switcher list and the length-of-stay preference; the
 // members/documents view APIs are intentionally left unmocked since this test never
@@ -119,6 +129,10 @@ describe('GroupPage', () => {
     // Default view for most tests below; the 'activity' view tests further
     // down override this in their own beforeEach.
     mockUseSearchParams.mockReturnValue([new URLSearchParams('view=animals'), vi.fn()]);
+
+    // Default flag-on so most tests exercise the same scheduling logic they
+    // did before the flag existed; the dedicated flag test overrides this.
+    mockUseFlags.mockReturnValue({ scheduleTabAccess: true });
   });
 
   const renderGroupPage = () => {
@@ -490,6 +504,17 @@ describe('GroupPage', () => {
 
       renderGroupPage();
       expect(await screen.findByRole('tab', { name: /schedule/i })).toBeInTheDocument();
+    });
+
+    it('does not show the Schedule tab when the LaunchDarkly flag is off, even with scheduling enabled', async () => {
+      mockUseFlags.mockReturnValue({ scheduleTabAccess: false });
+      vi.mocked(groupsApi.getById).mockResolvedValue({
+        data: { ...mockGroup, scheduling_enabled: true },
+      } as AxiosResponse<Group>);
+
+      renderGroupPage();
+      await screen.findByRole('tab', { name: /animals/i });
+      expect(screen.queryByRole('tab', { name: /schedule/i })).not.toBeInTheDocument();
     });
 
     it('does not show the scheduling toggle button to a regular member', async () => {

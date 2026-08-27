@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
+import { useFlags } from 'launchdarkly-react-client-sdk';
 import { groupsApi, animalsApi, authApi, updatesApi, groupDocumentsApi } from '../api/client';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSkillTag, GroupDocument } from '../api/client';
@@ -32,6 +33,9 @@ const NAME_SEARCH_DEBOUNCE_MS = 400;
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth(); // Ensure user is authenticated; also need their id for schedule actions
+  // Gates the Schedule tab to specific LaunchDarkly-targeted users while it's
+  // being rolled out, on top of the existing group.scheduling_enabled toggle.
+  const { scheduleTabAccess } = useFlags();
   const navigate = useNavigate();
   const toast = useToast();
   const [searchParams] = useSearchParams();
@@ -684,7 +688,7 @@ const GroupPage: React.FC = () => {
               <span>Documents</span>
             </button>
           )}
-          {group.scheduling_enabled && (membership?.is_member || membership?.is_site_admin) && (
+          {scheduleTabAccess && group.scheduling_enabled && (membership?.is_member || membership?.is_site_admin) && (
             <button
               role="tab"
               aria-selected={viewMode === 'schedule'}
@@ -1615,7 +1619,7 @@ const GroupPage: React.FC = () => {
         </div>
       )}
 
-      {viewMode === 'schedule' && group.scheduling_enabled && (membership?.is_member || membership?.is_site_admin) && id && (
+      {viewMode === 'schedule' && scheduleTabAccess && group.scheduling_enabled && (membership?.is_member || membership?.is_site_admin) && id && (
         <div
           role="tabpanel"
           id="schedule-panel"
