@@ -565,6 +565,9 @@ func TestSecurityHeaders(t *testing.T) {
 				"frame-src 'self' blob:",
 				"frame-ancestors 'none'",
 				"base-uri 'self'",
+				// LaunchDarkly's browser SDK needs these connect-src exceptions
+				// to evaluate flags at all - see security.go's comment.
+				"connect-src 'self' https://app.launchdarkly.com https://events.launchdarkly.com https://clientstream.launchdarkly.com",
 			}
 			for _, directive := range expectedCSPDirectives {
 				if !containsSubstring(cspHeader, directive) {

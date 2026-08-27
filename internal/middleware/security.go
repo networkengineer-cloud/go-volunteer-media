@@ -27,7 +27,10 @@ func SecurityHeaders() gin.HandlerFunc {
 			"media-src 'self' blob:; " +
 			"font-src 'self' data:; " +
 			"frame-src 'self' blob:; " +
-			"connect-src 'self'; " +
+			// LaunchDarkly's JS SDK calls these three domains: app.launchdarkly.com
+			// for flag evaluation, events.launchdarkly.com for analytics, and
+			// clientstream.launchdarkly.com for live flag-change streaming.
+			"connect-src 'self' https://app.launchdarkly.com https://events.launchdarkly.com https://clientstream.launchdarkly.com; " +
 			"frame-ancestors 'none'; " +
 			"base-uri 'self'; " +
 			"form-action 'self'"
