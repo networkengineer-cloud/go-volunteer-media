@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { withLDProvider, useLDClient } from 'launchdarkly-react-client-sdk';
 import { AuthProvider } from './contexts/AuthContext';
 import { SiteSettingsProvider } from './contexts/SiteSettingsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -89,6 +90,28 @@ const GroupAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) 
   return <GroupAdminRouteInner>{children}</GroupAdminRouteInner>;
 };
 
+// Switches the LaunchDarkly context from the anonymous default (set at
+// provider init, before auth resolves) to the logged-in user once known, so
+// user-targeted flags (e.g. Schedule tab access) evaluate correctly.
+const LDIdentifyUser: React.FC = () => {
+  const { user } = useAuth();
+  const ldClient = useLDClient();
+
+  useEffect(() => {
+    if (!ldClient) return;
+    if (user) {
+      ldClient.identify({ kind: 'user', key: String(user.id), email: user.email, name: user.username, username: user.username });
+    } else {
+      // Resets the context back to anonymous on logout - otherwise the
+      // previous user's identity (and their flag targeting) would stick
+      // around in the LD client for the rest of the browser session.
+      ldClient.identify({ kind: 'user', key: 'anonymous', anonymous: true });
+    }
+  }, [ldClient, user]);
+
+  return null;
+};
+
 // UsersRoute - allows access if user is site admin or group admin
 const UsersRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isAdmin, user, isLoading } = useAuth();
@@ -107,6 +130,7 @@ function App() {
       <ThemeProvider>
         <SiteSettingsProvider>
           <AuthProvider>
+            <LDIdentifyUser />
             <ToastProvider>
               <Navigation />
               <main id="main-content" role="main">
@@ -277,4 +301,16 @@ function App() {
   );
 }
 
-export default App;
+// LaunchDarkly is optional: without a client-side ID (VITE_LAUNCHDARKLY_CLIENT_ID
+// unset), App renders unwrapped and useFlags() falls back to {}, so any
+// LD-gated feature defaults to hidden rather than crashing the app.
+const ldClientSideId = import.meta.env.VITE_LAUNCHDARKLY_CLIENT_ID as string | undefined;
+
+const AppWithProviders = ldClientSideId
+  ? withLDProvider({
+      clientSideID: ldClientSideId,
+      context: { kind: 'user', key: 'anonymous', anonymous: true },
+    })(App)
+  : App;
+
+export default AppWithProviders;
