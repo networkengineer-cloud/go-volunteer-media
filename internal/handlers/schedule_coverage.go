@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,16 @@ var (
 	errSelfClaim        = errors.New("cannot claim your own coverage request")
 	errClaimConflict    = errors.New("claimant already has a conflicting shift at that time")
 )
+
+// scheduleEmailNotificationsEnabled gates coverage-request and claim emails
+// only - GroupMe posts are unaffected. Deliberately opt-in - unset or any
+// value other than "true"/"1" means disabled - so beta testers can use the
+// Schedule tab without the rest of the group being emailed before the
+// feature is ready for everyone.
+func scheduleEmailNotificationsEnabled() bool {
+	v := os.Getenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED")
+	return v == "true" || v == "1"
+}
 
 type createCoverageRequestRequest struct {
 	Date   string `json:"date"`
@@ -184,7 +195,7 @@ func notifyGroupOfOpenCoverageRequests(rawDB *gorm.DB, emailService *email.Servi
 	title := fmt.Sprintf("Coverage needed in %s", grp.Name)
 	content := buildCoverageRequestSummary(displayName(requester), openRequests)
 
-	if emailService != nil && emailService.IsConfigured() {
+	if emailService != nil && emailService.IsConfigured() && scheduleEmailNotificationsEnabled() {
 		go func() {
 			bgCtx := context.Background()
 			if err := sendGroupAnnouncementEmails(bgCtx, rawDB, emailService, groupIDUint, title, content); err != nil {
@@ -454,7 +465,7 @@ func notifyRequesterOfClaim(db *gorm.DB, emailService *email.Service, groupMeSer
 		content := fmt.Sprintf("%s will cover your %s shift on %s.",
 			displayName(claimant), formatHourAMPM(req.Hour), req.Date.Format("Monday, January 2"))
 
-		if emailService != nil && emailService.IsConfigured() && requester.EmailNotificationsEnabled {
+		if emailService != nil && emailService.IsConfigured() && requester.EmailNotificationsEnabled && scheduleEmailNotificationsEnabled() {
 			if err := emailService.SendAnnouncementEmail(bgCtx, requester.Email, title, content); err != nil {
 				logger.Error("Failed to send coverage claim email", err)
 			}

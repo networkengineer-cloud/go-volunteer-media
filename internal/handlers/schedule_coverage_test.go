@@ -276,6 +276,29 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 	})
 }
 
+func TestScheduleEmailNotificationsEnabled(t *testing.T) {
+	t.Run("defaults to disabled when unset", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "")
+		if scheduleEmailNotificationsEnabled() {
+			t.Fatal("expected scheduleEmailNotificationsEnabled to default to false when unset")
+		}
+	})
+
+	t.Run("enabled when set to true", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		if !scheduleEmailNotificationsEnabled() {
+			t.Fatal("expected scheduleEmailNotificationsEnabled to be true")
+		}
+	})
+
+	t.Run("disabled for any other value", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "yes")
+		if scheduleEmailNotificationsEnabled() {
+			t.Fatal("expected scheduleEmailNotificationsEnabled to be false for a non-true/1 value")
+		}
+	})
+}
+
 func performClaimCoverageRequest(db *gorm.DB, callerID uint, groupID, requestID uint) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

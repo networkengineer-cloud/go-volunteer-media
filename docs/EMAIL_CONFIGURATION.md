@@ -70,6 +70,12 @@ EMAIL_ENABLED=true  # Set to "false" or "0" to disable email
 ```
 By default, email is enabled. Set `EMAIL_ENABLED=false` or `EMAIL_ENABLED=0` to completely disable email functionality. This is useful for development and testing environments where you don't want to send actual emails.
 
+### Schedule Tab Emails (Beta)
+```env
+SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED=true  # Set to "true" or "1" to enable
+```
+Coverage-request and claim emails from the Schedule tab are opt-in and default to disabled, independent of `EMAIL_ENABLED`. The Schedule tab itself is currently gated to a small set of users via a LaunchDarkly flag; this keeps those beta testers from emailing the whole group before the feature is ready for everyone. Leave unset until you're ready to enable Schedule emails broadly.
+
 ### Provider Selection
 ```env
 EMAIL_PROVIDER=resend  # or "smtp"
