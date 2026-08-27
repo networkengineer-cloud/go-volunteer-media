@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -401,6 +402,155 @@ func TestClaimCoverageRequest(t *testing.T) {
 
 		if w.Code != http.StatusConflict {
 			t.Fatalf("Expected 409 on conflict, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+// TestCreateCoverageRequest_EmailGatedByScheduleFlag exercises the actual
+// SendEmail call, not just scheduleEmailNotificationsEnabled() in isolation,
+// so a regression that only gates one of the two call sites (or gates the
+// wrong condition) would be caught here.
+func TestCreateCoverageRequest_EmailGatedByScheduleFlag(t *testing.T) {
+	t.Run("no email is sent while the flag is unset (default)", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "")
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable other's email notifications: %v", err)
+		}
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", requester.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.POST("/groups/:id/schedule/coverage-requests", CreateCoverageRequest(db, emailSvc, nil))
+
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"date":"%s","hour":10}`, date)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests", group.ID), strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got != 0 {
+			t.Fatalf("Expected no coverage-request email while the flag is off, got %d", got)
+		}
+	})
+
+	t.Run("an email is sent once the flag is enabled", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable other's email notifications: %v", err)
+		}
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", requester.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.POST("/groups/:id/schedule/coverage-requests", CreateCoverageRequest(db, emailSvc, nil))
+
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"date":"%s","hour":10}`, date)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests", group.ID), strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got == 0 {
+			t.Fatal("Expected a coverage-request email to be sent while the flag is on, got none")
+		}
+	})
+}
+
+// TestClaimCoverageRequest_EmailGatedByScheduleFlag covers notifyRequesterOfClaim,
+// which has its own separate emailService/IsConfigured/EmailNotificationsEnabled
+// checks from the create path above - the flag must gate both call sites.
+func TestClaimCoverageRequest_EmailGatedByScheduleFlag(t *testing.T) {
+	t.Run("no email is sent while the flag is unset (default)", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "")
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		if err := db.Model(requester).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable requester's email notifications: %v", err)
+		}
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", claimant.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.POST("/groups/:id/schedule/coverage-requests/:requestId/claim", ClaimCoverageRequest(db, emailSvc, nil))
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/%d/claim", group.ID, reqRow.ID), nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got != 0 {
+			t.Fatalf("Expected no claim email while the flag is off, got %d", got)
+		}
+	})
+
+	t.Run("an email is sent once the flag is enabled", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		if err := db.Model(requester).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable requester's email notifications: %v", err)
+		}
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", claimant.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.POST("/groups/:id/schedule/coverage-requests/:requestId/claim", ClaimCoverageRequest(db, emailSvc, nil))
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/%d/claim", group.ID, reqRow.ID), nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got == 0 {
+			t.Fatal("Expected a claim email to be sent while the flag is on, got none")
 		}
 	})
 }
