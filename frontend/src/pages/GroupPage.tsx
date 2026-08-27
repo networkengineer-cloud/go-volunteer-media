@@ -199,14 +199,22 @@ const GroupPage: React.FC = () => {
   // Update view mode when URL search params change
   useEffect(() => {
     const viewParam = searchParams.get('view') as ViewMode;
+    const isMember = membership?.is_member || membership?.is_site_admin;
     if (viewParam && (viewParam === 'activity' || viewParam === 'animals' || viewParam === 'protocols' || viewParam === 'documents')) {
       setViewMode(viewParam);
-    } else if ((viewParam === 'members' || viewParam === 'schedule') && (membership?.is_member || membership?.is_site_admin)) {
+    } else if (viewParam === 'members' && isMember) {
       setViewMode(viewParam);
-    } else if ((viewParam === 'members' || viewParam === 'schedule') && !membership?.is_member && !membership?.is_site_admin) {
+    } else if (viewParam === 'schedule' && isMember && scheduleTabAccess) {
+      setViewMode(viewParam);
+    } else if (viewParam === 'members' || viewParam === 'schedule') {
+      // Covers both a non-member deep-linking to a members-only view, and a
+      // member deep-linking to ?view=schedule without scheduleTabAccess -
+      // without this, viewMode would flip to 'schedule' while both the tab
+      // button and its content panel stay hidden, leaving a blank panel
+      // with no tab selected.
       setViewMode('activity');
     }
-  }, [searchParams, membership]);
+  }, [searchParams, membership, scheduleTabAccess]);
 
   // Once-per-page-visit data: email preferences, group details/membership,
   // and the full groups list (for the switcher). Deliberately depends only

@@ -98,8 +98,15 @@ const LDIdentifyUser: React.FC = () => {
   const ldClient = useLDClient();
 
   useEffect(() => {
-    if (!ldClient || !user) return;
-    ldClient.identify({ kind: 'user', key: String(user.id), email: user.email, name: user.username, username: user.username });
+    if (!ldClient) return;
+    if (user) {
+      ldClient.identify({ kind: 'user', key: String(user.id), email: user.email, name: user.username, username: user.username });
+    } else {
+      // Resets the context back to anonymous on logout - otherwise the
+      // previous user's identity (and their flag targeting) would stick
+      // around in the LD client for the rest of the browser session.
+      ldClient.identify({ kind: 'user', key: 'anonymous', anonymous: true });
+    }
   }, [ldClient, user]);
 
   return null;
