@@ -56,7 +56,10 @@ describe('ScheduleOverview', () => {
           date: '2024-01-09',
           day_of_week: 2,
           hour: 10,
-          members: [{ user_id: 5, username: 'alice', first_name: 'Alice', last_name: 'A', cadence: 'biweekly_a', status: 'normal' }],
+          // last_name deliberately avoids the letter "A" so the assertion
+          // below can't accidentally pass off the member's own name -
+          // it must come from the dedicated cadence-tag element.
+          members: [{ user_id: 5, username: 'alice', first_name: 'Alice', last_name: 'Lee', cadence: 'biweekly_a', status: 'normal' }],
         }],
       },
     } as unknown as AxiosResponse<ScheduleOverviewResponse>);
@@ -64,7 +67,27 @@ describe('ScheduleOverview', () => {
     render(<ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />);
 
     const cell = await screen.findByRole('cell', { name: /Tue 10:00 AM, 1 available/ });
-    expect(cell.textContent).toContain('A');
+    expect(within(cell).getByText('A', { selector: '.schedule-grid__cadence-tag' })).toBeInTheDocument();
+  });
+
+  it('does not tag a member with weekly cadence', async () => {
+    vi.mocked(scheduleApi.getOverview).mockResolvedValue({
+      data: {
+        week_start: '2024-01-07',
+        slots: [{
+          date: '2024-01-09',
+          day_of_week: 2,
+          hour: 10,
+          members: [{ user_id: 6, username: 'bob', first_name: 'Bob', last_name: 'Ray', cadence: 'weekly', status: 'normal' }],
+        }],
+      },
+    } as unknown as AxiosResponse<ScheduleOverviewResponse>);
+
+    render(<ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 10:00 AM, 1 available/ });
+    expect(within(cell).queryByText('A', { selector: '.schedule-grid__cadence-tag' })).not.toBeInTheDocument();
+    expect(within(cell).queryByText('B', { selector: '.schedule-grid__cadence-tag' })).not.toBeInTheDocument();
   });
 
   it('loads the overview for the given group and week on mount', async () => {
