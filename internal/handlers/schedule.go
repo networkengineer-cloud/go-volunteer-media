@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -126,14 +127,14 @@ func cancelOrphanedRequesterCoverageRequests(tx *gorm.DB, userID, groupID uint) 
 		return err
 	}
 	for _, r := range requests {
-		var count int64
-		if err := tx.Model(&models.ShiftSlot{}).
-			Where("group_id = ? AND user_id = ? AND day_of_week = ? AND hour = ?",
-				groupID, userID, int(r.Date.Weekday()), r.Hour).
-			Count(&count).Error; err != nil {
-			return err
-		}
-		if count == 0 {
+		var slot models.ShiftSlot
+		err := tx.Where("group_id = ? AND user_id = ? AND day_of_week = ? AND hour = ?",
+			groupID, userID, int(r.Date.Weekday()), r.Hour).First(&slot).Error
+		stillActive := err == nil && slotActiveForWeek(slot.Cadence, weekStartOf(r.Date))
+		if !stillActive {
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 			if err := tx.Model(&models.ShiftCoverageRequest{ID: r.ID}).
 				Update("status", models.CoverageRequestCancelled).Error; err != nil {
 				return err

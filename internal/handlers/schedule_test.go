@@ -418,6 +418,53 @@ func TestUpdateMySchedule_CancelsOrphanedCoverageRequests(t *testing.T) {
 	}
 }
 
+// TestUpdateMySchedule_CancelsOrphanedRequestOnCadenceChange verifies that
+// editing a schedule to change a slot's cadence cancels any open/claimed
+// ShiftCoverageRequest the user made as the original requester for a date
+// that now falls outside the new cadence's active weeks. Example: a user
+// changes their Tuesday 10am slot from weekly to biweekly_a; an existing
+// open coverage request for a Tuesday that falls on a "B" week should now
+// be cancelled, even though the (day_of_week, hour) pair itself still exists
+// as a ShiftSlot row.
+func TestUpdateMySchedule_CancelsOrphanedRequestOnCadenceChange(t *testing.T) {
+	db := SetupTestDB(t)
+	user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
+
+	// Weekly Tuesday 10am to start.
+	db.Create(&models.ShiftSlot{UserID: user.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10, Cadence: "weekly"})
+
+	offWeekDate, err := time.Parse("2006-01-02", nextWeekdayWithParity(t, time.Tuesday, "b"))
+	if err != nil {
+		t.Fatalf("failed to parse date: %v", err)
+	}
+	orphanedByParity := createOpenCoverageRequest(t, db, group.ID, user.ID, 2, 10, offWeekDate)
+
+	// User switches their Tuesday 10am slot from weekly to biweekly_a - the
+	// existing open request's date is a "b" week, so it's now orphaned even
+	// though the (day_of_week, hour) pair itself is unchanged.
+	c, w := setupGroupTestContext(user.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/me", group.ID),
+		bytes.NewBufferString(`{"slots":[{"day_of_week":2,"hour":10,"cadence":"biweekly_a"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	UpdateMySchedule(db)(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated models.ShiftCoverageRequest
+	if err := db.First(&updated, orphanedByParity.ID).Error; err != nil {
+		t.Fatalf("failed to reload request: %v", err)
+	}
+	if updated.Status != models.CoverageRequestCancelled {
+		t.Errorf("expected the request to be cancelled once its date fell outside the new cadence's active weeks, got %s", updated.Status)
+	}
+}
+
 // TestUpdateMemberSchedule_CancelsRedundantClaimsForNewSlots verifies the
 // root-cause fix for a claimant later gaining a conflicting ShiftSlot:
 // Alice requests coverage for her Tuesday 10am shift, Bob claims it (Bob
