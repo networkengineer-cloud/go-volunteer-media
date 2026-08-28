@@ -126,9 +126,10 @@ func formatHourAMPM(hour int) string {
 
 // createOneCoverageRequest validates and creates a single coverage
 // request: the date must not be in the past, the target user must have a
-// matching ShiftSlot for the date's weekday and the given hour, and there
-// must not already be an active (non-cancelled) request for that exact
-// date/hour. Returns the created row, or one of the sentinel errors
+// matching ShiftSlot for the date's weekday and the given hour that is
+// actually active that week (a biweekly slot on its off-week does not match),
+// and there must not already be an active (non-cancelled) request for that
+// exact date/hour. Returns the created row, or one of the sentinel errors
 // errPastDate / errNoMatchingSlot / errDuplicateRequest. Runs its own
 // transaction - a caller creating several requests (see
 // CreateCoverageRequestsBatch) calls this once per item rather than
@@ -145,6 +146,9 @@ func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date 
 		var slot models.ShiftSlot
 		if err := tx.Where("user_id = ? AND group_id = ? AND day_of_week = ? AND hour = ?",
 			targetUserID, groupIDUint, int(date.Weekday()), hour).First(&slot).Error; err != nil {
+			return errNoMatchingSlot
+		}
+		if !slotActiveForWeek(slot.Cadence, weekStartOf(date)) {
 			return errNoMatchingSlot
 		}
 

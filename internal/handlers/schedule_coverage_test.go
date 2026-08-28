@@ -80,6 +80,27 @@ func nextWeekday(weekday time.Weekday) string {
 	return today.AddDate(0, 0, daysAhead).Format("2006-01-02")
 }
 
+// nextWeekdayWithParity returns the next future date (strictly after today)
+// that falls on the given weekday AND whose week matches the given parity
+// ("a" or "b"), formatted as "2006-01-02". Walks forward in 7-day steps from
+// nextWeekday's result, since consecutive same-weekday dates alternate
+// parity, so at most one extra step is ever needed.
+func nextWeekdayWithParity(t *testing.T, weekday time.Weekday, parity string) string {
+	t.Helper()
+	candidate, err := time.Parse("2006-01-02", nextWeekday(weekday))
+	if err != nil {
+		t.Fatalf("failed to parse candidate date: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if weekParity(weekStartOf(candidate)) == parity {
+			return candidate.Format("2006-01-02")
+		}
+		candidate = candidate.AddDate(0, 0, 7)
+	}
+	t.Fatalf("could not find a %s-parity %s within 2 weeks", parity, weekday)
+	return ""
+}
+
 func TestCreateCoverageRequest(t *testing.T) {
 	t.Run("happy path creates an open request", func(t *testing.T) {
 		db := SetupTestDB(t)
@@ -273,6 +294,49 @@ func TestCreateCoverageRequest(t *testing.T) {
 		}
 		if !strings.Contains(w.Body.String(), "hour") {
 			t.Errorf("Expected error to mention hour, got %q", w.Body.String())
+		}
+	})
+
+	t.Run("rejects a date on a biweekly slot's off-week", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, requester.ID, group.ID, false)
+		if err := db.Model(group).Update("scheduling_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable scheduling: %v", err)
+		}
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"}).Error; err != nil {
+			t.Fatalf("Failed to create shift slot: %v", err)
+		}
+
+		// requester's slot is "A", so a "B"-week date has no active slot.
+		date := nextWeekdayWithParity(t, time.Tuesday, "b")
+		body := fmt.Sprintf(`{"date":"%s","hour":10}`, date)
+		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400 for an off-week date, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("accepts a date on a biweekly slot's on-week", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, requester.ID, group.ID, false)
+		if err := db.Model(group).Update("scheduling_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable scheduling: %v", err)
+		}
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"}).Error; err != nil {
+			t.Fatalf("Failed to create shift slot: %v", err)
+		}
+
+		date := nextWeekdayWithParity(t, time.Tuesday, "a")
+		body := fmt.Sprintf(`{"date":"%s","hour":10}`, date)
+		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected 201 for an on-week date, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 }
