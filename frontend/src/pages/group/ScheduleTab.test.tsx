@@ -287,15 +287,23 @@ describe('ScheduleTab', () => {
     fireEvent.click(slot);
     expect(slot).toHaveAttribute('aria-pressed', 'true');
     expect(slot).toHaveAccessibleName('Wed 10:00 AM');
+    expect(slot).toHaveClass('schedule-grid__slot--weekly');
 
     fireEvent.click(slot);
     expect(slot).toHaveAccessibleName('Wed 10:00 AM (Week A)');
+    expect(slot).toHaveClass('schedule-grid__slot--biweekly-a');
+    expect(slot).not.toHaveClass('schedule-grid__slot--weekly');
 
     fireEvent.click(slot);
     expect(slot).toHaveAccessibleName('Wed 10:00 AM (Week B)');
+    expect(slot).toHaveClass('schedule-grid__slot--biweekly-b');
+    expect(slot).not.toHaveClass('schedule-grid__slot--biweekly-a');
 
     fireEvent.click(slot);
     expect(slot).toHaveAttribute('aria-pressed', 'false');
+    expect(slot).not.toHaveClass('schedule-grid__slot--weekly');
+    expect(slot).not.toHaveClass('schedule-grid__slot--biweekly-a');
+    expect(slot).not.toHaveClass('schedule-grid__slot--biweekly-b');
   });
 
   it('disables cells beyond the weekend cap', async () => {
@@ -330,5 +338,28 @@ describe('ScheduleTab', () => {
     await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
     expect(screen.getByText(/Week A:/)).toBeInTheDocument();
     expect(screen.getByText(/Week B:/)).toBeInTheDocument();
+  });
+
+  it('drops a legacy out-of-range slot from the loaded schedule so it is never resubmitted on save', async () => {
+    // Saturday 5pm predates the weekend hour cap (weekends now cap at 3pm /
+    // hour 15) - a real user could still have this persisted server-side.
+    // It must render as a disabled, non-interactive cell (never an active
+    // toggle) and must be silently dropped rather than round-tripped back
+    // to the backend on save, since the backend itself now rejects it.
+    vi.mocked(scheduleApi.getMine).mockResolvedValue({
+      data: { slots: [{ day_of_week: 6, hour: 17, cadence: 'weekly' }] },
+    } as unknown as AxiosResponse<ScheduleResponse>);
+
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    // Never rendered as an interactive, checked toggle.
+    expect(screen.queryByRole('cell', { name: /Sat 5:00 PM/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /save schedule/i }));
+
+    await waitFor(() => {
+      expect(scheduleApi.updateMine).toHaveBeenCalledWith(1, []);
+    });
   });
 });

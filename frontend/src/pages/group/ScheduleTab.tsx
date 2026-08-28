@@ -49,7 +49,19 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
       : scheduleApi.getForMember(groupId, selectedUserId, { signal: controller.signal });
     request
       .then(res => {
-        setSelectedSlots(new Map(res.data.slots.map(s => [slotKey(s.day_of_week, s.hour), s.cadence ?? 'weekly'])));
+        // Legacy slots saved before the weekend hour cap was introduced may
+        // exceed maxHourFor(day) (e.g. a Saturday 5pm slot from before
+        // weekends capped at 3pm). Such a slot renders as a disabled,
+        // non-interactive cell, so the user has no way to remove it via the
+        // grid - if it stayed in the Map it would be silently resubmitted
+        // (and rejected by the backend's own maxHourFor validation) on every
+        // save. Drop it here instead, which self-heals the schedule back to
+        // the new valid shape the next time it's loaded and saved.
+        setSelectedSlots(new Map(
+          res.data.slots
+            .filter(s => s.hour <= maxHourFor(s.day_of_week))
+            .map(s => [slotKey(s.day_of_week, s.hour), s.cadence ?? 'weekly'])
+        ));
         setSavedSlots(res.data.slots);
       })
       .catch(err => {

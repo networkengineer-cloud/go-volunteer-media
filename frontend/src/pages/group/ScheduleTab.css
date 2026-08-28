@@ -100,11 +100,6 @@
   outline-offset: 1px;
 }
 
-.schedule-grid__slot--active {
-  background: var(--brand);
-  border-color: var(--brand);
-}
-
 .schedule-tab__save {
   margin-top: 1rem;
 }
@@ -183,6 +178,11 @@
 
 .schedule-grid__slot--terminal {
   border-style: dashed;
+}
+
+.schedule-grid__slot--weekly {
+  background: var(--brand);
+  border-color: var(--brand);
 }
 
 .schedule-grid__slot--biweekly-a {
