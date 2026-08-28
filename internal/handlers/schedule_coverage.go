@@ -264,8 +264,9 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 			c.JSON(http.StatusBadRequest, gin.H{"error": "date must be in YYYY-MM-DD format"})
 			return
 		}
-		if req.Hour < 8 || req.Hour > 17 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "hour must be between 8 and 17"})
+		maxHour := maxHourFor(int(date.Weekday()))
+		if req.Hour < 8 || req.Hour > maxHour {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("hour must be between 8 and %d for that date's weekday", maxHour)})
 			return
 		}
 
@@ -779,8 +780,9 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid date %q: must be in YYYY-MM-DD format", item.Date)})
 				return
 			}
-			if item.Hour < 8 || item.Hour > 17 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid hour %d: must be between 8 and 17", item.Hour)})
+			maxHour := maxHourFor(int(date.Weekday()))
+			if item.Hour < 8 || item.Hour > maxHour {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid hour %d: must be between 8 and %d for %s", item.Hour, maxHour, item.Date)})
 				return
 			}
 			parsedItems = append(parsedItems, parsedItem{date: date, hour: item.Hour})

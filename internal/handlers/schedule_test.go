@@ -219,6 +219,27 @@ func TestGetMySchedule(t *testing.T) {
 	}
 }
 
+func TestValidateScheduleSlots_DayAwareHourRange(t *testing.T) {
+	tests := []struct {
+		name    string
+		slots   []scheduleSlotInput
+		wantErr bool
+	}{
+		{"weekday hour 17 is valid", []scheduleSlotInput{{DayOfWeek: 3, Hour: 17}}, false},
+		{"weekday hour 18 is rejected", []scheduleSlotInput{{DayOfWeek: 3, Hour: 18}}, true},
+		{"weekend hour 15 is valid", []scheduleSlotInput{{DayOfWeek: 0, Hour: 15}}, false},
+		{"weekend hour 16 is rejected", []scheduleSlotInput{{DayOfWeek: 6, Hour: 16}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateScheduleSlots(tt.slots)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateScheduleSlots(%+v) error = %v, wantErr %v", tt.slots, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestUpdateMySchedule(t *testing.T) {
 	tests := []struct {
 		name           string

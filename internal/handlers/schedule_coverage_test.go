@@ -248,6 +248,33 @@ func TestCreateCoverageRequest(t *testing.T) {
 			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
 		}
 	})
+
+	t.Run("rejects an hour beyond the weekend cap before even checking for a matching slot", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, requester.ID, group.ID, false)
+		if err := db.Model(group).Update("scheduling_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable scheduling: %v", err)
+		}
+		// Give the requester a (currently invalid-once-this-lands, but
+		// pre-existing) Saturday 4pm slot to prove the rejection comes from
+		// the hour-bound check, not "no matching slot".
+		if err := db.Exec("INSERT INTO shift_slots (user_id, group_id, day_of_week, hour, created_at, updated_at) VALUES (?, ?, 6, 16, datetime('now'), datetime('now'))", requester.ID, group.ID).Error; err != nil {
+			t.Fatalf("Failed to seed slot: %v", err)
+		}
+		date := nextWeekday(time.Saturday)
+
+		body := fmt.Sprintf(`{"date":"%s","hour":16}`, date)
+		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400 for hour 16 on a Saturday, got %d: %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), "hour") {
+			t.Errorf("Expected error to mention hour, got %q", w.Body.String())
+		}
+	})
 }
 
 func TestBuildCoverageRequestSummary(t *testing.T) {

@@ -57,16 +57,16 @@ func toScheduleSlotResponses(slots []models.ShiftSlot) []scheduleSlotResponse {
 }
 
 // validateScheduleSlots checks each slot's day/hour range (day_of_week 0-6,
-// hour 8-17) and rejects duplicate (day_of_week, hour) pairs within the
-// payload.
+// hour 8-maxHourFor(dayOfWeek), where maxHourFor depends on day of week) and
+// rejects duplicate (day_of_week, hour) pairs within the payload.
 func validateScheduleSlots(slots []scheduleSlotInput) error {
 	seen := make(map[[2]int]bool, len(slots))
 	for _, s := range slots {
 		if s.DayOfWeek < 0 || s.DayOfWeek > 6 {
 			return fmt.Errorf("day_of_week must be between 0 and 6, got %d", s.DayOfWeek)
 		}
-		if s.Hour < 8 || s.Hour > 17 {
-			return fmt.Errorf("hour must be between 8 and 17, got %d", s.Hour)
+		if s.Hour < 8 || s.Hour > maxHourFor(s.DayOfWeek) {
+			return fmt.Errorf("hour must be between 8 and %d for day_of_week %d, got %d", maxHourFor(s.DayOfWeek), s.DayOfWeek, s.Hour)
 		}
 		key := [2]int{s.DayOfWeek, s.Hour}
 		if seen[key] {
