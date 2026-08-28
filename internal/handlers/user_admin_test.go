@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1359,12 +1360,28 @@ func TestResendInvitation(t *testing.T) {
 	}
 }
 
-// mockEmailProvider implements email.Provider for testing
-type mockEmailProvider struct{}
+// mockEmailProvider implements email.Provider for testing. sendCount is
+// tracked under a mutex since SendEmail is invoked from background
+// goroutines by the schedule/coverage notification paths.
+type mockEmailProvider struct {
+	mu    sync.Mutex
+	sends int
+}
 
-func (m *mockEmailProvider) SendEmail(_ context.Context, _, _, _ string) error { return nil }
-func (m *mockEmailProvider) IsConfigured() bool                                { return true }
-func (m *mockEmailProvider) GetProviderName() string                           { return "mock" }
+func (m *mockEmailProvider) SendEmail(_ context.Context, _, _, _ string) error {
+	m.mu.Lock()
+	m.sends++
+	m.mu.Unlock()
+	return nil
+}
+func (m *mockEmailProvider) IsConfigured() bool      { return true }
+func (m *mockEmailProvider) GetProviderName() string { return "mock" }
+
+func (m *mockEmailProvider) sendCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sends
+}
 
 func TestResendInvitation_SiteAdminSuccess(t *testing.T) {
 	db := setupUserAdminTestDB(t)

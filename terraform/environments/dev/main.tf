@@ -397,6 +397,13 @@ resource "azurerm_container_app" "main" {
         value = var.semantic_search_enabled ? "true" : "false"
       }
 
+      # Schedule tab beta (LaunchDarkly gates who sees the tab; this
+      # separately gates whether coverage-request/claim emails go out)
+      env {
+        name  = "SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED"
+        value = var.schedule_email_notifications_enabled ? "true" : "false"
+      }
+
       # Azure Storage Configuration
       env {
         name  = "STORAGE_PROVIDER"
