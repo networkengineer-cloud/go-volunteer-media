@@ -72,14 +72,14 @@ func TestWeekParity(t *testing.T) {
 }
 
 func TestSlotActiveForWeek(t *testing.T) {
-	aWeek, _ := time.Parse("2006-01-02", "2024-01-07")  // parity "a"
+	aWeek, _ := time.Parse("2006-01-02", "2024-01-07") // parity "a"
 	bWeek, _ := time.Parse("2006-01-02", "2024-01-14") // parity "b"
 
 	tests := []struct {
-		name     string
-		cadence  string
+		name      string
+		cadence   string
 		weekStart time.Time
-		want     bool
+		want      bool
 	}{
 		{"weekly is active on an A week", "weekly", aWeek, true},
 		{"weekly is active on a B week", "weekly", bWeek, true},

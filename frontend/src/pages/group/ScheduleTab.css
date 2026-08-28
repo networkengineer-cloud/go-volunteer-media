@@ -200,6 +200,28 @@
 .schedule-grid__cadence-tag {
   font-size: 0.7rem;
   font-weight: 700;
+}
+
+/* Scoped to ScheduleTab's own individual editing grid, where every cell
+   background is a solid brand color and --brand-contrast (white in both
+   themes) always has good contrast. Deliberately NOT applied inside
+   .schedule-overview: its tiered heatmap cells (see the tier-color rules in
+   ScheduleOverview.css) aren't uniformly white-safe - tier-3 in light theme
+   and tier-4 in dark theme fail WCAG AA against white and are overridden to
+   a dark color there, so this tag must inherit that tier color (or the
+   popover's var(--text-primary)) instead of forcing white.
+
+   Note this can't just be `.schedule-tab .schedule-grid__cadence-tag`:
+   ScheduleTab.tsx renders <ScheduleOverview> (root class
+   .schedule-overview, itself wrapping its own .schedule-grid) directly
+   inside .schedule-tab, so a plain descendant selector would still match
+   the overview's tags too. The individual editing grid's own .schedule-grid
+   is a direct child of .schedule-tab (no wrapper element - it's rendered
+   inside a bare React fragment), while the overview's .schedule-grid is
+   nested two levels deeper inside .schedule-overview - so the `>` combinator
+   below reaches only the individual grid, regardless of CSS file load
+   order. */
+.schedule-tab > .schedule-grid .schedule-grid__cadence-tag {
   color: var(--brand-contrast);
 }
 

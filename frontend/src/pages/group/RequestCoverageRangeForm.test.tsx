@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import RequestCoverageRangeForm, { computeCandidateOccurrences } from './RequestCoverageRangeForm';
 import Modal from '../../components/Modal';
 import { scheduleApi } from '../../api/client';
+import { weekParity } from './scheduleGrid';
 import type { AxiosResponse } from 'axios';
 import type { CoverageRequestBatchResult, ScheduleSlot } from '../../api/client';
 
@@ -53,6 +54,41 @@ describe('computeCandidateOccurrences', () => {
   it('returns an empty list when start is after end', () => {
     const slots: ScheduleSlot[] = [{ day_of_week: 2, hour: 10 }];
     expect(computeCandidateOccurrences(slots, '2026-08-20', '2026-08-11')).toEqual([]);
+  });
+
+  it('excludes a legacy slot whose hour is beyond maxHourFor its day of week', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      // 2026-08-15 is a Saturday (weekend, maxHourFor = 15); hour 17 is a
+      // legacy weekday-era slot that's now out of range on weekends.
+      const slots: ScheduleSlot[] = [{ day_of_week: 6, hour: 17 }];
+      const result = computeCandidateOccurrences(slots, '2026-08-11', '2026-08-20');
+      expect(result).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('only offers a biweekly_a slot on its own-parity weeks within the range', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      // 2026-08-11, 2026-08-18 and 2026-08-25 are consecutive Tuesdays, so
+      // they alternate parity; derive the expected "a" dates from
+      // weekParity itself rather than hardcoding, so this test doesn't
+      // silently rot if the reference date's assignment ever shifts.
+      const candidateDates = ['2026-08-11', '2026-08-18', '2026-08-25'];
+      const expectedDates = candidateDates.filter(d => weekParity(d) === 'a');
+      expect(expectedDates.length).toBeGreaterThan(0);
+      expect(expectedDates.length).toBeLessThan(candidateDates.length);
+
+      const slots: ScheduleSlot[] = [{ day_of_week: 2, hour: 10, cadence: 'biweekly_a' }];
+      const result = computeCandidateOccurrences(slots, '2026-08-11', '2026-08-25');
+      expect(result).toEqual(expectedDates.map(date => ({ date, hour: 10 })));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

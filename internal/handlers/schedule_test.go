@@ -566,6 +566,61 @@ func TestUpdateMemberSchedule_KeepsClaimsForDifferentSlots(t *testing.T) {
 	}
 }
 
+// TestUpdateMemberSchedule_KeepsClaimForInactiveBiweeklyNewSlot is the
+// parity-aware companion to TestUpdateMemberSchedule_CancelsRedundantClaimsForNewSlots:
+// Bob claims Alice's Tuesday 10am coverage request for a date on a "b"
+// parity week. An admin then adds a Tuesday 10am biweekly_a slot to Bob's
+// own schedule - same day/hour as the claim, but biweekly_a is INACTIVE on
+// "b" weeks, so it doesn't actually collide with the claim's specific date.
+// The claim must survive; cancelling it here would silently un-cover a
+// shift Bob already agreed to take.
+func TestUpdateMemberSchedule_KeepsClaimForInactiveBiweeklyNewSlot(t *testing.T) {
+	db := SetupTestDB(t)
+	admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+	alice := CreateTestUser(t, db, "alice", "alice@test.com", "password123", false)
+	bob := CreateTestUser(t, db, "bob", "bob@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, alice.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, bob.ID, group.ID, false)
+
+	db.Create(&models.ShiftSlot{UserID: alice.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
+
+	bWeekDate, err := time.Parse("2006-01-02", nextWeekdayWithParity(t, time.Tuesday, "b"))
+	if err != nil {
+		t.Fatalf("failed to parse date: %v", err)
+	}
+	reqRow := createOpenCoverageRequest(t, db, group.ID, alice.ID, 2, 10, bWeekDate)
+	if claim := performClaimCoverageRequest(db, bob.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+		t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+	}
+
+	// Admin adds Bob to Tuesday 10am as biweekly_a - same day/hour as his
+	// claim, but inactive on the claim's "b"-parity date.
+	c, w := setupGroupTestContext(admin.ID, true)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", group.ID)},
+		{Key: "userId", Value: fmt.Sprintf("%d", bob.ID)},
+	}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/%d", group.ID, bob.ID),
+		bytes.NewBufferString(`{"slots":[{"day_of_week":2,"hour":10,"cadence":"biweekly_a"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateMemberSchedule(db)
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated models.ShiftCoverageRequest
+	if err := db.First(&updated, reqRow.ID).Error; err != nil {
+		t.Fatalf("failed to reload coverage request: %v", err)
+	}
+	if updated.Status != models.CoverageRequestClaimed {
+		t.Errorf("expected the claim to survive since the new biweekly_a slot is inactive on the claim's b-parity date, got %s", updated.Status)
+	}
+}
+
 func TestGetMemberSchedule(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -1627,4 +1682,92 @@ func TestGetGroupScheduleOverview_BiweeklyViewerConflictParity(t *testing.T) {
 			t.Error("expected Claimable true on the viewer's off-week")
 		}
 	})
+}
+
+// TestGetGroupScheduleOverview_ViewerConflictAcrossMultipleGroups verifies
+// the fix for viewerSlotCadence collapsing to last-write-wins: viewerSlots
+// is queried across ALL of the viewer's groups (no group_id filter), and
+// the per-group unique index allows the same (day_of_week, hour) to
+// legitimately recur in two different groups. Here the viewer has a WEEKLY
+// Tuesday 10am slot in the group whose overview we're fetching, and a
+// BIWEEKLY_B Tuesday 10am slot (inactive this "A" week) in a second,
+// unrelated group. The weekly slot alone is enough to conflict regardless
+// of the biweekly slot's state, so Conflict must be true even though the
+// biweekly slot - if it were the only one the map remembered - would report
+// no conflict on this particular week.
+func TestGetGroupScheduleOverview_ViewerConflictAcrossMultipleGroups(t *testing.T) {
+	db := SetupTestDB(t)
+	viewer := CreateTestUser(t, db, "viewer3", "viewer3@test.com", "password123", false)
+	otherMember := CreateTestUser(t, db, "othermember3", "othermember3@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	otherGroup := createSchedulingEnabledGroup(t, db, "Cats", "Cat volunteers")
+	AddUserToGroupWithAdmin(t, db, viewer.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, otherMember.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, viewer.ID, otherGroup.ID, false)
+
+	// The viewer's WEEKLY commitment lives in `group`, the group whose
+	// overview we're fetching.
+	db.Create(&models.ShiftSlot{UserID: viewer.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10, Cadence: "weekly"})
+	// The viewer's BIWEEKLY_B commitment lives in `otherGroup` - same
+	// day_of_week/hour, different group, allowed by the per-group unique
+	// index. Inserted after the weekly slot so a last-write-wins map would
+	// remember biweekly_b as the (day_of_week, hour) cadence.
+	db.Create(&models.ShiftSlot{UserID: viewer.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_b"})
+	// otherMember has an ordinary weekly slot in `group`'s same bucket, so
+	// both land in the same slotBucket and the viewer's own slot(s) are a
+	// plausible source of a conflict against otherMember's open request.
+	db.Create(&models.ShiftSlot{UserID: otherMember.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10, Cadence: "weekly"})
+
+	// 2024-01-07 is the "A" week Sunday (biweeklyReferenceSunday) - the
+	// viewer's biweekly_b slot in otherGroup is INACTIVE this week, but the
+	// weekly slot in `group` is always active.
+	aWeekStart := "2024-01-07"
+	aTuesday, _ := time.Parse("2006-01-02", aWeekStart)
+	aTuesday = aTuesday.AddDate(0, 0, 2) // 2024-01-09
+
+	reqRow := &models.ShiftCoverageRequest{
+		GroupID: group.ID, RequestedByUserID: otherMember.ID, Date: aTuesday, Hour: 10,
+		Status: models.CoverageRequestOpen,
+	}
+	if err := db.Create(reqRow).Error; err != nil {
+		t.Fatalf("failed to create coverage request: %v", err)
+	}
+
+	c, w := setupGroupTestContext(viewer.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/groups/%d/schedule/overview?week_start=%s", group.ID, aWeekStart), nil)
+	GetGroupScheduleOverview(db)(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Slots []scheduleOverviewSlot `json:"slots"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	var otherMemberEntry *scheduleOverviewMember
+	for _, s := range resp.Slots {
+		if s.DayOfWeek != 2 || s.Hour != 10 {
+			continue
+		}
+		for i := range s.Members {
+			if s.Members[i].UserID == otherMember.ID {
+				otherMemberEntry = &s.Members[i]
+			}
+		}
+	}
+	if otherMemberEntry == nil {
+		t.Fatal("expected otherMember to appear in the roster")
+	}
+	if otherMemberEntry.Status != "needs_coverage" {
+		t.Fatalf("expected status needs_coverage, got %s", otherMemberEntry.Status)
+	}
+	if !otherMemberEntry.Conflict {
+		t.Error("expected Conflict true: the viewer's weekly slot in a different group is active regardless of the biweekly_b slot's state")
+	}
+	if otherMemberEntry.Claimable {
+		t.Error("expected Claimable false since the viewer's weekly slot conflicts")
+	}
 }

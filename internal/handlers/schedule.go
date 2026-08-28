@@ -146,18 +146,23 @@ func cancelOrphanedRequesterCoverageRequests(tx *gorm.DB, userID, groupID uint) 
 
 // cancelRedundantClaimsForNewSlots cancels any ShiftCoverageRequest this
 // user has CLAIMED (covering someone else's shift) whose weekday/hour now
-// collides with a slot they just added to their own recurring schedule.
-// Once they're recurring on that slot themselves, the one-off "covering"
-// arrangement for the same weekday/hour is redundant and would otherwise
-// render them twice in the effective roster - once as a normal member,
-// once as the covering claimant.
+// collides with a slot they just added to their own recurring schedule AND
+// is actually active (per slotActiveForWeek) on that claim's specific date.
+// Once they're recurring on that slot themselves for that date's week, the
+// one-off "covering" arrangement for the same weekday/hour is redundant and
+// would otherwise render them twice in the effective roster - once as a
+// normal member, once as the covering claimant. A day/hour match alone
+// isn't enough: a biweekly new slot that's inactive on the claim's date
+// doesn't actually conflict, so cancelling would silently un-cover a shift
+// the user already agreed to take.
 func cancelRedundantClaimsForNewSlots(tx *gorm.DB, userID, groupID uint, slots []scheduleSlotInput) error {
 	if len(slots) == 0 {
 		return nil
 	}
-	newSlotKeys := make(map[[2]int]bool, len(slots))
+	newSlotsByKey := make(map[[2]int][]string, len(slots))
 	for _, s := range slots {
-		newSlotKeys[[2]int{s.DayOfWeek, s.Hour}] = true
+		key := [2]int{s.DayOfWeek, s.Hour}
+		newSlotsByKey[key] = append(newSlotsByKey[key], s.Cadence)
 	}
 
 	var claims []models.ShiftCoverageRequest
@@ -166,7 +171,19 @@ func cancelRedundantClaimsForNewSlots(tx *gorm.DB, userID, groupID uint, slots [
 		return err
 	}
 	for _, r := range claims {
-		if newSlotKeys[[2]int{int(r.Date.Weekday()), r.Hour}] {
+		cadences := newSlotsByKey[[2]int{int(r.Date.Weekday()), r.Hour}]
+		if cadences == nil {
+			continue
+		}
+		weekStart := weekStartOf(r.Date)
+		conflicts := false
+		for _, cadence := range cadences {
+			if slotActiveForWeek(cadence, weekStart) {
+				conflicts = true
+				break
+			}
+		}
+		if conflicts {
 			if err := tx.Model(&models.ShiftCoverageRequest{ID: r.ID}).
 				Update("status", models.CoverageRequestCancelled).Error; err != nil {
 				return err
@@ -558,9 +575,18 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch schedule overview"})
 			return
 		}
-		viewerSlotCadence := make(map[[2]int]string, len(viewerSlots))
+		// viewerSlots is queried across ALL of the viewer's groups (no
+		// group_id filter), and the per-group unique index allows the same
+		// (day_of_week, hour) to legitimately occur more than once - e.g. a
+		// weekly slot in one group and a biweekly slot at the same day/hour
+		// in another. Keep every matching slot's cadence per key (not just
+		// the last one iterated) so the conflict check below can OR across
+		// all of them, matching the old single-boolean viewerBusy semantics
+		// where any match at all made the slot busy.
+		viewerSlotCadences := make(map[[2]int][]string, len(viewerSlots))
 		for _, s := range viewerSlots {
-			viewerSlotCadence[[2]int{s.DayOfWeek, s.Hour}] = s.Cadence
+			key := [2]int{s.DayOfWeek, s.Hour}
+			viewerSlotCadences[key] = append(viewerSlotCadences[key], s.Cadence)
 		}
 		viewerClaimedBusy := make(map[dateHourKey]bool)
 		for _, r := range coverageRequests {
@@ -577,8 +603,14 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 					continue
 				}
 				dateStr := date.Format("2006-01-02")
-				viewerCadence, viewerHasSlot := viewerSlotCadence[[2]int{bucket.DayOfWeek, bucket.Hour}]
-				conflict := (viewerHasSlot && slotActiveForWeek(viewerCadence, weekStartOf(date))) ||
+				viewerSlotConflict := false
+				for _, cadence := range viewerSlotCadences[[2]int{bucket.DayOfWeek, bucket.Hour}] {
+					if slotActiveForWeek(cadence, weekStartOf(date)) {
+						viewerSlotConflict = true
+						break
+					}
+				}
+				conflict := viewerSlotConflict ||
 					viewerClaimedBusy[dateHourKey{Date: dateStr, Hour: bucket.Hour}]
 
 				members := make([]scheduleOverviewMember, 0, len(bucket.Members)+1)
