@@ -495,6 +495,49 @@ func TestClaimCoverageRequest(t *testing.T) {
 			t.Fatalf("Expected 409 on conflict, got %d: %s", w.Code, w.Body.String())
 		}
 	})
+
+	t.Run("a claimant with a biweekly slot can claim a same-day/hour request on their own off-week", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		// claimant has their own Tuesday 10am biweekly_a slot in a different group.
+		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		AddUserToGroupWithAdmin(t, db, claimant.ID, otherGroup.ID, false)
+		if err := db.Create(&models.ShiftSlot{UserID: claimant.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"}).Error; err != nil {
+			t.Fatalf("Failed to create claimant's biweekly slot: %v", err)
+		}
+		offWeekDate, err := time.Parse("2006-01-02", nextWeekdayWithParity(t, time.Tuesday, "b"))
+		if err != nil {
+			t.Fatalf("failed to parse date: %v", err)
+		}
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, offWeekDate)
+
+		w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200 (claimant's slot is inactive this week), got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("a claimant with a biweekly slot cannot claim a same-day/hour request on their own on-week", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		AddUserToGroupWithAdmin(t, db, claimant.ID, otherGroup.ID, false)
+		if err := db.Create(&models.ShiftSlot{UserID: claimant.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"}).Error; err != nil {
+			t.Fatalf("Failed to create claimant's biweekly slot: %v", err)
+		}
+		onWeekDate, err := time.Parse("2006-01-02", nextWeekdayWithParity(t, time.Tuesday, "a"))
+		if err != nil {
+			t.Fatalf("failed to parse date: %v", err)
+		}
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, onWeekDate)
+
+		w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusConflict {
+			t.Fatalf("Expected 409 (claimant's slot is active this week), got %d: %s", w.Code, w.Body.String())
+		}
+	})
 }
 
 // TestCreateCoverageRequest_EmailGatedByScheduleFlag exercises the actual
@@ -921,6 +964,34 @@ func TestListCoverageRequests(t *testing.T) {
 		}
 		if items[0].Claimable {
 			t.Fatalf("Expected claimable false since the viewer already has a claimed shift at that date/hour")
+		}
+	})
+
+	t.Run("marks claimable true when the viewer's conflicting shift is a biweekly slot on its off-week", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		AddUserToGroupWithAdmin(t, db, other.ID, otherGroup.ID, false)
+		if err := db.Create(&models.ShiftSlot{UserID: other.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"}).Error; err != nil {
+			t.Fatalf("Failed to create conflicting biweekly slot: %v", err)
+		}
+		offWeekDate, err := time.Parse("2006-01-02", nextWeekdayWithParity(t, time.Tuesday, "b"))
+		if err != nil {
+			t.Fatalf("failed to parse date: %v", err)
+		}
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, offWeekDate)
+
+		w := performListCoverageRequests(db, other.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var items []coverageRequestListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(items) != 1 || !items[0].Claimable {
+			t.Fatalf("Expected claimable true since the conflicting slot is inactive this (off) week, got %+v", items)
 		}
 	})
 

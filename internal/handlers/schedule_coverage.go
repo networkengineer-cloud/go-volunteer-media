@@ -376,15 +376,17 @@ func ClaimCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServi
 
 			// Conflict check spans every group the claimant belongs to - a
 			// real-world time conflict doesn't respect group boundaries.
-			var conflictCount int64
-			if err := tx.Model(&models.ShiftSlot{}).
-				Where("user_id = ? AND day_of_week = ? AND hour = ?", callerUserID, int(reqRow.Date.Weekday()), reqRow.Hour).
-				Count(&conflictCount).Error; err != nil {
+			var conflictingSlots []models.ShiftSlot
+			if err := tx.Where("user_id = ? AND day_of_week = ? AND hour = ?", callerUserID, int(reqRow.Date.Weekday()), reqRow.Hour).
+				Find(&conflictingSlots).Error; err != nil {
 				return err
 			}
-			if conflictCount > 0 {
-				return errClaimConflict
+			for _, s := range conflictingSlots {
+				if slotActiveForWeek(s.Cadence, weekStartOf(reqRow.Date)) {
+					return errClaimConflict
+				}
 			}
+			var conflictCount int64
 			if err := tx.Model(&models.ShiftCoverageRequest{}).
 				Where("claimed_by_user_id = ? AND date = ? AND hour = ? AND status = ?",
 					callerUserID, reqRow.Date, reqRow.Hour, models.CoverageRequestClaimed).
@@ -483,31 +485,22 @@ func notifyRequesterOfClaim(db *gorm.DB, emailService *email.Service, groupMeSer
 	}()
 }
 
-// slotConflictKey/claimConflictKey key the maps loadUserConflictKeys
-// returns: weekday+hour for a recurring ShiftSlot, and date+hour for an
-// already-claimed ShiftCoverageRequest.
-func slotConflictKey(dayOfWeek, hour int) string {
-	return fmt.Sprintf("%d-%d", dayOfWeek, hour)
-}
-
+// claimConflictKey keys the claimKeys map loadUserConflictKeys returns:
+// date+hour for an already-claimed ShiftCoverageRequest.
 func claimConflictKey(date time.Time, hour int) string {
 	return fmt.Sprintf("%s-%d", date.Format("2006-01-02"), hour)
 }
 
 // loadUserConflictKeys loads every recurring ShiftSlot and already-claimed
 // ShiftCoverageRequest userID has (in any group - a real-world time
-// conflict doesn't respect group boundaries), keyed for O(1) lookup. Two
-// queries regardless of how many coverage requests are being checked
-// against them, so ListCoverageRequests can annotate every row in the
-// group without a per-row round trip.
-func loadUserConflictKeys(db *gorm.DB, userID uint) (slotKeys, claimKeys map[string]struct{}, err error) {
-	var slots []models.ShiftSlot
+// conflict doesn't respect group boundaries). Slots are returned as-is
+// (not pre-keyed) since whether a slot actually conflicts with a specific
+// coverage request depends on that request's date (biweekly parity), not
+// just its weekday/hour. claimKeys stays a flat set since a claimed
+// ShiftCoverageRequest is inherently tied to one exact date already.
+func loadUserConflictKeys(db *gorm.DB, userID uint) (slots []models.ShiftSlot, claimKeys map[string]struct{}, err error) {
 	if err := db.Where("user_id = ?", userID).Find(&slots).Error; err != nil {
 		return nil, nil, err
-	}
-	slotKeys = make(map[string]struct{}, len(slots))
-	for _, s := range slots {
-		slotKeys[slotConflictKey(s.DayOfWeek, s.Hour)] = struct{}{}
 	}
 
 	var claimed []models.ShiftCoverageRequest
@@ -518,22 +511,22 @@ func loadUserConflictKeys(db *gorm.DB, userID uint) (slotKeys, claimKeys map[str
 	for _, r := range claimed {
 		claimKeys[claimConflictKey(r.Date, r.Hour)] = struct{}{}
 	}
-	return slotKeys, claimKeys, nil
+	return slots, claimKeys, nil
 }
 
 // isRequestClaimableGiven reports whether userID could claim req right
-// now, given userID's own conflict keys (see loadUserConflictKeys): not
-// their own request, and no conflicting ShiftSlot or already-claimed
-// coverage request at that exact date/hour. Mirrors the checks
-// ClaimCoverageRequest itself makes inside its transaction; this read-only
-// version is for annotating list results and is not the source of the
-// atomicity guarantee - the conditional update in ClaimCoverageRequest is.
-func isRequestClaimableGiven(req models.ShiftCoverageRequest, userID uint, slotKeys, claimKeys map[string]struct{}) bool {
+// now, given userID's own conflict data (see loadUserConflictKeys): not
+// their own request, and no conflicting ShiftSlot (active on req's date's
+// week) or already-claimed coverage request at that exact date/hour.
+func isRequestClaimableGiven(req models.ShiftCoverageRequest, userID uint, slots []models.ShiftSlot, claimKeys map[string]struct{}) bool {
 	if req.RequestedByUserID == userID {
 		return false
 	}
-	if _, conflict := slotKeys[slotConflictKey(int(req.Date.Weekday()), req.Hour)]; conflict {
-		return false
+	weekStart := weekStartOf(req.Date)
+	for _, s := range slots {
+		if s.DayOfWeek == int(req.Date.Weekday()) && s.Hour == req.Hour && slotActiveForWeek(s.Cadence, weekStart) {
+			return false
+		}
 	}
 	_, conflict := claimKeys[claimConflictKey(req.Date, req.Hour)]
 	return !conflict
@@ -577,7 +570,7 @@ func ListCoverageRequests(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		slotKeys, claimKeys, err := loadUserConflictKeys(db, callerUserID)
+		slots, claimKeys, err := loadUserConflictKeys(db, callerUserID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load coverage requests"})
 			return
@@ -585,7 +578,7 @@ func ListCoverageRequests(db *gorm.DB) gin.HandlerFunc {
 
 		items := make([]coverageRequestListItem, 0, len(requests))
 		for _, r := range requests {
-			claimable := isRequestClaimableGiven(r, callerUserID, slotKeys, claimKeys)
+			claimable := isRequestClaimableGiven(r, callerUserID, slots, claimKeys)
 			items = append(items, coverageRequestListItem{
 				ID:                r.ID,
 				GroupID:           r.GroupID,
