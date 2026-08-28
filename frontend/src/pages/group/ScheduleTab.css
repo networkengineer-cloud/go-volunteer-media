@@ -83,6 +83,7 @@
 }
 
 .schedule-grid__slot {
+  position: relative;
   height: 32px;
   border: 1px solid var(--neutral-200);
   border-radius: 4px;
@@ -200,6 +201,35 @@
 .schedule-grid__cadence-tag {
   font-size: 0.7rem;
   font-weight: 700;
+}
+
+/* Small, unobtrusive marker on the day's terminal (90-min) cell, positioned
+   in the bottom-right corner so it never collides with the centered A/B
+   cadence tag rendered by the same button. Only present in ScheduleTab's own
+   individual editing grid (ScheduleOverview doesn't render its per-member
+   cells as ScheduleTab-style buttons), so no ScheduleOverview-scoping is
+   needed here the way .schedule-grid__cadence-tag needs it below. */
+.schedule-grid__duration-badge {
+  position: absolute;
+  bottom: 1px;
+  right: 3px;
+  font-size: 0.55rem;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.schedule-grid__slot--weekly .schedule-grid__duration-badge,
+.schedule-grid__slot--biweekly-a .schedule-grid__duration-badge,
+.schedule-grid__slot--biweekly-b .schedule-grid__duration-badge {
+  color: var(--brand-contrast);
+}
+
+.schedule-tab__hours-caption {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
 }
 
 /* Scoped to ScheduleTab's own individual editing grid, where every cell

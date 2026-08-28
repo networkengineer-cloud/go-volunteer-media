@@ -127,6 +127,65 @@ describe('ScheduleOverview', () => {
     expect(cell.tagName).not.toBe('BUTTON');
   });
 
+  it('renders weekend hour 16/17 as non-interactive disabled cells, distinct from an ordinary unstaffed tier-0 cell', async () => {
+    // Weekend hours 16/17 aren't valid shift slots at all (see maxHourFor in
+    // scheduleGrid.ts) - previously they rendered as ordinary "0 available"
+    // tier-0 cells, indistinguishable from a valid-but-unstaffed hour.
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+    await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalled());
+
+    const table = screen.getByRole('table', { name: /weekly availability overview/i });
+    const rows = within(table).getAllByRole('row');
+    // First row is the header row; the rest are the 10 hour rows
+    // (8,9,10,11,12,13,14,15,16,17) - hour 16 is row index 8, hour 17 is 9.
+    const hour16Row = rows[1 + 8];
+    const hour17Row = rows[1 + 9];
+
+    // Sunday (dayOfWeek 0) is the first day column after the row header.
+    const sundayHour16Cell = within(hour16Row).getAllByRole('cell')[0];
+    const sundayHour17Cell = within(hour17Row).getAllByRole('cell')[0];
+
+    for (const cell of [sundayHour16Cell, sundayHour17Cell]) {
+      expect(cell).toHaveAttribute('aria-disabled', 'true');
+      expect(cell).toHaveClass('schedule-grid__slot--disabled');
+      // No "X available" count and no popover trigger - it's a plain,
+      // non-interactive element, not a button.
+      expect(cell.tagName).not.toBe('BUTTON');
+      expect(cell).not.toHaveAttribute('aria-label');
+      fireEvent.click(cell);
+      expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    }
+
+    // Every hour row (weekday or weekend) still exposes the same number of
+    // role="cell" elements (7 days), matching ScheduleTab's ARIA-table fix.
+    const hourRows = rows.slice(1);
+    const cellCounts = hourRows.map(row => within(row).getAllByRole('cell').length);
+    expect(cellCounts).toEqual(cellCounts.map(() => 7));
+  });
+
+  it("uses the 90-min range in a terminal-hour cell's aria-label while the shared row header stays a plain hour", async () => {
+    mockOverview({
+      week_start: '2026-08-09',
+      // 2026-08-09 is a Sunday; day_of_week 2 (Tuesday) hour 17 is a
+      // weekday terminal (90-min) slot: 5:00-6:30pm.
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 17, members: [
+          { user_id: 1, username: 'vol1', status: 'normal' },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    // The per-cell aria-label reflects the 90-min range for the terminal row...
+    expect(await screen.findByRole('cell', { name: 'Tue 5:00–6:30 PM, 1 available' })).toBeInTheDocument();
+
+    // ...but the shared row header (same row for all 7 day columns) stays a
+    // plain start-time label, since a weekday's terminal hour (17) isn't
+    // necessarily also weekend's terminal hour.
+    const table = screen.getByRole('table', { name: /weekly availability overview/i });
+    expect(within(table).getByRole('rowheader', { name: '5:00 PM' })).toBeInTheDocument();
+  });
+
   it('clicking a non-empty cell opens a popover listing member names', async () => {
     mockOverview({
       week_start: '2026-08-09',

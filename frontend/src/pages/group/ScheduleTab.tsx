@@ -224,7 +224,8 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
                     return (
                       <div
                         key={key}
-                        role="presentation"
+                        role="cell"
+                        aria-disabled="true"
                         className="schedule-grid__slot schedule-grid__slot--disabled"
                       />
                     );
@@ -246,12 +247,17 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
                     >
                       {cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag">A</span>}
                       {cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag">B</span>}
+                      {isTerminal && <span className="schedule-grid__duration-badge" aria-hidden="true">90m</span>}
                     </button>
                   );
                 })}
               </div>
             ))}
           </div>
+
+          <p className="schedule-tab__hours-caption">
+            Weekdays: 8am–6:30pm · Weekends: 8am–4:30pm (last shift 90 min).
+          </p>
 
           <button type="button" className="btn-primary schedule-tab__save" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save Schedule'}

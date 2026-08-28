@@ -3,7 +3,7 @@ import axios from 'axios';
 import { scheduleApi } from '../../api/client';
 import type { ScheduleOverviewMember } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
-import { DAYS, HOURS, slotKey, formatHourLabel, currentWeekStart } from './scheduleGrid';
+import { DAYS, HOURS, slotKey, formatHourLabel, formatSlotRangeLabel, maxHourFor, currentWeekStart } from './scheduleGrid';
 import CadenceLegend from './CadenceLegend';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
@@ -321,11 +321,29 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
             </div>
             {DAYS.map((_, dayOfWeek) => {
               const key = slotKey(dayOfWeek, hour);
+
+              // Weekend hour 16/17 don't exist as valid shift slots (see
+              // maxHourFor in scheduleGrid.ts) - no member can ever have a
+              // slot there. Render the same non-interactive "not applicable"
+              // treatment ScheduleTab.tsx uses for these cells, rather than
+              // an ordinary tier-0 "0 available" cell that would be
+              // indistinguishable from a valid-but-unstaffed hour.
+              if (hour > maxHourFor(dayOfWeek)) {
+                return (
+                  <div
+                    key={key}
+                    role="cell"
+                    aria-disabled="true"
+                    className="schedule-grid__slot schedule-grid__slot--disabled"
+                  />
+                );
+              }
+
               const members = membersBySlot.get(key) ?? [];
               const tier = tierFor(members.length, effectiveTotal);
               const date = dateForWeekStart(weekStart, dayOfWeek);
               const needsCoverage = members.some(m => m.status === 'needs_coverage');
-              const label = `${DAYS[dayOfWeek]} ${formatHourLabel(hour)}, ${members.length} available${needsCoverage ? ', needs coverage' : ''}`;
+              const label = `${DAYS[dayOfWeek]} ${formatSlotRangeLabel(dayOfWeek, hour)}, ${members.length} available${needsCoverage ? ', needs coverage' : ''}`;
               const isActive = activeCellKey === key;
 
               if (members.length === 0) {
