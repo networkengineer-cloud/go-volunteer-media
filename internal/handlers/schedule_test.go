@@ -803,30 +803,32 @@ func TestUpdateGroupScheduling(t *testing.T) {
 		expectedError   string
 	}{
 		{
-			name: "group admin can enable scheduling",
+			// Enabling scheduling is a one-time setup decision made from Manage
+			// Groups, not something group admins toggle for their own group -
+			// unlike the rest of a group's schedule (member shifts, coverage
+			// requests), which group admins do manage.
+			name: "group admin cannot enable scheduling",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
 				group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
 				return groupAdmin, group
 			},
-			isAdmin:         false,
-			body:            `{"enabled":true}`,
-			expectedStatus:  http.StatusOK,
-			expectedEnabled: true,
+			isAdmin:        false,
+			body:           `{"enabled":true}`,
+			expectedStatus: http.StatusForbidden,
 		},
 		{
-			name: "group admin can disable scheduling",
+			name: "group admin cannot disable scheduling",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
 				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
 				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
 				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
 				return groupAdmin, group
 			},
-			isAdmin:         false,
-			body:            `{"enabled":false}`,
-			expectedStatus:  http.StatusOK,
-			expectedEnabled: false,
+			isAdmin:        false,
+			body:           `{"enabled":false}`,
+			expectedStatus: http.StatusForbidden,
 		},
 		{
 			name: "site admin can enable scheduling for a group they're not a member of",
@@ -839,6 +841,18 @@ func TestUpdateGroupScheduling(t *testing.T) {
 			body:            `{"enabled":true}`,
 			expectedStatus:  http.StatusOK,
 			expectedEnabled: true,
+		},
+		{
+			name: "site admin can disable scheduling",
+			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
+				siteAdmin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+				return siteAdmin, group
+			},
+			isAdmin:         true,
+			body:            `{"enabled":false}`,
+			expectedStatus:  http.StatusOK,
+			expectedEnabled: false,
 		},
 		{
 			name: "regular member cannot toggle scheduling",
@@ -855,12 +869,11 @@ func TestUpdateGroupScheduling(t *testing.T) {
 		{
 			name: "omitted enabled field is rejected rather than silently disabling",
 			setupFunc: func(db *gorm.DB) (*models.User, *models.Group) {
-				groupAdmin := CreateTestUser(t, db, "gadmin", "gadmin@test.com", "password123", false)
+				siteAdmin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
 				group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
-				AddUserToGroupWithAdmin(t, db, groupAdmin.ID, group.ID, true)
-				return groupAdmin, group
+				return siteAdmin, group
 			},
-			isAdmin:        false,
+			isAdmin:        true,
 			body:           `{}`,
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "enabled",
