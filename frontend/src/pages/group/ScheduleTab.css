@@ -154,3 +154,56 @@
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
+
+.cadence-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.cadence-legend__entry--current {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.schedule-grid__slot--disabled {
+  height: 32px;
+  border: 1px dashed var(--neutral-200);
+  border-radius: 4px;
+  background: var(--neutral-50);
+  cursor: default;
+}
+
+.schedule-grid__slot--terminal {
+  border-style: dashed;
+}
+
+.schedule-grid__slot--biweekly-a {
+  background: var(--brand);
+  border-color: var(--brand);
+  opacity: 0.75;
+}
+
+.schedule-grid__slot--biweekly-b {
+  background: var(--brand);
+  border-color: var(--brand);
+  opacity: 0.5;
+}
+
+.schedule-grid__cadence-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--brand-contrast);
+}
+
+[data-theme='dark'] .schedule-grid__slot--disabled {
+  border-color: var(--neutral-300);
+  background: var(--neutral-100);
+}
