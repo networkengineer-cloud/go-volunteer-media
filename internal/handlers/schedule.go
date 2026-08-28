@@ -263,17 +263,17 @@ type updateSchedulingRequest struct {
 }
 
 // UpdateGroupScheduling turns the shift-scheduling feature on or off for a
-// group. Requires group admin or site admin access.
+// group. Requires site admin access - unlike the rest of a group's schedule
+// (member shifts, coverage requests), enabling scheduling itself is a
+// one-time setup decision made from Manage Groups, not something group
+// admins toggle for their own group.
 func UpdateGroupScheduling(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+		if !middleware.GetIsAdmin(c) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Site admin access required"})
 			return
 		}
 
