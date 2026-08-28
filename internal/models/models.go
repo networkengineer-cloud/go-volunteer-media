@@ -514,10 +514,14 @@ type UserGroup struct {
 	Group        Group     `gorm:"foreignKey:GroupID" json:"group,omitempty"`
 }
 
-// ShiftSlot represents a single 1-hour block of a volunteer's recurring
-// weekly shift schedule within a specific group. Rows are sparse — a row
-// only exists for an hour the volunteer is signed up for. day_of_week is
-// 0=Sunday..6=Saturday; hour is the slot's start hour, 8..17 (8am-6pm).
+// ShiftSlot represents a single recurring block of a volunteer's weekly
+// shift schedule within a specific group. Rows are sparse — a row only
+// exists for an hour the volunteer is signed up for. day_of_week is
+// 0=Sunday..6=Saturday; hour is the slot's start hour (valid range depends
+// on day_of_week — see maxHourFor in internal/handlers/schedule_hours.go).
+// Cadence is "weekly" (every week), "biweekly_a", or "biweekly_b" — the
+// latter two alternate on opposite weeks, resolved via weekParity in
+// internal/handlers/schedule_hours.go.
 type ShiftSlot struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time `json:"created_at"`
@@ -526,6 +530,7 @@ type ShiftSlot struct {
 	GroupID   uint      `gorm:"not null;uniqueIndex:idx_shift_slot_unique;index:idx_shift_slot_group" json:"group_id"`
 	DayOfWeek int       `gorm:"not null;uniqueIndex:idx_shift_slot_unique" json:"day_of_week"`
 	Hour      int       `gorm:"not null;uniqueIndex:idx_shift_slot_unique" json:"hour"`
+	Cadence   string    `gorm:"not null;default:weekly" json:"cadence"`
 	User      User      `gorm:"foreignKey:UserID" json:"-"`
 	Group     Group     `gorm:"foreignKey:GroupID" json:"-"`
 }

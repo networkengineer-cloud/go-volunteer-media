@@ -14,8 +14,9 @@ import (
 
 // scheduleSlotInput is one 1-hour slot in an incoming schedule-update request.
 type scheduleSlotInput struct {
-	DayOfWeek int `json:"day_of_week"`
-	Hour      int `json:"hour"`
+	DayOfWeek int    `json:"day_of_week"`
+	Hour      int    `json:"hour"`
+	Cadence   string `json:"cadence"`
 }
 
 // updateScheduleRequest is the body of PUT .../schedule/me and .../schedule/:userId.
@@ -26,8 +27,9 @@ type updateScheduleRequest struct {
 
 // scheduleSlotResponse is one 1-hour slot in a schedule GET/PUT response.
 type scheduleSlotResponse struct {
-	DayOfWeek int `json:"day_of_week"`
-	Hour      int `json:"hour"`
+	DayOfWeek int    `json:"day_of_week"`
+	Hour      int    `json:"hour"`
+	Cadence   string `json:"cadence"`
 }
 
 // requireSchedulingEnabled loads the group's SchedulingEnabled flag and
@@ -51,22 +53,28 @@ func requireSchedulingEnabled(c *gin.Context, db *gorm.DB, groupID string) bool 
 func toScheduleSlotResponses(slots []models.ShiftSlot) []scheduleSlotResponse {
 	out := make([]scheduleSlotResponse, 0, len(slots))
 	for _, s := range slots {
-		out = append(out, scheduleSlotResponse{DayOfWeek: s.DayOfWeek, Hour: s.Hour})
+		out = append(out, scheduleSlotResponse{DayOfWeek: s.DayOfWeek, Hour: s.Hour, Cadence: s.Cadence})
 	}
 	return out
 }
 
 // validateScheduleSlots checks each slot's day/hour range (day_of_week 0-6,
-// hour 8-maxHourFor(dayOfWeek), where maxHourFor depends on day of week) and
-// rejects duplicate (day_of_week, hour) pairs within the payload.
+// hour 8-maxHourFor(dayOfWeek), where maxHourFor depends on day of week),
+// validates cadence (weekly/biweekly_a/biweekly_b, defaulting to weekly when
+// omitted), and rejects duplicate (day_of_week, hour) pairs within the payload.
 func validateScheduleSlots(slots []scheduleSlotInput) error {
 	seen := make(map[[2]int]bool, len(slots))
-	for _, s := range slots {
+	for i, s := range slots {
 		if s.DayOfWeek < 0 || s.DayOfWeek > 6 {
 			return fmt.Errorf("day_of_week must be between 0 and 6, got %d", s.DayOfWeek)
 		}
 		if s.Hour < 8 || s.Hour > maxHourFor(s.DayOfWeek) {
 			return fmt.Errorf("hour must be between 8 and %d for day_of_week %d, got %d", maxHourFor(s.DayOfWeek), s.DayOfWeek, s.Hour)
+		}
+		if s.Cadence == "" {
+			slots[i].Cadence = "weekly"
+		} else if s.Cadence != "weekly" && s.Cadence != "biweekly_a" && s.Cadence != "biweekly_b" {
+			return fmt.Errorf("cadence must be one of weekly, biweekly_a, biweekly_b, got %q", s.Cadence)
 		}
 		key := [2]int{s.DayOfWeek, s.Hour}
 		if seen[key] {
@@ -87,7 +95,7 @@ func replaceGroupScheduleForUser(db *gorm.DB, userID, groupID uint, slots []sche
 			return err
 		}
 		for _, s := range slots {
-			slot := models.ShiftSlot{UserID: userID, GroupID: groupID, DayOfWeek: s.DayOfWeek, Hour: s.Hour}
+			slot := models.ShiftSlot{UserID: userID, GroupID: groupID, DayOfWeek: s.DayOfWeek, Hour: s.Hour, Cadence: s.Cadence}
 			if err := tx.Create(&slot).Error; err != nil {
 				return err
 			}

@@ -1343,3 +1343,83 @@ func TestParseWeekStart(t *testing.T) {
 		}
 	})
 }
+
+// TestShiftSlotCadenceDefaultsToWeekly verifies that new ShiftSlot rows
+// without an explicit cadence get the "weekly" default applied by GORM.
+func TestShiftSlotCadenceDefaultsToWeekly(t *testing.T) {
+	db := SetupTestDB(t)
+	user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+	group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+
+	slot := models.ShiftSlot{UserID: user.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 9}
+	if err := db.Create(&slot).Error; err != nil {
+		t.Fatalf("expected slot to be created, got error: %v", err)
+	}
+	if slot.Cadence != "weekly" {
+		t.Errorf("expected default Cadence \"weekly\", got %q", slot.Cadence)
+	}
+}
+
+// TestUpdateMySchedule_Cadence verifies that cadence is round-tripped through
+// the schedule API correctly: explicit values are persisted, omitted cadences
+// default to "weekly", and invalid cadences are rejected.
+func TestUpdateMySchedule_Cadence(t *testing.T) {
+	tests := []struct {
+		name           string
+		body           string
+		expectedStatus int
+		expectedError  string
+		expectCadence  string // checked against the single persisted slot when expectedStatus is 200
+	}{
+		{
+			name:           "explicit biweekly_a is persisted",
+			body:           `{"slots":[{"day_of_week":2,"hour":9,"cadence":"biweekly_a"}]}`,
+			expectedStatus: http.StatusOK,
+			expectCadence:  "biweekly_a",
+		},
+		{
+			name:           "omitted cadence defaults to weekly",
+			body:           `{"slots":[{"day_of_week":2,"hour":9}]}`,
+			expectedStatus: http.StatusOK,
+			expectCadence:  "weekly",
+		},
+		{
+			name:           "unrecognized cadence is rejected",
+			body:           `{"slots":[{"day_of_week":2,"hour":9,"cadence":"monthly"}]}`,
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "cadence",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := SetupTestDB(t)
+			user := CreateTestUser(t, db, "vol1", "vol1@test.com", "password123", false)
+			group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+			AddUserToGroupWithAdmin(t, db, user.ID, group.ID, false)
+
+			c, w := setupGroupTestContext(user.ID, false)
+			c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+			c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/groups/%d/schedule/me", group.ID), bytes.NewBufferString(tt.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			UpdateMySchedule(db)(c)
+
+			if w.Code != tt.expectedStatus {
+				t.Fatalf("expected status %d, got %d: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+			if tt.expectedError != "" && !strings.Contains(w.Body.String(), tt.expectedError) {
+				t.Errorf("expected error containing %q, got %q", tt.expectedError, w.Body.String())
+			}
+			if tt.expectedStatus == http.StatusOK {
+				var slot models.ShiftSlot
+				if err := db.Where("user_id = ? AND group_id = ?", user.ID, group.ID).First(&slot).Error; err != nil {
+					t.Fatalf("failed to load persisted slot: %v", err)
+				}
+				if slot.Cadence != tt.expectCadence {
+					t.Errorf("expected persisted cadence %q, got %q", tt.expectCadence, slot.Cadence)
+				}
+			}
+		})
+	}
+}

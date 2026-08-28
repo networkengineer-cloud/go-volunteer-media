@@ -615,10 +615,15 @@ export const groupsApi = {
 };
 
 // Weekly volunteer shift schedule (per group). day_of_week is 0=Sunday..6=Saturday;
-// hour is the slot's start hour, 8..17 (8am-6pm in 1-hour increments).
+// hour is the slot's start hour — valid range and duration depend on day_of_week
+// (see scheduleGrid.ts's maxHourFor/slotDurationMinutes). cadence is optional on
+// requests (server defaults to "weekly") and always present on responses.
+export type ScheduleCadence = 'weekly' | 'biweekly_a' | 'biweekly_b';
+
 export interface ScheduleSlot {
   day_of_week: number;
   hour: number;
+  cadence?: ScheduleCadence;
 }
 
 export interface ScheduleResponse {
