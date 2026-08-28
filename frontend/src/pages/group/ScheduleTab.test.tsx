@@ -61,7 +61,7 @@ describe('ScheduleTab', () => {
     fireEvent.click(screen.getByRole('button', { name: /save schedule/i }));
 
     await waitFor(() => {
-      expect(scheduleApi.updateMine).toHaveBeenCalledWith(1, [{ day_of_week: 3, hour: 10 }]);
+      expect(scheduleApi.updateMine).toHaveBeenCalledWith(1, [{ day_of_week: 3, hour: 10, cadence: 'weekly' }]);
     });
   });
 
@@ -97,7 +97,7 @@ describe('ScheduleTab', () => {
     let resolveFirst!: (value: AxiosResponse<ScheduleResponse>) => void;
     let capturedFirstSignal: AbortSignal | undefined;
     const staleResponse = { data: { slots: [{ day_of_week: 0, hour: 8 }] } } as unknown as AxiosResponse<ScheduleResponse>;
-    const freshResponse = { data: { slots: [{ day_of_week: 6, hour: 17 }] } } as unknown as AxiosResponse<ScheduleResponse>;
+    const freshResponse = { data: { slots: [{ day_of_week: 6, hour: 9 }] } } as unknown as AxiosResponse<ScheduleResponse>;
 
     // First group's own-schedule fetch: stays pending until resolveFirst is
     // invoked, but rejects immediately - the way a real aborted axios
@@ -131,7 +131,7 @@ describe('ScheduleTab', () => {
     );
     await waitFor(() => expect(capturedFirstSignal?.aborted).toBe(true));
 
-    const freshSlot = await screen.findByRole('cell', { name: 'Sat 5:00 PM' });
+    const freshSlot = await screen.findByRole('cell', { name: 'Sat 9:00 AM' });
     expect(freshSlot).toHaveAttribute('aria-pressed', 'true');
 
     // The first (now-aborted) request resolving late must not overwrite the
@@ -140,7 +140,7 @@ describe('ScheduleTab', () => {
       resolveFirst(staleResponse);
     });
 
-    expect(screen.getByRole('cell', { name: 'Sat 5:00 PM' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('cell', { name: 'Sat 9:00 AM' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('cell', { name: 'Sun 8:00 AM' })).toHaveAttribute('aria-pressed', 'false');
   });
 
@@ -277,5 +277,58 @@ describe('ScheduleTab', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('cycles a cell through weekly -> biweekly A -> biweekly B -> empty on repeated clicks', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    const slot = await screen.findByRole('cell', { name: 'Wed 10:00 AM' });
+    fireEvent.click(slot);
+    expect(slot).toHaveAttribute('aria-pressed', 'true');
+    expect(slot).toHaveAccessibleName('Wed 10:00 AM');
+
+    fireEvent.click(slot);
+    expect(slot).toHaveAccessibleName('Wed 10:00 AM (Week A)');
+
+    fireEvent.click(slot);
+    expect(slot).toHaveAccessibleName('Wed 10:00 AM (Week B)');
+
+    fireEvent.click(slot);
+    expect(slot).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('disables cells beyond the weekend cap', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    expect(screen.queryByRole('cell', { name: /Sun 4:00 PM/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('cell', { name: /Sun 5:00 PM/ })).not.toBeInTheDocument();
+    // The weekend's terminal slot (3:00-4:30pm) is still a live, clickable cell.
+    expect(screen.getByRole('cell', { name: 'Sun 3:00–4:30 PM' })).toBeInTheDocument();
+    // Weekdays keep their full range including the terminal slot.
+    expect(screen.getByRole('cell', { name: 'Mon 5:00–6:30 PM' })).toBeInTheDocument();
+  });
+
+  it('saving includes the cadence for every selected cell', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    const slot = await screen.findByRole('cell', { name: 'Wed 10:00 AM' });
+    fireEvent.click(slot); // weekly
+    fireEvent.click(slot); // biweekly_a
+
+    fireEvent.click(screen.getByRole('button', { name: /save schedule/i }));
+
+    await waitFor(() => {
+      expect(scheduleApi.updateMine).toHaveBeenCalledWith(1, [{ day_of_week: 3, hour: 10, cadence: 'biweekly_a' }]);
+    });
+  });
+
+  it('shows the A/B legend above the grid', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+    expect(screen.getByText(/Week A:/)).toBeInTheDocument();
+    expect(screen.getByText(/Week B:/)).toBeInTheDocument();
   });
 });
