@@ -3,7 +3,7 @@ import axios from 'axios';
 import { scheduleApi } from '../../api/client';
 import type { ScheduleOverviewMember } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
-import { DAYS, HOURS, slotKey, formatHourLabel } from './scheduleGrid';
+import { DAYS, HOURS, slotKey, formatHourLabel, currentWeekStart } from './scheduleGrid';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
 import './ScheduleTab.css';
@@ -122,15 +122,6 @@ function formatWeekLabel(weekStart: string): string {
   const end = new Date(`${addDays(weekStart, 6)}T00:00:00Z`);
   const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', timeZone: 'UTC' };
   return `Week of ${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
-}
-
-// currentWeekStart returns the ISO date (YYYY-MM-DD) of the Sunday that
-// starts "this week" in the viewer's local timezone.
-function currentWeekStart(): string {
-  const now = new Date();
-  const utcToday = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-  utcToday.setUTCDate(utcToday.getUTCDate() - utcToday.getUTCDay());
-  return utcToday.toISOString().slice(0, 10);
 }
 
 // todayIso returns "today" (UTC calendar date, matching the backend's
