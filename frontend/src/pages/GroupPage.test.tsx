@@ -34,7 +34,6 @@ vi.mock('../api/client', () => ({
     getMembership: vi.fn(),
     getAll: vi.fn(),
     getActivityFeed: vi.fn(),
-    updateScheduling: vi.fn(),
   },
   animalsApi: {
     getAll: vi.fn(),
@@ -517,29 +516,20 @@ describe('GroupPage', () => {
       expect(screen.queryByRole('tab', { name: /schedule/i })).not.toBeInTheDocument();
     });
 
-    it('does not show the scheduling toggle button to a regular member', async () => {
+    it('does not show a scheduling toggle button to a regular member', async () => {
       renderGroupPage();
       await screen.findByRole('tab', { name: /animals/i });
       expect(screen.queryByRole('button', { name: /enable scheduling|disable scheduling/i })).not.toBeInTheDocument();
     });
 
-    it('a group admin can enable scheduling, which then reveals the Schedule tab', async () => {
+    it('does not show a scheduling toggle button to a group admin either - it now lives in group settings', async () => {
       vi.mocked(groupsApi.getMembership).mockResolvedValue({
         data: { ...mockMembership, is_group_admin: true },
       } as AxiosResponse<GroupMembership>);
-      vi.mocked(groupsApi.updateScheduling).mockResolvedValue({
-        data: { scheduling_enabled: true },
-      } as AxiosResponse<{ scheduling_enabled: boolean }>);
 
       renderGroupPage();
-      const enableButton = await screen.findByRole('button', { name: /enable scheduling/i });
-      expect(screen.queryByRole('tab', { name: /schedule/i })).not.toBeInTheDocument();
-
-      fireEvent.click(enableButton);
-
-      await waitFor(() => expect(groupsApi.updateScheduling).toHaveBeenCalledWith(1, true));
-      expect(await screen.findByRole('tab', { name: /schedule/i })).toBeInTheDocument();
-      expect(await screen.findByRole('button', { name: /disable scheduling/i })).toBeInTheDocument();
+      await screen.findByRole('tab', { name: /animals/i });
+      expect(screen.queryByRole('button', { name: /enable scheduling|disable scheduling/i })).not.toBeInTheDocument();
     });
   });
 });

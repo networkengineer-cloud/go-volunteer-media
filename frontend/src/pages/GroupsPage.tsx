@@ -27,12 +27,13 @@ const GroupsPage: React.FC = () => {
   // Create/Edit modal state
   const [showModal, setShowModal] = React.useState(false);
   const [editingGroup, setEditingGroup] = React.useState<Group | null>(null);
-  const [modalData, setModalData] = React.useState({ 
-    name: '', 
-    description: '', 
-    image_url: '', 
+  const [modalData, setModalData] = React.useState({
+    name: '',
+    description: '',
+    image_url: '',
     hero_image_url: '',
     has_protocols: false,
+    scheduling_enabled: false,
     groupme_bot_id: '',
     groupme_enabled: false
   });
@@ -138,7 +139,7 @@ const GroupsPage: React.FC = () => {
   // Open modal for creating a new group
   const openCreateModal = () => {
     setEditingGroup(null);
-    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false, groupme_bot_id: '', groupme_enabled: false });
+    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false, scheduling_enabled: false, groupme_bot_id: '', groupme_enabled: false });
     setModalError(null);
     setShowModal(true);
   };
@@ -146,12 +147,13 @@ const GroupsPage: React.FC = () => {
   // Open modal for editing an existing group
   const openEditModal = async (group: Group) => {
     setEditingGroup(group);
-    setModalData({ 
-      name: group.name, 
-      description: group.description, 
-      image_url: group.image_url || '', 
+    setModalData({
+      name: group.name,
+      description: group.description,
+      image_url: group.image_url || '',
       hero_image_url: group.hero_image_url || '',
       has_protocols: group.has_protocols || false,
+      scheduling_enabled: group.scheduling_enabled || false,
       groupme_bot_id: group.groupme_bot_id || '',
       groupme_enabled: group.groupme_enabled || false
     });
@@ -172,7 +174,7 @@ const GroupsPage: React.FC = () => {
   const closeModal = () => {
     setShowModal(false);
     setEditingGroup(null);
-    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false, groupme_bot_id: '', groupme_enabled: false });
+    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false, scheduling_enabled: false, groupme_bot_id: '', groupme_enabled: false });
     setModalError(null);
     setAvailableAnimals([]);
     setShowAnimalSelector(false);
@@ -194,15 +196,18 @@ const GroupsPage: React.FC = () => {
       if (editingGroup) {
         // Update existing group
         await groupsApi.update(
-          editingGroup.id, 
-          modalData.name, 
-          modalData.description, 
-          modalData.image_url, 
+          editingGroup.id,
+          modalData.name,
+          modalData.description,
+          modalData.image_url,
           modalData.hero_image_url,
           modalData.has_protocols,
           modalData.groupme_bot_id,
           modalData.groupme_enabled
         );
+        if (modalData.scheduling_enabled !== (editingGroup.scheduling_enabled || false)) {
+          await groupsApi.updateScheduling(editingGroup.id, modalData.scheduling_enabled);
+        }
       } else {
         // Create new group
         await groupsApi.create(
@@ -488,6 +493,24 @@ const GroupsPage: React.FC = () => {
               Protocols allow you to document standardized procedures and workflows for this group.
             </small>
           </div>
+
+          {editingGroup && (
+            <div className="form-group">
+              <label htmlFor="scheduling_enabled" className="group-modal-checkbox-label">
+                <input
+                  id="scheduling_enabled"
+                  name="scheduling_enabled"
+                  type="checkbox"
+                  checked={modalData.scheduling_enabled}
+                  onChange={(e) => setModalData(d => ({ ...d, scheduling_enabled: e.target.checked }))}
+                />
+                <span>Enable Scheduling for this group</span>
+              </label>
+              <small className="group-modal-hint">
+                Scheduling is a one-time setup decision - once enabled, members can claim and request coverage for volunteer shifts.
+              </small>
+            </div>
+          )}
 
           {/* GroupMe Integration Section */}
           <div className="form-group group-modal-section-divider">
