@@ -1423,3 +1423,53 @@ func TestUpdateMySchedule_Cadence(t *testing.T) {
 		})
 	}
 }
+
+func TestGetGroupScheduleOverview_BiweeklyCadence(t *testing.T) {
+	db := SetupTestDB(t)
+	alice := CreateTestUser(t, db, "alice", "alice@test.com", "password123", false)
+	bob := CreateTestUser(t, db, "bob", "bob@test.com", "password123", false)
+	group := createSchedulingEnabledGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, alice.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, bob.ID, group.ID, false)
+
+	// Alice and Bob alternate the same Tuesday 10am slot.
+	db.Create(&models.ShiftSlot{UserID: alice.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"})
+	db.Create(&models.ShiftSlot{UserID: bob.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_b"})
+
+	// 2024-01-07 is an "A" week (the reference Sunday itself).
+	aWeekStart := "2024-01-07"
+	// 2024-01-14 is a "B" week.
+	bWeekStart := "2024-01-14"
+
+	fetchMembers := func(weekStart string) []scheduleOverviewMember {
+		c, w := setupGroupTestContext(alice.ID, false)
+		c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+		c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/groups/%d/schedule/overview?week_start=%s", group.ID, weekStart), nil)
+		GetGroupScheduleOverview(db)(c)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp struct {
+			Slots []scheduleOverviewSlot `json:"slots"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		for _, s := range resp.Slots {
+			if s.DayOfWeek == 2 && s.Hour == 10 {
+				return s.Members
+			}
+		}
+		return nil
+	}
+
+	aWeekMembers := fetchMembers(aWeekStart)
+	if len(aWeekMembers) != 1 || aWeekMembers[0].Username != "alice" {
+		t.Errorf("expected only alice on the A week, got %+v", aWeekMembers)
+	}
+
+	bWeekMembers := fetchMembers(bWeekStart)
+	if len(bWeekMembers) != 1 || bWeekMembers[0].Username != "bob" {
+		t.Errorf("expected only bob on the B week, got %+v", bWeekMembers)
+	}
+}

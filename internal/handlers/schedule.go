@@ -420,6 +420,7 @@ type scheduleOverviewMember struct {
 	Username          string `json:"username"`
 	FirstName         string `json:"first_name"`
 	LastName          string `json:"last_name"`
+	Cadence           string `json:"cadence"`
 	Status            string `json:"status"` // normal | needs_coverage | covering
 	CoverageRequestID *uint  `json:"coverage_request_id,omitempty"`
 	Claimable         bool   `json:"claimable,omitempty"`
@@ -556,9 +557,9 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch schedule overview"})
 			return
 		}
-		viewerBusy := make(map[[2]int]bool, len(viewerSlots))
+		viewerSlotCadence := make(map[[2]int]string, len(viewerSlots))
 		for _, s := range viewerSlots {
-			viewerBusy[[2]int{s.DayOfWeek, s.Hour}] = true
+			viewerSlotCadence[[2]int{s.DayOfWeek, s.Hour}] = s.Cadence
 		}
 		viewerClaimedBusy := make(map[dateHourKey]bool)
 		for _, r := range coverageRequests {
@@ -575,10 +576,15 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 					continue
 				}
 				dateStr := date.Format("2006-01-02")
-				conflict := viewerBusy[[2]int{bucket.DayOfWeek, bucket.Hour}] || viewerClaimedBusy[dateHourKey{Date: dateStr, Hour: bucket.Hour}]
+				viewerCadence, viewerHasSlot := viewerSlotCadence[[2]int{bucket.DayOfWeek, bucket.Hour}]
+				conflict := (viewerHasSlot && slotActiveForWeek(viewerCadence, weekStartOf(date))) ||
+					viewerClaimedBusy[dateHourKey{Date: dateStr, Hour: bucket.Hour}]
 
 				members := make([]scheduleOverviewMember, 0, len(bucket.Members)+1)
 				for _, s := range bucket.Members {
+					if !slotActiveForWeek(s.Cadence, weekStartOf(date)) {
+						continue
+					}
 					req, hasRequest := requestsByDateHourUser[dateHourUserKey{Date: dateStr, Hour: bucket.Hour, UserID: s.UserID}]
 					if hasRequest && req.Status == models.CoverageRequestClaimed {
 						// This member handed their shift off - drop them,
@@ -590,6 +596,7 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 						Username:  s.User.Username,
 						FirstName: s.User.FirstName,
 						LastName:  s.User.LastName,
+						Cadence:   s.Cadence,
 						Status:    "normal",
 					}
 					if hasRequest && req.Status == models.CoverageRequestOpen {
