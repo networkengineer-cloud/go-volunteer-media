@@ -4,6 +4,7 @@ import { scheduleApi } from '../../api/client';
 import type { ScheduleOverviewMember } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import { DAYS, HOURS, slotKey, formatHourLabel, currentWeekStart } from './scheduleGrid';
+import CadenceLegend from './CadenceLegend';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
 import './ScheduleTab.css';
@@ -292,6 +293,8 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
 
   return (
     <div className="schedule-overview">
+      <CadenceLegend referenceWeekStart={weekStart} />
+
       <div className="schedule-overview__week-nav">
         <button type="button" className="schedule-overview__week-nav-btn" onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Previous week">
           ◀
@@ -360,6 +363,8 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                       {visibleMembers.map(member => (
                         <span key={member.user_id} className="schedule-overview__name">
                           {shortDisplayName(member)}
+                          {member.cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag"> A</span>}
+                          {member.cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag"> B</span>}
                           {member.status === 'needs_coverage' && (
                             <span className="schedule-overview__tag" aria-hidden="true"> ⚠</span>
                           )}
@@ -383,6 +388,8 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                           <li key={member.user_id} className="schedule-overview__popover-row">
                             <span>
                               {memberDisplayName(member)}
+                              {member.cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag"> A</span>}
+                              {member.cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag"> B</span>}
                               {member.status === 'needs_coverage' && <span className="schedule-overview__tag"> needs coverage</span>}
                               {member.status === 'covering' && <span className="schedule-overview__tag"> covering</span>}
                             </span>

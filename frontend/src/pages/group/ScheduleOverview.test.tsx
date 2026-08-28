@@ -31,6 +31,42 @@ describe('ScheduleOverview', () => {
     mockShowError.mockClear();
   });
 
+  it('shows a legend with the currently-viewed week highlighted', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2024-01-10T12:00:00Z')); // an "A" week
+    try {
+      vi.mocked(scheduleApi.getOverview).mockResolvedValue({
+        data: { week_start: '2024-01-07', slots: [] },
+      } as unknown as AxiosResponse<ScheduleOverviewResponse>);
+
+      render(<ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />);
+
+      await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalled());
+      expect(screen.getByText(/Week A:/).closest('.cadence-legend__entry')).toHaveClass('cadence-legend__entry--current');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tags a biweekly member\'s name in a cell', async () => {
+    vi.mocked(scheduleApi.getOverview).mockResolvedValue({
+      data: {
+        week_start: '2024-01-07',
+        slots: [{
+          date: '2024-01-09',
+          day_of_week: 2,
+          hour: 10,
+          members: [{ user_id: 5, username: 'alice', first_name: 'Alice', last_name: 'A', cadence: 'biweekly_a', status: 'normal' }],
+        }],
+      },
+    } as unknown as AxiosResponse<ScheduleOverviewResponse>);
+
+    render(<ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 10:00 AM, 1 available/ });
+    expect(cell.textContent).toContain('A');
+  });
+
   it('loads the overview for the given group and week on mount', async () => {
     render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
     await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalledWith(7, expect.objectContaining({ signal: expect.any(AbortSignal) })));
