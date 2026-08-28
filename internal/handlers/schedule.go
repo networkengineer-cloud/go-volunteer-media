@@ -272,9 +272,7 @@ func UpdateGroupScheduling(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		isAdmin, _ := c.Get("is_admin")
-		isAdminBool, _ := isAdmin.(bool)
-		if !isAdminBool {
+		if !middleware.GetIsAdmin(c) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Site admin access required"})
 			return
 		}
