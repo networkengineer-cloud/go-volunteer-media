@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { scheduleApi, groupsApi } from '../../api/client';
-import type { GroupMember, ScheduleSlot } from '../../api/client';
+import type { GroupMember, ScheduleSlot, ScheduleCadence } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
@@ -9,7 +9,8 @@ import ScheduleOverview from './ScheduleOverview';
 import NeedsCoverageList from './NeedsCoverageList';
 import Modal from '../../components/Modal';
 import RequestCoverageRangeForm from './RequestCoverageRangeForm';
-import { DAYS, HOURS, slotKey, formatHourLabel } from './scheduleGrid';
+import CadenceLegend from './CadenceLegend';
+import { DAYS, HOURS, slotKey, formatHourLabel, formatSlotRangeLabel, maxHourFor, nextCadence } from './scheduleGrid';
 import './ScheduleTab.css';
 
 export interface ScheduleTabProps {
@@ -22,7 +23,7 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
   const toast = useToast();
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
+  const [selectedSlots, setSelectedSlots] = useState<Map<string, ScheduleCadence>>(new Map());
   const [savedSlots, setSavedSlots] = useState<ScheduleSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +49,19 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
       : scheduleApi.getForMember(groupId, selectedUserId, { signal: controller.signal });
     request
       .then(res => {
-        setSelectedSlots(new Set(res.data.slots.map(s => slotKey(s.day_of_week, s.hour))));
+        // Legacy slots saved before the weekend hour cap was introduced may
+        // exceed maxHourFor(day) (e.g. a Saturday 5pm slot from before
+        // weekends capped at 3pm). Such a slot renders as a disabled,
+        // non-interactive cell, so the user has no way to remove it via the
+        // grid - if it stayed in the Map it would be silently resubmitted
+        // (and rejected by the backend's own maxHourFor validation) on every
+        // save. Drop it here instead, which self-heals the schedule back to
+        // the new valid shape the next time it's loaded and saved.
+        setSelectedSlots(new Map(
+          res.data.slots
+            .filter(s => s.hour <= maxHourFor(s.day_of_week))
+            .map(s => [slotKey(s.day_of_week, s.hour), s.cadence ?? 'weekly'])
+        ));
         setSavedSlots(res.data.slots);
       })
       .catch(err => {
@@ -84,22 +97,24 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
   }, [groupId]);
 
   const toggleSlot = (dayOfWeek: number, hour: number) => {
+    if (hour > maxHourFor(dayOfWeek)) return;
     setSelectedSlots(prev => {
-      const next = new Set(prev);
+      const next = new Map(prev);
       const key = slotKey(dayOfWeek, hour);
-      if (next.has(key)) {
+      const advanced = nextCadence(next.get(key));
+      if (advanced === undefined) {
         next.delete(key);
       } else {
-        next.add(key);
+        next.set(key, advanced);
       }
       return next;
     });
   };
 
   const handleSave = () => {
-    const slots = Array.from(selectedSlots).map(key => {
+    const slots = Array.from(selectedSlots.entries()).map(([key, cadence]) => {
       const [dayOfWeek, hour] = key.split('-').map(Number);
-      return { day_of_week: dayOfWeek, hour };
+      return { day_of_week: dayOfWeek, hour, cadence };
     });
     setSaving(true);
     const request = selectedUserId === null
@@ -108,7 +123,7 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
     request
       .then(() => {
         toast.showSuccess('Schedule saved.');
-        setSavedSlots(slots.map(s => ({ day_of_week: s.day_of_week, hour: s.hour })));
+        setSavedSlots(slots.map(s => ({ day_of_week: s.day_of_week, hour: s.hour, cadence: s.cadence })));
       })
       .catch(() => toast.showError('Failed to save schedule.'))
       .finally(() => setSaving(false));
@@ -186,6 +201,8 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
             </div>
           )}
 
+          <CadenceLegend />
+
           <div className="schedule-grid" role="table" aria-label="Weekly shift schedule">
             <div className="schedule-grid__row schedule-grid__row--header" role="row">
               <div className="schedule-grid__cell schedule-grid__cell--corner" role="columnheader" />
@@ -202,22 +219,45 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
                 </div>
                 {DAYS.map((_, dayOfWeek) => {
                   const key = slotKey(dayOfWeek, hour);
-                  const active = selectedSlots.has(key);
+                  const disabled = hour > maxHourFor(dayOfWeek);
+                  if (disabled) {
+                    return (
+                      <div
+                        key={key}
+                        role="cell"
+                        aria-disabled="true"
+                        className="schedule-grid__slot schedule-grid__slot--disabled"
+                      />
+                    );
+                  }
+                  const cadence = selectedSlots.get(key);
+                  const isTerminal = hour === maxHourFor(dayOfWeek);
+                  const cadenceSuffix = cadence === 'biweekly_a' ? ' (Week A)' : cadence === 'biweekly_b' ? ' (Week B)' : '';
+                  const label = `${DAYS[dayOfWeek]} ${formatSlotRangeLabel(dayOfWeek, hour)}${cadenceSuffix}`;
+                  const cadenceClass = cadence ? ` schedule-grid__slot--${cadence.replace('_', '-')}` : '';
                   return (
                     <button
                       key={key}
                       type="button"
                       role="cell"
-                      className={`schedule-grid__slot ${active ? 'schedule-grid__slot--active' : ''}`}
-                      aria-pressed={active}
-                      aria-label={`${DAYS[dayOfWeek]} ${formatHourLabel(hour)}`}
+                      className={`schedule-grid__slot${cadenceClass}${isTerminal ? ' schedule-grid__slot--terminal' : ''}`}
+                      aria-pressed={!!cadence}
+                      aria-label={label}
                       onClick={() => toggleSlot(dayOfWeek, hour)}
-                    />
+                    >
+                      {cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag">A</span>}
+                      {cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag">B</span>}
+                      {isTerminal && <span className="schedule-grid__duration-badge" aria-hidden="true">90m</span>}
+                    </button>
                   );
                 })}
               </div>
             ))}
           </div>
+
+          <p className="schedule-tab__hours-caption">
+            Weekdays: 8am–6:30pm · Weekends: 8am–4:30pm (last shift 90 min).
+          </p>
 
           <button type="button" className="btn-primary schedule-tab__save" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save Schedule'}

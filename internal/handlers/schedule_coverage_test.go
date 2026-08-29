@@ -35,6 +35,26 @@ func TestShiftCoverageRequestMigration(t *testing.T) {
 	}
 }
 
+func TestShiftCoverageRequestPriorityDefaultsToNormal(t *testing.T) {
+	db := SetupTestDB(t)
+	user := CreateTestUser(t, db, "volunteer1", "volunteer1@example.com", "password123", false)
+	group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+
+	req := &models.ShiftCoverageRequest{
+		GroupID:           group.ID,
+		RequestedByUserID: user.ID,
+		Date:              time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC),
+		Hour:              10,
+		Status:            models.CoverageRequestOpen,
+	}
+	if err := db.Create(req).Error; err != nil {
+		t.Fatalf("Failed to create ShiftCoverageRequest: %v", err)
+	}
+	if req.Priority != "normal" {
+		t.Errorf("expected default Priority %q, got %q", "normal", req.Priority)
+	}
+}
+
 func setupCoverageTestGroup(t *testing.T, db *gorm.DB) (requester, other *models.User, group *models.Group) {
 	requester = CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
 	other = CreateTestUser(t, db, "other", "other@example.com", "password123", false)
@@ -80,7 +100,81 @@ func nextWeekday(weekday time.Weekday) string {
 	return today.AddDate(0, 0, daysAhead).Format("2006-01-02")
 }
 
+// nextWeekdayWithParity returns the next future date (strictly after today)
+// that falls on the given weekday AND whose week matches the given parity
+// ("a" or "b"), formatted as "2006-01-02". Walks forward in 7-day steps from
+// nextWeekday's result, since consecutive same-weekday dates alternate
+// parity, so at most one extra step is ever needed.
+func nextWeekdayWithParity(t *testing.T, weekday time.Weekday, parity string) string {
+	t.Helper()
+	candidate, err := time.Parse("2006-01-02", nextWeekday(weekday))
+	if err != nil {
+		t.Fatalf("failed to parse candidate date: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if weekParity(weekStartOf(candidate)) == parity {
+			return candidate.Format("2006-01-02")
+		}
+		candidate = candidate.AddDate(0, 0, 7)
+	}
+	t.Fatalf("could not find a %s-parity %s within 2 weeks", parity, weekday)
+	return ""
+}
+
 func TestCreateCoverageRequest(t *testing.T) {
+	t.Run("defaults to normal priority when omitted", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		date := nextWeekday(time.Tuesday)
+
+		body := fmt.Sprintf(`{"date":"%s","hour":10}`, date)
+		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if resp.Priority != "normal" {
+			t.Fatalf("Expected default priority %q, got %q", "normal", resp.Priority)
+		}
+	})
+
+	t.Run("accepts an explicit optional priority", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		date := nextWeekday(time.Tuesday)
+
+		body := fmt.Sprintf(`{"date":"%s","hour":10,"priority":"optional"}`, date)
+		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if resp.Priority != "optional" {
+			t.Fatalf("Expected priority %q, got %q", "optional", resp.Priority)
+		}
+	})
+
+	t.Run("rejects an invalid priority value", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		date := nextWeekday(time.Tuesday)
+
+		body := fmt.Sprintf(`{"date":"%s","hour":10,"priority":"urgent"}`, date)
+		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("happy path creates an open request", func(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, _, group := setupCoverageTestGroup(t, db)
@@ -248,6 +342,76 @@ func TestCreateCoverageRequest(t *testing.T) {
 			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
 		}
 	})
+
+	t.Run("rejects an hour beyond the weekend cap before even checking for a matching slot", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, requester.ID, group.ID, false)
+		if err := db.Model(group).Update("scheduling_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable scheduling: %v", err)
+		}
+		// Give the requester a (currently invalid-once-this-lands, but
+		// pre-existing) Saturday 4pm slot to prove the rejection comes from
+		// the hour-bound check, not "no matching slot".
+		if err := db.Exec("INSERT INTO shift_slots (user_id, group_id, day_of_week, hour, created_at, updated_at) VALUES (?, ?, 6, 16, datetime('now'), datetime('now'))", requester.ID, group.ID).Error; err != nil {
+			t.Fatalf("Failed to seed slot: %v", err)
+		}
+		date := nextWeekday(time.Saturday)
+
+		body := fmt.Sprintf(`{"date":"%s","hour":16}`, date)
+		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400 for hour 16 on a Saturday, got %d: %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), "hour") {
+			t.Errorf("Expected error to mention hour, got %q", w.Body.String())
+		}
+	})
+
+	t.Run("rejects a date on a biweekly slot's off-week", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, requester.ID, group.ID, false)
+		if err := db.Model(group).Update("scheduling_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable scheduling: %v", err)
+		}
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"}).Error; err != nil {
+			t.Fatalf("Failed to create shift slot: %v", err)
+		}
+
+		// requester's slot is "A", so a "B"-week date has no active slot.
+		date := nextWeekdayWithParity(t, time.Tuesday, "b")
+		body := fmt.Sprintf(`{"date":"%s","hour":10}`, date)
+		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400 for an off-week date, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("accepts a date on a biweekly slot's on-week", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		AddUserToGroupWithAdmin(t, db, requester.ID, group.ID, false)
+		if err := db.Model(group).Update("scheduling_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable scheduling: %v", err)
+		}
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"}).Error; err != nil {
+			t.Fatalf("Failed to create shift slot: %v", err)
+		}
+
+		date := nextWeekdayWithParity(t, time.Tuesday, "a")
+		body := fmt.Sprintf(`{"date":"%s","hour":10}`, date)
+		w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected 201 for an on-week date, got %d: %s", w.Code, w.Body.String())
+		}
+	})
 }
 
 func TestBuildCoverageRequestSummary(t *testing.T) {
@@ -270,6 +434,60 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 			{Date: thu, Hour: 14},
 		})
 		want := fmt.Sprintf("Jane Doe needs coverage for 2 shifts:\n- %s at 10:00 AM\n- %s at 2:00 PM",
+			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("a terminal-hour (90-min) request shows the full start-end range, not just the start time", func(t *testing.T) {
+		// nextWeekday(Tuesday) is a weekday, whose terminal hour is 17
+		// (maxHourFor) - a 90-min slot ending 6:30 PM. Someone deciding
+		// whether to claim this from the notification text needs to see
+		// the actual end time, not just "5:00 PM".
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: date, Hour: 17},
+		})
+		want := fmt.Sprintf("Jane Doe needs coverage for their 5:00–6:30 PM shift on %s.", date.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("a single optional request uses softer phrasing than a normal one", func(t *testing.T) {
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: date, Hour: 10, Priority: "optional"},
+		})
+		want := fmt.Sprintf("Jane Doe could use coverage for their 10:00 AM shift on %s, if anyone's available.", date.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("a mixed-priority list marks only the optional lines", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: tue, Hour: 10, Priority: "normal"},
+			{Date: thu, Hour: 14, Priority: "optional"},
+		})
+		want := fmt.Sprintf("Jane Doe needs coverage for 2 shifts:\n- %s at 10:00 AM\n- %s at 2:00 PM (optional)",
+			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("an all-optional list uses softer header phrasing and skips redundant per-line marks", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: tue, Hour: 10, Priority: "optional"},
+			{Date: thu, Hour: 14, Priority: "optional"},
+		})
+		want := fmt.Sprintf("Jane Doe could use coverage for 2 shifts, if anyone's available:\n- %s at 10:00 AM\n- %s at 2:00 PM",
 			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
 		if summary != want {
 			t.Fatalf("Expected %q, got %q", want, summary)
@@ -402,6 +620,49 @@ func TestClaimCoverageRequest(t *testing.T) {
 
 		if w.Code != http.StatusConflict {
 			t.Fatalf("Expected 409 on conflict, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("a claimant with a biweekly slot can claim a same-day/hour request on their own off-week", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		// claimant has their own Tuesday 10am biweekly_a slot in a different group.
+		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		AddUserToGroupWithAdmin(t, db, claimant.ID, otherGroup.ID, false)
+		if err := db.Create(&models.ShiftSlot{UserID: claimant.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"}).Error; err != nil {
+			t.Fatalf("Failed to create claimant's biweekly slot: %v", err)
+		}
+		offWeekDate, err := time.Parse("2006-01-02", nextWeekdayWithParity(t, time.Tuesday, "b"))
+		if err != nil {
+			t.Fatalf("failed to parse date: %v", err)
+		}
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, offWeekDate)
+
+		w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200 (claimant's slot is inactive this week), got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("a claimant with a biweekly slot cannot claim a same-day/hour request on their own on-week", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		AddUserToGroupWithAdmin(t, db, claimant.ID, otherGroup.ID, false)
+		if err := db.Create(&models.ShiftSlot{UserID: claimant.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"}).Error; err != nil {
+			t.Fatalf("Failed to create claimant's biweekly slot: %v", err)
+		}
+		onWeekDate, err := time.Parse("2006-01-02", nextWeekdayWithParity(t, time.Tuesday, "a"))
+		if err != nil {
+			t.Fatalf("failed to parse date: %v", err)
+		}
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, onWeekDate)
+
+		w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusConflict {
+			t.Fatalf("Expected 409 (claimant's slot is active this week), got %d: %s", w.Code, w.Body.String())
 		}
 	})
 }
@@ -669,6 +930,39 @@ func performListCoverageRequests(db *gorm.DB, callerID uint, isAdmin bool, group
 }
 
 func TestListCoverageRequests(t *testing.T) {
+	t.Run("surfaces the request's priority", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		req := &models.ShiftCoverageRequest{
+			GroupID:           group.ID,
+			RequestedByUserID: requester.ID,
+			Date:              date,
+			Hour:              10,
+			Status:            models.CoverageRequestOpen,
+			Priority:          "optional",
+		}
+		if err := db.Create(req).Error; err != nil {
+			t.Fatalf("Failed to create coverage request: %v", err)
+		}
+
+		w := performListCoverageRequests(db, other.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var items []coverageRequestListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(items) != 1 {
+			t.Fatalf("Expected 1 open request, got %d", len(items))
+		}
+		if items[0].Priority != "optional" {
+			t.Fatalf("Expected priority %q, got %q", "optional", items[0].Priority)
+		}
+	})
+
 	t.Run("returns an open upcoming request with requester name and claimable true for another member", func(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, other, group := setupCoverageTestGroup(t, db)
@@ -833,6 +1127,34 @@ func TestListCoverageRequests(t *testing.T) {
 		}
 	})
 
+	t.Run("marks claimable true when the viewer's conflicting shift is a biweekly slot on its off-week", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		AddUserToGroupWithAdmin(t, db, other.ID, otherGroup.ID, false)
+		if err := db.Create(&models.ShiftSlot{UserID: other.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10, Cadence: "biweekly_a"}).Error; err != nil {
+			t.Fatalf("Failed to create conflicting biweekly slot: %v", err)
+		}
+		offWeekDate, err := time.Parse("2006-01-02", nextWeekdayWithParity(t, time.Tuesday, "b"))
+		if err != nil {
+			t.Fatalf("failed to parse date: %v", err)
+		}
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, offWeekDate)
+
+		w := performListCoverageRequests(db, other.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var items []coverageRequestListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(items) != 1 || !items[0].Claimable {
+			t.Fatalf("Expected claimable true since the conflicting slot is inactive this (off) week, got %+v", items)
+		}
+	})
+
 	t.Run("non-member is denied", func(t *testing.T) {
 		db := SetupTestDB(t)
 		_, _, group := setupCoverageTestGroup(t, db)
@@ -847,6 +1169,48 @@ func TestListCoverageRequests(t *testing.T) {
 }
 
 func TestCreateCoverageRequestsBatch(t *testing.T) {
+	t.Run("applies the batch priority to every created item", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 4, Hour: 14}).Error; err != nil {
+			t.Fatalf("Failed to create second shift slot: %v", err)
+		}
+		tue := nextWeekday(time.Tuesday)
+		thu := nextWeekday(time.Thursday)
+		body := fmt.Sprintf(`{"priority":"optional","requests":[{"date":"%s","hour":10},{"date":"%s","hour":14}]}`, tue, thu)
+
+		w := performCreateCoverageRequestsBatch(db, requester.ID, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Created) != 2 {
+			t.Fatalf("Expected 2 created, got %d", len(resp.Created))
+		}
+		for _, created := range resp.Created {
+			if created.Priority != "optional" {
+				t.Errorf("Expected priority %q, got %q for request %d", "optional", created.Priority, created.ID)
+			}
+		}
+	})
+
+	t.Run("rejects an invalid batch priority value", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		tue := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"priority":"urgent","requests":[{"date":"%s","hour":10}]}`, tue)
+
+		w := performCreateCoverageRequestsBatch(db, requester.ID, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("happy path creates multiple open requests and reports none skipped", func(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, _, group := setupCoverageTestGroup(t, db)
@@ -1148,6 +1512,152 @@ func TestCancelCoverageRequestsBatch(t *testing.T) {
 
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func performUpdateCoverageRequestPriority(db *gorm.DB, callerID uint, isAdmin bool, groupID, requestID uint, body string) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", callerID)
+		c.Set("is_admin", isAdmin)
+		c.Next()
+	})
+	router.PATCH("/groups/:id/schedule/coverage-requests/:requestId/priority", UpdateCoverageRequestPriority(db))
+
+	req := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/groups/%d/schedule/coverage-requests/%d/priority", groupID, requestID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func TestUpdateCoverageRequestPriority(t *testing.T) {
+	t.Run("group admin can override priority to optional", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performUpdateCoverageRequestPriority(db, admin.ID, false, group.ID, reqRow.ID, `{"priority":"optional"}`)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if resp.Priority != "optional" {
+			t.Fatalf("Expected priority %q, got %q", "optional", resp.Priority)
+		}
+		var updated models.ShiftCoverageRequest
+		if err := db.First(&updated, reqRow.ID).Error; err != nil {
+			t.Fatalf("Failed to reload request: %v", err)
+		}
+		if updated.Priority != "optional" {
+			t.Fatalf("Expected persisted priority %q, got %q", "optional", updated.Priority)
+		}
+	})
+
+	t.Run("site admin can override priority", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		siteAdmin := CreateTestUser(t, db, "admin", "admin@example.com", "password123", true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performUpdateCoverageRequestPriority(db, siteAdmin.ID, true, group.ID, reqRow.ID, `{"priority":"optional"}`)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("non-admin, non-requester member cannot override priority", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performUpdateCoverageRequestPriority(db, other.ID, false, group.ID, reqRow.ID, `{"priority":"optional"}`)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("requester themself cannot override priority without being an admin", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performUpdateCoverageRequestPriority(db, requester.ID, false, group.ID, reqRow.ID, `{"priority":"optional"}`)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("rejects an invalid priority value", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performUpdateCoverageRequestPriority(db, admin.ID, false, group.ID, reqRow.ID, `{"priority":"urgent"}`)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("rejects an omitted priority rather than silently defaulting to normal", func(t *testing.T) {
+		// Unlike creation (where an omitted priority is a reasonable "I
+		// didn't think about it, use normal" default), an explicit override
+		// call with no priority is almost certainly a client bug - silently
+		// defaulting here would let a malformed request quietly downgrade
+		// nothing while reporting success.
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performUpdateCoverageRequestPriority(db, admin.ID, false, group.ID, reqRow.ID, `{}`)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+		var updated models.ShiftCoverageRequest
+		if err := db.First(&updated, reqRow.ID).Error; err != nil {
+			t.Fatalf("Failed to reload request: %v", err)
+		}
+		if updated.Priority != "normal" {
+			t.Fatalf("Expected priority to remain unchanged at %q, got %q", "normal", updated.Priority)
+		}
+	})
+
+	t.Run("returns 404 for a request in a different group", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		otherGroup := createSchedulingEnabledGroup(t, db, "Cats", "Cat volunteers")
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, otherGroup.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performUpdateCoverageRequestPriority(db, admin.ID, false, otherGroup.ID, reqRow.ID, `{"priority":"optional"}`)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("Expected 404, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 }

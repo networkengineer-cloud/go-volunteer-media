@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { scheduleApi } from '../../api/client';
-import type { ScheduleOverviewMember } from '../../api/client';
+import type { ScheduleOverviewMember, ScheduleSlot } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
-import { DAYS, HOURS, slotKey, formatHourLabel } from './scheduleGrid';
+import { DAYS, HOURS, slotKey, formatHourLabel, formatSlotRangeLabel, maxHourFor, currentWeekStart } from './scheduleGrid';
+import CadenceLegend from './CadenceLegend';
+import Modal from '../../components/Modal';
+import RequestCoverageRangeForm from './RequestCoverageRangeForm';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
 import './ScheduleTab.css';
@@ -124,18 +127,10 @@ function formatWeekLabel(weekStart: string): string {
   return `Week of ${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
 }
 
-// currentWeekStart returns the ISO date (YYYY-MM-DD) of the Sunday that
-// starts "this week" in the viewer's local timezone.
-function currentWeekStart(): string {
-  const now = new Date();
-  const utcToday = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-  utcToday.setUTCDate(utcToday.getUTCDate() - utcToday.getUTCDay());
-  return utcToday.toISOString().slice(0, 10);
-}
-
 // todayIso returns "today" (UTC calendar date, matching the backend's
-// same-day-or-later check in CreateCoverageRequest) as an ISO YYYY-MM-DD
-// string, for comparing against slot dates.
+// same-day-or-later check in CreateCoverageRequestsBatch) as an ISO
+// YYYY-MM-DD string, for hiding the Request coverage popover action on a
+// past date whose form would just come up empty.
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -149,12 +144,12 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const [busyRequestId, setBusyRequestId] = useState<number | null>(null);
-  // Guards handleRequestCoverage the same way busyRequestId guards
-  // handleClaim/handleCancelRequest: keyed by the (date, hour) slot key so
-  // the "Request coverage" button for the in-flight cell disables itself
-  // mid-request, preventing a double-click from firing two concurrent
-  // POSTs (which the DB-level unique index would otherwise let race).
-  const [busyRequestSlotKey, setBusyRequestSlotKey] = useState<string | null>(null);
+  // Set when the viewer clicks "Request coverage" on their own normal-status
+  // popover row - carries just enough to pre-fill RequestCoverageRangeForm
+  // for that exact occurrence: a synthetic single-item slots array (so the
+  // form's own candidate computation only ever offers this one date/hour,
+  // respecting the viewer's own cadence for it) and the date itself.
+  const [rangeFormContext, setRangeFormContext] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Cancels any in-flight request before starting a new one - matching
@@ -264,22 +259,6 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
       .finally(() => setBusyRequestId(null));
   };
 
-  const handleRequestCoverage = (slotKeyValue: string, date: string, hour: number) => {
-    setBusyRequestSlotKey(slotKeyValue);
-    scheduleApi.createCoverageRequest(groupId, { date, hour })
-      .then(() => {
-        toast.showSuccess('Coverage requested.');
-        setActiveCellKey(null);
-        setPopoverPosition(null);
-        loadOverview();
-      })
-      .catch(err => {
-        toast.showError(err.response?.data?.error || 'Failed to request coverage.');
-        loadOverview();
-      })
-      .finally(() => setBusyRequestSlotKey(null));
-  };
-
   if (loading) {
     return <SkeletonLoader variant="card" count={1} />;
   }
@@ -293,14 +272,15 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   // from the fetched slot data itself rather than trusting `totalMembers`
   // blindly - otherwise every cell renders as tier-0 ("nobody available")
   // even when real availability data exists.
+  const today = todayIso();
   const effectiveTotal = totalMembers > 0
     ? totalMembers
     : Math.max(0, ...Array.from(membersBySlot.values()).map(m => m.length));
 
-  const today = todayIso();
-
   return (
     <div className="schedule-overview">
+      <CadenceLegend referenceWeekStart={weekStart} />
+
       <div className="schedule-overview__week-nav">
         <button type="button" className="schedule-overview__week-nav-btn" onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Previous week">
           ◀
@@ -327,11 +307,33 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
             </div>
             {DAYS.map((_, dayOfWeek) => {
               const key = slotKey(dayOfWeek, hour);
+
+              // Weekend hour 16/17 don't exist as valid shift slots (see
+              // maxHourFor in scheduleGrid.ts) - no member can ever have a
+              // slot there. Render the same non-interactive "not applicable"
+              // treatment ScheduleTab.tsx uses for these cells, rather than
+              // an ordinary tier-0 "0 available" cell that would be
+              // indistinguishable from a valid-but-unstaffed hour.
+              if (hour > maxHourFor(dayOfWeek)) {
+                return (
+                  <div
+                    key={key}
+                    role="cell"
+                    aria-disabled="true"
+                    className="schedule-grid__slot schedule-grid__slot--disabled"
+                  />
+                );
+              }
+
               const members = membersBySlot.get(key) ?? [];
               const tier = tierFor(members.length, effectiveTotal);
               const date = dateForWeekStart(weekStart, dayOfWeek);
-              const needsCoverage = members.some(m => m.status === 'needs_coverage');
-              const label = `${DAYS[dayOfWeek]} ${formatHourLabel(hour)}, ${members.length} available${needsCoverage ? ', needs coverage' : ''}`;
+              // Only a normal-priority open request makes the cell read as
+              // urgent - an all-optional cell would otherwise carry the same
+              // "needs coverage" styling/label as a shift nobody can cover,
+              // defeating the point of marking it optional in the first place.
+              const needsCoverage = members.some(m => m.status === 'needs_coverage' && m.priority !== 'optional');
+              const label = `${DAYS[dayOfWeek]} ${formatSlotRangeLabel(dayOfWeek, hour)}, ${members.length} available${needsCoverage ? ', needs coverage' : ''}`;
               const isActive = activeCellKey === key;
 
               if (members.length === 0) {
@@ -369,7 +371,9 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                       {visibleMembers.map(member => (
                         <span key={member.user_id} className="schedule-overview__name">
                           {shortDisplayName(member)}
-                          {member.status === 'needs_coverage' && (
+                          {member.cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag"> A</span>}
+                          {member.cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag"> B</span>}
+                          {member.status === 'needs_coverage' && member.priority !== 'optional' && (
                             <span className="schedule-overview__tag" aria-hidden="true"> ⚠</span>
                           )}
                         </span>
@@ -392,7 +396,13 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                           <li key={member.user_id} className="schedule-overview__popover-row">
                             <span>
                               {memberDisplayName(member)}
-                              {member.status === 'needs_coverage' && <span className="schedule-overview__tag"> needs coverage</span>}
+                              {member.cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag"> A</span>}
+                              {member.cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag"> B</span>}
+                              {member.status === 'needs_coverage' && (
+                                <span className="schedule-overview__tag">
+                                  {' '}needs coverage{member.priority === 'optional' ? ' (optional)' : ''}
+                                </span>
+                              )}
                               {member.status === 'covering' && <span className="schedule-overview__tag"> covering</span>}
                             </span>
                             {member.status === 'needs_coverage' && member.coverage_request_id !== undefined && member.user_id !== currentUserId && (
@@ -406,16 +416,6 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                 Claim
                               </button>
                             )}
-                            {member.user_id === currentUserId && member.status === 'normal' && date >= today && (
-                              <button
-                                type="button"
-                                className="btn-secondary schedule-overview__action"
-                                disabled={busyRequestSlotKey === key}
-                                onClick={() => handleRequestCoverage(key, date, hour)}
-                              >
-                                Request coverage
-                              </button>
-                            )}
                             {member.user_id === currentUserId && member.status === 'needs_coverage' && member.coverage_request_id !== undefined && (
                               <button
                                 type="button"
@@ -424,6 +424,19 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                 onClick={() => handleCancelRequest(member.coverage_request_id as number)}
                               >
                                 Cancel request
+                              </button>
+                            )}
+                            {member.user_id === currentUserId && member.status === 'normal' && date >= today && (
+                              <button
+                                type="button"
+                                className="btn-secondary schedule-overview__action"
+                                onClick={() => {
+                                  setRangeFormContext({ slot: { day_of_week: dayOfWeek, hour, cadence: member.cadence }, date });
+                                  setActiveCellKey(null);
+                                  setPopoverPosition(null);
+                                }}
+                              >
+                                Request coverage
                               </button>
                             )}
                           </li>
@@ -437,6 +450,24 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
           </div>
         ))}
       </div>
+
+      <Modal
+        isOpen={rangeFormContext !== null}
+        onClose={() => setRangeFormContext(null)}
+        title="Request Coverage"
+      >
+        <RequestCoverageRangeForm
+          groupId={groupId}
+          slots={rangeFormContext ? [rangeFormContext.slot] : []}
+          initialStartDate={rangeFormContext?.date}
+          initialEndDate={rangeFormContext?.date}
+          onSuccess={() => loadOverview()}
+          onCancel={() => {
+            setRangeFormContext(null);
+            loadOverview();
+          }}
+        />
+      </Modal>
     </div>
   );
 };

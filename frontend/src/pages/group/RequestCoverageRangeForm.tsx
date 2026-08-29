@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { scheduleApi } from '../../api/client';
-import type { ScheduleSlot, CoverageRequestBatchItem, CoverageRequestBatchResult } from '../../api/client';
+import type { ScheduleSlot, CoverageRequestBatchItem, CoverageRequestBatchResult, CoverageRequestPriority } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
-import { formatHourLabel } from './scheduleGrid';
+import { formatSlotRangeLabel, maxHourFor, weekParity } from './scheduleGrid';
 import './RequestCoverageRangeForm.css';
 
 export interface RequestCoverageRangeFormProps {
   groupId: number;
   slots: ScheduleSlot[];
+  initialStartDate?: string;
+  initialEndDate?: string;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -35,6 +37,14 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Occurrences/skipped items only carry a `date` (not a day_of_week), so the
+// day-of-week needed by formatSlotRangeLabel (to know whether this item's
+// hour is a day's terminal 90-min slot) is derived here from that date.
+function dayOfWeekFromIso(isoDate: string): number {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
 // computeCandidateOccurrences finds every date within [startDate, endDate]
 // (inclusive, both YYYY-MM-DD) whose weekday matches one of the given
 // slots, paired with that slot's hour - i.e. every real calendar
@@ -42,6 +52,20 @@ function todayIso(): string {
 // dates before today, mirroring the backend's own past-date rejection so
 // the checklist never pre-checks something that would just get skipped
 // server-side.
+//
+// Also excludes a slot/date pairing when either:
+//   - the slot's hour is beyond maxHourFor(dayOfWeek) - a legacy slot from
+//     before an hour-range tightening (e.g. a pre-existing weekend 5pm slot
+//     now that weekends cap at 15) would otherwise be offered as a
+//     candidate and then fail CreateCoverageRequestsBatch's per-item parse
+//     loop, which rejects an out-of-range hour with a whole-batch 400
+//     rather than a per-item skip; or
+//   - the slot has a biweekly cadence and the occurrence date falls on a
+//     week of the opposite parity, where slotActiveForWeek would report the
+//     slot inactive server-side - offering it here would let the user check
+//     a box that then silently fails with a "no matching shift slot" skip
+//     reason, and needlessly inflates the candidate count against the
+//     batch cap.
 export function computeCandidateOccurrences(slots: ScheduleSlot[], startDate: string, endDate: string): Occurrence[] {
   if (!startDate || !endDate || startDate > endDate) return [];
   const today = todayIso();
@@ -56,9 +80,11 @@ export function computeCandidateOccurrences(slots: ScheduleSlot[], startDate: st
     if (dateStr < today) continue;
     const dayOfWeek = cursor.getUTCDay();
     for (const slot of slots) {
-      if (slot.day_of_week === dayOfWeek) {
-        occurrences.push({ date: dateStr, hour: slot.hour });
-      }
+      if (slot.day_of_week !== dayOfWeek) continue;
+      if (slot.hour > maxHourFor(dayOfWeek)) continue;
+      if (slot.cadence === 'biweekly_a' && weekParity(dateStr) !== 'a') continue;
+      if (slot.cadence === 'biweekly_b' && weekParity(dateStr) !== 'b') continue;
+      occurrences.push({ date: dateStr, hour: slot.hour });
     }
   }
   occurrences.sort((a, b) => (a.date === b.date ? a.hour - b.hour : a.date.localeCompare(b.date)));
@@ -74,11 +100,12 @@ function rangeExceedsMaxDays(startDate: string, endDate: string): boolean {
   return (end - start) / (1000 * 60 * 60 * 24) > MAX_RANGE_DAYS;
 }
 
-const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ groupId, slots, onSuccess, onCancel }) => {
+const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ groupId, slots, initialStartDate, initialEndDate, onSuccess, onCancel }) => {
   const toast = useToast();
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(initialStartDate ?? '');
+  const [endDate, setEndDate] = useState(initialEndDate ?? '');
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
+  const [priority, setPriority] = useState<CoverageRequestPriority>('normal');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CoverageRequestBatchResult | null>(null);
 
@@ -125,7 +152,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
       return;
     }
     setSubmitting(true);
-    scheduleApi.createCoverageRequestsBatch(groupId, requests)
+    scheduleApi.createCoverageRequestsBatch(groupId, requests, priority)
       .then(res => {
         setResult(res.data);
         if (res.data.created.length > 0) {
@@ -150,7 +177,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
             <ul>
               {result.skipped.map(s => (
                 <li key={`${s.date}-${s.hour}`}>
-                  {s.date} at {formatHourLabel(s.hour)} — {s.reason}
+                  {s.date} at {formatSlotRangeLabel(dayOfWeekFromIso(s.date), s.hour)} — {s.reason}
                 </li>
               ))}
             </ul>
@@ -188,6 +215,30 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
         <p className="request-coverage-range-form__warning">Please choose a range of {MAX_RANGE_DAYS} days or fewer.</p>
       )}
 
+      <fieldset className="request-coverage-range-form__priority">
+        <legend>Priority</legend>
+        <label>
+          <input
+            type="radio"
+            name="coverage-range-priority"
+            value="normal"
+            checked={priority === 'normal'}
+            onChange={() => setPriority('normal')}
+          />
+          Normal (must-fill)
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="coverage-range-priority"
+            value="optional"
+            checked={priority === 'optional'}
+            onChange={() => setPriority('optional')}
+          />
+          Optional (nice-to-have)
+        </label>
+      </fieldset>
+
       {candidates.length > 0 && (
         <>
           <div className="request-coverage-range-form__select-all">
@@ -207,7 +258,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
           <ul className="request-coverage-range-form__list">
             {candidates.map(o => {
               const key = occurrenceKey(o);
-              const label = `${o.date} — ${formatHourLabel(o.hour)}`;
+              const label = `${o.date} — ${formatSlotRangeLabel(dayOfWeekFromIso(o.date), o.hour)}`;
               return (
                 <li key={key}>
                   <label>

@@ -9,8 +9,8 @@ vi.mock('../../api/client', () => ({
   scheduleApi: {
     getOverview: vi.fn(),
     claimCoverageRequest: vi.fn(),
-    createCoverageRequest: vi.fn(),
     cancelCoverageRequest: vi.fn(),
+    createCoverageRequestsBatch: vi.fn(),
   },
 }));
 
@@ -29,6 +29,65 @@ describe('ScheduleOverview', () => {
     mockOverview({ week_start: '2026-08-09', slots: [] });
     mockShowSuccess.mockClear();
     mockShowError.mockClear();
+  });
+
+  it('shows a legend with the currently-viewed week highlighted', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2024-01-10T12:00:00Z')); // an "A" week
+    try {
+      vi.mocked(scheduleApi.getOverview).mockResolvedValue({
+        data: { week_start: '2024-01-07', slots: [] },
+      } as unknown as AxiosResponse<ScheduleOverviewResponse>);
+
+      render(<ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />);
+
+      await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalled());
+      expect(screen.getByText(/Week A:/).closest('.cadence-legend__entry')).toHaveClass('cadence-legend__entry--current');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tags a biweekly member\'s name in a cell', async () => {
+    vi.mocked(scheduleApi.getOverview).mockResolvedValue({
+      data: {
+        week_start: '2024-01-07',
+        slots: [{
+          date: '2024-01-09',
+          day_of_week: 2,
+          hour: 10,
+          // last_name deliberately avoids the letter "A" so the assertion
+          // below can't accidentally pass off the member's own name -
+          // it must come from the dedicated cadence-tag element.
+          members: [{ user_id: 5, username: 'alice', first_name: 'Alice', last_name: 'Lee', cadence: 'biweekly_a', status: 'normal' }],
+        }],
+      },
+    } as unknown as AxiosResponse<ScheduleOverviewResponse>);
+
+    render(<ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 10:00 AM, 1 available/ });
+    expect(within(cell).getByText('A', { selector: '.schedule-grid__cadence-tag' })).toBeInTheDocument();
+  });
+
+  it('does not tag a member with weekly cadence', async () => {
+    vi.mocked(scheduleApi.getOverview).mockResolvedValue({
+      data: {
+        week_start: '2024-01-07',
+        slots: [{
+          date: '2024-01-09',
+          day_of_week: 2,
+          hour: 10,
+          members: [{ user_id: 6, username: 'bob', first_name: 'Bob', last_name: 'Ray', cadence: 'weekly', status: 'normal' }],
+        }],
+      },
+    } as unknown as AxiosResponse<ScheduleOverviewResponse>);
+
+    render(<ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 10:00 AM, 1 available/ });
+    expect(within(cell).queryByText('A', { selector: '.schedule-grid__cadence-tag' })).not.toBeInTheDocument();
+    expect(within(cell).queryByText('B', { selector: '.schedule-grid__cadence-tag' })).not.toBeInTheDocument();
   });
 
   it('loads the overview for the given group and week on mount', async () => {
@@ -66,6 +125,65 @@ describe('ScheduleOverview', () => {
     const cell = await screen.findByRole('cell', { name: 'Sun 8:00 AM, 0 available' });
     expect(cell).toHaveClass('schedule-grid__slot--tier-0');
     expect(cell.tagName).not.toBe('BUTTON');
+  });
+
+  it('renders weekend hour 16/17 as non-interactive disabled cells, distinct from an ordinary unstaffed tier-0 cell', async () => {
+    // Weekend hours 16/17 aren't valid shift slots at all (see maxHourFor in
+    // scheduleGrid.ts) - previously they rendered as ordinary "0 available"
+    // tier-0 cells, indistinguishable from a valid-but-unstaffed hour.
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+    await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalled());
+
+    const table = screen.getByRole('table', { name: /weekly availability overview/i });
+    const rows = within(table).getAllByRole('row');
+    // First row is the header row; the rest are the 10 hour rows
+    // (8,9,10,11,12,13,14,15,16,17) - hour 16 is row index 8, hour 17 is 9.
+    const hour16Row = rows[1 + 8];
+    const hour17Row = rows[1 + 9];
+
+    // Sunday (dayOfWeek 0) is the first day column after the row header.
+    const sundayHour16Cell = within(hour16Row).getAllByRole('cell')[0];
+    const sundayHour17Cell = within(hour17Row).getAllByRole('cell')[0];
+
+    for (const cell of [sundayHour16Cell, sundayHour17Cell]) {
+      expect(cell).toHaveAttribute('aria-disabled', 'true');
+      expect(cell).toHaveClass('schedule-grid__slot--disabled');
+      // No "X available" count and no popover trigger - it's a plain,
+      // non-interactive element, not a button.
+      expect(cell.tagName).not.toBe('BUTTON');
+      expect(cell).not.toHaveAttribute('aria-label');
+      fireEvent.click(cell);
+      expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    }
+
+    // Every hour row (weekday or weekend) still exposes the same number of
+    // role="cell" elements (7 days), matching ScheduleTab's ARIA-table fix.
+    const hourRows = rows.slice(1);
+    const cellCounts = hourRows.map(row => within(row).getAllByRole('cell').length);
+    expect(cellCounts).toEqual(cellCounts.map(() => 7));
+  });
+
+  it("uses the 90-min range in a terminal-hour cell's aria-label while the shared row header stays a plain hour", async () => {
+    mockOverview({
+      week_start: '2026-08-09',
+      // 2026-08-09 is a Sunday; day_of_week 2 (Tuesday) hour 17 is a
+      // weekday terminal (90-min) slot: 5:00-6:30pm.
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 17, members: [
+          { user_id: 1, username: 'vol1', status: 'normal' },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    // The per-cell aria-label reflects the 90-min range for the terminal row...
+    expect(await screen.findByRole('cell', { name: 'Tue 5:00–6:30 PM, 1 available' })).toBeInTheDocument();
+
+    // ...but the shared row header (same row for all 7 day columns) stays a
+    // plain start-time label, since a weekday's terminal hour (17) isn't
+    // necessarily also weekend's terminal hour.
+    const table = screen.getByRole('table', { name: /weekly availability overview/i });
+    expect(within(table).getByRole('rowheader', { name: '5:00 PM' })).toBeInTheDocument();
   });
 
   it('clicking a non-empty cell opens a popover listing member names', async () => {
@@ -210,6 +328,61 @@ describe('ScheduleOverview', () => {
     expect(cell).toHaveClass('schedule-grid__slot--needs-coverage');
   });
 
+  it('does not apply urgent styling when the only open request is priority "optional"', async () => {
+    // The whole point of the priority flag is that an optional request
+    // shouldn't read as urgent in the group's busiest view - if this cell
+    // still carried the needs-coverage class/label, the feature would exist
+    // in the data model without changing anything a viewer actually sees.
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 2, username: 'vol2', status: 'needs_coverage', priority: 'optional', coverage_request_id: 42, claimable: true },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM, 1 available/i });
+    expect(cell).not.toHaveClass('schedule-grid__slot--needs-coverage');
+    expect(screen.queryByRole('cell', { name: /needs coverage/i })).not.toBeInTheDocument();
+  });
+
+  it('still applies urgent styling when a mix of normal and optional requests share a cell', async () => {
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 2, username: 'vol2', status: 'needs_coverage', priority: 'optional', coverage_request_id: 42, claimable: true },
+          { user_id: 3, username: 'vol3', status: 'needs_coverage', priority: 'normal', coverage_request_id: 43, claimable: true },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /needs coverage/i });
+    expect(cell).toHaveClass('schedule-grid__slot--needs-coverage');
+  });
+
+  it('marks an optional needs_coverage member distinctly in the popover, without the warning icon', async () => {
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 2, username: 'vol2', status: 'needs_coverage', priority: 'optional', coverage_request_id: 42, claimable: true },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM, 1 available/i });
+    fireEvent.click(cell);
+
+    const popover = await screen.findByRole('list');
+    expect(within(popover).getByText(/needs coverage \(optional\)/i)).toBeInTheDocument();
+    expect(within(cell).queryByText('⚠')).not.toBeInTheDocument();
+  });
+
   it('shows a Claim button for another member\'s open request and claims it on click', async () => {
     vi.mocked(scheduleApi.claimCoverageRequest).mockResolvedValue({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
     mockOverview({
@@ -230,19 +403,12 @@ describe('ScheduleOverview', () => {
     await waitFor(() => expect(scheduleApi.claimCoverageRequest).toHaveBeenCalledWith(7, 42));
   });
 
-  it('shows a Request coverage button next to the current user\'s own name on a future date', async () => {
-    // The component only renders the currently-displayed week by default
-    // (defaulting to the real current week), and "future" is checked
-    // against the real clock - so a hardcoded fixture date is only
-    // future-and-in-the-rendered-week on some days of the year, and would
-    // start failing permanently once real "today" passes it (or even
-    // sooner, on any day where Tuesday of the current week has already
-    // passed). Pin the clock instead: only `Date` is faked here (not
-    // `setTimeout`/timers), so `findByRole`/`waitFor`'s internal real-timer
-    // polling keeps working, while the component's `currentWeekStart()` and
-    // "is this date in the future" check both resolve against this fixed
-    // Monday - making 2026-08-11 (that Monday's Tuesday) deterministically
-    // future, forever.
+  it('a Request coverage button in the popover opens the date-range form pre-filled to that exact date, instead of creating instantly', async () => {
+    // The single-click quick-create was removed in favor of always going
+    // through the date-range form (so a priority can be chosen), but the
+    // popover is where a volunteer naturally notices "I can't make this
+    // shift" - so it still gets an entry point, just one that opens the
+    // form pre-filled to this one date rather than posting immediately.
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z')); // a Monday
     try {
@@ -258,27 +424,30 @@ describe('ScheduleOverview', () => {
 
       const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
       fireEvent.click(cell);
-      expect(await screen.findByRole('button', { name: /request coverage/i })).toBeInTheDocument();
+      const popover = await screen.findByRole('list');
+      expect(within(popover).getByText('me')).toBeInTheDocument();
+
+      fireEvent.click(within(popover).getByRole('button', { name: /request coverage/i }));
+
+      // No instant API call - opening the form is not the same as submitting it.
+      expect(scheduleApi.createCoverageRequestsBatch).not.toHaveBeenCalled();
+
+      expect(screen.getByLabelText(/start date/i)).toHaveValue('2026-08-11');
+      expect(screen.getByLabelText(/end date/i)).toHaveValue('2026-08-11');
+      expect(await screen.findByRole('checkbox', { name: /2026-08-11/ })).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('disables the Request coverage button while its own POST is in flight, so a double-click cannot fire two requests', async () => {
-    // Backend fix: a partial unique index backstops the DB against a
-    // duplicate-request race, but the friendly first line of defense is the
-    // UI never firing a second POST in the first place - mirroring how
-    // handleClaim already guards via busyRequestId. Resolve the mocked
-    // createCoverageRequest call manually so we can assert the disabled
-    // state while the first request is still pending.
-    let resolveCreate: (() => void) | undefined;
-    vi.mocked(scheduleApi.createCoverageRequest).mockReturnValue(
-      new Promise((resolve) => {
-        resolveCreate = () => resolve({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
-      })
-    );
+  it('does not show a Request coverage button in the popover for a past date', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-08-10T12:00:00Z')); // a Monday
+    // Thursday of the week starting Sunday 2026-08-09 - the Tuesday slot
+    // below falls two days earlier in that same week, so it's genuinely
+    // in the past relative to the component's own today/weekStart state
+    // (which is derived from the real pinned clock, not from the mocked
+    // week_start field).
+    vi.setSystemTime(new Date('2026-08-13T12:00:00Z'));
     try {
       mockOverview({
         week_start: '2026-08-09',
@@ -292,18 +461,9 @@ describe('ScheduleOverview', () => {
 
       const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
       fireEvent.click(cell);
-      const requestButton = await screen.findByRole('button', { name: /request coverage/i });
-
-      fireEvent.click(requestButton);
-      fireEvent.click(requestButton);
-
-      expect(scheduleApi.createCoverageRequest).toHaveBeenCalledTimes(1);
-      expect(requestButton).toBeDisabled();
-
-      // Flush the pending promise and its .then/.finally chain (which
-      // closes the popover) so no state update leaks past this test.
-      resolveCreate?.();
-      await waitFor(() => expect(requestButton).not.toBeInTheDocument());
+      const popover = await screen.findByRole('list');
+      expect(within(popover).getByText('me')).toBeInTheDocument();
+      expect(within(popover).queryByRole('button', { name: /request coverage/i })).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -358,34 +518,6 @@ describe('ScheduleOverview', () => {
     fireEvent.click(cancelButton);
 
     await waitFor(() => expect(scheduleApi.cancelCoverageRequest).toHaveBeenCalledWith(7, 99));
-  });
-
-  it('shows a Request coverage button for the current user\'s own name on the same day (today counts as future)', async () => {
-    // Backend fix: CreateCoverageRequest now allows same-day-or-later
-    // (date.Before(today) rejects only the past), matching the product
-    // decision that requesting coverage for later today is a normal use
-    // case. The frontend's button-visibility condition changed from
-    // `date > today` to `date >= today` to match - this pins the clock to
-    // exactly the slot's own date/time so `date === today` is exercised.
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-08-11T12:00:00Z')); // the Tuesday itself
-    try {
-      mockOverview({
-        week_start: '2026-08-09',
-        slots: [
-          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
-            { user_id: 1, username: 'me', status: 'normal' },
-          ] },
-        ],
-      });
-      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
-
-      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
-      fireEvent.click(cell);
-      expect(await screen.findByRole('button', { name: /request coverage/i })).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it('disables every Claim button in the popover while any claim is in flight, not just the one clicked', async () => {

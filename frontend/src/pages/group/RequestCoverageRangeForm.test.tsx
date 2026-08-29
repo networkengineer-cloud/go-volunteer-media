@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import RequestCoverageRangeForm, { computeCandidateOccurrences } from './RequestCoverageRangeForm';
 import Modal from '../../components/Modal';
 import { scheduleApi } from '../../api/client';
+import { weekParity } from './scheduleGrid';
 import type { AxiosResponse } from 'axios';
 import type { CoverageRequestBatchResult, ScheduleSlot } from '../../api/client';
 
@@ -54,6 +55,41 @@ describe('computeCandidateOccurrences', () => {
     const slots: ScheduleSlot[] = [{ day_of_week: 2, hour: 10 }];
     expect(computeCandidateOccurrences(slots, '2026-08-20', '2026-08-11')).toEqual([]);
   });
+
+  it('excludes a legacy slot whose hour is beyond maxHourFor its day of week', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      // 2026-08-15 is a Saturday (weekend, maxHourFor = 15); hour 17 is a
+      // legacy weekday-era slot that's now out of range on weekends.
+      const slots: ScheduleSlot[] = [{ day_of_week: 6, hour: 17 }];
+      const result = computeCandidateOccurrences(slots, '2026-08-11', '2026-08-20');
+      expect(result).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('only offers a biweekly_a slot on its own-parity weeks within the range', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      // 2026-08-11, 2026-08-18 and 2026-08-25 are consecutive Tuesdays, so
+      // they alternate parity; derive the expected "a" dates from
+      // weekParity itself rather than hardcoding, so this test doesn't
+      // silently rot if the reference date's assignment ever shifts.
+      const candidateDates = ['2026-08-11', '2026-08-18', '2026-08-25'];
+      const expectedDates = candidateDates.filter(d => weekParity(d) === 'a');
+      expect(expectedDates.length).toBeGreaterThan(0);
+      expect(expectedDates.length).toBeLessThan(candidateDates.length);
+
+      const slots: ScheduleSlot[] = [{ day_of_week: 2, hour: 10, cadence: 'biweekly_a' }];
+      const result = computeCandidateOccurrences(slots, '2026-08-11', '2026-08-25');
+      expect(result).toEqual(expectedDates.map(date => ({ date, hour: 10 })));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('RequestCoverageRangeForm', () => {
@@ -86,6 +122,41 @@ describe('RequestCoverageRangeForm', () => {
     }
   });
 
+  it('pre-fills the start/end date fields from initialStartDate/initialEndDate, computing candidates immediately', async () => {
+    // The Overview popover's "Request coverage" entry point pre-fills both
+    // dates to the exact date the volunteer clicked, so they land on an
+    // already-populated single-occurrence checklist instead of a blank form.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      render(<RequestCoverageRangeForm groupId={7} slots={slots} initialStartDate="2026-08-11" initialEndDate="2026-08-11" />);
+
+      expect(screen.getByLabelText(/start date/i)).toHaveValue('2026-08-11');
+      expect(screen.getByLabelText(/end date/i)).toHaveValue('2026-08-11');
+      const checkboxes = await screen.findAllByRole('checkbox', { name: /2026-08-11/ });
+      expect(checkboxes).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows the 90-min start-end range for a terminal-hour occurrence, not just the start time', async () => {
+    // 2026-08-11 is a Tuesday (a weekday); hour 17 is that day's terminal
+    // (maxHourFor) slot, a 90-min shift ending 6:30 PM.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      const terminalSlots: ScheduleSlot[] = [{ day_of_week: 2, hour: 17 }];
+      render(<RequestCoverageRangeForm groupId={7} slots={terminalSlots} />);
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-11' } });
+
+      expect(await screen.findByRole('checkbox', { name: /5:00–6:30 PM/ })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('submits only the checked occurrences and shows the created/skipped summary', async () => {
     // Pinned for the same reason: the submitted payload asserted below
     // includes 2026-08-11, which only survives the component's past-date
@@ -94,7 +165,7 @@ describe('RequestCoverageRangeForm', () => {
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
     try {
       const result: CoverageRequestBatchResult = {
-        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', claimed_by_user_id: null }],
+        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', priority: 'normal', claimed_by_user_id: null }],
         skipped: [{ date: '2026-08-18', hour: 10, reason: 'a coverage request already exists for that date and hour' }],
       };
       vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({ data: result } as AxiosResponse<CoverageRequestBatchResult>);
@@ -109,12 +180,44 @@ describe('RequestCoverageRangeForm', () => {
       await waitFor(() => expect(scheduleApi.createCoverageRequestsBatch).toHaveBeenCalledWith(7, [
         { date: '2026-08-11', hour: 10 },
         { date: '2026-08-18', hour: 10 },
-      ]));
+      ], 'normal'));
       expect(await screen.findByText(/requested coverage for 1 shift/i)).toBeInTheDocument();
       expect(screen.getByText(/1 skipped/i)).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('submits with priority "optional" when the Optional toggle is selected', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      const result: CoverageRequestBatchResult = {
+        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', priority: 'normal', claimed_by_user_id: null }],
+        skipped: [],
+      };
+      vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({ data: result } as AxiosResponse<CoverageRequestBatchResult>);
+
+      render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-11' } });
+      await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
+
+      fireEvent.click(screen.getByRole('radio', { name: /optional/i }));
+      fireEvent.click(screen.getByRole('button', { name: /request coverage/i }));
+
+      await waitFor(() => expect(scheduleApi.createCoverageRequestsBatch).toHaveBeenCalledWith(7, [
+        { date: '2026-08-11', hour: 10 },
+      ], 'optional'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('defaults the priority toggle to Normal (must-fill)', async () => {
+    render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
+    expect(screen.getByRole('radio', { name: /normal/i })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /optional/i })).not.toBeChecked();
   });
 
   it('shows the result screen even when a consumer passes onSuccess, and Done calls onCancel not onSuccess', async () => {
@@ -135,7 +238,7 @@ describe('RequestCoverageRangeForm', () => {
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
     try {
       const result: CoverageRequestBatchResult = {
-        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', claimed_by_user_id: null }],
+        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', priority: 'normal', claimed_by_user_id: null }],
         skipped: [],
       };
       vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({ data: result } as AxiosResponse<CoverageRequestBatchResult>);

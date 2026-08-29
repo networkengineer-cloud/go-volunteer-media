@@ -514,10 +514,14 @@ type UserGroup struct {
 	Group        Group     `gorm:"foreignKey:GroupID" json:"group,omitempty"`
 }
 
-// ShiftSlot represents a single 1-hour block of a volunteer's recurring
-// weekly shift schedule within a specific group. Rows are sparse — a row
-// only exists for an hour the volunteer is signed up for. day_of_week is
-// 0=Sunday..6=Saturday; hour is the slot's start hour, 8..17 (8am-6pm).
+// ShiftSlot represents a single recurring block of a volunteer's weekly
+// shift schedule within a specific group. Rows are sparse — a row only
+// exists for an hour the volunteer is signed up for. day_of_week is
+// 0=Sunday..6=Saturday; hour is the slot's start hour (valid range depends
+// on day_of_week — see maxHourFor in internal/handlers/schedule_hours.go).
+// Cadence is "weekly" (every week), "biweekly_a", or "biweekly_b" — the
+// latter two alternate on opposite weeks, resolved via weekParity in
+// internal/handlers/schedule_hours.go.
 type ShiftSlot struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time `json:"created_at"`
@@ -526,6 +530,7 @@ type ShiftSlot struct {
 	GroupID   uint      `gorm:"not null;uniqueIndex:idx_shift_slot_unique;index:idx_shift_slot_group" json:"group_id"`
 	DayOfWeek int       `gorm:"not null;uniqueIndex:idx_shift_slot_unique" json:"day_of_week"`
 	Hour      int       `gorm:"not null;uniqueIndex:idx_shift_slot_unique" json:"hour"`
+	Cadence   string    `gorm:"not null;default:weekly" json:"cadence"`
 	User      User      `gorm:"foreignKey:UserID" json:"-"`
 	Group     Group     `gorm:"foreignKey:GroupID" json:"-"`
 }
@@ -543,7 +548,9 @@ const (
 // occurrence of a volunteer's recurring ShiftSlot. It never modifies
 // ShiftSlot itself - the recurring pattern stays the source of truth for
 // every date except the one named here. Date is date-only (time component
-// truncated to UTC midnight).
+// truncated to UTC midnight). Priority is "normal" (default, must-fill) or
+// "optional" (nice-to-have, e.g. a shift that already has enough coverage) -
+// set by the requester at creation, overridable by a group admin afterward.
 type ShiftCoverageRequest struct {
 	ID                uint                  `gorm:"primaryKey" json:"id"`
 	CreatedAt         time.Time             `json:"created_at"`
@@ -553,6 +560,7 @@ type ShiftCoverageRequest struct {
 	Date              time.Time             `gorm:"not null;index:idx_coverage_request_group_date" json:"date"`
 	Hour              int                   `gorm:"not null" json:"hour"`
 	Status            CoverageRequestStatus `gorm:"not null;default:open;index" json:"status"`
+	Priority          string                `gorm:"not null;default:normal" json:"priority"`
 	ClaimedByUserID   *uint                 `json:"claimed_by_user_id"`
 	ClaimedAt         *time.Time            `json:"claimed_at"`
 	RequestedByUser   User                  `gorm:"foreignKey:RequestedByUserID" json:"-"`

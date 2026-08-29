@@ -40,9 +40,10 @@ func scheduleEmailNotificationsEnabled() bool {
 }
 
 type createCoverageRequestRequest struct {
-	Date   string `json:"date"`
-	Hour   int    `json:"hour"`
-	UserID *uint  `json:"user_id"`
+	Date     string `json:"date"`
+	Hour     int    `json:"hour"`
+	UserID   *uint  `json:"user_id"`
+	Priority string `json:"priority"`
 }
 
 type coverageRequestResponse struct {
@@ -52,6 +53,7 @@ type coverageRequestResponse struct {
 	Date              string `json:"date"`
 	Hour              int    `json:"hour"`
 	Status            string `json:"status"`
+	Priority          string `json:"priority"`
 	ClaimedByUserID   *uint  `json:"claimed_by_user_id"`
 }
 
@@ -63,7 +65,22 @@ func toCoverageRequestResponse(r models.ShiftCoverageRequest) coverageRequestRes
 		Date:              r.Date.Format("2006-01-02"),
 		Hour:              r.Hour,
 		Status:            string(r.Status),
+		Priority:          r.Priority,
 		ClaimedByUserID:   r.ClaimedByUserID,
+	}
+}
+
+// normalizeCoveragePriority defaults an empty priority to "normal" and
+// rejects anything other than the two allowed values, mirroring how
+// validateScheduleSlots normalizes/validates Cadence.
+func normalizeCoveragePriority(priority string) (string, error) {
+	switch priority {
+	case "":
+		return "normal", nil
+	case "normal", "optional":
+		return priority, nil
+	default:
+		return "", fmt.Errorf("priority must be \"normal\" or \"optional\", got %q", priority)
 	}
 }
 
@@ -74,6 +91,7 @@ type coverageRequestListItem struct {
 	RequestedByName   string `json:"requested_by_name"`
 	Date              string `json:"date"`
 	Hour              int    `json:"hour"`
+	Priority          string `json:"priority"`
 	Claimable         bool   `json:"claimable"`
 }
 
@@ -97,44 +115,56 @@ func displayName(u models.User) string {
 // coverage requests as a single bulk notification body, so a member with
 // several shifts needing coverage produces one accurate email/GroupMe post
 // listing all of them instead of a separate, fragmented message per shift.
+// A request's Priority softens the wording - "optional" requests read as a
+// nice-to-have rather than urgent, since the whole point of the flag is to
+// stop an over-staffed shift from broadcasting to the group as if it needs
+// help. When every request in the list is optional, that's said once in
+// the header rather than repeated on every line.
 func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCoverageRequest) string {
 	if len(requests) == 1 {
 		r := requests[0]
+		if r.Priority == "optional" {
+			return fmt.Sprintf("%s could use coverage for their %s shift on %s, if anyone's available.",
+				requesterName, formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour), r.Date.Format("Monday, January 2"))
+		}
 		return fmt.Sprintf("%s needs coverage for their %s shift on %s.",
-			requesterName, formatHourAMPM(r.Hour), r.Date.Format("Monday, January 2"))
+			requesterName, formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour), r.Date.Format("Monday, January 2"))
 	}
+
+	allOptional := true
+	for _, r := range requests {
+		if r.Priority != "optional" {
+			allOptional = false
+			break
+		}
+	}
+
 	lines := make([]string, 0, len(requests))
 	for _, r := range requests {
-		lines = append(lines, fmt.Sprintf("- %s at %s", r.Date.Format("Monday, January 2"), formatHourAMPM(r.Hour)))
+		line := fmt.Sprintf("- %s at %s", r.Date.Format("Monday, January 2"), formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour))
+		if r.Priority == "optional" && !allOptional {
+			line += " (optional)"
+		}
+		lines = append(lines, line)
+	}
+	if allOptional {
+		return fmt.Sprintf("%s could use coverage for %d shifts, if anyone's available:\n%s", requesterName, len(requests), strings.Join(lines, "\n"))
 	}
 	return fmt.Sprintf("%s needs coverage for %d shifts:\n%s", requesterName, len(requests), strings.Join(lines, "\n"))
 }
 
-// formatHourAMPM renders a 24-hour ShiftSlot/CoverageRequest hour (8..17)
-// as e.g. "10:00 AM" for notification text.
-func formatHourAMPM(hour int) string {
-	period := "AM"
-	displayHour := hour
-	if hour >= 12 {
-		period = "PM"
-	}
-	if displayHour > 12 {
-		displayHour -= 12
-	}
-	return fmt.Sprintf("%d:00 %s", displayHour, period)
-}
-
 // createOneCoverageRequest validates and creates a single coverage
 // request: the date must not be in the past, the target user must have a
-// matching ShiftSlot for the date's weekday and the given hour, and there
-// must not already be an active (non-cancelled) request for that exact
-// date/hour. Returns the created row, or one of the sentinel errors
+// matching ShiftSlot for the date's weekday and the given hour that is
+// actually active that week (a biweekly slot on its off-week does not match),
+// and there must not already be an active (non-cancelled) request for that
+// exact date/hour. Returns the created row, or one of the sentinel errors
 // errPastDate / errNoMatchingSlot / errDuplicateRequest. Runs its own
 // transaction - a caller creating several requests (see
 // CreateCoverageRequestsBatch) calls this once per item rather than
 // wrapping the whole batch in one transaction, so one item's failure
 // doesn't roll back the others.
-func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date time.Time, hour int) (models.ShiftCoverageRequest, error) {
+func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date time.Time, hour int, priority string) (models.ShiftCoverageRequest, error) {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	if date.Before(today) {
 		return models.ShiftCoverageRequest{}, errPastDate
@@ -145,6 +175,9 @@ func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date 
 		var slot models.ShiftSlot
 		if err := tx.Where("user_id = ? AND group_id = ? AND day_of_week = ? AND hour = ?",
 			targetUserID, groupIDUint, int(date.Weekday()), hour).First(&slot).Error; err != nil {
+			return errNoMatchingSlot
+		}
+		if !slotActiveForWeek(slot.Cadence, weekStartOf(date)) {
 			return errNoMatchingSlot
 		}
 
@@ -165,6 +198,7 @@ func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date 
 			Date:              date,
 			Hour:              hour,
 			Status:            models.CoverageRequestOpen,
+			Priority:          priority,
 		}
 		return tx.Create(&created).Error
 	})
@@ -264,8 +298,15 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 			c.JSON(http.StatusBadRequest, gin.H{"error": "date must be in YYYY-MM-DD format"})
 			return
 		}
-		if req.Hour < 8 || req.Hour > 17 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "hour must be between 8 and 17"})
+		maxHour := maxHourFor(int(date.Weekday()))
+		if req.Hour < 8 || req.Hour > maxHour {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("hour must be between 8 and %d for that date's weekday", maxHour)})
+			return
+		}
+
+		priority, err := normalizeCoveragePriority(req.Priority)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -276,7 +317,7 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		}
 		groupIDUint := uint(groupIDUint64)
 
-		created, err := createOneCoverageRequest(db, groupIDUint, targetUserID, date, req.Hour)
+		created, err := createOneCoverageRequest(db, groupIDUint, targetUserID, date, req.Hour, priority)
 		switch {
 		case errors.Is(err, errPastDate):
 			c.JSON(http.StatusBadRequest, gin.H{"error": errPastDate.Error()})
@@ -371,15 +412,17 @@ func ClaimCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServi
 
 			// Conflict check spans every group the claimant belongs to - a
 			// real-world time conflict doesn't respect group boundaries.
-			var conflictCount int64
-			if err := tx.Model(&models.ShiftSlot{}).
-				Where("user_id = ? AND day_of_week = ? AND hour = ?", callerUserID, int(reqRow.Date.Weekday()), reqRow.Hour).
-				Count(&conflictCount).Error; err != nil {
+			var conflictingSlots []models.ShiftSlot
+			if err := tx.Where("user_id = ? AND day_of_week = ? AND hour = ?", callerUserID, int(reqRow.Date.Weekday()), reqRow.Hour).
+				Find(&conflictingSlots).Error; err != nil {
 				return err
 			}
-			if conflictCount > 0 {
-				return errClaimConflict
+			for _, s := range conflictingSlots {
+				if slotActiveForWeek(s.Cadence, weekStartOf(reqRow.Date)) {
+					return errClaimConflict
+				}
 			}
+			var conflictCount int64
 			if err := tx.Model(&models.ShiftCoverageRequest{}).
 				Where("claimed_by_user_id = ? AND date = ? AND hour = ? AND status = ?",
 					callerUserID, reqRow.Date, reqRow.Hour, models.CoverageRequestClaimed).
@@ -463,7 +506,7 @@ func notifyRequesterOfClaim(db *gorm.DB, emailService *email.Service, groupMeSer
 
 		title := "Your shift is covered"
 		content := fmt.Sprintf("%s will cover your %s shift on %s.",
-			displayName(claimant), formatHourAMPM(req.Hour), req.Date.Format("Monday, January 2"))
+			displayName(claimant), formatSlotRangeLabel(int(req.Date.Weekday()), req.Hour), req.Date.Format("Monday, January 2"))
 
 		if emailService != nil && emailService.IsConfigured() && requester.EmailNotificationsEnabled && scheduleEmailNotificationsEnabled() {
 			if err := emailService.SendAnnouncementEmail(bgCtx, requester.Email, title, content); err != nil {
@@ -478,31 +521,22 @@ func notifyRequesterOfClaim(db *gorm.DB, emailService *email.Service, groupMeSer
 	}()
 }
 
-// slotConflictKey/claimConflictKey key the maps loadUserConflictKeys
-// returns: weekday+hour for a recurring ShiftSlot, and date+hour for an
-// already-claimed ShiftCoverageRequest.
-func slotConflictKey(dayOfWeek, hour int) string {
-	return fmt.Sprintf("%d-%d", dayOfWeek, hour)
-}
-
+// claimConflictKey keys the claimKeys map loadUserConflictKeys returns:
+// date+hour for an already-claimed ShiftCoverageRequest.
 func claimConflictKey(date time.Time, hour int) string {
 	return fmt.Sprintf("%s-%d", date.Format("2006-01-02"), hour)
 }
 
 // loadUserConflictKeys loads every recurring ShiftSlot and already-claimed
 // ShiftCoverageRequest userID has (in any group - a real-world time
-// conflict doesn't respect group boundaries), keyed for O(1) lookup. Two
-// queries regardless of how many coverage requests are being checked
-// against them, so ListCoverageRequests can annotate every row in the
-// group without a per-row round trip.
-func loadUserConflictKeys(db *gorm.DB, userID uint) (slotKeys, claimKeys map[string]struct{}, err error) {
-	var slots []models.ShiftSlot
+// conflict doesn't respect group boundaries). Slots are returned as-is
+// (not pre-keyed) since whether a slot actually conflicts with a specific
+// coverage request depends on that request's date (biweekly parity), not
+// just its weekday/hour. claimKeys stays a flat set since a claimed
+// ShiftCoverageRequest is inherently tied to one exact date already.
+func loadUserConflictKeys(db *gorm.DB, userID uint) (slots []models.ShiftSlot, claimKeys map[string]struct{}, err error) {
 	if err := db.Where("user_id = ?", userID).Find(&slots).Error; err != nil {
 		return nil, nil, err
-	}
-	slotKeys = make(map[string]struct{}, len(slots))
-	for _, s := range slots {
-		slotKeys[slotConflictKey(s.DayOfWeek, s.Hour)] = struct{}{}
 	}
 
 	var claimed []models.ShiftCoverageRequest
@@ -513,22 +547,22 @@ func loadUserConflictKeys(db *gorm.DB, userID uint) (slotKeys, claimKeys map[str
 	for _, r := range claimed {
 		claimKeys[claimConflictKey(r.Date, r.Hour)] = struct{}{}
 	}
-	return slotKeys, claimKeys, nil
+	return slots, claimKeys, nil
 }
 
 // isRequestClaimableGiven reports whether userID could claim req right
-// now, given userID's own conflict keys (see loadUserConflictKeys): not
-// their own request, and no conflicting ShiftSlot or already-claimed
-// coverage request at that exact date/hour. Mirrors the checks
-// ClaimCoverageRequest itself makes inside its transaction; this read-only
-// version is for annotating list results and is not the source of the
-// atomicity guarantee - the conditional update in ClaimCoverageRequest is.
-func isRequestClaimableGiven(req models.ShiftCoverageRequest, userID uint, slotKeys, claimKeys map[string]struct{}) bool {
+// now, given userID's own conflict data (see loadUserConflictKeys): not
+// their own request, and no conflicting ShiftSlot (active on req's date's
+// week) or already-claimed coverage request at that exact date/hour.
+func isRequestClaimableGiven(req models.ShiftCoverageRequest, userID uint, slots []models.ShiftSlot, claimKeys map[string]struct{}) bool {
 	if req.RequestedByUserID == userID {
 		return false
 	}
-	if _, conflict := slotKeys[slotConflictKey(int(req.Date.Weekday()), req.Hour)]; conflict {
-		return false
+	weekStart := weekStartOf(req.Date)
+	for _, s := range slots {
+		if s.DayOfWeek == int(req.Date.Weekday()) && s.Hour == req.Hour && slotActiveForWeek(s.Cadence, weekStart) {
+			return false
+		}
 	}
 	_, conflict := claimKeys[claimConflictKey(req.Date, req.Hour)]
 	return !conflict
@@ -572,7 +606,7 @@ func ListCoverageRequests(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		slotKeys, claimKeys, err := loadUserConflictKeys(db, callerUserID)
+		slots, claimKeys, err := loadUserConflictKeys(db, callerUserID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load coverage requests"})
 			return
@@ -580,7 +614,7 @@ func ListCoverageRequests(db *gorm.DB) gin.HandlerFunc {
 
 		items := make([]coverageRequestListItem, 0, len(requests))
 		for _, r := range requests {
-			claimable := isRequestClaimableGiven(r, callerUserID, slotKeys, claimKeys)
+			claimable := isRequestClaimableGiven(r, callerUserID, slots, claimKeys)
 			items = append(items, coverageRequestListItem{
 				ID:                r.ID,
 				GroupID:           r.GroupID,
@@ -588,6 +622,7 @@ func ListCoverageRequests(db *gorm.DB) gin.HandlerFunc {
 				RequestedByName:   displayName(r.RequestedByUser),
 				Date:              r.Date.Format("2006-01-02"),
 				Hour:              r.Hour,
+				Priority:          r.Priority,
 				Claimable:         claimable,
 			})
 		}
@@ -691,6 +726,72 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+type updateCoverageRequestPriorityRequest struct {
+	Priority string `json:"priority"`
+}
+
+// UpdateCoverageRequestPriority lets a group admin (or site admin) override
+// a coverage request's priority after creation - e.g. downgrading a
+// request to "optional" once a shift turns out to already have enough
+// coverage. Requires group admin access; a regular member, including the
+// original requester, cannot change it themselves.
+func UpdateCoverageRequestPriority(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		requestID, err := strconv.ParseUint(c.Param("requestId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
+			return
+		}
+
+		var req updateCoverageRequestPriorityRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+		// Unlike creation, an explicit override with no priority is
+		// rejected rather than defaulting to "normal" - normalizeCoveragePriority
+		// alone would silently default an omitted field, which is the wrong
+		// contract for a call whose entire purpose is to set the value.
+		if req.Priority == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "priority is required"})
+			return
+		}
+		priority, err := normalizeCoveragePriority(req.Priority)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		var reqRow models.ShiftCoverageRequest
+		if err := db.Where("id = ? AND group_id = ?", requestID, groupIDParam).First(&reqRow).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Coverage request not found"})
+			return
+		}
+
+		if err := db.Model(&reqRow).Update("priority", priority).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update coverage request priority"})
+			return
+		}
+		reqRow.Priority = priority
+
+		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
+	}
+}
+
 type createCoverageRequestBatchItem struct {
 	Date string `json:"date"`
 	Hour int    `json:"hour"`
@@ -698,6 +799,7 @@ type createCoverageRequestBatchItem struct {
 
 type createCoverageRequestBatchRequest struct {
 	Requests []createCoverageRequestBatchItem `json:"requests"`
+	Priority string                           `json:"priority"`
 }
 
 type coverageRequestBatchSkipped struct {
@@ -760,6 +862,11 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("requests must not exceed %d items", maxBatchItems)})
 			return
 		}
+		priority, err := normalizeCoveragePriority(req.Priority)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 
 		groupIDUint64, err := strconv.ParseUint(groupIDParam, 10, 32)
 		if err != nil {
@@ -779,8 +886,9 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid date %q: must be in YYYY-MM-DD format", item.Date)})
 				return
 			}
-			if item.Hour < 8 || item.Hour > 17 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid hour %d: must be between 8 and 17", item.Hour)})
+			maxHour := maxHourFor(int(date.Weekday()))
+			if item.Hour < 8 || item.Hour > maxHour {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid hour %d: must be between 8 and %d for %s", item.Hour, maxHour, item.Date)})
 				return
 			}
 			parsedItems = append(parsedItems, parsedItem{date: date, hour: item.Hour})
@@ -791,7 +899,7 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 			Skipped: make([]coverageRequestBatchSkipped, 0),
 		}
 		for _, item := range parsedItems {
-			created, err := createOneCoverageRequest(db, groupIDUint, callerUserID, item.date, item.hour)
+			created, err := createOneCoverageRequest(db, groupIDUint, callerUserID, item.date, item.hour, priority)
 			switch {
 			case errors.Is(err, errPastDate), errors.Is(err, errNoMatchingSlot), errors.Is(err, errDuplicateRequest):
 				response.Skipped = append(response.Skipped, coverageRequestBatchSkipped{

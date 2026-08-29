@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import ScheduleTab from './ScheduleTab';
 import { scheduleApi, groupsApi } from '../../api/client';
 import { CanceledError } from 'axios';
@@ -61,7 +61,7 @@ describe('ScheduleTab', () => {
     fireEvent.click(screen.getByRole('button', { name: /save schedule/i }));
 
     await waitFor(() => {
-      expect(scheduleApi.updateMine).toHaveBeenCalledWith(1, [{ day_of_week: 3, hour: 10 }]);
+      expect(scheduleApi.updateMine).toHaveBeenCalledWith(1, [{ day_of_week: 3, hour: 10, cadence: 'weekly' }]);
     });
   });
 
@@ -97,7 +97,7 @@ describe('ScheduleTab', () => {
     let resolveFirst!: (value: AxiosResponse<ScheduleResponse>) => void;
     let capturedFirstSignal: AbortSignal | undefined;
     const staleResponse = { data: { slots: [{ day_of_week: 0, hour: 8 }] } } as unknown as AxiosResponse<ScheduleResponse>;
-    const freshResponse = { data: { slots: [{ day_of_week: 6, hour: 17 }] } } as unknown as AxiosResponse<ScheduleResponse>;
+    const freshResponse = { data: { slots: [{ day_of_week: 6, hour: 9 }] } } as unknown as AxiosResponse<ScheduleResponse>;
 
     // First group's own-schedule fetch: stays pending until resolveFirst is
     // invoked, but rejects immediately - the way a real aborted axios
@@ -131,7 +131,7 @@ describe('ScheduleTab', () => {
     );
     await waitFor(() => expect(capturedFirstSignal?.aborted).toBe(true));
 
-    const freshSlot = await screen.findByRole('cell', { name: 'Sat 5:00 PM' });
+    const freshSlot = await screen.findByRole('cell', { name: 'Sat 9:00 AM' });
     expect(freshSlot).toHaveAttribute('aria-pressed', 'true');
 
     // The first (now-aborted) request resolving late must not overwrite the
@@ -140,7 +140,7 @@ describe('ScheduleTab', () => {
       resolveFirst(staleResponse);
     });
 
-    expect(screen.getByRole('cell', { name: 'Sat 5:00 PM' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('cell', { name: 'Sat 9:00 AM' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('cell', { name: 'Sun 8:00 AM' })).toHaveAttribute('aria-pressed', 'false');
   });
 
@@ -277,5 +277,145 @@ describe('ScheduleTab', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('cycles a cell through weekly -> biweekly A -> biweekly B -> empty on repeated clicks', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    const slot = await screen.findByRole('cell', { name: 'Wed 10:00 AM' });
+    fireEvent.click(slot);
+    expect(slot).toHaveAttribute('aria-pressed', 'true');
+    expect(slot).toHaveAccessibleName('Wed 10:00 AM');
+    expect(slot).toHaveClass('schedule-grid__slot--weekly');
+
+    fireEvent.click(slot);
+    expect(slot).toHaveAccessibleName('Wed 10:00 AM (Week A)');
+    expect(slot).toHaveClass('schedule-grid__slot--biweekly-a');
+    expect(slot).not.toHaveClass('schedule-grid__slot--weekly');
+
+    fireEvent.click(slot);
+    expect(slot).toHaveAccessibleName('Wed 10:00 AM (Week B)');
+    expect(slot).toHaveClass('schedule-grid__slot--biweekly-b');
+    expect(slot).not.toHaveClass('schedule-grid__slot--biweekly-a');
+
+    fireEvent.click(slot);
+    expect(slot).toHaveAttribute('aria-pressed', 'false');
+    expect(slot).not.toHaveClass('schedule-grid__slot--weekly');
+    expect(slot).not.toHaveClass('schedule-grid__slot--biweekly-a');
+    expect(slot).not.toHaveClass('schedule-grid__slot--biweekly-b');
+  });
+
+  it('disables cells beyond the weekend cap', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    // Disabled cells stay real `role="cell"` elements (marked
+    // aria-disabled) rather than `role="presentation"`, so every row in the
+    // ARIA table exposes the same number of cells - see the next test for a
+    // dedicated check of that ARIA contract.
+    expect(screen.queryByRole('cell', { name: /Sun 4:00 PM/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('cell', { name: /Sun 5:00 PM/ })).not.toBeInTheDocument();
+    // The weekend's terminal slot (3:00-4:30pm) is still a live, clickable cell.
+    expect(screen.getByRole('cell', { name: 'Sun 3:00–4:30 PM' })).toBeInTheDocument();
+    // Weekdays keep their full range including the terminal slot.
+    expect(screen.getByRole('cell', { name: 'Mon 5:00–6:30 PM' })).toBeInTheDocument();
+  });
+
+  it('exposes out-of-range weekend cells as aria-disabled cells, not presentation elements, to keep the ARIA table\'s column count consistent', async () => {
+    // Regression test: role="presentation" would drop these cells out of
+    // the ARIA table structure entirely, so a weekend row (hours 16-17
+    // disabled) would expose fewer role="cell" elements than a weekday row
+    // in the same role="table" - a ragged/inconsistent table structure that
+    // assistive tech may report confusingly. role="cell" + aria-disabled
+    // keeps every row's cell count identical while still communicating
+    // "not interactive" to a screen reader.
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    const table = screen.getByRole('table', { name: /weekly shift schedule/i });
+    const rows = within(table).getAllByRole('row');
+    // First row is the header row; the rest are the 10 hour rows (8am-5pm).
+    const hourRows = rows.slice(1);
+    expect(hourRows).toHaveLength(10);
+    const cellCounts = hourRows.map(row => within(row).getAllByRole('cell').length);
+    // Every hour row (weekday or weekend) must expose the same number of
+    // role="cell" elements - 7 days - regardless of how many are disabled.
+    expect(cellCounts).toEqual(cellCounts.map(() => 7));
+
+    // Spot-check: the disabled Sunday 4pm cell (hour 16, row index 8 of the
+    // 10 hour rows: 8,9,10,11,12,13,14,15,16,17) is a real role="cell",
+    // marked aria-disabled, not a role="presentation" element.
+    const sunday4pmRow = hourRows[8];
+    const disabledCells = within(sunday4pmRow).getAllByRole('cell')
+      .filter(cell => cell.getAttribute('aria-disabled') === 'true');
+    expect(disabledCells.length).toBeGreaterThan(0);
+    expect(disabledCells[0]).not.toHaveAttribute('role', 'presentation');
+  });
+
+  it('saving includes the cadence for every selected cell', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    const slot = await screen.findByRole('cell', { name: 'Wed 10:00 AM' });
+    fireEvent.click(slot); // weekly
+    fireEvent.click(slot); // biweekly_a
+
+    fireEvent.click(screen.getByRole('button', { name: /save schedule/i }));
+
+    await waitFor(() => {
+      expect(scheduleApi.updateMine).toHaveBeenCalledWith(1, [{ day_of_week: 3, hour: 10, cadence: 'biweekly_a' }]);
+    });
+  });
+
+  it('shows the A/B legend above the grid', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+    expect(screen.getByText(/Week A:/)).toBeInTheDocument();
+    expect(screen.getByText(/Week B:/)).toBeInTheDocument();
+  });
+
+  it('shows a caption explaining the day-of-week hours and 90-min terminal slot, and badges only the terminal cell', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    // The 90-min closing slot previously had no visible UI signal beyond
+    // an aria-label and a dashed border - this caption makes both day
+    // types' hours and the 90-min terminal slot explicit and visible.
+    expect(screen.getByText(/Weekdays: 8am–6:30pm/)).toBeInTheDocument();
+    expect(screen.getByText(/Weekends: 8am–4:30pm/)).toBeInTheDocument();
+    expect(screen.getByText(/last shift 90 min/)).toBeInTheDocument();
+
+    // The weekday terminal cell (5:00-6:30pm, hour 17) shows a small "90m"
+    // badge alongside its dashed-border styling...
+    const terminalCell = screen.getByRole('cell', { name: 'Mon 5:00–6:30 PM' });
+    expect(within(terminalCell).getByText('90m')).toBeInTheDocument();
+
+    // ...but an ordinary 60-min cell does not.
+    const nonTerminalCell = screen.getByRole('cell', { name: 'Mon 4:00 PM' });
+    expect(within(nonTerminalCell).queryByText('90m')).not.toBeInTheDocument();
+  });
+
+  it('drops a legacy out-of-range slot from the loaded schedule so it is never resubmitted on save', async () => {
+    // Saturday 5pm predates the weekend hour cap (weekends now cap at 3pm /
+    // hour 15) - a real user could still have this persisted server-side.
+    // It must render as a disabled, non-interactive cell (never an active
+    // toggle) and must be silently dropped rather than round-tripped back
+    // to the backend on save, since the backend itself now rejects it.
+    vi.mocked(scheduleApi.getMine).mockResolvedValue({
+      data: { slots: [{ day_of_week: 6, hour: 17, cadence: 'weekly' }] },
+    } as unknown as AxiosResponse<ScheduleResponse>);
+
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+
+    // Never rendered as an interactive, checked toggle.
+    expect(screen.queryByRole('cell', { name: /Sat 5:00 PM/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /save schedule/i }));
+
+    await waitFor(() => {
+      expect(scheduleApi.updateMine).toHaveBeenCalledWith(1, []);
+    });
   });
 });

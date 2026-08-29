@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -14,8 +15,9 @@ import (
 
 // scheduleSlotInput is one 1-hour slot in an incoming schedule-update request.
 type scheduleSlotInput struct {
-	DayOfWeek int `json:"day_of_week"`
-	Hour      int `json:"hour"`
+	DayOfWeek int    `json:"day_of_week"`
+	Hour      int    `json:"hour"`
+	Cadence   string `json:"cadence"`
 }
 
 // updateScheduleRequest is the body of PUT .../schedule/me and .../schedule/:userId.
@@ -26,8 +28,9 @@ type updateScheduleRequest struct {
 
 // scheduleSlotResponse is one 1-hour slot in a schedule GET/PUT response.
 type scheduleSlotResponse struct {
-	DayOfWeek int `json:"day_of_week"`
-	Hour      int `json:"hour"`
+	DayOfWeek int    `json:"day_of_week"`
+	Hour      int    `json:"hour"`
+	Cadence   string `json:"cadence"`
 }
 
 // requireSchedulingEnabled loads the group's SchedulingEnabled flag and
@@ -51,22 +54,28 @@ func requireSchedulingEnabled(c *gin.Context, db *gorm.DB, groupID string) bool 
 func toScheduleSlotResponses(slots []models.ShiftSlot) []scheduleSlotResponse {
 	out := make([]scheduleSlotResponse, 0, len(slots))
 	for _, s := range slots {
-		out = append(out, scheduleSlotResponse{DayOfWeek: s.DayOfWeek, Hour: s.Hour})
+		out = append(out, scheduleSlotResponse{DayOfWeek: s.DayOfWeek, Hour: s.Hour, Cadence: s.Cadence})
 	}
 	return out
 }
 
 // validateScheduleSlots checks each slot's day/hour range (day_of_week 0-6,
-// hour 8-17) and rejects duplicate (day_of_week, hour) pairs within the
-// payload.
+// hour 8-maxHourFor(dayOfWeek), where maxHourFor depends on day of week),
+// validates cadence (weekly/biweekly_a/biweekly_b, defaulting to weekly when
+// omitted), and rejects duplicate (day_of_week, hour) pairs within the payload.
 func validateScheduleSlots(slots []scheduleSlotInput) error {
 	seen := make(map[[2]int]bool, len(slots))
-	for _, s := range slots {
+	for i, s := range slots {
 		if s.DayOfWeek < 0 || s.DayOfWeek > 6 {
 			return fmt.Errorf("day_of_week must be between 0 and 6, got %d", s.DayOfWeek)
 		}
-		if s.Hour < 8 || s.Hour > 17 {
-			return fmt.Errorf("hour must be between 8 and 17, got %d", s.Hour)
+		if s.Hour < 8 || s.Hour > maxHourFor(s.DayOfWeek) {
+			return fmt.Errorf("hour must be between 8 and %d for day_of_week %d, got %d", maxHourFor(s.DayOfWeek), s.DayOfWeek, s.Hour)
+		}
+		if s.Cadence == "" {
+			slots[i].Cadence = "weekly"
+		} else if s.Cadence != "weekly" && s.Cadence != "biweekly_a" && s.Cadence != "biweekly_b" {
+			return fmt.Errorf("cadence must be one of weekly, biweekly_a, biweekly_b, got %q", s.Cadence)
 		}
 		key := [2]int{s.DayOfWeek, s.Hour}
 		if seen[key] {
@@ -87,7 +96,7 @@ func replaceGroupScheduleForUser(db *gorm.DB, userID, groupID uint, slots []sche
 			return err
 		}
 		for _, s := range slots {
-			slot := models.ShiftSlot{UserID: userID, GroupID: groupID, DayOfWeek: s.DayOfWeek, Hour: s.Hour}
+			slot := models.ShiftSlot{UserID: userID, GroupID: groupID, DayOfWeek: s.DayOfWeek, Hour: s.Hour, Cadence: s.Cadence}
 			if err := tx.Create(&slot).Error; err != nil {
 				return err
 			}
@@ -118,14 +127,14 @@ func cancelOrphanedRequesterCoverageRequests(tx *gorm.DB, userID, groupID uint) 
 		return err
 	}
 	for _, r := range requests {
-		var count int64
-		if err := tx.Model(&models.ShiftSlot{}).
-			Where("group_id = ? AND user_id = ? AND day_of_week = ? AND hour = ?",
-				groupID, userID, int(r.Date.Weekday()), r.Hour).
-			Count(&count).Error; err != nil {
-			return err
-		}
-		if count == 0 {
+		var slot models.ShiftSlot
+		err := tx.Where("group_id = ? AND user_id = ? AND day_of_week = ? AND hour = ?",
+			groupID, userID, int(r.Date.Weekday()), r.Hour).First(&slot).Error
+		stillActive := err == nil && slotActiveForWeek(slot.Cadence, weekStartOf(r.Date))
+		if !stillActive {
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 			if err := tx.Model(&models.ShiftCoverageRequest{ID: r.ID}).
 				Update("status", models.CoverageRequestCancelled).Error; err != nil {
 				return err
@@ -137,18 +146,23 @@ func cancelOrphanedRequesterCoverageRequests(tx *gorm.DB, userID, groupID uint) 
 
 // cancelRedundantClaimsForNewSlots cancels any ShiftCoverageRequest this
 // user has CLAIMED (covering someone else's shift) whose weekday/hour now
-// collides with a slot they just added to their own recurring schedule.
-// Once they're recurring on that slot themselves, the one-off "covering"
-// arrangement for the same weekday/hour is redundant and would otherwise
-// render them twice in the effective roster - once as a normal member,
-// once as the covering claimant.
+// collides with a slot they just added to their own recurring schedule AND
+// is actually active (per slotActiveForWeek) on that claim's specific date.
+// Once they're recurring on that slot themselves for that date's week, the
+// one-off "covering" arrangement for the same weekday/hour is redundant and
+// would otherwise render them twice in the effective roster - once as a
+// normal member, once as the covering claimant. A day/hour match alone
+// isn't enough: a biweekly new slot that's inactive on the claim's date
+// doesn't actually conflict, so cancelling would silently un-cover a shift
+// the user already agreed to take.
 func cancelRedundantClaimsForNewSlots(tx *gorm.DB, userID, groupID uint, slots []scheduleSlotInput) error {
 	if len(slots) == 0 {
 		return nil
 	}
-	newSlotKeys := make(map[[2]int]bool, len(slots))
+	newSlotsByKey := make(map[[2]int][]string, len(slots))
 	for _, s := range slots {
-		newSlotKeys[[2]int{s.DayOfWeek, s.Hour}] = true
+		key := [2]int{s.DayOfWeek, s.Hour}
+		newSlotsByKey[key] = append(newSlotsByKey[key], s.Cadence)
 	}
 
 	var claims []models.ShiftCoverageRequest
@@ -157,7 +171,19 @@ func cancelRedundantClaimsForNewSlots(tx *gorm.DB, userID, groupID uint, slots [
 		return err
 	}
 	for _, r := range claims {
-		if newSlotKeys[[2]int{int(r.Date.Weekday()), r.Hour}] {
+		cadences := newSlotsByKey[[2]int{int(r.Date.Weekday()), r.Hour}]
+		if cadences == nil {
+			continue
+		}
+		weekStart := weekStartOf(r.Date)
+		conflicts := false
+		for _, cadence := range cadences {
+			if slotActiveForWeek(cadence, weekStart) {
+				conflicts = true
+				break
+			}
+		}
+		if conflicts {
 			if err := tx.Model(&models.ShiftCoverageRequest{ID: r.ID}).
 				Update("status", models.CoverageRequestCancelled).Error; err != nil {
 				return err
@@ -412,7 +438,9 @@ type scheduleOverviewMember struct {
 	Username          string `json:"username"`
 	FirstName         string `json:"first_name"`
 	LastName          string `json:"last_name"`
-	Status            string `json:"status"` // normal | needs_coverage | covering
+	Cadence           string `json:"cadence"`
+	Status            string `json:"status"`             // normal | needs_coverage | covering
+	Priority          string `json:"priority,omitempty"` // the underlying request's priority, only set when status is needs_coverage
 	CoverageRequestID *uint  `json:"coverage_request_id,omitempty"`
 	Claimable         bool   `json:"claimable,omitempty"`
 	Conflict          bool   `json:"conflict,omitempty"`
@@ -548,9 +576,18 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch schedule overview"})
 			return
 		}
-		viewerBusy := make(map[[2]int]bool, len(viewerSlots))
+		// viewerSlots is queried across ALL of the viewer's groups (no
+		// group_id filter), and the per-group unique index allows the same
+		// (day_of_week, hour) to legitimately occur more than once - e.g. a
+		// weekly slot in one group and a biweekly slot at the same day/hour
+		// in another. Keep every matching slot's cadence per key (not just
+		// the last one iterated) so the conflict check below can OR across
+		// all of them, matching the old single-boolean viewerBusy semantics
+		// where any match at all made the slot busy.
+		viewerSlotCadences := make(map[[2]int][]string, len(viewerSlots))
 		for _, s := range viewerSlots {
-			viewerBusy[[2]int{s.DayOfWeek, s.Hour}] = true
+			key := [2]int{s.DayOfWeek, s.Hour}
+			viewerSlotCadences[key] = append(viewerSlotCadences[key], s.Cadence)
 		}
 		viewerClaimedBusy := make(map[dateHourKey]bool)
 		for _, r := range coverageRequests {
@@ -567,10 +604,21 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 					continue
 				}
 				dateStr := date.Format("2006-01-02")
-				conflict := viewerBusy[[2]int{bucket.DayOfWeek, bucket.Hour}] || viewerClaimedBusy[dateHourKey{Date: dateStr, Hour: bucket.Hour}]
+				viewerSlotConflict := false
+				for _, cadence := range viewerSlotCadences[[2]int{bucket.DayOfWeek, bucket.Hour}] {
+					if slotActiveForWeek(cadence, weekStartOf(date)) {
+						viewerSlotConflict = true
+						break
+					}
+				}
+				conflict := viewerSlotConflict ||
+					viewerClaimedBusy[dateHourKey{Date: dateStr, Hour: bucket.Hour}]
 
 				members := make([]scheduleOverviewMember, 0, len(bucket.Members)+1)
 				for _, s := range bucket.Members {
+					if !slotActiveForWeek(s.Cadence, weekStartOf(date)) {
+						continue
+					}
 					req, hasRequest := requestsByDateHourUser[dateHourUserKey{Date: dateStr, Hour: bucket.Hour, UserID: s.UserID}]
 					if hasRequest && req.Status == models.CoverageRequestClaimed {
 						// This member handed their shift off - drop them,
@@ -582,10 +630,12 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 						Username:  s.User.Username,
 						FirstName: s.User.FirstName,
 						LastName:  s.User.LastName,
+						Cadence:   s.Cadence,
 						Status:    "normal",
 					}
 					if hasRequest && req.Status == models.CoverageRequestOpen {
 						m.Status = "needs_coverage"
+						m.Priority = req.Priority
 						reqID := req.ID
 						m.CoverageRequestID = &reqID
 						if s.UserID != callerUserID {

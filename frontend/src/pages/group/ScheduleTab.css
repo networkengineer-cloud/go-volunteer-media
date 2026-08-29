@@ -83,6 +83,7 @@
 }
 
 .schedule-grid__slot {
+  position: relative;
   height: 32px;
   border: 1px solid var(--neutral-200);
   border-radius: 4px;
@@ -98,11 +99,6 @@
 .schedule-grid__slot:focus {
   outline: 2px solid var(--brand);
   outline-offset: 1px;
-}
-
-.schedule-grid__slot--active {
-  background: var(--brand);
-  border-color: var(--brand);
 }
 
 .schedule-tab__save {
@@ -153,4 +149,188 @@
 .schedule-overview .btn-secondary:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
+}
+
+.cadence-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.cadence-legend__entry--current {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.schedule-grid__slot--disabled {
+  height: 32px;
+  border: 1px dashed var(--neutral-200);
+  border-radius: 4px;
+  background: var(--neutral-50);
+  cursor: default;
+}
+
+.schedule-grid__slot--terminal {
+  border-style: dashed;
+}
+
+/* Light theme anchors "weekly" to --brand-600 (a distinct, darker token -
+   #005443 vs --brand's #006b54) instead of a point on the same 0-100%
+   --brand/--surface mix scale that biweekly-a/b live on. A first pass at
+   widening the gap between all three fills (weekly 100% / biweekly-a 96% /
+   biweekly-b 89%, all sharing one --brand mix scale) actually made the
+   worst pairwise gap SMALLER, not bigger (weekly-to-a shrank to 4 points of
+   mix, tighter than the original 90/85 split's 5-point a-to-b gap) - the
+   0-100% mix scale between --brand and --surface (light theme) only has
+   ~83-100% of headroom before white text drops under 4.5:1, so squeezing
+   three states onto it forces a tradeoff between them. Moving "weekly" onto
+   a *different* token removes it from that scale entirely, freeing the
+   full --brand 0-100% range for biweekly-a/biweekly-b and letting all three
+   states clear AA with much wider margins between them (see the comment
+   above biweekly-a/b below for the verified numbers). --brand-600 has a
+   sensible dark-theme value too (#006b54), but dark theme's "weekly" fix
+   below predates this change, already passes AA with a comfortable margin,
+   and wasn't flagged as a problem - so it's left as its own color-mix()
+   override rather than switched to --brand-600 as well. */
+.schedule-grid__slot--weekly {
+  background: var(--brand-600);
+  border-color: var(--brand);
+}
+
+/* Was `background: var(--brand); opacity: 0.75/0.5`, which composites the
+   ENTIRE button - including the white cadence-tag text and the 90m badge -
+   against the page background, cutting text contrast instead of just
+   fading the fill. Switched to color-mix() so only the background blends;
+   the white text (forced via --brand-contrast below/in the cadence-tag and
+   duration-badge rules) is left untouched.
+
+   The two themes need DIFFERENT mix percentages, not one shared value:
+   light theme's --surface is white, so blending toward it lightens the
+   background - a higher brand percentage is what keeps it dark enough for
+   white text (below ~83% brand the background gets too light and drops
+   under 4.5:1). Dark theme's --surface is dark (#1f2937), so blending
+   toward it DARKENS the background - and dark theme's solid --brand
+   (#00a87e) is lighter/more saturated than light theme's, so white text on
+   it already sits under AA even at 100% brand (~3.04:1) - a LOWER brand
+   percentage is what darkens the mix enough to clear AA there. That same
+   100%-brand-in-dark problem is why "weekly" also needs a dark-theme
+   color-mix() override below, even though light theme's "weekly" is solid
+   --brand-600 with no mix at all (see the comment above that rule).
+
+   Light theme's biweekly-a is now solid 100% --brand (no mix) and
+   biweekly-b is an 88% --brand/--surface mix - both freed up from having to
+   share mix-scale headroom with "weekly" (see the comment above the
+   "weekly" rule above). This gives a much wider spread between all three
+   light-theme fills than either the original (100/90/85, sharing one
+   --brand scale) or an earlier revision of this fix (100/96/89, which
+   inadvertently made the *worst* pairwise gap tighter, not wider) achieved:
+
+     RGB Euclidean distance between adjacent fills, light theme:
+       original       (100/90/85 on one --brand scale):  min gap ~17.0, span ~51.1
+       earlier revision (100/96/89 on one --brand scale): min gap ~13.6, span ~37.5
+       this fix (weekly on --brand-600, a/b on --brand):  min gap ~28.6, span ~63.3
+
+   Verified via the WCAG relative-luminance contrast formula (white text,
+   both themes):
+     light weekly     (solid --brand-600, rgb(0,84,67)):  white 8.94:1 (passes)
+     light biweekly-a (100% brand, rgb(0,107,84)):         white 6.50:1 (passes)
+     light biweekly-b (88% mix, rgb(31,125,105)):          white 5.02:1 (passes)
+     dark  weekly      (68% mix, rgb(10,127,103)):         white 4.92:1 (passes, unchanged)
+     dark  biweekly-a (60% mix, rgb(12,117,98)):           white 5.61:1 (passes, unchanged)
+     dark  biweekly-b (40% mix, rgb(19,92,83)):            white 7.84:1 (passes, unchanged) */
+.schedule-grid__slot--biweekly-a {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.schedule-grid__slot--biweekly-b {
+  background: color-mix(in srgb, var(--brand) 88%, var(--surface));
+  border-color: var(--brand);
+}
+
+/* Dark theme's solid --brand (#00a87e) is lighter/more saturated than light
+   theme's, so white text on the 100%-brand "weekly" cell drops to ~3.04:1
+   in dark theme - a real AA failure. Mix toward --surface (same technique
+   as the biweekly variants above) to darken the fill just enough to clear
+   4.5:1, while keeping the mix percentage well above biweekly-a's dark
+   value (60%) so "weekly" still reads as the most solid/full state. */
+[data-theme='dark'] .schedule-grid__slot--weekly {
+  background: color-mix(in srgb, var(--brand) 68%, var(--surface));
+}
+
+[data-theme='dark'] .schedule-grid__slot--biweekly-a {
+  background: color-mix(in srgb, var(--brand) 60%, var(--surface));
+}
+
+[data-theme='dark'] .schedule-grid__slot--biweekly-b {
+  background: color-mix(in srgb, var(--brand) 40%, var(--surface));
+}
+
+.schedule-grid__cadence-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* Small, unobtrusive marker on the day's terminal (90-min) cell, positioned
+   in the bottom-right corner so it never collides with the centered A/B
+   cadence tag rendered by the same button. Only present in ScheduleTab's own
+   individual editing grid (ScheduleOverview doesn't render its per-member
+   cells as ScheduleTab-style buttons), so no ScheduleOverview-scoping is
+   needed here the way .schedule-grid__cadence-tag needs it below. */
+.schedule-grid__duration-badge {
+  position: absolute;
+  bottom: 1px;
+  right: 3px;
+  font-size: 0.55rem;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.schedule-grid__slot--weekly .schedule-grid__duration-badge,
+.schedule-grid__slot--biweekly-a .schedule-grid__duration-badge,
+.schedule-grid__slot--biweekly-b .schedule-grid__duration-badge {
+  color: var(--brand-contrast);
+}
+
+.schedule-tab__hours-caption {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Scoped to ScheduleTab's own individual editing grid, where every cell
+   background is a solid brand color and --brand-contrast (white in both
+   themes) always has good contrast. Deliberately NOT applied inside
+   .schedule-overview: its tiered heatmap cells (see the tier-color rules in
+   ScheduleOverview.css) aren't uniformly white-safe - tier-3 in light theme
+   and tier-4 in dark theme fail WCAG AA against white and are overridden to
+   a dark color there, so this tag must inherit that tier color (or the
+   popover's var(--text-primary)) instead of forcing white.
+
+   Note this can't just be `.schedule-tab .schedule-grid__cadence-tag`:
+   ScheduleTab.tsx renders <ScheduleOverview> (root class
+   .schedule-overview, itself wrapping its own .schedule-grid) directly
+   inside .schedule-tab, so a plain descendant selector would still match
+   the overview's tags too. The individual editing grid's own .schedule-grid
+   is a direct child of .schedule-tab (no wrapper element - it's rendered
+   inside a bare React fragment), while the overview's .schedule-grid is
+   nested two levels deeper inside .schedule-overview - so the `>` combinator
+   below reaches only the individual grid, regardless of CSS file load
+   order. */
+.schedule-tab > .schedule-grid .schedule-grid__cadence-tag {
+  color: var(--brand-contrast);
+}
+
+[data-theme='dark'] .schedule-grid__slot--disabled {
+  border-color: var(--neutral-300);
+  background: var(--neutral-100);
 }

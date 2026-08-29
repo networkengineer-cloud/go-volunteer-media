@@ -615,10 +615,15 @@ export const groupsApi = {
 };
 
 // Weekly volunteer shift schedule (per group). day_of_week is 0=Sunday..6=Saturday;
-// hour is the slot's start hour, 8..17 (8am-6pm in 1-hour increments).
+// hour is the slot's start hour — valid range and duration depend on day_of_week
+// (see scheduleGrid.ts's maxHourFor/slotDurationMinutes). cadence is optional on
+// requests (server defaults to "weekly") and always present on responses.
+export type ScheduleCadence = 'weekly' | 'biweekly_a' | 'biweekly_b';
+
 export interface ScheduleSlot {
   day_of_week: number;
   hour: number;
+  cadence?: ScheduleCadence;
 }
 
 export interface ScheduleResponse {
@@ -630,7 +635,9 @@ export interface ScheduleOverviewMember {
   username: string;
   first_name?: string;
   last_name?: string;
+  cadence?: ScheduleCadence;
   status: 'normal' | 'needs_coverage' | 'covering';
+  priority?: CoverageRequestPriority;
   coverage_request_id?: number;
   claimable?: boolean;
   conflict?: boolean;
@@ -648,6 +655,8 @@ export interface ScheduleOverviewResponse {
   slots: ScheduleOverviewSlot[];
 }
 
+export type CoverageRequestPriority = 'normal' | 'optional';
+
 export interface CoverageRequest {
   id: number;
   group_id: number;
@@ -655,6 +664,7 @@ export interface CoverageRequest {
   date: string;
   hour: number;
   status: 'open' | 'claimed' | 'cancelled';
+  priority: CoverageRequestPriority;
   claimed_by_user_id: number | null;
 }
 
@@ -681,6 +691,7 @@ export interface CoverageRequestListItem {
   requested_by_name: string;
   date: string;
   hour: number;
+  priority: CoverageRequestPriority;
   claimable: boolean;
 }
 
@@ -718,8 +729,10 @@ export const scheduleApi = {
     api.post<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/claim`),
   cancelCoverageRequest: (groupId: number, requestId: number) =>
     api.delete<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}`),
-  createCoverageRequestsBatch: (groupId: number, requests: CoverageRequestBatchItem[]) =>
-    api.post<CoverageRequestBatchResult>(`/groups/${groupId}/schedule/coverage-requests/batch`, { requests }),
+  createCoverageRequestsBatch: (groupId: number, requests: CoverageRequestBatchItem[], priority?: CoverageRequestPriority) =>
+    api.post<CoverageRequestBatchResult>(`/groups/${groupId}/schedule/coverage-requests/batch`, { requests, priority }),
+  updateCoverageRequestPriority: (groupId: number, requestId: number, priority: CoverageRequestPriority) =>
+    api.patch<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/priority`, { priority }),
   cancelCoverageRequestsBatch: (groupId: number, requestIds: number[]) =>
     api.post<CoverageRequestCancelBatchResult>(`/groups/${groupId}/schedule/coverage-requests/cancel-batch`, { request_ids: requestIds }),
   listCoverageRequests: (groupId: number, options?: { signal?: AbortSignal }) =>
