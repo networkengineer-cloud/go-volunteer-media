@@ -196,28 +196,49 @@
    The two themes need DIFFERENT mix percentages, not one shared value:
    light theme's --surface is white, so blending toward it lightens the
    background - a higher brand percentage is what keeps it dark enough for
-   white text (below ~84% brand the background gets too light and drops
+   white text (below ~83% brand the background gets too light and drops
    under 4.5:1). Dark theme's --surface is dark (#1f2937), so blending
    toward it DARKENS the background - and dark theme's solid --brand
    (#00a87e) is lighter/more saturated than light theme's, so white text on
-   it already sits under AA even at 100% brand (~3.0:1, a pre-existing
-   issue on the "weekly" cell, out of scope here) - a LOWER brand
-   percentage is what darkens the mix enough to clear AA there.
+   it already sits under AA even at 100% brand (~3.04:1) - a LOWER brand
+   percentage is what darkens the mix enough to clear AA there. That same
+   100%-brand-in-dark problem applies to the "weekly" cell itself (see the
+   dark-theme override below it), not just the two biweekly variants.
 
-   Verified via the same relative-luminance contrast math as
-   ScheduleOverview.css's tier comments above (white text, both themes):
-     light biweekly-a (90% mix, ~rgb(26,122,101)): white ~5.24:1 (passes)
-     light biweekly-b (85% mix, ~rgb(38,129,110)): white ~4.71:1 (passes)
-     dark  biweekly-a (60% mix, ~rgb(12,117,98)):  white ~5.60:1 (passes)
-     dark  biweekly-b (40% mix, ~rgb(19,92,83)):   white ~7.85:1 (passes) */
+   The three states use a descending brand percentage (weekly 100% (light) /
+   68% (dark) > biweekly-a > biweekly-b) so "weekly" always reads as the
+   strongest/most solid fill. Percentages were widened from an earlier pass
+   (light biweekly-a/b were 90%/85%) both to give biweekly-b more margin
+   above the ~83% AA breakeven in light theme (it was passing by only ~2
+   points of headroom) and to spread the three fills further apart
+   perceptually, since 100/90/85 read as too close together by color alone.
+
+   Verified via the WCAG relative-luminance contrast formula (white text,
+   both themes):
+     light weekly     (100% brand, rgb(0,107,84)):     white 6.50:1 (passes, unchanged)
+     light biweekly-a (96% mix, rgb(10,113,91)):        white 5.96:1 (passes)
+     light biweekly-b (89% mix, rgb(28,123,103)):       white 5.13:1 (passes)
+     dark  weekly      (68% mix, rgb(10,127,103)):      white 4.92:1 (passes)
+     dark  biweekly-a (60% mix, rgb(12,117,98)):        white 5.61:1 (passes)
+     dark  biweekly-b (40% mix, rgb(19,92,83)):         white 7.84:1 (passes) */
 .schedule-grid__slot--biweekly-a {
-  background: color-mix(in srgb, var(--brand) 90%, var(--surface));
+  background: color-mix(in srgb, var(--brand) 96%, var(--surface));
   border-color: var(--brand);
 }
 
 .schedule-grid__slot--biweekly-b {
-  background: color-mix(in srgb, var(--brand) 85%, var(--surface));
+  background: color-mix(in srgb, var(--brand) 89%, var(--surface));
   border-color: var(--brand);
+}
+
+/* Dark theme's solid --brand (#00a87e) is lighter/more saturated than light
+   theme's, so white text on the 100%-brand "weekly" cell drops to ~3.04:1
+   in dark theme - a real AA failure. Mix toward --surface (same technique
+   as the biweekly variants above) to darken the fill just enough to clear
+   4.5:1, while keeping the mix percentage well above biweekly-a's dark
+   value (60%) so "weekly" still reads as the most solid/full state. */
+[data-theme='dark'] .schedule-grid__slot--weekly {
+  background: color-mix(in srgb, var(--brand) 68%, var(--surface));
 }
 
 [data-theme='dark'] .schedule-grid__slot--biweekly-a {
