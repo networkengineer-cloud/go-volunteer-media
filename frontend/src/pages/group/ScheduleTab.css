@@ -181,8 +181,26 @@
   border-style: dashed;
 }
 
+/* Light theme anchors "weekly" to --brand-600 (a distinct, darker token -
+   #005443 vs --brand's #006b54) instead of a point on the same 0-100%
+   --brand/--surface mix scale that biweekly-a/b live on. A first pass at
+   widening the gap between all three fills (weekly 100% / biweekly-a 96% /
+   biweekly-b 89%, all sharing one --brand mix scale) actually made the
+   worst pairwise gap SMALLER, not bigger (weekly-to-a shrank to 4 points of
+   mix, tighter than the original 90/85 split's 5-point a-to-b gap) - the
+   0-100% mix scale between --brand and --surface (light theme) only has
+   ~83-100% of headroom before white text drops under 4.5:1, so squeezing
+   three states onto it forces a tradeoff between them. Moving "weekly" onto
+   a *different* token removes it from that scale entirely, freeing the
+   full --brand 0-100% range for biweekly-a/biweekly-b and letting all three
+   states clear AA with much wider margins between them (see the comment
+   above biweekly-a/b below for the verified numbers). --brand-600 has a
+   sensible dark-theme value too (#006b54), but dark theme's "weekly" fix
+   below predates this change, already passes AA with a comfortable margin,
+   and wasn't flagged as a problem - so it's left as its own color-mix()
+   override rather than switched to --brand-600 as well. */
 .schedule-grid__slot--weekly {
-  background: var(--brand);
+  background: var(--brand-600);
   border-color: var(--brand);
 }
 
@@ -202,32 +220,38 @@
    (#00a87e) is lighter/more saturated than light theme's, so white text on
    it already sits under AA even at 100% brand (~3.04:1) - a LOWER brand
    percentage is what darkens the mix enough to clear AA there. That same
-   100%-brand-in-dark problem applies to the "weekly" cell itself (see the
-   dark-theme override below it), not just the two biweekly variants.
+   100%-brand-in-dark problem is why "weekly" also needs a dark-theme
+   color-mix() override below, even though light theme's "weekly" is solid
+   --brand-600 with no mix at all (see the comment above that rule).
 
-   The three states use a descending brand percentage (weekly 100% (light) /
-   68% (dark) > biweekly-a > biweekly-b) so "weekly" always reads as the
-   strongest/most solid fill. Percentages were widened from an earlier pass
-   (light biweekly-a/b were 90%/85%) both to give biweekly-b more margin
-   above the ~83% AA breakeven in light theme (it was passing by only ~2
-   points of headroom) and to spread the three fills further apart
-   perceptually, since 100/90/85 read as too close together by color alone.
+   Light theme's biweekly-a is now solid 100% --brand (no mix) and
+   biweekly-b is an 88% --brand/--surface mix - both freed up from having to
+   share mix-scale headroom with "weekly" (see the comment above the
+   "weekly" rule above). This gives a much wider spread between all three
+   light-theme fills than either the original (100/90/85, sharing one
+   --brand scale) or an earlier revision of this fix (100/96/89, which
+   inadvertently made the *worst* pairwise gap tighter, not wider) achieved:
+
+     RGB Euclidean distance between adjacent fills, light theme:
+       original       (100/90/85 on one --brand scale):  min gap ~17.0, span ~51.1
+       earlier revision (100/96/89 on one --brand scale): min gap ~13.6, span ~37.5
+       this fix (weekly on --brand-600, a/b on --brand):  min gap ~28.6, span ~63.3
 
    Verified via the WCAG relative-luminance contrast formula (white text,
    both themes):
-     light weekly     (100% brand, rgb(0,107,84)):     white 6.50:1 (passes, unchanged)
-     light biweekly-a (96% mix, rgb(10,113,91)):        white 5.96:1 (passes)
-     light biweekly-b (89% mix, rgb(28,123,103)):       white 5.13:1 (passes)
-     dark  weekly      (68% mix, rgb(10,127,103)):      white 4.92:1 (passes)
-     dark  biweekly-a (60% mix, rgb(12,117,98)):        white 5.61:1 (passes)
-     dark  biweekly-b (40% mix, rgb(19,92,83)):         white 7.84:1 (passes) */
+     light weekly     (solid --brand-600, rgb(0,84,67)):  white 8.94:1 (passes)
+     light biweekly-a (100% brand, rgb(0,107,84)):         white 6.50:1 (passes)
+     light biweekly-b (88% mix, rgb(31,125,105)):          white 5.02:1 (passes)
+     dark  weekly      (68% mix, rgb(10,127,103)):         white 4.92:1 (passes, unchanged)
+     dark  biweekly-a (60% mix, rgb(12,117,98)):           white 5.61:1 (passes, unchanged)
+     dark  biweekly-b (40% mix, rgb(19,92,83)):            white 7.84:1 (passes, unchanged) */
 .schedule-grid__slot--biweekly-a {
-  background: color-mix(in srgb, var(--brand) 96%, var(--surface));
+  background: var(--brand);
   border-color: var(--brand);
 }
 
 .schedule-grid__slot--biweekly-b {
-  background: color-mix(in srgb, var(--brand) 89%, var(--surface));
+  background: color-mix(in srgb, var(--brand) 88%, var(--surface));
   border-color: var(--brand);
 }
 
