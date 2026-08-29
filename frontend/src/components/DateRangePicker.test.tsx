@@ -118,4 +118,77 @@ describe('DateRangePicker', () => {
     expect(within(grid).getByRole('button', { name: 'August 20, 2026' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(grid).getByRole('button', { name: 'August 17, 2026' })).toHaveAttribute('aria-pressed', 'false');
   });
+
+  describe('popover positioning (escaping a clipping ancestor like Modal)', () => {
+    function stubViewport(width: number, height: number) {
+      const widthSpy = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(width);
+      const heightSpy = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(height);
+      return () => {
+        widthSpy.mockRestore();
+        heightSpy.mockRestore();
+      };
+    }
+
+    function stubTriggerRect(trigger: HTMLElement, rect: Partial<DOMRect>) {
+      vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
+        top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => '',
+        ...rect,
+      } as DOMRect);
+    }
+
+    it('positions the popover below the trigger via inline styles, not the old CSS-only offset', () => {
+      const restoreViewport = stubViewport(400, 800);
+      try {
+        render(<DateRangePicker startDate="" endDate="" onChange={vi.fn()} />);
+        const trigger = screen.getByRole('button', { name: /select date range/i });
+        stubTriggerRect(trigger, { top: 100, bottom: 130, left: 20, right: 280, width: 260 });
+
+        fireEvent.click(trigger);
+
+        const popover = document.querySelector('.date-range-picker__popover') as HTMLElement;
+        // Reverting to the old position:absolute/top:calc(100% + 4px) CSS
+        // (no inline style at all) would leave these both empty - this only
+        // passes because the fix computes and applies them explicitly.
+        expect(popover.style.top).toBe('134px'); // rect.bottom + 4
+        expect(popover.style.left).toBe('20px'); // rect.left, plenty of room to the right
+      } finally {
+        restoreViewport();
+      }
+    });
+
+    it('flips the popover above the trigger when there is not enough room below', () => {
+      const restoreViewport = stubViewport(400, 700);
+      try {
+        render(<DateRangePicker startDate="" endDate="" onChange={vi.fn()} />);
+        const trigger = screen.getByRole('button', { name: /select date range/i });
+        // Only 66px of space below (700 - 630 - 4) - the 340px-tall calendar can't fit.
+        stubTriggerRect(trigger, { top: 600, bottom: 630, left: 20, right: 280, width: 260 });
+
+        fireEvent.click(trigger);
+
+        const popover = document.querySelector('.date-range-picker__popover') as HTMLElement;
+        expect(popover.style.top).toBe('256px'); // rect.top - 4 - 340
+      } finally {
+        restoreViewport();
+      }
+    });
+
+    it('clamps the popover horizontally so it never overflows the right edge of a narrow viewport', () => {
+      const restoreViewport = stubViewport(390, 800);
+      try {
+        render(<DateRangePicker startDate="" endDate="" onChange={vi.fn()} />);
+        const trigger = screen.getByRole('button', { name: /select date range/i });
+        // Trigger sits near the right edge; left-aligning the 260px popover
+        // there would push it off-screen.
+        stubTriggerRect(trigger, { top: 100, bottom: 130, left: 300, right: 400, width: 100 });
+
+        fireEvent.click(trigger);
+
+        const popover = document.querySelector('.date-range-picker__popover') as HTMLElement;
+        expect(popover.style.left).toBe('122px'); // 390 - 8 (margin) - 260 (popover width)
+      } finally {
+        restoreViewport();
+      }
+    });
+  });
 });
