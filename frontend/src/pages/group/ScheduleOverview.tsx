@@ -125,13 +125,6 @@ function formatWeekLabel(weekStart: string): string {
   return `Week of ${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
 }
 
-// todayIso returns "today" (UTC calendar date, matching the backend's
-// same-day-or-later check in CreateCoverageRequest) as an ISO YYYY-MM-DD
-// string, for comparing against slot dates.
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembers, currentUserId }) => {
   const toast = useToast();
   const [weekStart, setWeekStart] = useState<string>(currentWeekStart());
@@ -141,12 +134,6 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const [busyRequestId, setBusyRequestId] = useState<number | null>(null);
-  // Guards handleRequestCoverage the same way busyRequestId guards
-  // handleClaim/handleCancelRequest: keyed by the (date, hour) slot key so
-  // the "Request coverage" button for the in-flight cell disables itself
-  // mid-request, preventing a double-click from firing two concurrent
-  // POSTs (which the DB-level unique index would otherwise let race).
-  const [busyRequestSlotKey, setBusyRequestSlotKey] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Cancels any in-flight request before starting a new one - matching
@@ -256,22 +243,6 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
       .finally(() => setBusyRequestId(null));
   };
 
-  const handleRequestCoverage = (slotKeyValue: string, date: string, hour: number) => {
-    setBusyRequestSlotKey(slotKeyValue);
-    scheduleApi.createCoverageRequest(groupId, { date, hour })
-      .then(() => {
-        toast.showSuccess('Coverage requested.');
-        setActiveCellKey(null);
-        setPopoverPosition(null);
-        loadOverview();
-      })
-      .catch(err => {
-        toast.showError(err.response?.data?.error || 'Failed to request coverage.');
-        loadOverview();
-      })
-      .finally(() => setBusyRequestSlotKey(null));
-  };
-
   if (loading) {
     return <SkeletonLoader variant="card" count={1} />;
   }
@@ -288,8 +259,6 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const effectiveTotal = totalMembers > 0
     ? totalMembers
     : Math.max(0, ...Array.from(membersBySlot.values()).map(m => m.length));
-
-  const today = todayIso();
 
   return (
     <div className="schedule-overview">
@@ -341,7 +310,6 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
 
               const members = membersBySlot.get(key) ?? [];
               const tier = tierFor(members.length, effectiveTotal);
-              const date = dateForWeekStart(weekStart, dayOfWeek);
               const needsCoverage = members.some(m => m.status === 'needs_coverage');
               const label = `${DAYS[dayOfWeek]} ${formatSlotRangeLabel(dayOfWeek, hour)}, ${members.length} available${needsCoverage ? ', needs coverage' : ''}`;
               const isActive = activeCellKey === key;
@@ -420,16 +388,6 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                 onClick={() => handleClaim(member.coverage_request_id as number)}
                               >
                                 Claim
-                              </button>
-                            )}
-                            {member.user_id === currentUserId && member.status === 'normal' && date >= today && (
-                              <button
-                                type="button"
-                                className="btn-secondary schedule-overview__action"
-                                disabled={busyRequestSlotKey === key}
-                                onClick={() => handleRequestCoverage(key, date, hour)}
-                              >
-                                Request coverage
                               </button>
                             )}
                             {member.user_id === currentUserId && member.status === 'needs_coverage' && member.coverage_request_id !== undefined && (

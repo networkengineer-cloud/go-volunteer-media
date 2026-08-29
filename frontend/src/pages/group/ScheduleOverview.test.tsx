@@ -9,7 +9,6 @@ vi.mock('../../api/client', () => ({
   scheduleApi: {
     getOverview: vi.fn(),
     claimCoverageRequest: vi.fn(),
-    createCoverageRequest: vi.fn(),
     cancelCoverageRequest: vi.fn(),
   },
 }));
@@ -348,19 +347,10 @@ describe('ScheduleOverview', () => {
     await waitFor(() => expect(scheduleApi.claimCoverageRequest).toHaveBeenCalledWith(7, 42));
   });
 
-  it('shows a Request coverage button next to the current user\'s own name on a future date', async () => {
-    // The component only renders the currently-displayed week by default
-    // (defaulting to the real current week), and "future" is checked
-    // against the real clock - so a hardcoded fixture date is only
-    // future-and-in-the-rendered-week on some days of the year, and would
-    // start failing permanently once real "today" passes it (or even
-    // sooner, on any day where Tuesday of the current week has already
-    // passed). Pin the clock instead: only `Date` is faked here (not
-    // `setTimeout`/timers), so `findByRole`/`waitFor`'s internal real-timer
-    // polling keeps working, while the component's `currentWeekStart()` and
-    // "is this date in the future" check both resolve against this fixed
-    // Monday - making 2026-08-11 (that Monday's Tuesday) deterministically
-    // future, forever.
+  it('does not show a Request coverage button in the popover - the date-range form is the only way to request coverage', async () => {
+    // The quick single-click "Request coverage" action was removed: it
+    // couldn't carry a priority (Normal/Optional), and requiring the
+    // date-range form for every request keeps that decision in one place.
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z')); // a Monday
     try {
@@ -376,52 +366,9 @@ describe('ScheduleOverview', () => {
 
       const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
       fireEvent.click(cell);
-      expect(await screen.findByRole('button', { name: /request coverage/i })).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('disables the Request coverage button while its own POST is in flight, so a double-click cannot fire two requests', async () => {
-    // Backend fix: a partial unique index backstops the DB against a
-    // duplicate-request race, but the friendly first line of defense is the
-    // UI never firing a second POST in the first place - mirroring how
-    // handleClaim already guards via busyRequestId. Resolve the mocked
-    // createCoverageRequest call manually so we can assert the disabled
-    // state while the first request is still pending.
-    let resolveCreate: (() => void) | undefined;
-    vi.mocked(scheduleApi.createCoverageRequest).mockReturnValue(
-      new Promise((resolve) => {
-        resolveCreate = () => resolve({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
-      })
-    );
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-08-10T12:00:00Z')); // a Monday
-    try {
-      mockOverview({
-        week_start: '2026-08-09',
-        slots: [
-          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
-            { user_id: 1, username: 'me', status: 'normal' },
-          ] },
-        ],
-      });
-      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
-
-      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
-      fireEvent.click(cell);
-      const requestButton = await screen.findByRole('button', { name: /request coverage/i });
-
-      fireEvent.click(requestButton);
-      fireEvent.click(requestButton);
-
-      expect(scheduleApi.createCoverageRequest).toHaveBeenCalledTimes(1);
-      expect(requestButton).toBeDisabled();
-
-      // Flush the pending promise and its .then/.finally chain (which
-      // closes the popover) so no state update leaks past this test.
-      resolveCreate?.();
-      await waitFor(() => expect(requestButton).not.toBeInTheDocument());
+      const popover = await screen.findByRole('list');
+      expect(within(popover).getByText('me')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /request coverage/i })).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -476,34 +423,6 @@ describe('ScheduleOverview', () => {
     fireEvent.click(cancelButton);
 
     await waitFor(() => expect(scheduleApi.cancelCoverageRequest).toHaveBeenCalledWith(7, 99));
-  });
-
-  it('shows a Request coverage button for the current user\'s own name on the same day (today counts as future)', async () => {
-    // Backend fix: CreateCoverageRequest now allows same-day-or-later
-    // (date.Before(today) rejects only the past), matching the product
-    // decision that requesting coverage for later today is a normal use
-    // case. The frontend's button-visibility condition changed from
-    // `date > today` to `date >= today` to match - this pins the clock to
-    // exactly the slot's own date/time so `date === today` is exercised.
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-08-11T12:00:00Z')); // the Tuesday itself
-    try {
-      mockOverview({
-        week_start: '2026-08-09',
-        slots: [
-          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
-            { user_id: 1, username: 'me', status: 'normal' },
-          ] },
-        ],
-      });
-      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
-
-      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
-      fireEvent.click(cell);
-      expect(await screen.findByRole('button', { name: /request coverage/i })).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it('disables every Claim button in the popover while any claim is in flight, not just the one clicked', async () => {

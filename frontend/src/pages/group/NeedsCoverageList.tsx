@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { scheduleApi } from '../../api/client';
-import type { CoverageRequestListItem } from '../../api/client';
+import type { CoverageRequestListItem, CoverageRequestPriority } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import { formatSlotRangeLabel } from './scheduleGrid';
 import SkeletonLoader from '../../components/SkeletonLoader';
@@ -34,6 +34,7 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
   const [busyRequestId, setBusyRequestId] = useState<number | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
   const [cancelling, setCancelling] = useState(false);
+  const [busyPriorityId, setBusyPriorityId] = useState<number | null>(null);
 
   // Cancels any in-flight request before starting a new one, matching the
   // AbortController pattern already used by ScheduleTab/ScheduleOverview's
@@ -93,6 +94,20 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
         loadRequests();
       })
       .finally(() => setBusyRequestId(null));
+  };
+
+  const handleTogglePriority = (item: CoverageRequestListItem) => {
+    const nextPriority: CoverageRequestPriority = item.priority === 'optional' ? 'normal' : 'optional';
+    setBusyPriorityId(item.id);
+    scheduleApi.updateCoverageRequestPriority(groupId, item.id, nextPriority)
+      .then(() => {
+        toast.showSuccess(nextPriority === 'optional' ? 'Marked optional.' : 'Marked normal (must-fill).');
+        loadRequests();
+      })
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to update priority.');
+      })
+      .finally(() => setBusyPriorityId(null));
   };
 
   const isCancellable = (item: CoverageRequestListItem) => item.requested_by_user_id === currentUserId || canManageMembers;
@@ -184,7 +199,20 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
               <span className="needs-coverage-list__hour">{formatSlotRangeLabel(dayOfWeekFromIso(item.date), item.hour)}</span>
               {' — '}
               <span className="needs-coverage-list__name">{item.requested_by_name}</span>
+              {item.priority === 'optional' && (
+                <span className="needs-coverage-list__priority-badge"> Optional</span>
+              )}
             </span>
+            {canManageMembers && (
+              <button
+                type="button"
+                className="btn-secondary needs-coverage-list__priority-toggle"
+                disabled={busyPriorityId === item.id}
+                onClick={() => handleTogglePriority(item)}
+              >
+                {item.priority === 'optional' ? 'Mark normal' : 'Mark optional'}
+              </button>
+            )}
             {item.requested_by_user_id !== currentUserId && (
               <button
                 type="button"

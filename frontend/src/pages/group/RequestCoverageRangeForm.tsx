@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { scheduleApi } from '../../api/client';
-import type { ScheduleSlot, CoverageRequestBatchItem, CoverageRequestBatchResult } from '../../api/client';
+import type { ScheduleSlot, CoverageRequestBatchItem, CoverageRequestBatchResult, CoverageRequestPriority } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import { formatSlotRangeLabel, maxHourFor, weekParity } from './scheduleGrid';
 import './RequestCoverageRangeForm.css';
@@ -103,6 +103,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
+  const [priority, setPriority] = useState<CoverageRequestPriority>('normal');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CoverageRequestBatchResult | null>(null);
 
@@ -149,7 +150,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
       return;
     }
     setSubmitting(true);
-    scheduleApi.createCoverageRequestsBatch(groupId, requests)
+    scheduleApi.createCoverageRequestsBatch(groupId, requests, priority)
       .then(res => {
         setResult(res.data);
         if (res.data.created.length > 0) {
@@ -211,6 +212,30 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
       {rangeTooLong && (
         <p className="request-coverage-range-form__warning">Please choose a range of {MAX_RANGE_DAYS} days or fewer.</p>
       )}
+
+      <fieldset className="request-coverage-range-form__priority">
+        <legend>Priority</legend>
+        <label>
+          <input
+            type="radio"
+            name="coverage-range-priority"
+            value="normal"
+            checked={priority === 'normal'}
+            onChange={() => setPriority('normal')}
+          />
+          Normal (must-fill)
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="coverage-range-priority"
+            value="optional"
+            checked={priority === 'optional'}
+            onChange={() => setPriority('optional')}
+          />
+          Optional (nice-to-have)
+        </label>
+      </fieldset>
 
       {candidates.length > 0 && (
         <>

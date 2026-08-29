@@ -548,7 +548,9 @@ const (
 // occurrence of a volunteer's recurring ShiftSlot. It never modifies
 // ShiftSlot itself - the recurring pattern stays the source of truth for
 // every date except the one named here. Date is date-only (time component
-// truncated to UTC midnight).
+// truncated to UTC midnight). Priority is "normal" (default, must-fill) or
+// "optional" (nice-to-have, e.g. a shift that already has enough coverage) -
+// set by the requester at creation, overridable by a group admin afterward.
 type ShiftCoverageRequest struct {
 	ID                uint                  `gorm:"primaryKey" json:"id"`
 	CreatedAt         time.Time             `json:"created_at"`
@@ -558,6 +560,7 @@ type ShiftCoverageRequest struct {
 	Date              time.Time             `gorm:"not null;index:idx_coverage_request_group_date" json:"date"`
 	Hour              int                   `gorm:"not null" json:"hour"`
 	Status            CoverageRequestStatus `gorm:"not null;default:open;index" json:"status"`
+	Priority          string                `gorm:"not null;default:normal" json:"priority"`
 	ClaimedByUserID   *uint                 `json:"claimed_by_user_id"`
 	ClaimedAt         *time.Time            `json:"claimed_at"`
 	RequestedByUser   User                  `gorm:"foreignKey:RequestedByUserID" json:"-"`

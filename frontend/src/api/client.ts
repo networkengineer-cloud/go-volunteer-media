@@ -654,6 +654,8 @@ export interface ScheduleOverviewResponse {
   slots: ScheduleOverviewSlot[];
 }
 
+export type CoverageRequestPriority = 'normal' | 'optional';
+
 export interface CoverageRequest {
   id: number;
   group_id: number;
@@ -661,6 +663,7 @@ export interface CoverageRequest {
   date: string;
   hour: number;
   status: 'open' | 'claimed' | 'cancelled';
+  priority: CoverageRequestPriority;
   claimed_by_user_id: number | null;
 }
 
@@ -687,6 +690,7 @@ export interface CoverageRequestListItem {
   requested_by_name: string;
   date: string;
   hour: number;
+  priority: CoverageRequestPriority;
   claimable: boolean;
 }
 
@@ -724,8 +728,10 @@ export const scheduleApi = {
     api.post<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/claim`),
   cancelCoverageRequest: (groupId: number, requestId: number) =>
     api.delete<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}`),
-  createCoverageRequestsBatch: (groupId: number, requests: CoverageRequestBatchItem[]) =>
-    api.post<CoverageRequestBatchResult>(`/groups/${groupId}/schedule/coverage-requests/batch`, { requests }),
+  createCoverageRequestsBatch: (groupId: number, requests: CoverageRequestBatchItem[], priority?: CoverageRequestPriority) =>
+    api.post<CoverageRequestBatchResult>(`/groups/${groupId}/schedule/coverage-requests/batch`, { requests, priority }),
+  updateCoverageRequestPriority: (groupId: number, requestId: number, priority: CoverageRequestPriority) =>
+    api.patch<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/priority`, { priority }),
   cancelCoverageRequestsBatch: (groupId: number, requestIds: number[]) =>
     api.post<CoverageRequestCancelBatchResult>(`/groups/${groupId}/schedule/coverage-requests/cancel-batch`, { request_ids: requestIds }),
   listCoverageRequests: (groupId: number, options?: { signal?: AbortSignal }) =>

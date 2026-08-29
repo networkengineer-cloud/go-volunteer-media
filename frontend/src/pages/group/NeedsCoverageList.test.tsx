@@ -10,6 +10,7 @@ vi.mock('../../api/client', () => ({
     listCoverageRequests: vi.fn(),
     claimCoverageRequest: vi.fn(),
     cancelCoverageRequestsBatch: vi.fn(),
+    updateCoverageRequestPriority: vi.fn(),
   },
 }));
 
@@ -42,7 +43,7 @@ describe('NeedsCoverageList', () => {
 
   it('lists an open request with requester name, date and time', async () => {
     mockList([
-      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, claimable: true },
+      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
     ]);
     render(<NeedsCoverageList groupId={7} currentUserId={1} />);
 
@@ -55,7 +56,7 @@ describe('NeedsCoverageList', () => {
     // (maxHourFor) slot, a 90-min shift ending 6:30 PM. Someone deciding
     // whether to claim it needs to see the actual end time.
     mockList([
-      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 17, claimable: true },
+      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 17, priority: 'normal', claimable: true },
     ]);
     render(<NeedsCoverageList groupId={7} currentUserId={1} />);
 
@@ -64,7 +65,7 @@ describe('NeedsCoverageList', () => {
 
   it('claiming a shift calls claimCoverageRequest and refetches the list', async () => {
     mockList([
-      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, claimable: true },
+      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
     ]);
     vi.mocked(scheduleApi.claimCoverageRequest).mockResolvedValue({} as unknown as AxiosResponse);
     render(<NeedsCoverageList groupId={7} currentUserId={1} />);
@@ -81,7 +82,7 @@ describe('NeedsCoverageList', () => {
 
   it('shows a failure toast and does not crash when claiming fails', async () => {
     mockList([
-      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, claimable: true },
+      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
     ]);
     vi.mocked(scheduleApi.claimCoverageRequest).mockRejectedValue({ response: { data: { error: 'Already claimed' } } });
     render(<NeedsCoverageList groupId={7} currentUserId={1} />);
@@ -93,7 +94,7 @@ describe('NeedsCoverageList', () => {
 
   it('disables the Claim button and explains why when the viewer has a conflicting shift', async () => {
     mockList([
-      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, claimable: false },
+      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: false },
     ]);
     render(<NeedsCoverageList groupId={7} currentUserId={1} />);
 
@@ -104,7 +105,7 @@ describe('NeedsCoverageList', () => {
 
   it('does not show a Claim button for the viewer\'s own request', async () => {
     mockList([
-      { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, claimable: false },
+      { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, priority: 'normal', claimable: false },
     ]);
     render(<NeedsCoverageList groupId={7} currentUserId={1} />);
 
@@ -119,7 +120,7 @@ describe('NeedsCoverageList', () => {
 
     it('shows a checkbox on the viewer\'s own open request', async () => {
       mockList([
-        { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, claimable: false },
+        { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, priority: 'normal', claimable: false },
       ]);
       render(<NeedsCoverageList groupId={7} currentUserId={1} />);
 
@@ -129,7 +130,7 @@ describe('NeedsCoverageList', () => {
 
     it('does not show a checkbox on another member\'s request when the viewer is not an admin', async () => {
       mockList([
-        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, claimable: true },
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
       ]);
       render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers={false} />);
 
@@ -139,7 +140,7 @@ describe('NeedsCoverageList', () => {
 
     it('shows a checkbox on another member\'s request when the viewer is a group admin', async () => {
       mockList([
-        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, claimable: true },
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
       ]);
       render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
 
@@ -149,8 +150,8 @@ describe('NeedsCoverageList', () => {
 
     it('cancelling selected requests calls cancelCoverageRequestsBatch with the selected ids and refetches', async () => {
       mockList([
-        { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, claimable: false },
-        { id: 6, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-13', hour: 10, claimable: false },
+        { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, priority: 'normal', claimable: false },
+        { id: 6, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-13', hour: 10, priority: 'normal', claimable: false },
       ]);
       mockCancelBatch({ cancelled: [], skipped: [] });
       render(<NeedsCoverageList groupId={7} currentUserId={1} />);
@@ -166,10 +167,10 @@ describe('NeedsCoverageList', () => {
 
     it('shows a summary toast reporting cancelled and skipped counts', async () => {
       mockList([
-        { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, claimable: false },
+        { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, priority: 'normal', claimable: false },
       ]);
       mockCancelBatch({
-        cancelled: [{ id: 5, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 9, status: 'cancelled', claimed_by_user_id: null }],
+        cancelled: [{ id: 5, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 9, status: 'cancelled', priority: 'normal', claimed_by_user_id: null }],
         skipped: [{ id: 6, reason: 'coverage request has already been claimed' }],
       });
       render(<NeedsCoverageList groupId={7} currentUserId={1} />);
@@ -183,7 +184,7 @@ describe('NeedsCoverageList', () => {
 
     it('disables the Cancel selected button until at least one request is checked', async () => {
       mockList([
-        { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, claimable: false },
+        { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, priority: 'normal', claimable: false },
       ]);
       render(<NeedsCoverageList groupId={7} currentUserId={1} />);
 
@@ -192,6 +193,66 @@ describe('NeedsCoverageList', () => {
 
       fireEvent.click(screen.getByRole('checkbox', { name: /2026-08-11/i }));
       expect(cancelButton).toBeEnabled();
+    });
+  });
+
+  describe('priority', () => {
+    it('shows an Optional badge on a request with priority "optional"', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'optional', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} />);
+
+      await screen.findByText('Jane Doe');
+      expect(screen.getByText(/optional/i)).toBeInTheDocument();
+    });
+
+    it('does not show an Optional badge on a normal-priority request', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} />);
+
+      await screen.findByText('Jane Doe');
+      expect(screen.queryByText(/optional/i)).not.toBeInTheDocument();
+    });
+
+    it('does not show a priority override control for a non-admin', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers={false} />);
+
+      await screen.findByText('Jane Doe');
+      expect(screen.queryByRole('button', { name: /mark optional/i })).not.toBeInTheDocument();
+    });
+
+    it('a group admin can mark a normal request optional, which refetches the list', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      vi.mocked(scheduleApi.updateCoverageRequestPriority).mockResolvedValue({} as unknown as AxiosResponse);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
+
+      await screen.findByText('Jane Doe');
+      const callsBeforeUpdate = vi.mocked(scheduleApi.listCoverageRequests).mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: /mark optional/i }));
+
+      await waitFor(() => expect(scheduleApi.updateCoverageRequestPriority).toHaveBeenCalledWith(7, 5, 'optional'));
+      await waitFor(() => expect(scheduleApi.listCoverageRequests).toHaveBeenCalledTimes(callsBeforeUpdate + 1));
+    });
+
+    it('a group admin can mark an optional request normal (must-fill)', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'optional', claimable: true },
+      ]);
+      vi.mocked(scheduleApi.updateCoverageRequestPriority).mockResolvedValue({} as unknown as AxiosResponse);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
+
+      await screen.findByText('Jane Doe');
+      fireEvent.click(screen.getByRole('button', { name: /mark normal/i }));
+
+      await waitFor(() => expect(scheduleApi.updateCoverageRequestPriority).toHaveBeenCalledWith(7, 5, 'normal'));
     });
   });
 });

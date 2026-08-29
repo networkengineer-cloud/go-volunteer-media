@@ -147,7 +147,7 @@ describe('RequestCoverageRangeForm', () => {
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
     try {
       const result: CoverageRequestBatchResult = {
-        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', claimed_by_user_id: null }],
+        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', priority: 'normal', claimed_by_user_id: null }],
         skipped: [{ date: '2026-08-18', hour: 10, reason: 'a coverage request already exists for that date and hour' }],
       };
       vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({ data: result } as AxiosResponse<CoverageRequestBatchResult>);
@@ -162,12 +162,44 @@ describe('RequestCoverageRangeForm', () => {
       await waitFor(() => expect(scheduleApi.createCoverageRequestsBatch).toHaveBeenCalledWith(7, [
         { date: '2026-08-11', hour: 10 },
         { date: '2026-08-18', hour: 10 },
-      ]));
+      ], 'normal'));
       expect(await screen.findByText(/requested coverage for 1 shift/i)).toBeInTheDocument();
       expect(screen.getByText(/1 skipped/i)).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('submits with priority "optional" when the Optional toggle is selected', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      const result: CoverageRequestBatchResult = {
+        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', priority: 'normal', claimed_by_user_id: null }],
+        skipped: [],
+      };
+      vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({ data: result } as AxiosResponse<CoverageRequestBatchResult>);
+
+      render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-11' } });
+      await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
+
+      fireEvent.click(screen.getByRole('radio', { name: /optional/i }));
+      fireEvent.click(screen.getByRole('button', { name: /request coverage/i }));
+
+      await waitFor(() => expect(scheduleApi.createCoverageRequestsBatch).toHaveBeenCalledWith(7, [
+        { date: '2026-08-11', hour: 10 },
+      ], 'optional'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('defaults the priority toggle to Normal (must-fill)', async () => {
+    render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
+    expect(screen.getByRole('radio', { name: /normal/i })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /optional/i })).not.toBeChecked();
   });
 
   it('shows the result screen even when a consumer passes onSuccess, and Done calls onCancel not onSuccess', async () => {
@@ -188,7 +220,7 @@ describe('RequestCoverageRangeForm', () => {
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
     try {
       const result: CoverageRequestBatchResult = {
-        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', claimed_by_user_id: null }],
+        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', priority: 'normal', claimed_by_user_id: null }],
         skipped: [],
       };
       vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({ data: result } as AxiosResponse<CoverageRequestBatchResult>);

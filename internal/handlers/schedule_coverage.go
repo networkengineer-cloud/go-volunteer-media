@@ -40,9 +40,10 @@ func scheduleEmailNotificationsEnabled() bool {
 }
 
 type createCoverageRequestRequest struct {
-	Date   string `json:"date"`
-	Hour   int    `json:"hour"`
-	UserID *uint  `json:"user_id"`
+	Date     string `json:"date"`
+	Hour     int    `json:"hour"`
+	UserID   *uint  `json:"user_id"`
+	Priority string `json:"priority"`
 }
 
 type coverageRequestResponse struct {
@@ -52,6 +53,7 @@ type coverageRequestResponse struct {
 	Date              string `json:"date"`
 	Hour              int    `json:"hour"`
 	Status            string `json:"status"`
+	Priority          string `json:"priority"`
 	ClaimedByUserID   *uint  `json:"claimed_by_user_id"`
 }
 
@@ -63,7 +65,22 @@ func toCoverageRequestResponse(r models.ShiftCoverageRequest) coverageRequestRes
 		Date:              r.Date.Format("2006-01-02"),
 		Hour:              r.Hour,
 		Status:            string(r.Status),
+		Priority:          r.Priority,
 		ClaimedByUserID:   r.ClaimedByUserID,
+	}
+}
+
+// normalizeCoveragePriority defaults an empty priority to "normal" and
+// rejects anything other than the two allowed values, mirroring how
+// validateScheduleSlots normalizes/validates Cadence.
+func normalizeCoveragePriority(priority string) (string, error) {
+	switch priority {
+	case "":
+		return "normal", nil
+	case "normal", "optional":
+		return priority, nil
+	default:
+		return "", fmt.Errorf("priority must be \"normal\" or \"optional\", got %q", priority)
 	}
 }
 
@@ -74,6 +91,7 @@ type coverageRequestListItem struct {
 	RequestedByName   string `json:"requested_by_name"`
 	Date              string `json:"date"`
 	Hour              int    `json:"hour"`
+	Priority          string `json:"priority"`
 	Claimable         bool   `json:"claimable"`
 }
 
@@ -121,7 +139,7 @@ func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCo
 // CreateCoverageRequestsBatch) calls this once per item rather than
 // wrapping the whole batch in one transaction, so one item's failure
 // doesn't roll back the others.
-func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date time.Time, hour int) (models.ShiftCoverageRequest, error) {
+func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date time.Time, hour int, priority string) (models.ShiftCoverageRequest, error) {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	if date.Before(today) {
 		return models.ShiftCoverageRequest{}, errPastDate
@@ -155,6 +173,7 @@ func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date 
 			Date:              date,
 			Hour:              hour,
 			Status:            models.CoverageRequestOpen,
+			Priority:          priority,
 		}
 		return tx.Create(&created).Error
 	})
@@ -260,6 +279,12 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 			return
 		}
 
+		priority, err := normalizeCoveragePriority(req.Priority)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
 		groupIDUint64, err := strconv.ParseUint(groupIDParam, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
@@ -267,7 +292,7 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		}
 		groupIDUint := uint(groupIDUint64)
 
-		created, err := createOneCoverageRequest(db, groupIDUint, targetUserID, date, req.Hour)
+		created, err := createOneCoverageRequest(db, groupIDUint, targetUserID, date, req.Hour, priority)
 		switch {
 		case errors.Is(err, errPastDate):
 			c.JSON(http.StatusBadRequest, gin.H{"error": errPastDate.Error()})
@@ -572,6 +597,7 @@ func ListCoverageRequests(db *gorm.DB) gin.HandlerFunc {
 				RequestedByName:   displayName(r.RequestedByUser),
 				Date:              r.Date.Format("2006-01-02"),
 				Hour:              r.Hour,
+				Priority:          r.Priority,
 				Claimable:         claimable,
 			})
 		}
@@ -675,6 +701,63 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+type updateCoverageRequestPriorityRequest struct {
+	Priority string `json:"priority"`
+}
+
+// UpdateCoverageRequestPriority lets a group admin (or site admin) override
+// a coverage request's priority after creation - e.g. downgrading a
+// request to "optional" once a shift turns out to already have enough
+// coverage. Requires group admin access; a regular member, including the
+// original requester, cannot change it themselves.
+func UpdateCoverageRequestPriority(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		requestID, err := strconv.ParseUint(c.Param("requestId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
+			return
+		}
+
+		var req updateCoverageRequestPriorityRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+		if req.Priority != "normal" && req.Priority != "optional" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "priority must be \"normal\" or \"optional\""})
+			return
+		}
+
+		var reqRow models.ShiftCoverageRequest
+		if err := db.Where("id = ? AND group_id = ?", requestID, groupIDParam).First(&reqRow).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Coverage request not found"})
+			return
+		}
+
+		if err := db.Model(&reqRow).Update("priority", req.Priority).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update coverage request priority"})
+			return
+		}
+		reqRow.Priority = req.Priority
+
+		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
+	}
+}
+
 type createCoverageRequestBatchItem struct {
 	Date string `json:"date"`
 	Hour int    `json:"hour"`
@@ -682,6 +765,7 @@ type createCoverageRequestBatchItem struct {
 
 type createCoverageRequestBatchRequest struct {
 	Requests []createCoverageRequestBatchItem `json:"requests"`
+	Priority string                           `json:"priority"`
 }
 
 type coverageRequestBatchSkipped struct {
@@ -744,6 +828,11 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("requests must not exceed %d items", maxBatchItems)})
 			return
 		}
+		priority, err := normalizeCoveragePriority(req.Priority)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 
 		groupIDUint64, err := strconv.ParseUint(groupIDParam, 10, 32)
 		if err != nil {
@@ -776,7 +865,7 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 			Skipped: make([]coverageRequestBatchSkipped, 0),
 		}
 		for _, item := range parsedItems {
-			created, err := createOneCoverageRequest(db, groupIDUint, callerUserID, item.date, item.hour)
+			created, err := createOneCoverageRequest(db, groupIDUint, callerUserID, item.date, item.hour, priority)
 			switch {
 			case errors.Is(err, errPastDate), errors.Is(err, errNoMatchingSlot), errors.Is(err, errDuplicateRequest):
 				response.Skipped = append(response.Skipped, coverageRequestBatchSkipped{
