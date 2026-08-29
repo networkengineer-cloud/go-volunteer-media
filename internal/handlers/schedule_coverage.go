@@ -795,6 +795,10 @@ func UpdateCoverageRequestPriority(db *gorm.DB) gin.HandlerFunc {
 type createCoverageRequestBatchItem struct {
 	Date string `json:"date"`
 	Hour int    `json:"hour"`
+	// Priority, when set, overrides the batch-level default for this item
+	// alone - e.g. "I need help Sat, Sun and Tue, but Sat is optional".
+	// Empty falls back to the batch's top-level Priority.
+	Priority string `json:"priority"`
 }
 
 type createCoverageRequestBatchRequest struct {
@@ -819,6 +823,9 @@ type coverageRequestBatchResponse struct {
 // next week") triggers exactly one group notification instead of one per
 // shift. Self-service only - always creates on behalf of the caller, no
 // on-behalf-of-another-member support (unlike CreateCoverageRequest).
+// Each item may set its own Priority (e.g. "Sat is optional, Sun and Tue
+// aren't") - an item that omits it falls back to the request's top-level
+// Priority.
 // Items that fail per-item validation (no matching slot, already an
 // active request, past date) are skipped and reported rather than failing
 // the whole batch; a structurally invalid item (bad date format,
@@ -876,8 +883,9 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 		groupIDUint := uint(groupIDUint64)
 
 		type parsedItem struct {
-			date time.Time
-			hour int
+			date     time.Time
+			hour     int
+			priority string
 		}
 		parsedItems := make([]parsedItem, 0, len(req.Requests))
 		for _, item := range req.Requests {
@@ -891,7 +899,15 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid hour %d: must be between 8 and %d for %s", item.Hour, maxHour, item.Date)})
 				return
 			}
-			parsedItems = append(parsedItems, parsedItem{date: date, hour: item.Hour})
+			itemPriority := priority
+			if item.Priority != "" {
+				itemPriority, err = normalizeCoveragePriority(item.Priority)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+			}
+			parsedItems = append(parsedItems, parsedItem{date: date, hour: item.Hour, priority: itemPriority})
 		}
 
 		response := coverageRequestBatchResponse{
@@ -899,7 +915,7 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 			Skipped: make([]coverageRequestBatchSkipped, 0),
 		}
 		for _, item := range parsedItems {
-			created, err := createOneCoverageRequest(db, groupIDUint, callerUserID, item.date, item.hour, priority)
+			created, err := createOneCoverageRequest(db, groupIDUint, callerUserID, item.date, item.hour, item.priority)
 			switch {
 			case errors.Is(err, errPastDate), errors.Is(err, errNoMatchingSlot), errors.Is(err, errDuplicateRequest):
 				response.Skipped = append(response.Skipped, coverageRequestBatchSkipped{

@@ -1211,6 +1211,56 @@ func TestCreateCoverageRequestsBatch(t *testing.T) {
 		}
 	})
 
+	t.Run("an item's own priority overrides the batch default", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 4, Hour: 14}).Error; err != nil {
+			t.Fatalf("Failed to create second shift slot: %v", err)
+		}
+		tue := nextWeekday(time.Tuesday)
+		thu := nextWeekday(time.Thursday)
+		body := fmt.Sprintf(
+			`{"priority":"normal","requests":[{"date":"%s","hour":10,"priority":"optional"},{"date":"%s","hour":14}]}`,
+			tue, thu,
+		)
+
+		w := performCreateCoverageRequestsBatch(db, requester.ID, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Created) != 2 {
+			t.Fatalf("Expected 2 created, got %d", len(resp.Created))
+		}
+		byHour := map[int]string{}
+		for _, created := range resp.Created {
+			byHour[created.Hour] = created.Priority
+		}
+		if byHour[10] != "optional" {
+			t.Errorf("Expected the Tuesday item's own priority %q to win over the batch default, got %q", "optional", byHour[10])
+		}
+		if byHour[14] != "normal" {
+			t.Errorf("Expected the Thursday item (no override) to fall back to the batch default %q, got %q", "normal", byHour[14])
+		}
+	})
+
+	t.Run("rejects an invalid per-item priority value", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		tue := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"requests":[{"date":"%s","hour":10,"priority":"urgent"}]}`, tue)
+
+		w := performCreateCoverageRequestsBatch(db, requester.ID, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("happy path creates multiple open requests and reports none skipped", func(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, _, group := setupCoverageTestGroup(t, db)

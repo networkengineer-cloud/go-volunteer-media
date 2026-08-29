@@ -671,6 +671,7 @@ export interface CoverageRequest {
 export interface CoverageRequestBatchItem {
   date: string;
   hour: number;
+  priority?: CoverageRequestPriority;
 }
 
 export interface CoverageRequestBatchSkipped {

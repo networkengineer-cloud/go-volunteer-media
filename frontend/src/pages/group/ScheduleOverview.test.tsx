@@ -14,6 +14,21 @@ vi.mock('../../api/client', () => ({
   },
 }));
 
+// DateRangePicker's own calendar-click mechanics are covered by its own
+// test suite; standing in a plain two-input control here (matching
+// RequestCoverageRangeForm.test.tsx's convention) keeps this file's
+// existing getByLabelText(/start date/i)/(/end date/i) queries working.
+vi.mock('../../components/DateRangePicker', () => ({
+  default: ({ startDate, endDate, onChange }: { startDate: string; endDate: string; onChange: (s: string, e: string) => void }) => (
+    <div>
+      <label htmlFor="mock-start-date">Start date</label>
+      <input id="mock-start-date" value={startDate} onChange={e => onChange(e.target.value, endDate)} />
+      <label htmlFor="mock-end-date">End date</label>
+      <input id="mock-end-date" value={endDate} onChange={e => onChange(startDate, e.target.value)} />
+    </div>
+  ),
+}));
+
 const mockShowSuccess = vi.fn();
 const mockShowError = vi.fn();
 vi.mock('../../hooks/useToast', () => ({

@@ -38,12 +38,45 @@ export function slotDurationMinutes(dayOfWeek: number, hour: number): number {
 export function formatSlotRangeLabel(dayOfWeek: number, hour: number): string {
   const duration = slotDurationMinutes(dayOfWeek, hour);
   if (duration === 60) return formatHourLabel(hour);
-  const endTotalMinutes = hour * 60 + duration;
-  const endHour = Math.floor(endTotalMinutes / 60);
-  const endMinute = endTotalMinutes % 60;
+  return formatRangeLabel(hour, duration);
+}
+
+export interface RowHeaderInfo {
+  label: string;
+  note?: string;
+}
+
+function endClock(hour: number, durationMinutes: number): string {
+  const endTotalMinutes = hour * 60 + durationMinutes;
+  return formatClock(Math.floor(endTotalMinutes / 60), endTotalMinutes % 60);
+}
+
+function formatRangeLabel(hour: number, durationMinutes: number): string {
   const startTime = formatClock(hour, 0).replace(/ (AM|PM)$/, '');
-  const endTime = formatClock(endHour, endMinute);
-  return `${startTime}–${endTime}`;
+  return `${startTime}–${endClock(hour, durationMinutes)}`;
+}
+
+// rowHeaderFor labels a schedule-grid row with its actual time range rather
+// than just a bare start time. Most rows are uniform (weekday and weekend
+// cells both 60 min), so a plain range suffices. The one row where they
+// diverge - weekend's terminal (90-min) hour, which weekdays haven't reached
+// yet - can't be truthfully summarized by a single range, so it states the
+// weekday case in the label and calls out the weekend's real end time in a
+// separate note rather than silently picking one and misleading the other.
+export function rowHeaderFor(hour: number): RowHeaderInfo {
+  const weekdayEnabled = hour <= maxHourFor(1);
+  const weekendEnabled = hour <= maxHourFor(0);
+  const weekdayDuration = weekdayEnabled ? slotDurationMinutes(1, hour) : null;
+  const weekendDuration = weekendEnabled ? slotDurationMinutes(0, hour) : null;
+
+  if (weekdayDuration !== null && weekendDuration !== null && weekdayDuration !== weekendDuration) {
+    return {
+      label: formatRangeLabel(hour, weekdayDuration),
+      note: `Weekends end ${endClock(hour, weekendDuration)}`,
+    };
+  }
+  const duration = weekdayDuration ?? weekendDuration ?? 60;
+  return { label: formatRangeLabel(hour, duration) };
 }
 
 // nextCadence advances a grid cell through its 4-state cycle when clicked:

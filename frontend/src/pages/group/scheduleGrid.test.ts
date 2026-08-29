@@ -5,6 +5,7 @@ import {
   slotDurationMinutes,
   formatHourLabel,
   formatSlotRangeLabel,
+  rowHeaderFor,
   nextCadence,
   weekParity,
   upcomingDatesForParity,
@@ -41,6 +42,23 @@ describe('day-aware hour rules', () => {
 
   it('formatSlotRangeLabel shows a range for the terminal weekend slot', () => {
     expect(formatSlotRangeLabel(6, 15)).toBe('3:00–4:30 PM');
+  });
+});
+
+describe('rowHeaderFor', () => {
+  it('shows a plain hour range when weekday and weekend agree', () => {
+    expect(rowHeaderFor(10)).toEqual({ label: '10:00–11:00 AM' });
+  });
+
+  it('shows the weekday-only terminal hour as its own full range, no note', () => {
+    expect(rowHeaderFor(17)).toEqual({ label: '5:00–6:30 PM' });
+  });
+
+  it('flags the shared hour where weekend terminates but weekday continues', () => {
+    expect(rowHeaderFor(15)).toEqual({
+      label: '3:00–4:00 PM',
+      note: 'Weekends end 4:30 PM',
+    });
   });
 });
 
