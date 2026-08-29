@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { scheduleApi } from '../../api/client';
 import type { ScheduleSlot, CoverageRequestBatchItem, CoverageRequestBatchResult, CoverageRequestPriority } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
+import DateRangePicker from '../../components/DateRangePicker';
 import { formatSlotRangeLabel, maxHourFor, weekParity } from './scheduleGrid';
 import './RequestCoverageRangeForm.css';
 
@@ -105,7 +106,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
   const [startDate, setStartDate] = useState(initialStartDate ?? '');
   const [endDate, setEndDate] = useState(initialEndDate ?? '');
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
-  const [priority, setPriority] = useState<CoverageRequestPriority>('normal');
+  const [priorities, setPriorities] = useState<Map<string, CoverageRequestPriority>>(new Map());
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CoverageRequestBatchResult | null>(null);
 
@@ -120,7 +121,12 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
   // a side effect, so it belongs in useEffect, not inside the useMemo above.
   useEffect(() => {
     setCheckedKeys(new Set(candidates.map(occurrenceKey)));
+    setPriorities(new Map(candidates.map(o => [occurrenceKey(o), 'normal' as CoverageRequestPriority])));
   }, [candidates]);
+
+  const setPriorityFor = (key: string, value: CoverageRequestPriority) => {
+    setPriorities(prev => new Map(prev).set(key, value));
+  };
 
   const toggleOccurrence = (key: string) => {
     setCheckedKeys(prev => {
@@ -142,7 +148,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
   const handleSubmit = () => {
     const requests: CoverageRequestBatchItem[] = candidates
       .filter(o => checkedKeys.has(occurrenceKey(o)))
-      .map(o => ({ date: o.date, hour: o.hour }));
+      .map(o => ({ date: o.date, hour: o.hour, priority: priorities.get(occurrenceKey(o)) ?? 'normal' }));
     if (requests.length === 0) {
       toast.showError('Select at least one shift.');
       return;
@@ -152,7 +158,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
       return;
     }
     setSubmitting(true);
-    scheduleApi.createCoverageRequestsBatch(groupId, requests, priority)
+    scheduleApi.createCoverageRequestsBatch(groupId, requests)
       .then(res => {
         setResult(res.data);
         if (res.data.created.length > 0) {
@@ -192,52 +198,19 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
 
   return (
     <div className="request-coverage-range-form">
-      <div className="request-coverage-range-form__dates">
-        <label htmlFor="coverage-range-start">Start date</label>
-        <input
-          id="coverage-range-start"
-          type="date"
-          value={startDate}
-          min={todayIso()}
-          onChange={e => setStartDate(e.target.value)}
-        />
-        <label htmlFor="coverage-range-end">End date</label>
-        <input
-          id="coverage-range-end"
-          type="date"
-          value={endDate}
-          min={startDate || todayIso()}
-          onChange={e => setEndDate(e.target.value)}
-        />
-      </div>
+      <DateRangePicker
+        startDate={startDate}
+        endDate={endDate}
+        min={todayIso()}
+        onChange={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
+      />
 
       {rangeTooLong && (
         <p className="request-coverage-range-form__warning">Please choose a range of {MAX_RANGE_DAYS} days or fewer.</p>
       )}
-
-      <fieldset className="request-coverage-range-form__priority">
-        <legend>Priority</legend>
-        <label>
-          <input
-            type="radio"
-            name="coverage-range-priority"
-            value="normal"
-            checked={priority === 'normal'}
-            onChange={() => setPriority('normal')}
-          />
-          Normal (must-fill)
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="coverage-range-priority"
-            value="optional"
-            checked={priority === 'optional'}
-            onChange={() => setPriority('optional')}
-          />
-          Optional (nice-to-have)
-        </label>
-      </fieldset>
 
       {candidates.length > 0 && (
         <>
@@ -259,8 +232,9 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
             {candidates.map(o => {
               const key = occurrenceKey(o);
               const label = `${o.date} — ${formatSlotRangeLabel(dayOfWeekFromIso(o.date), o.hour)}`;
+              const itemPriority = priorities.get(key) ?? 'normal';
               return (
-                <li key={key}>
+                <li key={key} className="request-coverage-range-form__list-item">
                   <label>
                     <input
                       type="checkbox"
@@ -270,6 +244,26 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
                     />
                     {label}
                   </label>
+                  <span className="request-coverage-range-form__item-priority" role="group" aria-label={`Priority for ${label}`}>
+                    <label>
+                      <input
+                        type="radio"
+                        name={`priority-${key}`}
+                        checked={itemPriority === 'normal'}
+                        onChange={() => setPriorityFor(key, 'normal')}
+                      />
+                      Normal
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name={`priority-${key}`}
+                        checked={itemPriority === 'optional'}
+                        onChange={() => setPriorityFor(key, 'optional')}
+                      />
+                      Optional
+                    </label>
+                  </span>
                 </li>
               );
             })}

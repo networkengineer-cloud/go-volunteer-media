@@ -78,6 +78,21 @@
   color: var(--text-primary);
 }
 
+.schedule-grid__cell--rowheader {
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  text-align: right;
+  line-height: 1.2;
+  gap: 0.1rem;
+}
+
+.schedule-grid__rowhead-note {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
 .schedule-grid__cell--corner {
   background: transparent;
 }
@@ -205,11 +220,11 @@
 }
 
 /* Was `background: var(--brand); opacity: 0.75/0.5`, which composites the
-   ENTIRE button - including the white cadence-tag text and the 90m badge -
-   against the page background, cutting text contrast instead of just
-   fading the fill. Switched to color-mix() so only the background blends;
-   the white text (forced via --brand-contrast below/in the cadence-tag and
-   duration-badge rules) is left untouched.
+   ENTIRE button - including the white cadence-tag text - against the page
+   background, cutting text contrast instead of just fading the fill.
+   Switched to color-mix() so only the background blends; the white text
+   (forced via --brand-contrast below/in the cadence-tag rule) is left
+   untouched.
 
    The two themes need DIFFERENT mix percentages, not one shared value:
    light theme's --surface is white, so blending toward it lightens the
@@ -276,29 +291,6 @@
 .schedule-grid__cadence-tag {
   font-size: 0.7rem;
   font-weight: 700;
-}
-
-/* Small, unobtrusive marker on the day's terminal (90-min) cell, positioned
-   in the bottom-right corner so it never collides with the centered A/B
-   cadence tag rendered by the same button. Only present in ScheduleTab's own
-   individual editing grid (ScheduleOverview doesn't render its per-member
-   cells as ScheduleTab-style buttons), so no ScheduleOverview-scoping is
-   needed here the way .schedule-grid__cadence-tag needs it below. */
-.schedule-grid__duration-badge {
-  position: absolute;
-  bottom: 1px;
-  right: 3px;
-  font-size: 0.55rem;
-  line-height: 1;
-  font-weight: 600;
-  color: var(--text-secondary);
-  pointer-events: none;
-}
-
-.schedule-grid__slot--weekly .schedule-grid__duration-badge,
-.schedule-grid__slot--biweekly-a .schedule-grid__duration-badge,
-.schedule-grid__slot--biweekly-b .schedule-grid__duration-badge {
-  color: var(--brand-contrast);
 }
 
 .schedule-tab__hours-caption {

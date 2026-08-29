@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import ScheduleOverview from './ScheduleOverview';
 import { scheduleApi } from '../../api/client';
 import type { AxiosResponse } from 'axios';
-import type { ScheduleOverviewResponse, CoverageRequest } from '../../api/client';
+import type { ScheduleOverviewResponse, CoverageRequest, GroupMember } from '../../api/client';
 
 vi.mock('../../api/client', () => ({
   scheduleApi: {
@@ -11,7 +11,29 @@ vi.mock('../../api/client', () => ({
     claimCoverageRequest: vi.fn(),
     cancelCoverageRequest: vi.fn(),
     createCoverageRequestsBatch: vi.fn(),
+    reassignShift: vi.fn(),
   },
+}));
+
+const testMembers: GroupMember[] = [
+  { user_id: 1, username: 'me', first_name: 'Mia', last_name: 'Example', email: '', is_group_admin: false, is_site_admin: false, skill_tags: [] },
+  { user_id: 2, username: 'vol2', first_name: 'Vic', last_name: 'Two', email: '', is_group_admin: false, is_site_admin: false, skill_tags: [] },
+  { user_id: 3, username: 'vol3', first_name: 'Val', last_name: 'Three', email: '', is_group_admin: false, is_site_admin: false, skill_tags: [] },
+];
+
+// DateRangePicker's own calendar-click mechanics are covered by its own
+// test suite; standing in a plain two-input control here (matching
+// RequestCoverageRangeForm.test.tsx's convention) keeps this file's
+// existing getByLabelText(/start date/i)/(/end date/i) queries working.
+vi.mock('../../components/DateRangePicker', () => ({
+  default: ({ startDate, endDate, onChange }: { startDate: string; endDate: string; onChange: (s: string, e: string) => void }) => (
+    <div>
+      <label htmlFor="mock-start-date">Start date</label>
+      <input id="mock-start-date" value={startDate} onChange={e => onChange(e.target.value, endDate)} />
+      <label htmlFor="mock-end-date">End date</label>
+      <input id="mock-end-date" value={endDate} onChange={e => onChange(startDate, e.target.value)} />
+    </div>
+  ),
 }));
 
 const mockShowSuccess = vi.fn();
@@ -464,6 +486,92 @@ describe('ScheduleOverview', () => {
       const popover = await screen.findByRole('list');
       expect(within(popover).getByText('me')).toBeInTheDocument();
       expect(within(popover).queryByRole('button', { name: /request coverage/i })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows a Reassign control on a normal-status row for an admin, and reassigns on confirm', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      vi.mocked(scheduleApi.reassignShift).mockResolvedValue({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} canManageMembers={true} groupMembers={testMembers} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const popover = await screen.findByRole('list');
+
+      fireEvent.click(within(popover).getByRole('button', { name: /reassign/i }));
+      fireEvent.change(within(popover).getByRole('combobox'), { target: { value: '3' } });
+      fireEvent.click(within(popover).getByRole('button', { name: /confirm/i }));
+
+      await waitFor(() => expect(scheduleApi.reassignShift).toHaveBeenCalledWith(7, {
+        fromUserId: 2,
+        toUserId: 3,
+        date: '2026-08-11',
+        hour: 9,
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not show a Reassign control when the viewer cannot manage members', async () => {
+    // Pinned to a date before the slot (rather than relying on the real
+    // clock) so this test isolates the canManageMembers gate specifically -
+    // otherwise it could pass vacuously once 2026-08-11 is in the past,
+    // for the wrong reason (the date gate, not the admin gate).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} canManageMembers={false} groupMembers={testMembers} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const popover = await screen.findByRole('list');
+
+      expect(within(popover).queryByRole('button', { name: /reassign/i })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not show a Reassign control for a past date, even for an admin', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-13T12:00:00Z'));
+    try {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} canManageMembers={true} groupMembers={testMembers} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const popover = await screen.findByRole('list');
+
+      expect(within(popover).queryByRole('button', { name: /reassign/i })).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

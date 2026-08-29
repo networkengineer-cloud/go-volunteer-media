@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import RequestCoverageRangeForm, { computeCandidateOccurrences } from './RequestCoverageRangeForm';
 import Modal from '../../components/Modal';
 import { scheduleApi } from '../../api/client';
@@ -15,6 +15,23 @@ vi.mock('../../api/client', () => ({
 
 vi.mock('../../hooks/useToast', () => ({
   useToast: () => ({ showSuccess: vi.fn(), showError: vi.fn() }),
+}));
+
+// DateRangePicker's own calendar-click mechanics are covered by its own
+// test suite (src/components/DateRangePicker.test.tsx). Standing in a plain
+// two-input control here keeps these tests focused on RequestCoverageRangeForm's
+// own logic (candidate computation, list rendering, submission) and lets the
+// existing getByLabelText(/start date/i)/(/end date/i) queries below keep
+// working unchanged.
+vi.mock('../../components/DateRangePicker', () => ({
+  default: ({ startDate, endDate, onChange }: { startDate: string; endDate: string; onChange: (s: string, e: string) => void }) => (
+    <div>
+      <label htmlFor="mock-start-date">Start date</label>
+      <input id="mock-start-date" value={startDate} onChange={e => onChange(e.target.value, endDate)} />
+      <label htmlFor="mock-end-date">End date</label>
+      <input id="mock-end-date" value={endDate} onChange={e => onChange(startDate, e.target.value)} />
+    </div>
+  ),
 }));
 
 describe('computeCandidateOccurrences', () => {
@@ -178,9 +195,9 @@ describe('RequestCoverageRangeForm', () => {
       fireEvent.click(screen.getByRole('button', { name: /request coverage/i }));
 
       await waitFor(() => expect(scheduleApi.createCoverageRequestsBatch).toHaveBeenCalledWith(7, [
-        { date: '2026-08-11', hour: 10 },
-        { date: '2026-08-18', hour: 10 },
-      ], 'normal'));
+        { date: '2026-08-11', hour: 10, priority: 'normal' },
+        { date: '2026-08-18', hour: 10, priority: 'normal' },
+      ]));
       expect(await screen.findByText(/requested coverage for 1 shift/i)).toBeInTheDocument();
       expect(screen.getByText(/1 skipped/i)).toBeInTheDocument();
     } finally {
@@ -188,36 +205,54 @@ describe('RequestCoverageRangeForm', () => {
     }
   });
 
-  it('submits with priority "optional" when the Optional toggle is selected', async () => {
+  it('defaults every shift\'s priority toggle to Normal (must-fill)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-18' } });
+      await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
+
+      const normalRadios = screen.getAllByRole('radio', { name: /^normal$/i });
+      const optionalRadios = screen.getAllByRole('radio', { name: /^optional$/i });
+      expect(normalRadios).toHaveLength(2);
+      normalRadios.forEach(r => expect(r).toBeChecked());
+      optionalRadios.forEach(r => expect(r).not.toBeChecked());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets each shift\'s priority be toggled independently, so one date can be optional while others stay normal', async () => {
+    // e.g. "I need help Sat, Sun and Tue - Sat's just optional." Each shift
+    // needs its own priority, not one setting for the whole request.
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
     try {
       const result: CoverageRequestBatchResult = {
-        created: [{ id: 1, group_id: 7, requested_by_user_id: 1, date: '2026-08-11', hour: 10, status: 'open', priority: 'normal', claimed_by_user_id: null }],
+        created: [],
         skipped: [],
       };
       vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({ data: result } as AxiosResponse<CoverageRequestBatchResult>);
 
       render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
       fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
-      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-18' } });
       await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
 
-      fireEvent.click(screen.getByRole('radio', { name: /optional/i }));
+      const firstRow = screen.getByRole('checkbox', { name: /2026-08-11/ }).closest('li')!;
+      fireEvent.click(within(firstRow).getByRole('radio', { name: /^optional$/i }));
+
       fireEvent.click(screen.getByRole('button', { name: /request coverage/i }));
 
       await waitFor(() => expect(scheduleApi.createCoverageRequestsBatch).toHaveBeenCalledWith(7, [
-        { date: '2026-08-11', hour: 10 },
-      ], 'optional'));
+        { date: '2026-08-11', hour: 10, priority: 'optional' },
+        { date: '2026-08-18', hour: 10, priority: 'normal' },
+      ]));
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it('defaults the priority toggle to Normal (must-fill)', async () => {
-    render(<RequestCoverageRangeForm groupId={7} slots={slots} />);
-    expect(screen.getByRole('radio', { name: /normal/i })).toBeChecked();
-    expect(screen.getByRole('radio', { name: /optional/i })).not.toBeChecked();
   });
 
   it('shows the result screen even when a consumer passes onSuccess, and Done calls onCancel not onSuccess', async () => {

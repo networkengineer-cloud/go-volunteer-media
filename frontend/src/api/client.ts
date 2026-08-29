@@ -671,6 +671,7 @@ export interface CoverageRequest {
 export interface CoverageRequestBatchItem {
   date: string;
   hour: number;
+  priority?: CoverageRequestPriority;
 }
 
 export interface CoverageRequestBatchSkipped {
@@ -727,6 +728,13 @@ export const scheduleApi = {
     }),
   claimCoverageRequest: (groupId: number, requestId: number) =>
     api.post<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/claim`),
+  reassignShift: (groupId: number, payload: { fromUserId: number; toUserId: number; date: string; hour: number }) =>
+    api.post<CoverageRequest>(`/groups/${groupId}/schedule/reassign`, {
+      from_user_id: payload.fromUserId,
+      to_user_id: payload.toUserId,
+      date: payload.date,
+      hour: payload.hour,
+    }),
   cancelCoverageRequest: (groupId: number, requestId: number) =>
     api.delete<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}`),
   createCoverageRequestsBatch: (groupId: number, requests: CoverageRequestBatchItem[], priority?: CoverageRequestPriority) =>

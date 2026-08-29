@@ -10,7 +10,7 @@ import NeedsCoverageList from './NeedsCoverageList';
 import Modal from '../../components/Modal';
 import RequestCoverageRangeForm from './RequestCoverageRangeForm';
 import CadenceLegend from './CadenceLegend';
-import { DAYS, HOURS, slotKey, formatHourLabel, formatSlotRangeLabel, maxHourFor, nextCadence } from './scheduleGrid';
+import { DAYS, HOURS, slotKey, formatSlotRangeLabel, maxHourFor, nextCadence, rowHeaderFor } from './scheduleGrid';
 import './ScheduleTab.css';
 
 export interface ScheduleTabProps {
@@ -164,7 +164,13 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
       </div>
 
       {viewMode === 'overview' && (
-        <ScheduleOverview groupId={groupId} totalMembers={members.length} currentUserId={currentUserId} />
+        <ScheduleOverview
+          groupId={groupId}
+          totalMembers={members.length}
+          currentUserId={currentUserId}
+          canManageMembers={canManageMembers}
+          groupMembers={members}
+        />
       )}
 
       {viewMode === 'needs-coverage' && (
@@ -212,10 +218,16 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
                 </div>
               ))}
             </div>
-            {HOURS.map(hour => (
+            {HOURS.map(hour => {
+              const { label: rowLabel, note: rowNote } = rowHeaderFor(hour);
+              return (
               <div key={hour} className="schedule-grid__row" role="row">
-                <div className="schedule-grid__cell schedule-grid__cell--header" role="rowheader">
-                  {formatHourLabel(hour)}
+                <div
+                  className="schedule-grid__cell schedule-grid__cell--header schedule-grid__cell--rowheader"
+                  role="rowheader"
+                >
+                  {rowLabel}
+                  {rowNote && <span className="schedule-grid__rowhead-note">{rowNote}</span>}
                 </div>
                 {DAYS.map((_, dayOfWeek) => {
                   const key = slotKey(dayOfWeek, hour);
@@ -247,12 +259,12 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
                     >
                       {cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag">A</span>}
                       {cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag">B</span>}
-                      {isTerminal && <span className="schedule-grid__duration-badge" aria-hidden="true">90m</span>}
                     </button>
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <p className="schedule-tab__hours-caption">

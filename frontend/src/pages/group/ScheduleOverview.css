@@ -170,6 +170,32 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Takes the full popover row width on its own line (rather than squeezing
+   next to the name span) since a select plus two buttons can't fit
+   alongside it in the popover's 140-220px width. */
+.schedule-overview__reassign {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1 1 100%;
+}
+
+.schedule-overview__reassign select {
+  width: 100%;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.schedule-overview__reassign-actions {
+  display: flex;
+  gap: 0.4rem;
 }
 
 .schedule-overview__tag {

@@ -7,6 +7,21 @@ import type { AxiosResponse } from 'axios';
 import type { ScheduleResponse, GroupMember, ScheduleOverviewResponse, CoverageRequestListItem } from '../../api/client';
 import { ToastProvider } from '../../contexts/ToastContext';
 
+// DateRangePicker's own calendar-click mechanics are covered by its own
+// test suite; standing in a plain two-input control here (matching
+// RequestCoverageRangeForm.test.tsx's convention) keeps these tests'
+// existing getByLabelText(/start date/i)/(/end date/i) queries working.
+vi.mock('../../components/DateRangePicker', () => ({
+  default: ({ startDate, endDate, onChange }: { startDate: string; endDate: string; onChange: (s: string, e: string) => void }) => (
+    <div>
+      <label htmlFor="mock-start-date">Start date</label>
+      <input id="mock-start-date" value={startDate} onChange={e => onChange(e.target.value, endDate)} />
+      <label htmlFor="mock-end-date">End date</label>
+      <input id="mock-end-date" value={endDate} onChange={e => onChange(startDate, e.target.value)} />
+    </div>
+  ),
+}));
+
 vi.mock('../../api/client', () => ({
   scheduleApi: {
     getMine: vi.fn(),
@@ -169,6 +184,37 @@ describe('ScheduleTab', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /individual/i }));
     expect(await screen.findByLabelText(/viewing schedule for/i)).toBeInTheDocument();
+  });
+
+  it('threads canManageMembers and the fetched roster through to the Overview, so an admin can reassign a shift there', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      vi.mocked(groupsApi.getMembers).mockResolvedValue({
+        data: [{ user_id: 42, username: 'vol2', first_name: 'Vic', is_group_admin: false, is_site_admin: false, email: '', skill_tags: [] }],
+      } as unknown as AxiosResponse<GroupMember[]>);
+      vi.mocked(scheduleApi.getOverview).mockResolvedValue({
+        data: {
+          week_start: '2026-08-09',
+          slots: [
+            { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+              { user_id: 42, username: 'vol2', status: 'normal' },
+            ] },
+          ],
+        },
+      } as unknown as AxiosResponse<ScheduleOverviewResponse>);
+
+      renderScheduleTab(true);
+      await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+      fireEvent.click(screen.getByRole('button', { name: /overview/i }));
+      await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalled());
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      expect(await screen.findByRole('button', { name: /reassign/i })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('applies the active toggle style to the selected view', async () => {
@@ -375,25 +421,36 @@ describe('ScheduleTab', () => {
     expect(screen.getByText(/Week B:/)).toBeInTheDocument();
   });
 
-  it('shows a caption explaining the day-of-week hours and 90-min terminal slot, and badges only the terminal cell', async () => {
+  it('shows a caption explaining the day-of-week hours and 90-min terminal slot', async () => {
     renderScheduleTab(false);
     await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
 
-    // The 90-min closing slot previously had no visible UI signal beyond
-    // an aria-label and a dashed border - this caption makes both day
-    // types' hours and the 90-min terminal slot explicit and visible.
     expect(screen.getByText(/Weekdays: 8am–6:30pm/)).toBeInTheDocument();
     expect(screen.getByText(/Weekends: 8am–4:30pm/)).toBeInTheDocument();
     expect(screen.getByText(/last shift 90 min/)).toBeInTheDocument();
+  });
 
-    // The weekday terminal cell (5:00-6:30pm, hour 17) shows a small "90m"
-    // badge alongside its dashed-border styling...
-    const terminalCell = screen.getByRole('cell', { name: 'Mon 5:00–6:30 PM' });
-    expect(within(terminalCell).getByText('90m')).toBeInTheDocument();
+  it('labels each row with its real time range instead of a bare start time', async () => {
+    renderScheduleTab(false);
+    await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
 
-    // ...but an ordinary 60-min cell does not.
-    const nonTerminalCell = screen.getByRole('cell', { name: 'Mon 4:00 PM' });
-    expect(within(nonTerminalCell).queryByText('90m')).not.toBeInTheDocument();
+    // An ordinary row, uniform across weekday and weekend, is a plain range.
+    expect(screen.getByRole('rowheader', { name: '10:00–11:00 AM' })).toBeInTheDocument();
+
+    // The weekday-only terminal hour (5-6:30pm) needs no note - no weekend
+    // cell exists in that row to be misled by it.
+    expect(screen.getByRole('rowheader', { name: '5:00–6:30 PM' })).toBeInTheDocument();
+
+    // The shared hour where weekend's 90-min terminal slot (ends 4:30) falls
+    // on the same row as weekday's ordinary 60-min slot (ends 4:00) can't be
+    // truthfully stated as one range, so the row states the weekday case and
+    // calls out the weekend exception separately.
+    const sharedRowHeader = screen.getByRole('rowheader', { name: /3:00–4:00 PM/ });
+    expect(within(sharedRowHeader).getByText('Weekends end 4:30 PM')).toBeInTheDocument();
+
+    // The old bare-start-time labels and "90m" badge are gone.
+    expect(screen.queryByRole('rowheader', { name: '3:00 PM' })).not.toBeInTheDocument();
+    expect(screen.queryByText('90m')).not.toBeInTheDocument();
   });
 
   it('drops a legacy out-of-range slot from the loaded schedule so it is never resubmitted on save', async () => {
