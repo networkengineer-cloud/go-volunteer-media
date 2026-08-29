@@ -186,16 +186,46 @@
   border-color: var(--brand);
 }
 
+/* Was `background: var(--brand); opacity: 0.75/0.5`, which composites the
+   ENTIRE button - including the white cadence-tag text and the 90m badge -
+   against the page background, cutting text contrast instead of just
+   fading the fill. Switched to color-mix() so only the background blends;
+   the white text (forced via --brand-contrast below/in the cadence-tag and
+   duration-badge rules) is left untouched.
+
+   The two themes need DIFFERENT mix percentages, not one shared value:
+   light theme's --surface is white, so blending toward it lightens the
+   background - a higher brand percentage is what keeps it dark enough for
+   white text (below ~84% brand the background gets too light and drops
+   under 4.5:1). Dark theme's --surface is dark (#1f2937), so blending
+   toward it DARKENS the background - and dark theme's solid --brand
+   (#00a87e) is lighter/more saturated than light theme's, so white text on
+   it already sits under AA even at 100% brand (~3.0:1, a pre-existing
+   issue on the "weekly" cell, out of scope here) - a LOWER brand
+   percentage is what darkens the mix enough to clear AA there.
+
+   Verified via the same relative-luminance contrast math as
+   ScheduleOverview.css's tier comments above (white text, both themes):
+     light biweekly-a (90% mix, ~rgb(26,122,101)): white ~5.24:1 (passes)
+     light biweekly-b (85% mix, ~rgb(38,129,110)): white ~4.71:1 (passes)
+     dark  biweekly-a (60% mix, ~rgb(12,117,98)):  white ~5.60:1 (passes)
+     dark  biweekly-b (40% mix, ~rgb(19,92,83)):   white ~7.85:1 (passes) */
 .schedule-grid__slot--biweekly-a {
-  background: var(--brand);
+  background: color-mix(in srgb, var(--brand) 90%, var(--surface));
   border-color: var(--brand);
-  opacity: 0.75;
 }
 
 .schedule-grid__slot--biweekly-b {
-  background: var(--brand);
+  background: color-mix(in srgb, var(--brand) 85%, var(--surface));
   border-color: var(--brand);
-  opacity: 0.5;
+}
+
+[data-theme='dark'] .schedule-grid__slot--biweekly-a {
+  background: color-mix(in srgb, var(--brand) 60%, var(--surface));
+}
+
+[data-theme='dark'] .schedule-grid__slot--biweekly-b {
+  background: color-mix(in srgb, var(--brand) 40%, var(--surface));
 }
 
 .schedule-grid__cadence-tag {
