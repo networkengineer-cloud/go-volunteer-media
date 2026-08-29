@@ -50,6 +50,18 @@ describe('NeedsCoverageList', () => {
     expect(screen.getByText(/9:00 AM/)).toBeInTheDocument();
   });
 
+  it('shows the 90-min start-end range for a terminal-hour shift, not just the start time', async () => {
+    // 2026-08-11 is a Tuesday (a weekday); hour 17 is that day's terminal
+    // (maxHourFor) slot, a 90-min shift ending 6:30 PM. Someone deciding
+    // whether to claim it needs to see the actual end time.
+    mockList([
+      { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 17, claimable: true },
+    ]);
+    render(<NeedsCoverageList groupId={7} currentUserId={1} />);
+
+    expect(await screen.findByText(/5:00–6:30 PM/)).toBeInTheDocument();
+  });
+
   it('claiming a shift calls claimCoverageRequest and refetches the list', async () => {
     mockList([
       { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, claimable: true },

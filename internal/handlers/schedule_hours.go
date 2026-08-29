@@ -1,6 +1,10 @@
 package handlers
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // isWeekendDay reports whether dayOfWeek (0=Sunday..6=Saturday) falls on a
 // weekend, which closes earlier than a weekday.
@@ -25,6 +29,40 @@ func slotDurationMinutes(dayOfWeek, hour int) int {
 		return 90
 	}
 	return 60
+}
+
+// formatClockAMPM renders an hour (0-23) and minute as a 12-hour clock
+// string, e.g. formatClockAMPM(18, 30) -> "6:30 PM". Mirrors
+// frontend/src/pages/group/scheduleGrid.ts's formatClock.
+func formatClockAMPM(hour, minute int) string {
+	period := "AM"
+	if hour >= 12 {
+		period = "PM"
+	}
+	displayHour := hour % 12
+	if displayHour == 0 {
+		displayHour = 12
+	}
+	return fmt.Sprintf("%d:%02d %s", displayHour, minute, period)
+}
+
+// formatSlotRangeLabel renders a ShiftSlot/CoverageRequest's day-of-week and
+// start hour as a plain start-time label ("10:00 AM") for a normal 60-min
+// slot, or a "start–end" range ("5:00–6:30 PM") for the day's terminal
+// 90-min slot - matching frontend/src/pages/group/scheduleGrid.ts's
+// formatSlotRangeLabel exactly (keep both in sync if the hour rules ever
+// change).
+func formatSlotRangeLabel(dayOfWeek, hour int) string {
+	duration := slotDurationMinutes(dayOfWeek, hour)
+	if duration == 60 {
+		return formatClockAMPM(hour, 0)
+	}
+	endTotalMinutes := hour*60 + duration
+	endHour := endTotalMinutes / 60
+	endMinute := endTotalMinutes % 60
+	startTime := strings.TrimSuffix(strings.TrimSuffix(formatClockAMPM(hour, 0), " AM"), " PM")
+	endTime := formatClockAMPM(endHour, endMinute)
+	return fmt.Sprintf("%s–%s", startTime, endTime)
 }
 
 // biweeklyReferenceSunday anchors the "week A" / "week B" cycle for

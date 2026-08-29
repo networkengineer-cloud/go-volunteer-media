@@ -46,6 +46,28 @@ func TestSlotDurationMinutes(t *testing.T) {
 	}
 }
 
+func TestFormatSlotRangeLabel(t *testing.T) {
+	tests := []struct {
+		name      string
+		dayOfWeek int
+		hour      int
+		want      string
+	}{
+		{"weekday normal hour is a plain start time", 3, 14, "2:00 PM"},
+		{"weekday terminal hour (17) is a 90-min range ending 6:30 PM", 3, 17, "5:00–6:30 PM"},
+		{"weekend normal hour is a plain start time", 0, 10, "10:00 AM"},
+		{"weekend terminal hour (15) is a 90-min range ending 4:30 PM", 6, 15, "3:00–4:30 PM"},
+		{"morning hour before noon formats as AM", 1, 8, "8:00 AM"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatSlotRangeLabel(tt.dayOfWeek, tt.hour); got != tt.want {
+				t.Errorf("formatSlotRangeLabel(%d, %d) = %q, want %q", tt.dayOfWeek, tt.hour, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestWeekParity(t *testing.T) {
 	tests := []struct {
 		name string

@@ -366,6 +366,21 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 			t.Fatalf("Expected %q, got %q", want, summary)
 		}
 	})
+
+	t.Run("a terminal-hour (90-min) request shows the full start-end range, not just the start time", func(t *testing.T) {
+		// nextWeekday(Tuesday) is a weekday, whose terminal hour is 17
+		// (maxHourFor) - a 90-min slot ending 6:30 PM. Someone deciding
+		// whether to claim this from the notification text needs to see
+		// the actual end time, not just "5:00 PM".
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: date, Hour: 17},
+		})
+		want := fmt.Sprintf("Jane Doe needs coverage for their 5:00–6:30 PM shift on %s.", date.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
 }
 
 func TestScheduleEmailNotificationsEnabled(t *testing.T) {

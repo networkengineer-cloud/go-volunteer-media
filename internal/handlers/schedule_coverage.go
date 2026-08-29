@@ -101,27 +101,13 @@ func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCo
 	if len(requests) == 1 {
 		r := requests[0]
 		return fmt.Sprintf("%s needs coverage for their %s shift on %s.",
-			requesterName, formatHourAMPM(r.Hour), r.Date.Format("Monday, January 2"))
+			requesterName, formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour), r.Date.Format("Monday, January 2"))
 	}
 	lines := make([]string, 0, len(requests))
 	for _, r := range requests {
-		lines = append(lines, fmt.Sprintf("- %s at %s", r.Date.Format("Monday, January 2"), formatHourAMPM(r.Hour)))
+		lines = append(lines, fmt.Sprintf("- %s at %s", r.Date.Format("Monday, January 2"), formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour)))
 	}
 	return fmt.Sprintf("%s needs coverage for %d shifts:\n%s", requesterName, len(requests), strings.Join(lines, "\n"))
-}
-
-// formatHourAMPM renders a 24-hour ShiftSlot/CoverageRequest hour (8..17)
-// as e.g. "10:00 AM" for notification text.
-func formatHourAMPM(hour int) string {
-	period := "AM"
-	displayHour := hour
-	if hour >= 12 {
-		period = "PM"
-	}
-	if displayHour > 12 {
-		displayHour -= 12
-	}
-	return fmt.Sprintf("%d:00 %s", displayHour, period)
 }
 
 // createOneCoverageRequest validates and creates a single coverage
@@ -470,7 +456,7 @@ func notifyRequesterOfClaim(db *gorm.DB, emailService *email.Service, groupMeSer
 
 		title := "Your shift is covered"
 		content := fmt.Sprintf("%s will cover your %s shift on %s.",
-			displayName(claimant), formatHourAMPM(req.Hour), req.Date.Format("Monday, January 2"))
+			displayName(claimant), formatSlotRangeLabel(int(req.Date.Weekday()), req.Hour), req.Date.Format("Monday, January 2"))
 
 		if emailService != nil && emailService.IsConfigured() && requester.EmailNotificationsEnabled && scheduleEmailNotificationsEnabled() {
 			if err := emailService.SendAnnouncementEmail(bgCtx, requester.Email, title, content); err != nil {

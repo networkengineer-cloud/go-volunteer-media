@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { scheduleApi } from '../../api/client';
 import type { ScheduleSlot, CoverageRequestBatchItem, CoverageRequestBatchResult } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
-import { formatHourLabel, maxHourFor, weekParity } from './scheduleGrid';
+import { formatSlotRangeLabel, maxHourFor, weekParity } from './scheduleGrid';
 import './RequestCoverageRangeForm.css';
 
 export interface RequestCoverageRangeFormProps {
@@ -33,6 +33,14 @@ function occurrenceKey(o: Occurrence): string {
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+// Occurrences/skipped items only carry a `date` (not a day_of_week), so the
+// day-of-week needed by formatSlotRangeLabel (to know whether this item's
+// hour is a day's terminal 90-min slot) is derived here from that date.
+function dayOfWeekFromIso(isoDate: string): number {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
 // computeCandidateOccurrences finds every date within [startDate, endDate]
@@ -166,7 +174,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
             <ul>
               {result.skipped.map(s => (
                 <li key={`${s.date}-${s.hour}`}>
-                  {s.date} at {formatHourLabel(s.hour)} — {s.reason}
+                  {s.date} at {formatSlotRangeLabel(dayOfWeekFromIso(s.date), s.hour)} — {s.reason}
                 </li>
               ))}
             </ul>
@@ -223,7 +231,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
           <ul className="request-coverage-range-form__list">
             {candidates.map(o => {
               const key = occurrenceKey(o);
-              const label = `${o.date} — ${formatHourLabel(o.hour)}`;
+              const label = `${o.date} — ${formatSlotRangeLabel(dayOfWeekFromIso(o.date), o.hour)}`;
               return (
                 <li key={key}>
                   <label>

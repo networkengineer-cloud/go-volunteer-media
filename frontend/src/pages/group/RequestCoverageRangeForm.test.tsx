@@ -122,6 +122,23 @@ describe('RequestCoverageRangeForm', () => {
     }
   });
 
+  it('shows the 90-min start-end range for a terminal-hour occurrence, not just the start time', async () => {
+    // 2026-08-11 is a Tuesday (a weekday); hour 17 is that day's terminal
+    // (maxHourFor) slot, a 90-min shift ending 6:30 PM.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      const terminalSlots: ScheduleSlot[] = [{ day_of_week: 2, hour: 17 }];
+      render(<RequestCoverageRangeForm groupId={7} slots={terminalSlots} />);
+      fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-11' } });
+      fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-11' } });
+
+      expect(await screen.findByRole('checkbox', { name: /5:00–6:30 PM/ })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('submits only the checked occurrences and shows the created/skipped summary', async () => {
     // Pinned for the same reason: the submitted payload asserted below
     // includes 2026-08-11, which only survives the component's past-date
