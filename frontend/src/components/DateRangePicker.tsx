@@ -59,6 +59,40 @@ function todayIsoFallback(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+interface PopoverPosition {
+  top: number;
+  left: number;
+}
+
+const VIEWPORT_MARGIN = 8;
+const POPOVER_WIDTH = 260;
+// The popover's own CSS caps it at this height (with overflow-y: auto), so
+// this doubles as the guaranteed maximum for the flip-above decision below,
+// not just an estimate - same technique ScheduleOverview.tsx's own popover
+// positioning uses for the same reason (see its ESTIMATED_POPOVER_HEIGHT).
+const POPOVER_MAX_HEIGHT = 340;
+
+// Anchors the popover to the trigger button's live viewport position rather
+// than relying on `position: absolute` inside a `position: relative`
+// ancestor. This component can be rendered inside Modal, whose
+// `.modal__content` is `overflow-y: auto` - an absolutely-positioned
+// popover there doesn't expand the modal's own (content-sized) height, so
+// it was rendering squeezed into a few pixels of scrollable sliver on
+// mobile instead of appearing below the field. `position: fixed` computed
+// from getBoundingClientRect() escapes that clipping ancestor entirely,
+// the same fix ScheduleOverview.tsx's member popover already uses for an
+// identical class of problem.
+function popoverPositionFor(rect: DOMRect): PopoverPosition {
+  const spaceBelow = window.innerHeight - rect.bottom - 4;
+  const top = spaceBelow >= POPOVER_MAX_HEIGHT
+    ? rect.bottom + 4
+    : Math.max(VIEWPORT_MARGIN, rect.top - 4 - POPOVER_MAX_HEIGHT);
+
+  const maxLeft = window.innerWidth - VIEWPORT_MARGIN - POPOVER_WIDTH;
+  const left = Math.min(Math.max(rect.left, VIEWPORT_MARGIN), Math.max(VIEWPORT_MARGIN, maxLeft));
+  return { top, left };
+}
+
 // DateRangePicker lets both ends of a date range be chosen from one popover
 // (two clicks on a calendar) instead of two separate native date inputs.
 // The first click sets the start and clears any existing end, so a click
@@ -69,7 +103,9 @@ function todayIsoFallback(): string {
 const DateRangePicker: React.FC<DateRangePickerProps> = ({ startDate, endDate, onChange, min }) => {
   const [open, setOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(() => startOfMonthIso(startDate || min || todayIsoFallback()));
+  const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -92,6 +128,9 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ startDate, endDate, o
   const toggleOpen = () => {
     if (!open) {
       setViewMonth(startOfMonthIso(startDate || min || todayIsoFallback()));
+      if (triggerRef.current) {
+        setPopoverPosition(popoverPositionFor(triggerRef.current.getBoundingClientRect()));
+      }
     }
     setOpen(prev => !prev);
   };
@@ -121,11 +160,14 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ startDate, endDate, o
 
   return (
     <div className="date-range-picker" ref={containerRef}>
-      <button type="button" className="date-range-picker__trigger" onClick={toggleOpen}>
+      <button type="button" className="date-range-picker__trigger" onClick={toggleOpen} ref={triggerRef}>
         {triggerLabel}
       </button>
-      {open && (
-        <div className="date-range-picker__popover">
+      {open && popoverPosition && (
+        <div
+          className="date-range-picker__popover"
+          style={{ top: popoverPosition.top, left: popoverPosition.left }}
+        >
           <div className="date-range-picker__nav">
             <button
               type="button"

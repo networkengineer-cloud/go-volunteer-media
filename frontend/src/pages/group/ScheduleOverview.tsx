@@ -3,7 +3,7 @@ import axios from 'axios';
 import { scheduleApi } from '../../api/client';
 import type { ScheduleOverviewMember, ScheduleSlot, GroupMember } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
-import { DAYS, HOURS, slotKey, formatHourLabel, formatSlotRangeLabel, maxHourFor, currentWeekStart } from './scheduleGrid';
+import { DAYS, HOURS, slotKey, formatSlotRangeLabel, maxHourFor, currentWeekStart, rowHeaderFor } from './scheduleGrid';
 import CadenceLegend from './CadenceLegend';
 import Modal from '../../components/Modal';
 import RequestCoverageRangeForm from './RequestCoverageRangeForm';
@@ -338,10 +338,16 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
             </div>
           ))}
         </div>
-        {HOURS.map(hour => (
+        {HOURS.map(hour => {
+          const { label: rowLabel, note: rowNote } = rowHeaderFor(hour);
+          return (
           <div key={hour} className="schedule-grid__row" role="row">
-            <div className="schedule-grid__cell schedule-grid__cell--header" role="rowheader">
-              {formatHourLabel(hour)}
+            <div
+              className="schedule-grid__cell schedule-grid__cell--header schedule-grid__cell--rowheader"
+              role="rowheader"
+            >
+              {rowLabel}
+              {rowNote && <span className="schedule-grid__rowhead-note">{rowNote}</span>}
             </div>
             {DAYS.map((_, dayOfWeek) => {
               const key = slotKey(dayOfWeek, hour);
@@ -535,7 +541,8 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <Modal

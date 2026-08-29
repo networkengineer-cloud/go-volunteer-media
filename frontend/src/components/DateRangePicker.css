@@ -24,12 +24,20 @@
   outline-offset: 1px;
 }
 
+/* position: fixed (with top/left set inline from the trigger's live
+   getBoundingClientRect(), see DateRangePicker.tsx) rather than absolute
+   relative to the .date-range-picker wrapper - this component can render
+   inside Modal, whose .modal__content is overflow-y: auto, and an
+   absolutely-positioned popover there doesn't expand the modal's own
+   content-sized height, so it rendered squeezed into a few pixels of
+   scrollable sliver on mobile. Fixed positioning escapes that clipping
+   ancestor entirely, same fix ScheduleOverview.tsx's own popover uses. */
 .date-range-picker__popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
   z-index: 20;
   width: 260px;
+  max-height: 340px;
+  overflow-y: auto;
   padding: 0.75rem;
   background: var(--surface);
   border: 1px solid var(--border);
