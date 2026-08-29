@@ -27,7 +27,36 @@ var (
 	errRequestNotOpen   = errors.New("coverage request is no longer open")
 	errSelfClaim        = errors.New("cannot claim your own coverage request")
 	errClaimConflict    = errors.New("claimant already has a conflicting shift at that time")
+	errReassignSameUser = errors.New("cannot reassign a shift to the same person")
+	errNotGroupMember   = errors.New("user is not a member of this group")
 )
+
+// hasConflictingCommitment reports whether userID already has a real-world
+// scheduling conflict at date/hour: either an active recurring ShiftSlot (in
+// any group - a time conflict doesn't respect group boundaries) or an
+// already-claimed ShiftCoverageRequest at that exact date/hour. Shared by
+// ClaimCoverageRequest and ReassignShift, which both need to guarantee the
+// person ending up on the shift isn't double-booked.
+func hasConflictingCommitment(tx *gorm.DB, userID uint, date time.Time, hour int) (bool, error) {
+	var conflictingSlots []models.ShiftSlot
+	if err := tx.Where("user_id = ? AND day_of_week = ? AND hour = ?", userID, int(date.Weekday()), hour).
+		Find(&conflictingSlots).Error; err != nil {
+		return false, err
+	}
+	for _, s := range conflictingSlots {
+		if slotActiveForWeek(s.Cadence, weekStartOf(date)) {
+			return true, nil
+		}
+	}
+	var conflictCount int64
+	if err := tx.Model(&models.ShiftCoverageRequest{}).
+		Where("claimed_by_user_id = ? AND date = ? AND hour = ? AND status = ?",
+			userID, date, hour, models.CoverageRequestClaimed).
+		Count(&conflictCount).Error; err != nil {
+		return false, err
+	}
+	return conflictCount > 0, nil
+}
 
 // scheduleEmailNotificationsEnabled gates coverage-request and claim emails
 // only - GroupMe posts are unaffected. Deliberately opt-in - unset or any
@@ -410,26 +439,11 @@ func ClaimCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServi
 				return errSelfClaim
 			}
 
-			// Conflict check spans every group the claimant belongs to - a
-			// real-world time conflict doesn't respect group boundaries.
-			var conflictingSlots []models.ShiftSlot
-			if err := tx.Where("user_id = ? AND day_of_week = ? AND hour = ?", callerUserID, int(reqRow.Date.Weekday()), reqRow.Hour).
-				Find(&conflictingSlots).Error; err != nil {
+			conflict, err := hasConflictingCommitment(tx, callerUserID, reqRow.Date, reqRow.Hour)
+			if err != nil {
 				return err
 			}
-			for _, s := range conflictingSlots {
-				if slotActiveForWeek(s.Cadence, weekStartOf(reqRow.Date)) {
-					return errClaimConflict
-				}
-			}
-			var conflictCount int64
-			if err := tx.Model(&models.ShiftCoverageRequest{}).
-				Where("claimed_by_user_id = ? AND date = ? AND hour = ? AND status = ?",
-					callerUserID, reqRow.Date, reqRow.Hour, models.CoverageRequestClaimed).
-				Count(&conflictCount).Error; err != nil {
-				return err
-			}
-			if conflictCount > 0 {
+			if conflict {
 				return errClaimConflict
 			}
 
@@ -516,6 +530,197 @@ func notifyRequesterOfClaim(db *gorm.DB, emailService *email.Service, groupMeSer
 		if groupMeService != nil {
 			if err := sendUpdateToGroupMe(bgCtx, db, groupMeService, req.GroupID, title, content); err != nil {
 				logger.Error("Failed to send coverage claim GroupMe message", err)
+			}
+		}
+	}()
+}
+
+type reassignShiftRequest struct {
+	FromUserID uint   `json:"from_user_id"`
+	ToUserID   uint   `json:"to_user_id"`
+	Date       string `json:"date"`
+	Hour       int    `json:"hour"`
+}
+
+// ReassignShift lets a group admin directly swap who's covering a specific
+// date's shift in one step - e.g. a change already agreed in person, which
+// would otherwise need the original volunteer to request coverage and the
+// replacement to separately claim it. It creates the ShiftCoverageRequest
+// already in the claimed state (never a visible "open" one), so
+// GetGroupScheduleOverview - which derives status purely from ShiftSlot and
+// ShiftCoverageRequest rows - reflects the swap immediately with no
+// additional wiring. Requires group admin (or site admin) access.
+func ReassignShift(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rawDB := db
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		var req reassignShiftRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+		if req.ToUserID == req.FromUserID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": errReassignSameUser.Error()})
+			return
+		}
+
+		date, err := time.Parse("2006-01-02", req.Date)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "date must be in YYYY-MM-DD format"})
+			return
+		}
+		maxHour := maxHourFor(int(date.Weekday()))
+		if req.Hour < 8 || req.Hour > maxHour {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("hour must be between 8 and %d for that date's weekday", maxHour)})
+			return
+		}
+		today := time.Now().UTC().Truncate(24 * time.Hour)
+		if date.Before(today) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": errPastDate.Error()})
+			return
+		}
+
+		groupIDUint64, err := strconv.ParseUint(groupIDParam, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+		groupIDUint := uint(groupIDUint64)
+
+		var membership models.UserGroup
+		if err := db.Where("user_id = ? AND group_id = ?", req.ToUserID, groupIDUint).First(&membership).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": errNotGroupMember.Error()})
+			return
+		}
+
+		var created models.ShiftCoverageRequest
+		err = db.Transaction(func(tx *gorm.DB) error {
+			var slot models.ShiftSlot
+			if err := tx.Where("user_id = ? AND group_id = ? AND day_of_week = ? AND hour = ?",
+				req.FromUserID, groupIDUint, int(date.Weekday()), req.Hour).First(&slot).Error; err != nil {
+				return errNoMatchingSlot
+			}
+			if !slotActiveForWeek(slot.Cadence, weekStartOf(date)) {
+				return errNoMatchingSlot
+			}
+
+			var existing models.ShiftCoverageRequest
+			err := tx.Where("group_id = ? AND requested_by_user_id = ? AND date = ? AND hour = ? AND status != ?",
+				groupIDUint, req.FromUserID, date, req.Hour, models.CoverageRequestCancelled).
+				First(&existing).Error
+			if err == nil {
+				return errDuplicateRequest
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+
+			conflict, err := hasConflictingCommitment(tx, req.ToUserID, date, req.Hour)
+			if err != nil {
+				return err
+			}
+			if conflict {
+				return errClaimConflict
+			}
+
+			now := time.Now().UTC()
+			toUserID := req.ToUserID
+			created = models.ShiftCoverageRequest{
+				GroupID:           groupIDUint,
+				RequestedByUserID: req.FromUserID,
+				Date:              date,
+				Hour:              req.Hour,
+				Status:            models.CoverageRequestClaimed,
+				Priority:          "normal",
+				ClaimedByUserID:   &toUserID,
+				ClaimedAt:         &now,
+			}
+			return tx.Create(&created).Error
+		})
+
+		switch {
+		case errors.Is(err, errNoMatchingSlot):
+			c.JSON(http.StatusBadRequest, gin.H{"error": errNoMatchingSlot.Error()})
+			return
+		case errors.Is(err, errDuplicateRequest):
+			c.JSON(http.StatusConflict, gin.H{"error": errDuplicateRequest.Error()})
+			return
+		case errors.Is(err, errClaimConflict):
+			c.JSON(http.StatusConflict, gin.H{"error": errClaimConflict.Error()})
+			return
+		case err != nil:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reassign shift"})
+			return
+		}
+
+		c.JSON(http.StatusCreated, toCoverageRequestResponse(created))
+
+		notifyOfReassignment(rawDB, emailService, groupMeService, created)
+	}
+}
+
+// notifyOfReassignment tells both volunteers involved in an admin-arranged
+// reassignment: the original requires an explanation for why the shift left
+// their schedule, and the new covering volunteer needs to know they've
+// picked it up. Posts one GroupMe message to the group (not one per
+// recipient, unlike the two emails) since GroupMe is a shared channel. Runs
+// in the background so it never delays the HTTP response.
+func notifyOfReassignment(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, req models.ShiftCoverageRequest) {
+	if emailService == nil && groupMeService == nil {
+		return
+	}
+	if req.ClaimedByUserID == nil {
+		return
+	}
+	go func() {
+		bgCtx := context.Background()
+		logger := logging.WithContext(bgCtx)
+
+		var from, to models.User
+		if err := db.WithContext(bgCtx).First(&from, req.RequestedByUserID).Error; err != nil {
+			logger.Error("Failed to load original volunteer for reassignment notification", err)
+			return
+		}
+		if err := db.WithContext(bgCtx).First(&to, *req.ClaimedByUserID).Error; err != nil {
+			logger.Error("Failed to load new volunteer for reassignment notification", err)
+			return
+		}
+
+		shiftLabel := fmt.Sprintf("%s shift on %s", formatSlotRangeLabel(int(req.Date.Weekday()), req.Hour), req.Date.Format("Monday, January 2"))
+		fromTitle := "Your shift was reassigned"
+		fromContent := fmt.Sprintf("%s will now cover your %s.", displayName(to), shiftLabel)
+		toTitle := "You've been assigned a shift"
+		toContent := fmt.Sprintf("You're now covering %s's %s.", displayName(from), shiftLabel)
+
+		if emailService != nil && emailService.IsConfigured() && scheduleEmailNotificationsEnabled() {
+			if from.EmailNotificationsEnabled {
+				if err := emailService.SendAnnouncementEmail(bgCtx, from.Email, fromTitle, fromContent); err != nil {
+					logger.Error("Failed to send reassignment email to original volunteer", err)
+				}
+			}
+			if to.EmailNotificationsEnabled {
+				if err := emailService.SendAnnouncementEmail(bgCtx, to.Email, toTitle, toContent); err != nil {
+					logger.Error("Failed to send reassignment email to new volunteer", err)
+				}
+			}
+		}
+		if groupMeService != nil {
+			groupContent := fmt.Sprintf("%s's %s has been reassigned to %s.", displayName(from), shiftLabel, displayName(to))
+			if err := sendUpdateToGroupMe(bgCtx, db, groupMeService, req.GroupID, "Shift reassigned", groupContent); err != nil {
+				logger.Error("Failed to send reassignment GroupMe message", err)
 			}
 		}
 	}()

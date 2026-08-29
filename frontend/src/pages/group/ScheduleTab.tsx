@@ -164,7 +164,13 @@ const ScheduleTab: React.FC<ScheduleTabProps> = ({ groupId, canManageMembers, cu
       </div>
 
       {viewMode === 'overview' && (
-        <ScheduleOverview groupId={groupId} totalMembers={members.length} currentUserId={currentUserId} />
+        <ScheduleOverview
+          groupId={groupId}
+          totalMembers={members.length}
+          currentUserId={currentUserId}
+          canManageMembers={canManageMembers}
+          groupMembers={members}
+        />
       )}
 
       {viewMode === 'needs-coverage' && (

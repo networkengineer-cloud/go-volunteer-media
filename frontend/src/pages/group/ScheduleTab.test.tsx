@@ -186,6 +186,37 @@ describe('ScheduleTab', () => {
     expect(await screen.findByLabelText(/viewing schedule for/i)).toBeInTheDocument();
   });
 
+  it('threads canManageMembers and the fetched roster through to the Overview, so an admin can reassign a shift there', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      vi.mocked(groupsApi.getMembers).mockResolvedValue({
+        data: [{ user_id: 42, username: 'vol2', first_name: 'Vic', is_group_admin: false, is_site_admin: false, email: '', skill_tags: [] }],
+      } as unknown as AxiosResponse<GroupMember[]>);
+      vi.mocked(scheduleApi.getOverview).mockResolvedValue({
+        data: {
+          week_start: '2026-08-09',
+          slots: [
+            { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+              { user_id: 42, username: 'vol2', status: 'normal' },
+            ] },
+          ],
+        },
+      } as unknown as AxiosResponse<ScheduleOverviewResponse>);
+
+      renderScheduleTab(true);
+      await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());
+      fireEvent.click(screen.getByRole('button', { name: /overview/i }));
+      await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalled());
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      expect(await screen.findByRole('button', { name: /reassign/i })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('applies the active toggle style to the selected view', async () => {
     renderScheduleTab(false);
     await waitFor(() => expect(scheduleApi.getMine).toHaveBeenCalled());

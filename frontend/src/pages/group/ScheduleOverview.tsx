@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { scheduleApi } from '../../api/client';
-import type { ScheduleOverviewMember, ScheduleSlot } from '../../api/client';
+import type { ScheduleOverviewMember, ScheduleSlot, GroupMember } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import { DAYS, HOURS, slotKey, formatHourLabel, formatSlotRangeLabel, maxHourFor, currentWeekStart } from './scheduleGrid';
 import CadenceLegend from './CadenceLegend';
@@ -16,6 +16,13 @@ export interface ScheduleOverviewProps {
   groupId: number;
   totalMembers: number;
   currentUserId: number;
+  // Gates the admin-only "Reassign" control on a normal-status popover row -
+  // a direct one-step swap for changes already agreed in person, bypassing
+  // the request-then-claim flow entirely. Both default to "off" so every
+  // existing caller/test that doesn't know about this feature yet keeps
+  // rendering exactly as before.
+  canManageMembers?: boolean;
+  groupMembers?: GroupMember[];
 }
 
 function memberDisplayName(member: ScheduleOverviewMember): string {
@@ -135,7 +142,7 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembers, currentUserId }) => {
+const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembers, currentUserId, canManageMembers = false, groupMembers = [] }) => {
   const toast = useToast();
   const [weekStart, setWeekStart] = useState<string>(currentWeekStart());
   const [membersBySlot, setMembersBySlot] = useState<Map<string, ScheduleOverviewMember[]>>(new Map());
@@ -150,6 +157,12 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   // form's own candidate computation only ever offers this one date/hour,
   // respecting the viewer's own cadence for it) and the date itself.
   const [rangeFormContext, setRangeFormContext] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
+  // Which normal-status popover row (by user_id) is mid-reassignment, plus
+  // the replacement chosen in its dropdown so far. Cleared whenever the
+  // popover itself closes (see the activeCellKey effect below).
+  const [reassigningUserId, setReassigningUserId] = useState<number | null>(null);
+  const [reassignToUserId, setReassignToUserId] = useState<number | ''>('');
+  const [reassigning, setReassigning] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Cancels any in-flight request before starting a new one - matching
@@ -205,6 +218,14 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
     setPopoverPosition(null);
   }, [weekStart]);
 
+  // Whichever cell's popover is open (or now closed) invalidates any
+  // in-progress reassignment picker - it belongs to whatever row was
+  // showing a moment ago, not the newly active (or now-absent) one.
+  useEffect(() => {
+    setReassigningUserId(null);
+    setReassignToUserId('');
+  }, [activeCellKey]);
+
   useEffect(() => {
     if (activeCellKey === null) return;
     const handleClickOutside = (event: MouseEvent) => {
@@ -257,6 +278,23 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
         loadOverview();
       })
       .finally(() => setBusyRequestId(null));
+  };
+
+  const handleReassign = (fromUserId: number, date: string, hour: number) => {
+    if (reassignToUserId === '') return;
+    setReassigning(true);
+    scheduleApi.reassignShift(groupId, { fromUserId, toUserId: reassignToUserId, date, hour })
+      .then(() => {
+        toast.showSuccess('Shift reassigned.');
+        setActiveCellKey(null);
+        setPopoverPosition(null);
+        loadOverview();
+      })
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to reassign shift.');
+        loadOverview();
+      })
+      .finally(() => setReassigning(false));
   };
 
   if (loading) {
@@ -438,6 +476,55 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                               >
                                 Request coverage
                               </button>
+                            )}
+                            {canManageMembers && member.status === 'normal' && date >= today && (
+                              reassigningUserId === member.user_id ? (
+                                <span className="schedule-overview__reassign">
+                                  <select
+                                    aria-label={`Reassign ${memberDisplayName(member)}'s shift to`}
+                                    value={reassignToUserId}
+                                    onChange={e => setReassignToUserId(e.target.value === '' ? '' : Number(e.target.value))}
+                                  >
+                                    <option value="">Choose person…</option>
+                                    {groupMembers
+                                      .filter(m => m.user_id !== member.user_id)
+                                      .map(m => (
+                                        <option key={m.user_id} value={m.user_id}>
+                                          {[m.first_name, m.last_name].filter(Boolean).join(' ') || m.username}
+                                        </option>
+                                      ))}
+                                  </select>
+                                  <span className="schedule-overview__reassign-actions">
+                                    <button
+                                      type="button"
+                                      className="btn-secondary schedule-overview__action"
+                                      disabled={reassignToUserId === '' || reassigning}
+                                      onClick={() => handleReassign(member.user_id, date, hour)}
+                                    >
+                                      Confirm
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-secondary schedule-overview__action"
+                                      disabled={reassigning}
+                                      onClick={() => setReassigningUserId(null)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </span>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn-secondary schedule-overview__action"
+                                  onClick={() => {
+                                    setReassigningUserId(member.user_id);
+                                    setReassignToUserId('');
+                                  }}
+                                >
+                                  Reassign
+                                </button>
+                              )
                             )}
                           </li>
                         ))}
