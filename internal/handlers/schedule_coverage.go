@@ -115,15 +115,40 @@ func displayName(u models.User) string {
 // coverage requests as a single bulk notification body, so a member with
 // several shifts needing coverage produces one accurate email/GroupMe post
 // listing all of them instead of a separate, fragmented message per shift.
+// A request's Priority softens the wording - "optional" requests read as a
+// nice-to-have rather than urgent, since the whole point of the flag is to
+// stop an over-staffed shift from broadcasting to the group as if it needs
+// help. When every request in the list is optional, that's said once in
+// the header rather than repeated on every line.
 func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCoverageRequest) string {
 	if len(requests) == 1 {
 		r := requests[0]
+		if r.Priority == "optional" {
+			return fmt.Sprintf("%s could use coverage for their %s shift on %s, if anyone's available.",
+				requesterName, formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour), r.Date.Format("Monday, January 2"))
+		}
 		return fmt.Sprintf("%s needs coverage for their %s shift on %s.",
 			requesterName, formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour), r.Date.Format("Monday, January 2"))
 	}
+
+	allOptional := true
+	for _, r := range requests {
+		if r.Priority != "optional" {
+			allOptional = false
+			break
+		}
+	}
+
 	lines := make([]string, 0, len(requests))
 	for _, r := range requests {
-		lines = append(lines, fmt.Sprintf("- %s at %s", r.Date.Format("Monday, January 2"), formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour)))
+		line := fmt.Sprintf("- %s at %s", r.Date.Format("Monday, January 2"), formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour))
+		if r.Priority == "optional" && !allOptional {
+			line += " (optional)"
+		}
+		lines = append(lines, line)
+	}
+	if allOptional {
+		return fmt.Sprintf("%s could use coverage for %d shifts, if anyone's available:\n%s", requesterName, len(requests), strings.Join(lines, "\n"))
 	}
 	return fmt.Sprintf("%s needs coverage for %d shifts:\n%s", requesterName, len(requests), strings.Join(lines, "\n"))
 }
@@ -737,8 +762,17 @@ func UpdateCoverageRequestPriority(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 			return
 		}
-		if req.Priority != "normal" && req.Priority != "optional" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "priority must be \"normal\" or \"optional\""})
+		// Unlike creation, an explicit override with no priority is
+		// rejected rather than defaulting to "normal" - normalizeCoveragePriority
+		// alone would silently default an omitted field, which is the wrong
+		// contract for a call whose entire purpose is to set the value.
+		if req.Priority == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "priority is required"})
+			return
+		}
+		priority, err := normalizeCoveragePriority(req.Priority)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -748,11 +782,11 @@ func UpdateCoverageRequestPriority(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		if err := db.Model(&reqRow).Update("priority", req.Priority).Error; err != nil {
+		if err := db.Model(&reqRow).Update("priority", priority).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update coverage request priority"})
 			return
 		}
-		reqRow.Priority = req.Priority
+		reqRow.Priority = priority
 
 		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
 	}

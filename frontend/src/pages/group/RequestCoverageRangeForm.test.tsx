@@ -122,6 +122,24 @@ describe('RequestCoverageRangeForm', () => {
     }
   });
 
+  it('pre-fills the start/end date fields from initialStartDate/initialEndDate, computing candidates immediately', async () => {
+    // The Overview popover's "Request coverage" entry point pre-fills both
+    // dates to the exact date the volunteer clicked, so they land on an
+    // already-populated single-occurrence checklist instead of a blank form.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      render(<RequestCoverageRangeForm groupId={7} slots={slots} initialStartDate="2026-08-11" initialEndDate="2026-08-11" />);
+
+      expect(screen.getByLabelText(/start date/i)).toHaveValue('2026-08-11');
+      expect(screen.getByLabelText(/end date/i)).toHaveValue('2026-08-11');
+      const checkboxes = await screen.findAllByRole('checkbox', { name: /2026-08-11/ });
+      expect(checkboxes).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shows the 90-min start-end range for a terminal-hour occurrence, not just the start time', async () => {
     // 2026-08-11 is a Tuesday (a weekday); hour 17 is that day's terminal
     // (maxHourFor) slot, a 90-min shift ending 6:30 PM.

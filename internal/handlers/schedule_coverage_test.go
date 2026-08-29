@@ -454,6 +454,45 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 			t.Fatalf("Expected %q, got %q", want, summary)
 		}
 	})
+
+	t.Run("a single optional request uses softer phrasing than a normal one", func(t *testing.T) {
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: date, Hour: 10, Priority: "optional"},
+		})
+		want := fmt.Sprintf("Jane Doe could use coverage for their 10:00 AM shift on %s, if anyone's available.", date.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("a mixed-priority list marks only the optional lines", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: tue, Hour: 10, Priority: "normal"},
+			{Date: thu, Hour: 14, Priority: "optional"},
+		})
+		want := fmt.Sprintf("Jane Doe needs coverage for 2 shifts:\n- %s at 10:00 AM\n- %s at 2:00 PM (optional)",
+			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("an all-optional list uses softer header phrasing and skips redundant per-line marks", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: tue, Hour: 10, Priority: "optional"},
+			{Date: thu, Hour: 14, Priority: "optional"},
+		})
+		want := fmt.Sprintf("Jane Doe could use coverage for 2 shifts, if anyone's available:\n- %s at 10:00 AM\n- %s at 2:00 PM",
+			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
 }
 
 func TestScheduleEmailNotificationsEnabled(t *testing.T) {
@@ -1576,6 +1615,33 @@ func TestUpdateCoverageRequestPriority(t *testing.T) {
 
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("rejects an omitted priority rather than silently defaulting to normal", func(t *testing.T) {
+		// Unlike creation (where an omitted priority is a reasonable "I
+		// didn't think about it, use normal" default), an explicit override
+		// call with no priority is almost certainly a client bug - silently
+		// defaulting here would let a malformed request quietly downgrade
+		// nothing while reporting success.
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performUpdateCoverageRequestPriority(db, admin.ID, false, group.ID, reqRow.ID, `{}`)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+		var updated models.ShiftCoverageRequest
+		if err := db.First(&updated, reqRow.ID).Error; err != nil {
+			t.Fatalf("Failed to reload request: %v", err)
+		}
+		if updated.Priority != "normal" {
+			t.Fatalf("Expected priority to remain unchanged at %q, got %q", "normal", updated.Priority)
 		}
 	})
 

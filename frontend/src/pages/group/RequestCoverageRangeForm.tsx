@@ -8,6 +8,8 @@ import './RequestCoverageRangeForm.css';
 export interface RequestCoverageRangeFormProps {
   groupId: number;
   slots: ScheduleSlot[];
+  initialStartDate?: string;
+  initialEndDate?: string;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -98,10 +100,10 @@ function rangeExceedsMaxDays(startDate: string, endDate: string): boolean {
   return (end - start) / (1000 * 60 * 60 * 24) > MAX_RANGE_DAYS;
 }
 
-const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ groupId, slots, onSuccess, onCancel }) => {
+const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ groupId, slots, initialStartDate, initialEndDate, onSuccess, onCancel }) => {
   const toast = useToast();
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(initialStartDate ?? '');
+  const [endDate, setEndDate] = useState(initialEndDate ?? '');
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
   const [priority, setPriority] = useState<CoverageRequestPriority>('normal');
   const [submitting, setSubmitting] = useState(false);

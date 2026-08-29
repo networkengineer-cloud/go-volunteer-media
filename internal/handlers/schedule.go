@@ -439,7 +439,8 @@ type scheduleOverviewMember struct {
 	FirstName         string `json:"first_name"`
 	LastName          string `json:"last_name"`
 	Cadence           string `json:"cadence"`
-	Status            string `json:"status"` // normal | needs_coverage | covering
+	Status            string `json:"status"`             // normal | needs_coverage | covering
+	Priority          string `json:"priority,omitempty"` // the underlying request's priority, only set when status is needs_coverage
 	CoverageRequestID *uint  `json:"coverage_request_id,omitempty"`
 	Claimable         bool   `json:"claimable,omitempty"`
 	Conflict          bool   `json:"conflict,omitempty"`
@@ -634,6 +635,7 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 					}
 					if hasRequest && req.Status == models.CoverageRequestOpen {
 						m.Status = "needs_coverage"
+						m.Priority = req.Priority
 						reqID := req.ID
 						m.CoverageRequestID = &reqID
 						if s.UserID != callerUserID {

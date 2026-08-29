@@ -1391,6 +1391,67 @@ func TestGetGroupScheduleOverview_EffectiveRoster(t *testing.T) {
 	})
 }
 
+// TestGetGroupScheduleOverview_SurfacesRequestPriority verifies a
+// needs_coverage member's roster entry carries the underlying
+// ShiftCoverageRequest's Priority, so the frontend can de-emphasize an
+// "optional" request instead of rendering it with the same urgency as a
+// "normal" one.
+func TestGetGroupScheduleOverview_SurfacesRequestPriority(t *testing.T) {
+	db := SetupTestDB(t)
+	requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
+	viewer := CreateTestUser(t, db, "viewer", "viewer@example.com", "password123", false)
+	group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+	AddUserToGroupWithAdmin(t, db, requester.ID, group.ID, false)
+	AddUserToGroupWithAdmin(t, db, viewer.ID, group.ID, false)
+	db.Model(group).Update("scheduling_enabled", true)
+	db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 10})
+
+	weekStart := time.Now().UTC().Truncate(24 * time.Hour)
+	weekStart = weekStart.AddDate(0, 0, -int(weekStart.Weekday()))
+	tuesday := weekStart.AddDate(0, 0, 2)
+
+	reqRow := &models.ShiftCoverageRequest{
+		GroupID: group.ID, RequestedByUserID: requester.ID, Date: tuesday, Hour: 10,
+		Status: models.CoverageRequestOpen, Priority: "optional",
+	}
+	if err := db.Create(reqRow).Error; err != nil {
+		t.Fatalf("Failed to create coverage request: %v", err)
+	}
+
+	c, w := setupGroupTestContext(viewer.ID, false)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/groups/%d/schedule/overview?week_start=%s", group.ID, weekStart.Format("2006-01-02")), nil)
+
+	GetGroupScheduleOverview(db)(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Slots []scheduleOverviewSlot `json:"slots"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	found := false
+	for _, s := range body.Slots {
+		if s.Date != tuesday.Format("2006-01-02") || s.Hour != 10 {
+			continue
+		}
+		for _, m := range s.Members {
+			if m.UserID == requester.ID {
+				found = true
+				if m.Priority != "optional" {
+					t.Fatalf("Expected member priority %q, got %q", "optional", m.Priority)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("Expected requester to appear in the roster")
+	}
+}
+
 // TestParseWeekStart verifies parseWeekStart's Sunday-snapping behavior for
 // a non-Sunday input, and that an empty string defaults to the current
 // week's Sunday. Every existing GetGroupScheduleOverview test either omits

@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { scheduleApi } from '../../api/client';
-import type { ScheduleOverviewMember } from '../../api/client';
+import type { ScheduleOverviewMember, ScheduleSlot } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import { DAYS, HOURS, slotKey, formatHourLabel, formatSlotRangeLabel, maxHourFor, currentWeekStart } from './scheduleGrid';
 import CadenceLegend from './CadenceLegend';
+import Modal from '../../components/Modal';
+import RequestCoverageRangeForm from './RequestCoverageRangeForm';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
 import './ScheduleTab.css';
@@ -125,6 +127,14 @@ function formatWeekLabel(weekStart: string): string {
   return `Week of ${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
 }
 
+// todayIso returns "today" (UTC calendar date, matching the backend's
+// same-day-or-later check in CreateCoverageRequestsBatch) as an ISO
+// YYYY-MM-DD string, for hiding the Request coverage popover action on a
+// past date whose form would just come up empty.
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembers, currentUserId }) => {
   const toast = useToast();
   const [weekStart, setWeekStart] = useState<string>(currentWeekStart());
@@ -134,6 +144,12 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const [busyRequestId, setBusyRequestId] = useState<number | null>(null);
+  // Set when the viewer clicks "Request coverage" on their own normal-status
+  // popover row - carries just enough to pre-fill RequestCoverageRangeForm
+  // for that exact occurrence: a synthetic single-item slots array (so the
+  // form's own candidate computation only ever offers this one date/hour,
+  // respecting the viewer's own cadence for it) and the date itself.
+  const [rangeFormContext, setRangeFormContext] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Cancels any in-flight request before starting a new one - matching
@@ -256,6 +272,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   // from the fetched slot data itself rather than trusting `totalMembers`
   // blindly - otherwise every cell renders as tier-0 ("nobody available")
   // even when real availability data exists.
+  const today = todayIso();
   const effectiveTotal = totalMembers > 0
     ? totalMembers
     : Math.max(0, ...Array.from(membersBySlot.values()).map(m => m.length));
@@ -310,7 +327,12 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
 
               const members = membersBySlot.get(key) ?? [];
               const tier = tierFor(members.length, effectiveTotal);
-              const needsCoverage = members.some(m => m.status === 'needs_coverage');
+              const date = dateForWeekStart(weekStart, dayOfWeek);
+              // Only a normal-priority open request makes the cell read as
+              // urgent - an all-optional cell would otherwise carry the same
+              // "needs coverage" styling/label as a shift nobody can cover,
+              // defeating the point of marking it optional in the first place.
+              const needsCoverage = members.some(m => m.status === 'needs_coverage' && m.priority !== 'optional');
               const label = `${DAYS[dayOfWeek]} ${formatSlotRangeLabel(dayOfWeek, hour)}, ${members.length} available${needsCoverage ? ', needs coverage' : ''}`;
               const isActive = activeCellKey === key;
 
@@ -351,7 +373,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                           {shortDisplayName(member)}
                           {member.cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag"> A</span>}
                           {member.cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag"> B</span>}
-                          {member.status === 'needs_coverage' && (
+                          {member.status === 'needs_coverage' && member.priority !== 'optional' && (
                             <span className="schedule-overview__tag" aria-hidden="true"> ⚠</span>
                           )}
                         </span>
@@ -376,7 +398,11 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                               {memberDisplayName(member)}
                               {member.cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag"> A</span>}
                               {member.cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag"> B</span>}
-                              {member.status === 'needs_coverage' && <span className="schedule-overview__tag"> needs coverage</span>}
+                              {member.status === 'needs_coverage' && (
+                                <span className="schedule-overview__tag">
+                                  {' '}needs coverage{member.priority === 'optional' ? ' (optional)' : ''}
+                                </span>
+                              )}
                               {member.status === 'covering' && <span className="schedule-overview__tag"> covering</span>}
                             </span>
                             {member.status === 'needs_coverage' && member.coverage_request_id !== undefined && member.user_id !== currentUserId && (
@@ -400,6 +426,19 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                 Cancel request
                               </button>
                             )}
+                            {member.user_id === currentUserId && member.status === 'normal' && date >= today && (
+                              <button
+                                type="button"
+                                className="btn-secondary schedule-overview__action"
+                                onClick={() => {
+                                  setRangeFormContext({ slot: { day_of_week: dayOfWeek, hour, cadence: member.cadence }, date });
+                                  setActiveCellKey(null);
+                                  setPopoverPosition(null);
+                                }}
+                              >
+                                Request coverage
+                              </button>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -411,6 +450,24 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
           </div>
         ))}
       </div>
+
+      <Modal
+        isOpen={rangeFormContext !== null}
+        onClose={() => setRangeFormContext(null)}
+        title="Request Coverage"
+      >
+        <RequestCoverageRangeForm
+          groupId={groupId}
+          slots={rangeFormContext ? [rangeFormContext.slot] : []}
+          initialStartDate={rangeFormContext?.date}
+          initialEndDate={rangeFormContext?.date}
+          onSuccess={() => loadOverview()}
+          onCancel={() => {
+            setRangeFormContext(null);
+            loadOverview();
+          }}
+        />
+      </Modal>
     </div>
   );
 };

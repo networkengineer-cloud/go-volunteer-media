@@ -637,6 +637,7 @@ export interface ScheduleOverviewMember {
   last_name?: string;
   cadence?: ScheduleCadence;
   status: 'normal' | 'needs_coverage' | 'covering';
+  priority?: CoverageRequestPriority;
   coverage_request_id?: number;
   claimable?: boolean;
   conflict?: boolean;

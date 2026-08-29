@@ -10,6 +10,7 @@ vi.mock('../../api/client', () => ({
     getOverview: vi.fn(),
     claimCoverageRequest: vi.fn(),
     cancelCoverageRequest: vi.fn(),
+    createCoverageRequestsBatch: vi.fn(),
   },
 }));
 
@@ -327,6 +328,61 @@ describe('ScheduleOverview', () => {
     expect(cell).toHaveClass('schedule-grid__slot--needs-coverage');
   });
 
+  it('does not apply urgent styling when the only open request is priority "optional"', async () => {
+    // The whole point of the priority flag is that an optional request
+    // shouldn't read as urgent in the group's busiest view - if this cell
+    // still carried the needs-coverage class/label, the feature would exist
+    // in the data model without changing anything a viewer actually sees.
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 2, username: 'vol2', status: 'needs_coverage', priority: 'optional', coverage_request_id: 42, claimable: true },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM, 1 available/i });
+    expect(cell).not.toHaveClass('schedule-grid__slot--needs-coverage');
+    expect(screen.queryByRole('cell', { name: /needs coverage/i })).not.toBeInTheDocument();
+  });
+
+  it('still applies urgent styling when a mix of normal and optional requests share a cell', async () => {
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 2, username: 'vol2', status: 'needs_coverage', priority: 'optional', coverage_request_id: 42, claimable: true },
+          { user_id: 3, username: 'vol3', status: 'needs_coverage', priority: 'normal', coverage_request_id: 43, claimable: true },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /needs coverage/i });
+    expect(cell).toHaveClass('schedule-grid__slot--needs-coverage');
+  });
+
+  it('marks an optional needs_coverage member distinctly in the popover, without the warning icon', async () => {
+    mockOverview({
+      week_start: '2026-08-09',
+      slots: [
+        { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+          { user_id: 2, username: 'vol2', status: 'needs_coverage', priority: 'optional', coverage_request_id: 42, claimable: true },
+        ] },
+      ],
+    });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM, 1 available/i });
+    fireEvent.click(cell);
+
+    const popover = await screen.findByRole('list');
+    expect(within(popover).getByText(/needs coverage \(optional\)/i)).toBeInTheDocument();
+    expect(within(cell).queryByText('⚠')).not.toBeInTheDocument();
+  });
+
   it('shows a Claim button for another member\'s open request and claims it on click', async () => {
     vi.mocked(scheduleApi.claimCoverageRequest).mockResolvedValue({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
     mockOverview({
@@ -347,10 +403,12 @@ describe('ScheduleOverview', () => {
     await waitFor(() => expect(scheduleApi.claimCoverageRequest).toHaveBeenCalledWith(7, 42));
   });
 
-  it('does not show a Request coverage button in the popover - the date-range form is the only way to request coverage', async () => {
-    // The quick single-click "Request coverage" action was removed: it
-    // couldn't carry a priority (Normal/Optional), and requiring the
-    // date-range form for every request keeps that decision in one place.
+  it('a Request coverage button in the popover opens the date-range form pre-filled to that exact date, instead of creating instantly', async () => {
+    // The single-click quick-create was removed in favor of always going
+    // through the date-range form (so a priority can be chosen), but the
+    // popover is where a volunteer naturally notices "I can't make this
+    // shift" - so it still gets an entry point, just one that opens the
+    // form pre-filled to this one date rather than posting immediately.
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z')); // a Monday
     try {
@@ -368,7 +426,44 @@ describe('ScheduleOverview', () => {
       fireEvent.click(cell);
       const popover = await screen.findByRole('list');
       expect(within(popover).getByText('me')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /request coverage/i })).not.toBeInTheDocument();
+
+      fireEvent.click(within(popover).getByRole('button', { name: /request coverage/i }));
+
+      // No instant API call - opening the form is not the same as submitting it.
+      expect(scheduleApi.createCoverageRequestsBatch).not.toHaveBeenCalled();
+
+      expect(screen.getByLabelText(/start date/i)).toHaveValue('2026-08-11');
+      expect(screen.getByLabelText(/end date/i)).toHaveValue('2026-08-11');
+      expect(await screen.findByRole('checkbox', { name: /2026-08-11/ })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not show a Request coverage button in the popover for a past date', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    // Thursday of the week starting Sunday 2026-08-09 - the Tuesday slot
+    // below falls two days earlier in that same week, so it's genuinely
+    // in the past relative to the component's own today/weekStart state
+    // (which is derived from the real pinned clock, not from the mocked
+    // week_start field).
+    vi.setSystemTime(new Date('2026-08-13T12:00:00Z'));
+    try {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 1, username: 'me', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const popover = await screen.findByRole('list');
+      expect(within(popover).getByText('me')).toBeInTheDocument();
+      expect(within(popover).queryByRole('button', { name: /request coverage/i })).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
