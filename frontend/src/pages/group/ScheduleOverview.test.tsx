@@ -185,7 +185,7 @@ describe('ScheduleOverview', () => {
     expect(cellCounts).toEqual(cellCounts.map(() => 7));
   });
 
-  it("uses the 90-min range in a terminal-hour cell's aria-label while the shared row header stays a plain hour", async () => {
+  it("uses the 90-min range in a terminal-hour cell's aria-label, and the shared row header shows the same real range", async () => {
     mockOverview({
       week_start: '2026-08-09',
       // 2026-08-09 is a Sunday; day_of_week 2 (Tuesday) hour 17 is a
@@ -201,11 +201,21 @@ describe('ScheduleOverview', () => {
     // The per-cell aria-label reflects the 90-min range for the terminal row...
     expect(await screen.findByRole('cell', { name: 'Tue 5:00–6:30 PM, 1 available' })).toBeInTheDocument();
 
-    // ...but the shared row header (same row for all 7 day columns) stays a
-    // plain start-time label, since a weekday's terminal hour (17) isn't
-    // necessarily also weekend's terminal hour.
+    // ...and the shared row header (same row for all 7 day columns) now
+    // shows that same real range too, matching ScheduleTab's Individual
+    // grid (rowHeaderFor) instead of a bare start time - no weekend cell
+    // exists at hour 17 to be misled by it.
     const table = screen.getByRole('table', { name: /weekly availability overview/i });
-    expect(within(table).getByRole('rowheader', { name: '5:00 PM' })).toBeInTheDocument();
+    expect(within(table).getByRole('rowheader', { name: '5:00–6:30 PM' })).toBeInTheDocument();
+  });
+
+  it('flags the shared hour where weekend terminates but weekday continues, same as the Individual grid', async () => {
+    mockOverview({ week_start: '2026-08-09', slots: [] });
+    render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+    const table = await screen.findByRole('table', { name: /weekly availability overview/i });
+    const sharedRowHeader = within(table).getByRole('rowheader', { name: /3:00–4:00 PM/ });
+    expect(within(sharedRowHeader).getByText('Weekends end 4:30 PM')).toBeInTheDocument();
   });
 
   it('clicking a non-empty cell opens a popover listing member names', async () => {
