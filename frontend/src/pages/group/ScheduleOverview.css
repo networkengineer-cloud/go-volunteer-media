@@ -238,9 +238,18 @@
   color: var(--warning);
 }
 
-.schedule-overview__action {
+/* Qualified with the popover ancestor (rather than the bare
+   .schedule-overview__action class alone) so this reliably beats other
+   pages' equally-specific, unscoped `.btn-primary, .btn-secondary { ... }`
+   rules (e.g. UsersPage.css's 140px-min-width CTA styling) regardless of
+   CSS bundle/import order - a bare single-class selector here previously
+   lost that tie in production, blowing Confirm/Cancel out to ~140px each
+   inside this popover's 220px max-width. */
+.schedule-overview__popover .schedule-overview__action {
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
+  min-width: 0;
+  min-height: 32px;
   white-space: nowrap;
 }
 
