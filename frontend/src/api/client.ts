@@ -738,12 +738,13 @@ export const scheduleApi = {
     }),
   claimCoverageRequest: (groupId: number, requestId: number) =>
     api.post<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/claim`),
-  reassignShiftsBatch: (groupId: number, payload: { fromUserId: number; toUserId: number; date: string; hours: number[] }) =>
+  reassignShiftsBatch: (groupId: number, payload: { fromUserId: number; toUserId: number; date: string; hours: number[]; notify?: boolean }) =>
     api.post<ReassignShiftsBatchResult>(`/groups/${groupId}/schedule/reassign`, {
       from_user_id: payload.fromUserId,
       to_user_id: payload.toUserId,
       date: payload.date,
       hours: payload.hours,
+      notify: payload.notify,
     }),
   cancelCoverageRequest: (groupId: number, requestId: number) =>
     api.delete<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}`),

@@ -164,6 +164,10 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const [reassignToUserId, setReassignToUserId] = useState<number | ''>('');
   const [reassigning, setReassigning] = useState(false);
   const [reassignHours, setReassignHours] = useState<Set<number>>(new Set());
+  // Defaults to true (send the usual emails/GroupMe post) - an admin
+  // arranging a change already agreed in person can uncheck it to skip
+  // notifying entirely for just this one reassignment.
+  const [notifyOnReassign, setNotifyOnReassign] = useState(true);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Cancels any in-flight request before starting a new one - matching
@@ -226,6 +230,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
     setReassigningUserId(null);
     setReassignToUserId('');
     setReassignHours(new Set());
+    setNotifyOnReassign(true);
   }, [activeCellKey]);
 
   useEffect(() => {
@@ -285,7 +290,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const handleReassign = (fromUserId: number, date: string, hours: number[]) => {
     if (reassignToUserId === '' || hours.length === 0) return;
     setReassigning(true);
-    scheduleApi.reassignShiftsBatch(groupId, { fromUserId, toUserId: reassignToUserId, date, hours })
+    scheduleApi.reassignShiftsBatch(groupId, { fromUserId, toUserId: reassignToUserId, date, hours, notify: notifyOnReassign })
       .then(res => {
         if (res.data.created.length > 0) {
           toast.showSuccess(`Reassigned ${res.data.created.length} shift${res.data.created.length === 1 ? '' : 's'}.`);
@@ -538,6 +543,14 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                       ))}
                                     </span>
                                   )}
+                                  <label className="schedule-overview__reassign-notify">
+                                    <input
+                                      type="checkbox"
+                                      checked={notifyOnReassign}
+                                      onChange={e => setNotifyOnReassign(e.target.checked)}
+                                    />
+                                    Notify both volunteers by email
+                                  </label>
                                   <span className="schedule-overview__reassign-actions">
                                     <button
                                       type="button"
@@ -565,6 +578,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                     setReassigningUserId(member.user_id);
                                     setReassignToUserId('');
                                     setReassignHours(new Set([hour]));
+                                    setNotifyOnReassign(true);
                                   }}
                                 >
                                   Reassign

@@ -543,6 +543,11 @@ type reassignShiftsBatchRequest struct {
 	ToUserID   uint   `json:"to_user_id"`
 	Date       string `json:"date"`
 	Hours      []int  `json:"hours"`
+	// Notify lets the admin skip the notification emails/GroupMe post for a
+	// change already agreed in person - a *bool (not bool) so an omitted
+	// field defaults to true (notify) rather than false, which a plain
+	// bool's zero value would silently do.
+	Notify *bool `json:"notify"`
 }
 
 type reassignShiftsBatchSkipped struct {
@@ -708,7 +713,8 @@ func ReassignShiftsBatch(db *gorm.DB, emailService *email.Service, groupMeServic
 
 		c.JSON(http.StatusOK, response)
 
-		if len(successfulHours) > 0 {
+		notify := req.Notify == nil || *req.Notify
+		if notify && len(successfulHours) > 0 {
 			notifyOfReassignmentBatch(rawDB, emailService, groupMeService, groupIDUint, req.FromUserID, req.ToUserID, date, successfulHours)
 		}
 	}

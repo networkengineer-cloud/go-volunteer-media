@@ -211,6 +211,14 @@
   font-size: 0.75rem;
 }
 
+.schedule-overview__reassign-notify {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary, var(--neutral-500, #6b7280));
+}
+
 .schedule-overview__tag {
   font-size: 0.75rem;
   color: var(--warning);

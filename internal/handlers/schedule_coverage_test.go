@@ -2007,3 +2007,94 @@ func TestReassignShiftsBatch(t *testing.T) {
 		}
 	})
 }
+
+// TestReassignShiftsBatch_NotifyFlag covers the optional notify field: an
+// admin arranging a reassignment already agreed in person can skip the
+// notification emails entirely. This is distinct from (and layered on top
+// of) the existing SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED flag and each
+// user's own EmailNotificationsEnabled preference, both of which stay on
+// in these tests so only the request-level notify field is under test -
+// mirrors TestCreateCoverageRequest_EmailGatedByScheduleFlag's pattern of
+// exercising the actual SendEmail call via mockEmailProvider, not just the
+// gating condition in isolation.
+func TestReassignShiftsBatch_NotifyFlag(t *testing.T) {
+	t.Run("notify:false sends no email even with the schedule flag and both users' preferences on", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		if err := db.Model(requester).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable requester's email notifications: %v", err)
+		}
+		if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable other's email notifications: %v", err)
+		}
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", admin.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.POST("/groups/:id/schedule/reassign", ReassignShiftsBatch(db, emailSvc, nil))
+
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10],"notify":false}`, requester.ID, other.ID, date)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/reassign", group.ID), strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got != 0 {
+			t.Fatalf("Expected no email when notify is false, got %d", got)
+		}
+	})
+
+	t.Run("omitting notify defaults to sending emails", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		if err := db.Model(requester).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable requester's email notifications: %v", err)
+		}
+		if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable other's email notifications: %v", err)
+		}
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", admin.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.POST("/groups/:id/schedule/reassign", ReassignShiftsBatch(db, emailSvc, nil))
+
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10]}`, requester.ID, other.ID, date)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/reassign", group.ID), strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got == 0 {
+			t.Fatal("Expected emails to be sent when notify is omitted, got none")
+		}
+	})
+}
