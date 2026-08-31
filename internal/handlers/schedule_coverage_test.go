@@ -1830,6 +1830,37 @@ func TestReassignShiftsBatch(t *testing.T) {
 		}
 	})
 
+	t.Run("skips (not fails) an hour where an active coverage request already exists for from_user, while other hours still succeed", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 11}).Error; err != nil {
+			t.Fatalf("Failed to create second shift slot: %v", err)
+		}
+		parsedDate, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		// requester already has an open coverage request at hour 10.
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, parsedDate)
+		date := parsedDate.Format("2006-01-02")
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10,11]}`, requester.ID, other.ID, date)
+
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp reassignShiftsBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Created) != 1 || resp.Created[0].Hour != 11 {
+			t.Fatalf("Expected hour 11 created, got %+v", resp.Created)
+		}
+		if len(resp.Skipped) != 1 || resp.Skipped[0].Hour != 10 || !strings.Contains(resp.Skipped[0].Reason, "already exists") {
+			t.Fatalf("Expected hour 10 skipped with an 'already exists' reason, got %+v", resp.Skipped)
+		}
+	})
+
 	t.Run("non-admin is forbidden", func(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, other, group := setupCoverageTestGroup(t, db)
