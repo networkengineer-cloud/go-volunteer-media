@@ -549,7 +549,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                       checked={notifyOnReassign}
                                       onChange={e => setNotifyOnReassign(e.target.checked)}
                                     />
-                                    Notify both volunteers by email
+                                    Notify both volunteers (email & GroupMe)
                                   </label>
                                   <span className="schedule-overview__reassign-actions">
                                     <button
@@ -564,7 +564,12 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                       type="button"
                                       className="btn-secondary schedule-overview__action"
                                       disabled={reassigning}
-                                      onClick={() => setReassigningUserId(null)}
+                                      onClick={() => {
+                                        setReassigningUserId(null);
+                                        setReassignToUserId('');
+                                        setReassignHours(new Set());
+                                        setNotifyOnReassign(true);
+                                      }}
                                     >
                                       Cancel
                                     </button>

@@ -538,7 +538,7 @@ describe('ScheduleOverview', () => {
     }
   });
 
-  it('lets the admin uncheck "Notify both volunteers by email" to skip notifications for this reassignment', async () => {
+  it('lets the admin uncheck the notify checkbox to skip notifications for this reassignment', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
     try {
@@ -560,7 +560,7 @@ describe('ScheduleOverview', () => {
       const popover = await screen.findByRole('list');
 
       fireEvent.click(within(popover).getByRole('button', { name: /reassign/i }));
-      const notifyCheckbox = within(popover).getByRole('checkbox', { name: /notify both volunteers by email/i });
+      const notifyCheckbox = within(popover).getByRole('checkbox', { name: /notify both volunteers.*email.*groupme/i });
       expect(notifyCheckbox).toBeChecked();
       fireEvent.click(notifyCheckbox);
       fireEvent.change(within(popover).getByRole('combobox'), { target: { value: '3' } });
@@ -666,11 +666,11 @@ describe('ScheduleOverview', () => {
       const popover = await screen.findByRole('list');
       fireEvent.click(within(popover).getByRole('button', { name: /reassign/i }));
 
-      // Only the "Notify both volunteers by email" checkbox should be
+      // Only the notify checkbox should be
       // present - no per-hour checklist checkboxes, since there are no
       // other same-day hours for this person to include.
       expect(within(popover).queryAllByRole('checkbox')).toHaveLength(1);
-      expect(within(popover).getByRole('checkbox', { name: /notify both volunteers by email/i })).toBeInTheDocument();
+      expect(within(popover).getByRole('checkbox', { name: /notify both volunteers.*email.*groupme/i })).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
