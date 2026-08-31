@@ -706,6 +706,16 @@ export interface CoverageRequestCancelBatchResult {
   skipped: CoverageRequestCancelBatchSkipped[];
 }
 
+export interface ReassignShiftsBatchSkipped {
+  hour: number;
+  reason: string;
+}
+
+export interface ReassignShiftsBatchResult {
+  created: CoverageRequest[];
+  skipped: ReassignShiftsBatchSkipped[];
+}
+
 export const scheduleApi = {
   getMine: (groupId: number, options?: { signal?: AbortSignal }) =>
     api.get<ScheduleResponse>(`/groups/${groupId}/schedule/me`, { signal: options?.signal }),
@@ -728,12 +738,12 @@ export const scheduleApi = {
     }),
   claimCoverageRequest: (groupId: number, requestId: number) =>
     api.post<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/claim`),
-  reassignShift: (groupId: number, payload: { fromUserId: number; toUserId: number; date: string; hour: number }) =>
-    api.post<CoverageRequest>(`/groups/${groupId}/schedule/reassign`, {
+  reassignShiftsBatch: (groupId: number, payload: { fromUserId: number; toUserId: number; date: string; hours: number[] }) =>
+    api.post<ReassignShiftsBatchResult>(`/groups/${groupId}/schedule/reassign`, {
       from_user_id: payload.fromUserId,
       to_user_id: payload.toUserId,
       date: payload.date,
-      hour: payload.hour,
+      hours: payload.hours,
     }),
   cancelCoverageRequest: (groupId: number, requestId: number) =>
     api.delete<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}`),
