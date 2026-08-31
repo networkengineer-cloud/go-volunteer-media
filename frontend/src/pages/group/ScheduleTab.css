@@ -53,6 +53,27 @@
   color: var(--brand-contrast);
 }
 
+/* On narrow screens the default inline-flex sizing gives "Individual" and
+   "Overview" (single, unbreakable words) their full natural width and
+   forces ALL the necessary shrinking onto "Needs Coverage" - the only
+   label with a space to wrap at - so it alone wrapped to two lines and
+   rendered lopsided/oversized next to the other two. Making every button
+   an equal flex share (rather than sized to its own content) means either
+   all three wrap together or none do, instead of singling one out. */
+@media (max-width: 640px) {
+  .schedule-tab__view-toggle {
+    display: flex;
+    width: 100%;
+  }
+
+  .schedule-tab__view-toggle-btn {
+    flex: 1 1 0;
+    padding: 0.5rem 0.5rem;
+    font-size: 0.8125rem;
+    text-align: center;
+  }
+}
+
 .schedule-grid {
   display: grid;
   grid-template-columns: 90px repeat(7, 1fr);

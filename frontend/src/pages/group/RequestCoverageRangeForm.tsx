@@ -244,26 +244,14 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
                     />
                     {label}
                   </label>
-                  <span className="request-coverage-range-form__item-priority" role="group" aria-label={`Priority for ${label}`}>
-                    <label>
-                      <input
-                        type="radio"
-                        name={`priority-${key}`}
-                        checked={itemPriority === 'normal'}
-                        onChange={() => setPriorityFor(key, 'normal')}
-                      />
-                      Normal
-                    </label>
-                    <label>
-                      <input
-                        type="radio"
-                        name={`priority-${key}`}
-                        checked={itemPriority === 'optional'}
-                        onChange={() => setPriorityFor(key, 'optional')}
-                      />
-                      Optional
-                    </label>
-                  </span>
+                  <label className="request-coverage-range-form__item-priority">
+                    <input
+                      type="checkbox"
+                      checked={itemPriority === 'optional'}
+                      onChange={e => setPriorityFor(key, e.target.checked ? 'optional' : 'normal')}
+                    />
+                    Optional
+                  </label>
                 </li>
               );
             })}
