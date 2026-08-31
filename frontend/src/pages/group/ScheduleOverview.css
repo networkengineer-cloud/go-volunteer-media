@@ -198,6 +198,19 @@
   gap: 0.4rem;
 }
 
+.schedule-overview__reassign-hours {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.schedule-overview__reassign-hour {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+}
+
 .schedule-overview__tag {
   font-size: 0.75rem;
   color: var(--warning);

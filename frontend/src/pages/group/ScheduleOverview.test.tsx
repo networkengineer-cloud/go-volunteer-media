@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import ScheduleOverview from './ScheduleOverview';
 import { scheduleApi } from '../../api/client';
 import type { AxiosResponse } from 'axios';
-import type { ScheduleOverviewResponse, CoverageRequest, GroupMember } from '../../api/client';
+import type { ScheduleOverviewResponse, CoverageRequest, GroupMember, ReassignShiftsBatchResult } from '../../api/client';
 
 vi.mock('../../api/client', () => ({
   scheduleApi: {
@@ -11,7 +11,7 @@ vi.mock('../../api/client', () => ({
     claimCoverageRequest: vi.fn(),
     cancelCoverageRequest: vi.fn(),
     createCoverageRequestsBatch: vi.fn(),
-    reassignShift: vi.fn(),
+    reassignShiftsBatch: vi.fn(),
   },
 }));
 
@@ -505,7 +505,9 @@ describe('ScheduleOverview', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
     try {
-      vi.mocked(scheduleApi.reassignShift).mockResolvedValue({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
+      vi.mocked(scheduleApi.reassignShiftsBatch).mockResolvedValue({
+        data: { created: [], skipped: [] },
+      } as unknown as AxiosResponse<ReassignShiftsBatchResult>);
       mockOverview({
         week_start: '2026-08-09',
         slots: [
@@ -524,12 +526,143 @@ describe('ScheduleOverview', () => {
       fireEvent.change(within(popover).getByRole('combobox'), { target: { value: '3' } });
       fireEvent.click(within(popover).getByRole('button', { name: /confirm/i }));
 
-      await waitFor(() => expect(scheduleApi.reassignShift).toHaveBeenCalledWith(7, {
+      await waitFor(() => expect(scheduleApi.reassignShiftsBatch).toHaveBeenCalledWith(7, {
         fromUserId: 2,
         toUserId: 3,
         date: '2026-08-11',
-        hour: 9,
+        hours: [9],
       }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows a checklist of the same person\'s other shifts that day, pre-checked to just the clicked hour', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+          { date: '2026-08-11', day_of_week: 2, hour: 10, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} canManageMembers={true} groupMembers={testMembers} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const popover = await screen.findByRole('list');
+      fireEvent.click(within(popover).getByRole('button', { name: /reassign/i }));
+
+      expect(within(popover).getByRole('checkbox', { name: '9:00 AM' })).toBeChecked();
+      expect(within(popover).getByRole('checkbox', { name: '10:00 AM' })).not.toBeChecked();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets the admin include additional same-day hours, sending all checked hours to the batch endpoint', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      vi.mocked(scheduleApi.reassignShiftsBatch).mockResolvedValue({
+        data: { created: [], skipped: [] },
+      } as unknown as AxiosResponse<ReassignShiftsBatchResult>);
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+          { date: '2026-08-11', day_of_week: 2, hour: 10, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} canManageMembers={true} groupMembers={testMembers} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const popover = await screen.findByRole('list');
+      fireEvent.click(within(popover).getByRole('button', { name: /reassign/i }));
+      fireEvent.click(within(popover).getByRole('checkbox', { name: '10:00 AM' }));
+      fireEvent.change(within(popover).getByRole('combobox'), { target: { value: '3' } });
+      fireEvent.click(within(popover).getByRole('button', { name: /confirm/i }));
+
+      await waitFor(() => expect(scheduleApi.reassignShiftsBatch).toHaveBeenCalledWith(7, {
+        fromUserId: 2,
+        toUserId: 3,
+        date: '2026-08-11',
+        hours: [9, 10],
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not show a checklist when there are no other same-day hours for that person', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} canManageMembers={true} groupMembers={testMembers} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const popover = await screen.findByRole('list');
+      fireEvent.click(within(popover).getByRole('button', { name: /reassign/i }));
+
+      expect(within(popover).queryAllByRole('checkbox')).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows a partial-success toast when some reassigned hours are skipped', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      vi.mocked(scheduleApi.reassignShiftsBatch).mockResolvedValue({
+        data: {
+          created: [{ id: 1, group_id: 7, requested_by_user_id: 2, date: '2026-08-11', hour: 9, status: 'claimed', priority: 'normal', claimed_by_user_id: 3 }],
+          skipped: [{ hour: 10, reason: 'claimant already has a conflicting shift at that time' }],
+        },
+      } as unknown as AxiosResponse<ReassignShiftsBatchResult>);
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+          { date: '2026-08-11', day_of_week: 2, hour: 10, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} canManageMembers={true} groupMembers={testMembers} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const popover = await screen.findByRole('list');
+      fireEvent.click(within(popover).getByRole('button', { name: /reassign/i }));
+      fireEvent.click(within(popover).getByRole('checkbox', { name: '10:00 AM' }));
+      fireEvent.change(within(popover).getByRole('combobox'), { target: { value: '3' } });
+      fireEvent.click(within(popover).getByRole('button', { name: /confirm/i }));
+
+      await waitFor(() => expect(mockShowSuccess).toHaveBeenCalledWith('Reassigned 1 shift.'));
+      expect(mockShowError).toHaveBeenCalledWith('1 shift could not be reassigned.');
     } finally {
       vi.useRealTimers();
     }
