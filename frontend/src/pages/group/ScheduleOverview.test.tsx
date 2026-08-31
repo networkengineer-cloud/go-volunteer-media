@@ -662,7 +662,45 @@ describe('ScheduleOverview', () => {
       fireEvent.click(within(popover).getByRole('button', { name: /confirm/i }));
 
       await waitFor(() => expect(mockShowSuccess).toHaveBeenCalledWith('Reassigned 1 shift.'));
-      expect(mockShowError).toHaveBeenCalledWith('1 shift could not be reassigned.');
+      expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('claimant already has a conflicting shift at that time'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the popover open when every hour in the batch is skipped', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      vi.mocked(scheduleApi.reassignShiftsBatch).mockResolvedValue({
+        data: {
+          created: [],
+          skipped: [{ hour: 9, reason: 'claimant already has a conflicting shift at that time' }],
+        },
+      } as unknown as AxiosResponse<ReassignShiftsBatchResult>);
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 2, username: 'vol2', status: 'normal' },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} canManageMembers={true} groupMembers={testMembers} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const popover = await screen.findByRole('list');
+      fireEvent.click(within(popover).getByRole('button', { name: /reassign/i }));
+      fireEvent.change(within(popover).getByRole('combobox'), { target: { value: '3' } });
+      fireEvent.click(within(popover).getByRole('button', { name: /confirm/i }));
+
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringContaining('claimant already has a conflicting shift at that time')));
+
+      // The popover/checklist should still be showing so the admin can retry,
+      // rather than having been silently dismissed with nothing reassigned.
+      expect(await screen.findByRole('list')).toBeInTheDocument();
+      expect(within(screen.getByRole('list')).getByRole('button', { name: /confirm/i })).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

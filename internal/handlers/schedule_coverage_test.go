@@ -1768,6 +1768,44 @@ func TestReassignShiftsBatch(t *testing.T) {
 				t.Errorf("Expected claimed_by_user_id %d, got %v", other.ID, created.ClaimedByUserID)
 			}
 		}
+
+		// The endpoint's headline behavior is that the reassignment is
+		// immediately visible in GetGroupScheduleOverview - prove that here,
+		// not just that ClaimCoverageRequest-shaped rows were created.
+		parsedDate, err := time.Parse("2006-01-02", date)
+		if err != nil {
+			t.Fatalf("Failed to parse date: %v", err)
+		}
+		overviewW := performGetGroupScheduleOverview(db, admin.ID, group.ID, weekStartOf(parsedDate).Format("2006-01-02"))
+		if overviewW.Code != http.StatusOK {
+			t.Fatalf("Expected 200 for overview, got %d: %s", overviewW.Code, overviewW.Body.String())
+		}
+		var overview struct {
+			Slots []scheduleOverviewSlot `json:"slots"`
+		}
+		if err := json.Unmarshal(overviewW.Body.Bytes(), &overview); err != nil {
+			t.Fatalf("Failed to unmarshal overview: %v", err)
+		}
+		for _, wantHour := range []int{10, 11, 12} {
+			var found bool
+			for _, slot := range overview.Slots {
+				if slot.Date != date || slot.Hour != wantHour {
+					continue
+				}
+				found = true
+				for _, m := range slot.Members {
+					if m.UserID == requester.ID {
+						t.Errorf("Expected requester to be dropped from hour %d, found status %q", wantHour, m.Status)
+					}
+					if m.UserID == other.ID && m.Status != "covering" {
+						t.Errorf("Expected other's status to be %q for hour %d, got %q", "covering", wantHour, m.Status)
+					}
+				}
+			}
+			if !found {
+				t.Errorf("Expected to find hour %d in the overview", wantHour)
+			}
+		}
 	})
 
 	t.Run("a conflicting hour is skipped while the rest of the batch still succeeds", func(t *testing.T) {

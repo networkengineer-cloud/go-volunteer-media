@@ -289,12 +289,15 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
       .then(res => {
         if (res.data.created.length > 0) {
           toast.showSuccess(`Reassigned ${res.data.created.length} shift${res.data.created.length === 1 ? '' : 's'}.`);
+          setActiveCellKey(null);
+          setPopoverPosition(null);
         }
         if (res.data.skipped.length > 0) {
-          toast.showError(`${res.data.skipped.length} shift${res.data.skipped.length === 1 ? '' : 's'} could not be reassigned.`);
+          const detail = res.data.skipped
+            .map(s => `${formatHourLabel(s.hour)}: ${s.reason}`)
+            .join('; ');
+          toast.showError(`${res.data.skipped.length} shift${res.data.skipped.length === 1 ? '' : 's'} could not be reassigned — ${detail}`);
         }
-        setActiveCellKey(null);
-        setPopoverPosition(null);
         loadOverview();
       })
       .catch(err => {
