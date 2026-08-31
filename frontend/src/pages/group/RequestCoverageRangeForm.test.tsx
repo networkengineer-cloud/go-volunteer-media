@@ -205,7 +205,7 @@ describe('RequestCoverageRangeForm', () => {
     }
   });
 
-  it('defaults every shift\'s priority toggle to Normal (must-fill)', async () => {
+  it('defaults every shift\'s Optional checkbox to unchecked (i.e. normal/must-fill)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
     try {
@@ -214,11 +214,9 @@ describe('RequestCoverageRangeForm', () => {
       fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-08-18' } });
       await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
 
-      const normalRadios = screen.getAllByRole('radio', { name: /^normal$/i });
-      const optionalRadios = screen.getAllByRole('radio', { name: /^optional$/i });
-      expect(normalRadios).toHaveLength(2);
-      normalRadios.forEach(r => expect(r).toBeChecked());
-      optionalRadios.forEach(r => expect(r).not.toBeChecked());
+      const optionalCheckboxes = screen.getAllByRole('checkbox', { name: /^optional$/i });
+      expect(optionalCheckboxes).toHaveLength(2);
+      optionalCheckboxes.forEach(cb => expect(cb).not.toBeChecked());
     } finally {
       vi.useRealTimers();
     }
@@ -242,7 +240,7 @@ describe('RequestCoverageRangeForm', () => {
       await screen.findAllByRole('checkbox', { name: /2026-08-\d{2}/ });
 
       const firstRow = screen.getByRole('checkbox', { name: /2026-08-11/ }).closest('li')!;
-      fireEvent.click(within(firstRow).getByRole('radio', { name: /^optional$/i }));
+      fireEvent.click(within(firstRow).getByRole('checkbox', { name: /^optional$/i }));
 
       fireEvent.click(screen.getByRole('button', { name: /request coverage/i }));
 
