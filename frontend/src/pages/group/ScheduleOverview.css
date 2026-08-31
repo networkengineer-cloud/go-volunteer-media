@@ -219,6 +219,20 @@
   color: var(--text-secondary, var(--neutral-500, #6b7280));
 }
 
+/* index.css's global input[type="checkbox"] rule sets a 44x44px minimum
+   touch target - correct for a full-width tap row elsewhere, but it blows
+   out these two checkboxes (and the popover's fixed 140-220px width along
+   with them) since they sit inline next to a text label instead of being
+   the entire tap target themselves. */
+.schedule-overview__reassign-hour input[type="checkbox"],
+.schedule-overview__reassign-notify input[type="checkbox"] {
+  min-width: 14px;
+  min-height: 14px;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 .schedule-overview__tag {
   font-size: 0.75rem;
   color: var(--warning);
