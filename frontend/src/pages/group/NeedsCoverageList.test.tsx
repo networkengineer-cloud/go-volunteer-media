@@ -3,13 +3,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import NeedsCoverageList from './NeedsCoverageList';
 import { scheduleApi } from '../../api/client';
 import type { AxiosResponse } from 'axios';
-import type { CoverageRequestListItem, CoverageRequestCancelBatchResult } from '../../api/client';
+import type { CoverageRequestListItem, CoverageRequestCancelBatchResult, CoverageRequestClaimBatchResult } from '../../api/client';
 
 vi.mock('../../api/client', () => ({
   scheduleApi: {
     listCoverageRequests: vi.fn(),
     claimCoverageRequest: vi.fn(),
     cancelCoverageRequestsBatch: vi.fn(),
+    claimCoverageRequestsBatch: vi.fn(),
     updateCoverageRequestPriority: vi.fn(),
   },
 }));
@@ -70,9 +71,9 @@ describe('NeedsCoverageList', () => {
     vi.mocked(scheduleApi.claimCoverageRequest).mockResolvedValue({} as unknown as AxiosResponse);
     render(<NeedsCoverageList groupId={7} currentUserId={1} />);
 
-    await screen.findByRole('button', { name: /claim/i });
+    await screen.findByRole('button', { name: 'Claim' });
     const callsBeforeClaim = vi.mocked(scheduleApi.listCoverageRequests).mock.calls.length;
-    fireEvent.click(screen.getByRole('button', { name: /claim/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Claim' }));
 
     await waitFor(() => expect(scheduleApi.claimCoverageRequest).toHaveBeenCalledWith(7, 5));
     await waitFor(() => expect(mockShowSuccess).toHaveBeenCalled());
@@ -87,7 +88,7 @@ describe('NeedsCoverageList', () => {
     vi.mocked(scheduleApi.claimCoverageRequest).mockRejectedValue({ response: { data: { error: 'Already claimed' } } });
     render(<NeedsCoverageList groupId={7} currentUserId={1} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /claim/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Claim' }));
 
     await waitFor(() => expect(mockShowError).toHaveBeenCalledWith('Already claimed'));
   });
@@ -110,7 +111,7 @@ describe('NeedsCoverageList', () => {
     render(<NeedsCoverageList groupId={7} currentUserId={1} />);
 
     await screen.findByText('Me');
-    expect(screen.queryByRole('button', { name: /claim/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Claim' })).not.toBeInTheDocument();
   });
 
   describe('bulk cancel', () => {
@@ -128,9 +129,12 @@ describe('NeedsCoverageList', () => {
       expect(screen.getByRole('checkbox', { name: /select.*2026-08-11/i })).toBeInTheDocument();
     });
 
-    it('does not show a checkbox on another member\'s request when the viewer is not an admin', async () => {
+    it('does not show a checkbox on a request the viewer can neither cancel nor claim', async () => {
+      // Not the viewer's own request (so not cancellable, viewer isn't admin)
+      // and not claimable (e.g. a conflicting shift) - there is no bulk
+      // action this row could join, so no checkbox.
       mockList([
-        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: false },
       ]);
       render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers={false} />);
 
@@ -193,6 +197,104 @@ describe('NeedsCoverageList', () => {
 
       fireEvent.click(screen.getByRole('checkbox', { name: /2026-08-11/i }));
       expect(cancelButton).toBeEnabled();
+    });
+  });
+
+  describe('bulk claim', () => {
+    function mockClaimBatch(result: CoverageRequestClaimBatchResult) {
+      vi.mocked(scheduleApi.claimCoverageRequestsBatch).mockResolvedValue({ data: result } as unknown as AxiosResponse<CoverageRequestClaimBatchResult>);
+    }
+
+    it('shows a checkbox on another member\'s claimable request even for a non-admin viewer', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers={false} />);
+
+      await screen.findByText('Jane Doe');
+      expect(screen.getByRole('checkbox', { name: /select.*2026-08-11/i })).toBeInTheDocument();
+    });
+
+    it('claiming selected requests calls claimCoverageRequestsBatch with the selected ids and refetches', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+        { id: 6, group_id: 7, requested_by_user_id: 3, requested_by_name: 'John Roe', date: '2026-08-13', hour: 10, priority: 'normal', claimable: true },
+      ]);
+      mockClaimBatch({ claimed: [], skipped: [] });
+      render(<NeedsCoverageList groupId={7} currentUserId={1} />);
+
+      fireEvent.click(await screen.findByRole('checkbox', { name: /2026-08-13/i }));
+
+      const callsBeforeClaim = vi.mocked(scheduleApi.listCoverageRequests).mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: /claim selected/i }));
+
+      await waitFor(() => expect(scheduleApi.claimCoverageRequestsBatch).toHaveBeenCalledWith(7, [6]));
+      await waitFor(() => expect(scheduleApi.listCoverageRequests).toHaveBeenCalledTimes(callsBeforeClaim + 1));
+    });
+
+    it('shows a summary toast reporting claimed and skipped counts', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      mockClaimBatch({
+        claimed: [{ id: 5, group_id: 7, requested_by_user_id: 2, date: '2026-08-11', hour: 9, status: 'claimed', priority: 'normal', claimed_by_user_id: 1 }],
+        skipped: [{ id: 6, reason: 'coverage request is no longer open' }],
+      });
+      render(<NeedsCoverageList groupId={7} currentUserId={1} />);
+
+      fireEvent.click(await screen.findByRole('checkbox', { name: /2026-08-11/i }));
+      fireEvent.click(screen.getByRole('button', { name: /claim selected/i }));
+
+      await waitFor(() => expect(mockShowSuccess).toHaveBeenCalledWith('Claimed 1 request.'));
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith('1 request could not be claimed.'));
+    });
+
+    it('disables the Claim selected button until at least one claimable request is checked', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} />);
+
+      const claimSelectedButton = await screen.findByRole('button', { name: /claim selected/i });
+      expect(claimSelectedButton).toBeDisabled();
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /2026-08-11/i }));
+      expect(claimSelectedButton).toBeEnabled();
+    });
+
+    it('checking a mix of the viewer\'s own request and another\'s claimable request lets each bulk button act on only its own subset', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, priority: 'normal', claimable: false },
+        { id: 6, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-13', hour: 10, priority: 'normal', claimable: true },
+      ]);
+      mockClaimBatch({ claimed: [], skipped: [] });
+      vi.mocked(scheduleApi.cancelCoverageRequestsBatch).mockResolvedValue({ data: { cancelled: [], skipped: [] } } as unknown as AxiosResponse<CoverageRequestCancelBatchResult>);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} />);
+
+      fireEvent.click(await screen.findByRole('checkbox', { name: /2026-08-11/i }));
+      fireEvent.click(screen.getByRole('checkbox', { name: /2026-08-13/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /claim selected/i }));
+      await waitFor(() => expect(scheduleApi.claimCoverageRequestsBatch).toHaveBeenCalledWith(7, [6]));
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /2026-08-11/i }));
+      fireEvent.click(screen.getByRole('button', { name: /cancel selected/i }));
+      await waitFor(() => expect(scheduleApi.cancelCoverageRequestsBatch).toHaveBeenCalledWith(7, [5]));
+    });
+
+    it('"Select all" selects both cancellable and claimable rows', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 1, requested_by_name: 'Me', date: '2026-08-11', hour: 9, priority: 'normal', claimable: false },
+        { id: 6, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-13', hour: 10, priority: 'normal', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} />);
+
+      fireEvent.click(await screen.findByRole('checkbox', { name: /select all/i }));
+
+      expect(screen.getByRole('checkbox', { name: /2026-08-11/i })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /2026-08-13/i })).toBeChecked();
+      expect(screen.getByRole('button', { name: /cancel selected/i })).toBeEnabled();
+      expect(screen.getByRole('button', { name: /claim selected/i })).toBeEnabled();
     });
   });
 

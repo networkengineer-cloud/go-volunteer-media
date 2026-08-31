@@ -34,6 +34,7 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
   const [busyRequestId, setBusyRequestId] = useState<number | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
   const [cancelling, setCancelling] = useState(false);
+  const [claiming, setClaiming] = useState(false);
   const [busyPriorityId, setBusyPriorityId] = useState<number | null>(null);
 
   // Cancels any in-flight request before starting a new one, matching the
@@ -111,6 +112,7 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
   };
 
   const isCancellable = (item: CoverageRequestListItem) => item.requested_by_user_id === currentUserId || canManageMembers;
+  const isClaimable = (item: CoverageRequestListItem) => item.requested_by_user_id !== currentUserId && item.claimable;
 
   const toggleChecked = (id: number) => {
     setCheckedIds(prev => {
@@ -125,16 +127,20 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
   };
 
   const cancellableIds = items.filter(isCancellable).map(i => i.id);
-  const allChecked = cancellableIds.length > 0 && cancellableIds.every(id => checkedIds.has(id));
+  const claimableIds = items.filter(isClaimable).map(i => i.id);
+  const selectableIds = Array.from(new Set([...cancellableIds, ...claimableIds]));
+  const allChecked = selectableIds.length > 0 && selectableIds.every(id => checkedIds.has(id));
   const toggleAll = () => {
-    setCheckedIds(allChecked ? new Set() : new Set(cancellableIds));
+    setCheckedIds(allChecked ? new Set() : new Set(selectableIds));
   };
 
+  const checkedCancellableIds = cancellableIds.filter(id => checkedIds.has(id));
+  const checkedClaimableIds = claimableIds.filter(id => checkedIds.has(id));
+
   const handleCancelSelected = () => {
-    const requestIds = Array.from(checkedIds);
-    if (requestIds.length === 0) return;
+    if (checkedCancellableIds.length === 0) return;
     setCancelling(true);
-    scheduleApi.cancelCoverageRequestsBatch(groupId, requestIds)
+    scheduleApi.cancelCoverageRequestsBatch(groupId, checkedCancellableIds)
       .then(res => {
         const { cancelled, skipped } = res.data;
         if (cancelled.length > 0) {
@@ -152,6 +158,27 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
       .finally(() => setCancelling(false));
   };
 
+  const handleClaimSelected = () => {
+    if (checkedClaimableIds.length === 0) return;
+    setClaiming(true);
+    scheduleApi.claimCoverageRequestsBatch(groupId, checkedClaimableIds)
+      .then(res => {
+        const { claimed, skipped } = res.data;
+        if (claimed.length > 0) {
+          toast.showSuccess(`Claimed ${claimed.length} request${claimed.length === 1 ? '' : 's'}.`);
+        }
+        if (skipped.length > 0) {
+          toast.showError(`${skipped.length} request${skipped.length === 1 ? '' : 's'} could not be claimed.`);
+        }
+        setCheckedIds(new Set());
+        loadRequests();
+      })
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to claim requests.');
+      })
+      .finally(() => setClaiming(false));
+  };
+
   if (loading) {
     return <SkeletonLoader variant="card" count={1} />;
   }
@@ -166,19 +193,27 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
 
   return (
     <div className="needs-coverage-list-wrapper">
-      {cancellableIds.length > 0 && (
+      {selectableIds.length > 0 && (
         <div className="needs-coverage-list__bulk-bar">
           <label>
-            <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all cancellable requests" />
+            <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all requests" />
             Select all
           </label>
           <button
             type="button"
+            className="btn-secondary needs-coverage-list__claim-selected"
+            disabled={checkedClaimableIds.length === 0 || claiming}
+            onClick={handleClaimSelected}
+          >
+            Claim selected ({checkedClaimableIds.length})
+          </button>
+          <button
+            type="button"
             className="btn-secondary needs-coverage-list__cancel-selected"
-            disabled={checkedIds.size === 0 || cancelling}
+            disabled={checkedCancellableIds.length === 0 || cancelling}
             onClick={handleCancelSelected}
           >
-            Cancel selected ({checkedIds.size})
+            Cancel selected ({checkedCancellableIds.length})
           </button>
         </div>
       )}
@@ -186,7 +221,7 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
         {items.map(item => (
           <li key={item.id} className="needs-coverage-list__row">
             <span className="needs-coverage-list__details">
-              {isCancellable(item) && (
+              {(isCancellable(item) || isClaimable(item)) && (
                 <input
                   type="checkbox"
                   checked={checkedIds.has(item.id)}

@@ -14,9 +14,10 @@
 
 /* Same technique as .needs-coverage-list .needs-coverage-list__claim below:
    a descendant selector beats any single-class `.btn-secondary` rule
-   elsewhere in the app regardless of load order, so this button doesn't
+   elsewhere in the app regardless of load order, so these buttons don't
    stretch to fill the bulk bar and break the space-between layout. */
-.needs-coverage-list-wrapper .needs-coverage-list__cancel-selected {
+.needs-coverage-list-wrapper .needs-coverage-list__cancel-selected,
+.needs-coverage-list-wrapper .needs-coverage-list__claim-selected {
   font-size: 0.8rem;
   padding: 0.25rem 0.75rem;
   width: auto;
