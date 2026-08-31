@@ -65,6 +65,50 @@ func formatSlotRangeLabel(dayOfWeek, hour int) string {
 	return fmt.Sprintf("%s–%s", startTime, endTime)
 }
 
+// formatHourRangeLabel renders a contiguous run of hours [firstHour,
+// lastHour] on the given day-of-week as a "start–end" range, e.g.
+// formatHourRangeLabel(2, 8, 10) -> "8:00–11:00 AM". The end time accounts
+// for the terminal slot's 90-minute duration if lastHour happens to be
+// that day's terminal hour. Unlike formatSlotRangeLabel, always renders a
+// full range (even for a single hour) since this is used to summarize a
+// reassignment notification, where the actual end time matters regardless
+// of whether it's the day's 60- or 90-minute slot.
+func formatHourRangeLabel(dayOfWeek, firstHour, lastHour int) string {
+	duration := slotDurationMinutes(dayOfWeek, lastHour)
+	endTotalMinutes := lastHour*60 + duration
+	endHour := endTotalMinutes / 60
+	endMinute := endTotalMinutes % 60
+	startTime := strings.TrimSuffix(strings.TrimSuffix(formatClockAMPM(firstHour, 0), " AM"), " PM")
+	endTime := formatClockAMPM(endHour, endMinute)
+	return fmt.Sprintf("%s–%s", startTime, endTime)
+}
+
+// formatReassignedHoursSummary groups sortedHours (ascending, deduplicated)
+// into contiguous runs and renders each via formatHourRangeLabel, joining
+// multiple runs with " and " - e.g. hours [8,9,10,13] on a weekday ->
+// "8:00–11:00 AM and 1:00–2:00 PM". Used so a multi-hour reassignment
+// notification describes the whole span in one sentence instead of
+// enumerating every hour.
+func formatReassignedHoursSummary(dayOfWeek int, sortedHours []int) string {
+	if len(sortedHours) == 0 {
+		return ""
+	}
+	var runs []string
+	runStart := sortedHours[0]
+	prev := sortedHours[0]
+	for _, h := range sortedHours[1:] {
+		if h == prev+1 {
+			prev = h
+			continue
+		}
+		runs = append(runs, formatHourRangeLabel(dayOfWeek, runStart, prev))
+		runStart = h
+		prev = h
+	}
+	runs = append(runs, formatHourRangeLabel(dayOfWeek, runStart, prev))
+	return strings.Join(runs, " and ")
+}
+
 // biweeklyReferenceSunday anchors the "week A" / "week B" cycle for
 // biweekly cadences. Must stay a Sunday and must never change once any
 // biweekly slot exists in production, or every existing A/B assignment

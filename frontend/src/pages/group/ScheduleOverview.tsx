@@ -3,7 +3,7 @@ import axios from 'axios';
 import { scheduleApi } from '../../api/client';
 import type { ScheduleOverviewMember, ScheduleSlot, GroupMember } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
-import { DAYS, HOURS, slotKey, formatSlotRangeLabel, maxHourFor, currentWeekStart, rowHeaderFor } from './scheduleGrid';
+import { DAYS, HOURS, slotKey, formatSlotRangeLabel, formatHourLabel, maxHourFor, currentWeekStart, rowHeaderFor } from './scheduleGrid';
 import CadenceLegend from './CadenceLegend';
 import Modal from '../../components/Modal';
 import RequestCoverageRangeForm from './RequestCoverageRangeForm';
@@ -163,6 +163,11 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const [reassigningUserId, setReassigningUserId] = useState<number | null>(null);
   const [reassignToUserId, setReassignToUserId] = useState<number | ''>('');
   const [reassigning, setReassigning] = useState(false);
+  const [reassignHours, setReassignHours] = useState<Set<number>>(new Set());
+  // Defaults to true (send the usual emails/GroupMe post) - an admin
+  // arranging a change already agreed in person can uncheck it to skip
+  // notifying entirely for just this one reassignment.
+  const [notifyOnReassign, setNotifyOnReassign] = useState(true);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Cancels any in-flight request before starting a new one - matching
@@ -224,6 +229,8 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   useEffect(() => {
     setReassigningUserId(null);
     setReassignToUserId('');
+    setReassignHours(new Set());
+    setNotifyOnReassign(true);
   }, [activeCellKey]);
 
   useEffect(() => {
@@ -280,14 +287,22 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
       .finally(() => setBusyRequestId(null));
   };
 
-  const handleReassign = (fromUserId: number, date: string, hour: number) => {
-    if (reassignToUserId === '') return;
+  const handleReassign = (fromUserId: number, date: string, hours: number[]) => {
+    if (reassignToUserId === '' || hours.length === 0) return;
     setReassigning(true);
-    scheduleApi.reassignShift(groupId, { fromUserId, toUserId: reassignToUserId, date, hour })
-      .then(() => {
-        toast.showSuccess('Shift reassigned.');
-        setActiveCellKey(null);
-        setPopoverPosition(null);
+    scheduleApi.reassignShiftsBatch(groupId, { fromUserId, toUserId: reassignToUserId, date, hours, notify: notifyOnReassign })
+      .then(res => {
+        if (res.data.created.length > 0) {
+          toast.showSuccess(`Reassigned ${res.data.created.length} shift${res.data.created.length === 1 ? '' : 's'}.`);
+          setActiveCellKey(null);
+          setPopoverPosition(null);
+        }
+        if (res.data.skipped.length > 0) {
+          const detail = res.data.skipped
+            .map(s => `${formatHourLabel(s.hour)}: ${s.reason}`)
+            .join('; ');
+          toast.showError(`${res.data.skipped.length} shift${res.data.skipped.length === 1 ? '' : 's'} could not be reassigned — ${detail}`);
+        }
         loadOverview();
       })
       .catch(err => {
@@ -436,7 +451,13 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                       style={{ top: popoverPosition.top, left: popoverPosition.left }}
                     >
                       <ul>
-                        {members.map(member => (
+                        {members.map(member => {
+                          const otherHours = HOURS.filter(h =>
+                            h !== hour &&
+                            (membersBySlot.get(slotKey(dayOfWeek, h)) ?? []).some(m => m.user_id === member.user_id && m.status === 'normal')
+                          );
+                          const allReassignHours = [hour, ...otherHours].sort((a, b) => a - b);
+                          return (
                           <li key={member.user_id} className="schedule-overview__popover-row">
                             <span>
                               {memberDisplayName(member)}
@@ -500,12 +521,42 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                         </option>
                                       ))}
                                   </select>
+                                  {otherHours.length > 0 && (
+                                    <span className="schedule-overview__reassign-hours" role="group" aria-label="Also include">
+                                      {allReassignHours.map(h => (
+                                        <label key={h} className="schedule-overview__reassign-hour">
+                                          <input
+                                            type="checkbox"
+                                            checked={reassignHours.has(h)}
+                                            onChange={() => setReassignHours(prev => {
+                                              const next = new Set(prev);
+                                              if (next.has(h)) {
+                                                next.delete(h);
+                                              } else {
+                                                next.add(h);
+                                              }
+                                              return next;
+                                            })}
+                                          />
+                                          {formatHourLabel(h)}
+                                        </label>
+                                      ))}
+                                    </span>
+                                  )}
+                                  <label className="schedule-overview__reassign-notify">
+                                    <input
+                                      type="checkbox"
+                                      checked={notifyOnReassign}
+                                      onChange={e => setNotifyOnReassign(e.target.checked)}
+                                    />
+                                    Notify both volunteers (email & GroupMe)
+                                  </label>
                                   <span className="schedule-overview__reassign-actions">
                                     <button
                                       type="button"
                                       className="btn-secondary schedule-overview__action"
-                                      disabled={reassignToUserId === '' || reassigning}
-                                      onClick={() => handleReassign(member.user_id, date, hour)}
+                                      disabled={reassignToUserId === '' || reassignHours.size === 0 || reassigning}
+                                      onClick={() => handleReassign(member.user_id, date, Array.from(reassignHours))}
                                     >
                                       Confirm
                                     </button>
@@ -513,7 +564,12 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                       type="button"
                                       className="btn-secondary schedule-overview__action"
                                       disabled={reassigning}
-                                      onClick={() => setReassigningUserId(null)}
+                                      onClick={() => {
+                                        setReassigningUserId(null);
+                                        setReassignToUserId('');
+                                        setReassignHours(new Set());
+                                        setNotifyOnReassign(true);
+                                      }}
                                     >
                                       Cancel
                                     </button>
@@ -526,6 +582,8 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                   onClick={() => {
                                     setReassigningUserId(member.user_id);
                                     setReassignToUserId('');
+                                    setReassignHours(new Set([hour]));
+                                    setNotifyOnReassign(true);
                                   }}
                                 >
                                   Reassign
@@ -533,7 +591,8 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                               )
                             )}
                           </li>
-                        ))}
+                          );
+                        })}
                       </ul>
                     </div>
                   )}

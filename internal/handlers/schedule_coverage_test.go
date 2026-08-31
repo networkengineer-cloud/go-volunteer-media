@@ -1712,7 +1712,7 @@ func TestUpdateCoverageRequestPriority(t *testing.T) {
 	})
 }
 
-func performReassignShift(db *gorm.DB, callerID uint, isAdmin bool, groupID uint, body string) *httptest.ResponseRecorder {
+func performReassignShiftsBatch(db *gorm.DB, callerID uint, isAdmin bool, groupID uint, body string) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
@@ -1720,7 +1720,7 @@ func performReassignShift(db *gorm.DB, callerID uint, isAdmin bool, groupID uint
 		c.Set("is_admin", isAdmin)
 		c.Next()
 	})
-	router.POST("/groups/:id/schedule/reassign", ReassignShift(db, nil, nil))
+	router.POST("/groups/:id/schedule/reassign", ReassignShiftsBatch(db, nil, nil))
 
 	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/reassign", groupID), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -1729,41 +1729,53 @@ func performReassignShift(db *gorm.DB, callerID uint, isAdmin bool, groupID uint
 	return w
 }
 
-// TestReassignShift covers the "previously approved / agreed in person"
-// admin shortcut: swap who's on a specific date's shift in one step,
-// without either volunteer going through the request-then-claim flow.
-func TestReassignShift(t *testing.T) {
-	t.Run("group admin can reassign a normally scheduled shift to another member, and the overview reflects it immediately", func(t *testing.T) {
+// TestReassignShiftsBatch covers the "previously approved / agreed in
+// person" admin shortcut, extended to several hours in one call so a
+// multi-hour swap sends one notification instead of one per hour.
+func TestReassignShiftsBatch(t *testing.T) {
+	t.Run("group admin can reassign several hours to another member in one call, with one consolidated response", func(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, other, group := setupCoverageTestGroup(t, db)
 		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
 		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
-		date := nextWeekday(time.Tuesday)
-		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hour":10}`, requester.ID, other.ID, date)
-
-		w := performReassignShift(db, admin.ID, false, group.ID, body)
-
-		if w.Code != http.StatusCreated {
-			t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		// requester already has Tuesday 10am (from setupCoverageTestGroup); add 11am and 12pm too.
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 11}).Error; err != nil {
+			t.Fatalf("Failed to create second shift slot: %v", err)
 		}
-		var resp coverageRequestResponse
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 12}).Error; err != nil {
+			t.Fatalf("Failed to create third shift slot: %v", err)
+		}
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10,11,12]}`, requester.ID, other.ID, date)
+
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp reassignShiftsBatchResponse
 		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("Failed to unmarshal response: %v", err)
 		}
-		if resp.Status != string(models.CoverageRequestClaimed) {
-			t.Errorf("Expected status %q, got %q", models.CoverageRequestClaimed, resp.Status)
+		if len(resp.Created) != 3 {
+			t.Fatalf("Expected 3 created, got %d: %+v", len(resp.Created), resp.Created)
 		}
-		if resp.RequestedByUserID != requester.ID {
-			t.Errorf("Expected requested_by_user_id %d, got %d", requester.ID, resp.RequestedByUserID)
+		if len(resp.Skipped) != 0 {
+			t.Fatalf("Expected 0 skipped, got %d: %+v", len(resp.Skipped), resp.Skipped)
 		}
-		if resp.ClaimedByUserID == nil || *resp.ClaimedByUserID != other.ID {
-			t.Errorf("Expected claimed_by_user_id %d, got %v", other.ID, resp.ClaimedByUserID)
+		for _, created := range resp.Created {
+			if created.ClaimedByUserID == nil || *created.ClaimedByUserID != other.ID {
+				t.Errorf("Expected claimed_by_user_id %d, got %v", other.ID, created.ClaimedByUserID)
+			}
 		}
 
-		// No separate wiring needed for the overview to pick this up - it
-		// already derives status purely from ShiftSlot + ShiftCoverageRequest
-		// rows, regardless of how a request got claimed.
-		parsedDate, _ := time.Parse("2006-01-02", date)
+		// The endpoint's headline behavior is that the reassignment is
+		// immediately visible in GetGroupScheduleOverview - prove that here,
+		// not just that ClaimCoverageRequest-shaped rows were created.
+		parsedDate, err := time.Parse("2006-01-02", date)
+		if err != nil {
+			t.Fatalf("Failed to parse date: %v", err)
+		}
 		overviewW := performGetGroupScheduleOverview(db, admin.ID, group.ID, weekStartOf(parsedDate).Format("2006-01-02"))
 		if overviewW.Code != http.StatusOK {
 			t.Fatalf("Expected 200 for overview, got %d: %s", overviewW.Code, overviewW.Body.String())
@@ -1774,23 +1786,116 @@ func TestReassignShift(t *testing.T) {
 		if err := json.Unmarshal(overviewW.Body.Bytes(), &overview); err != nil {
 			t.Fatalf("Failed to unmarshal overview: %v", err)
 		}
-		var found bool
-		for _, slot := range overview.Slots {
-			if slot.Date != date || slot.Hour != 10 {
-				continue
+		for _, wantHour := range []int{10, 11, 12} {
+			var found bool
+			for _, slot := range overview.Slots {
+				if slot.Date != date || slot.Hour != wantHour {
+					continue
+				}
+				found = true
+				for _, m := range slot.Members {
+					if m.UserID == requester.ID {
+						t.Errorf("Expected requester to be dropped from hour %d, found status %q", wantHour, m.Status)
+					}
+					if m.UserID == other.ID && m.Status != "covering" {
+						t.Errorf("Expected other's status to be %q for hour %d, got %q", "covering", wantHour, m.Status)
+					}
+				}
 			}
-			found = true
-			for _, m := range slot.Members {
-				if m.UserID == requester.ID {
-					t.Errorf("Expected requester to be dropped from the slot, found status %q", m.Status)
-				}
-				if m.UserID == other.ID && m.Status != "covering" {
-					t.Errorf("Expected other's status to be %q, got %q", "covering", m.Status)
-				}
+			if !found {
+				t.Errorf("Expected to find hour %d in the overview", wantHour)
 			}
 		}
-		if !found {
-			t.Fatalf("Expected to find the Tuesday 10am slot in the overview")
+	})
+
+	t.Run("a conflicting hour is skipped while the rest of the batch still succeeds", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 11}).Error; err != nil {
+			t.Fatalf("Failed to create second shift slot: %v", err)
+		}
+		// other already has a conflicting Tuesday 11am shift in a different group.
+		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		AddUserToGroupWithAdmin(t, db, other.ID, otherGroup.ID, false)
+		if err := db.Create(&models.ShiftSlot{UserID: other.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 11}).Error; err != nil {
+			t.Fatalf("Failed to create conflicting shift slot: %v", err)
+		}
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10,11]}`, requester.ID, other.ID, date)
+
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp reassignShiftsBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Created) != 1 || resp.Created[0].Hour != 10 {
+			t.Fatalf("Expected hour 10 created, got %+v", resp.Created)
+		}
+		if len(resp.Skipped) != 1 || resp.Skipped[0].Hour != 11 {
+			t.Fatalf("Expected hour 11 skipped, got %+v", resp.Skipped)
+		}
+	})
+
+	t.Run("skips (not fails) an hour where from_user has no matching slot, while other hours still succeed", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		// requester's only slot is Tuesday 10am (from setupCoverageTestGroup) - no 11am slot exists.
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10,11]}`, requester.ID, other.ID, date)
+
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp reassignShiftsBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Created) != 1 || resp.Created[0].Hour != 10 {
+			t.Fatalf("Expected hour 10 created, got %+v", resp.Created)
+		}
+		if len(resp.Skipped) != 1 || resp.Skipped[0].Hour != 11 {
+			t.Fatalf("Expected hour 11 skipped, got %+v", resp.Skipped)
+		}
+	})
+
+	t.Run("skips (not fails) an hour where an active coverage request already exists for from_user, while other hours still succeed", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		if err := db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: 2, Hour: 11}).Error; err != nil {
+			t.Fatalf("Failed to create second shift slot: %v", err)
+		}
+		parsedDate, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		// requester already has an open coverage request at hour 10.
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, parsedDate)
+		date := parsedDate.Format("2006-01-02")
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10,11]}`, requester.ID, other.ID, date)
+
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp reassignShiftsBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Created) != 1 || resp.Created[0].Hour != 11 {
+			t.Fatalf("Expected hour 11 created, got %+v", resp.Created)
+		}
+		if len(resp.Skipped) != 1 || resp.Skipped[0].Hour != 10 || !strings.Contains(resp.Skipped[0].Reason, "already exists") {
+			t.Fatalf("Expected hour 10 skipped with an 'already exists' reason, got %+v", resp.Skipped)
 		}
 	})
 
@@ -1798,9 +1903,9 @@ func TestReassignShift(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, other, group := setupCoverageTestGroup(t, db)
 		date := nextWeekday(time.Tuesday)
-		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hour":10}`, requester.ID, other.ID, date)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10]}`, requester.ID, other.ID, date)
 
-		w := performReassignShift(db, other.ID, false, group.ID, body)
+		w := performReassignShiftsBatch(db, other.ID, false, group.ID, body)
 
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
@@ -1813,39 +1918,73 @@ func TestReassignShift(t *testing.T) {
 		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
 		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
 		past := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
-		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hour":10}`, requester.ID, other.ID, past)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10]}`, requester.ID, other.ID, past)
 
-		w := performReassignShift(db, admin.ID, false, group.ID, body)
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
 
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 
-	t.Run("rejects when from_user has no matching shift slot at that date/hour", func(t *testing.T) {
+	t.Run("rejects an empty hours list", func(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, other, group := setupCoverageTestGroup(t, db)
 		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
 		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
-		date := nextWeekday(time.Wednesday) // requester's only slot is Tuesday 10am
-		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hour":10}`, requester.ID, other.ID, date)
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[]}`, requester.ID, other.ID, date)
 
-		w := performReassignShift(db, admin.ID, false, group.ID, body)
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
 
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 
-	t.Run("rejects reassigning a shift to the same person", func(t *testing.T) {
+	t.Run("rejects a batch exceeding the max hours per call", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date := nextWeekday(time.Tuesday)
+		hours := make([]string, 0, 21)
+		for h := 0; h < 21; h++ {
+			hours = append(hours, fmt.Sprintf("%d", h))
+		}
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[%s]}`, requester.ID, other.ID, date, strings.Join(hours, ","))
+
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("rejects a duplicate hour in the list", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10,10]}`, requester.ID, other.ID, date)
+
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("rejects reassigning to the same person", func(t *testing.T) {
 		db := SetupTestDB(t)
 		requester, _, group := setupCoverageTestGroup(t, db)
 		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
 		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
 		date := nextWeekday(time.Tuesday)
-		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hour":10}`, requester.ID, requester.ID, date)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10]}`, requester.ID, requester.ID, date)
 
-		w := performReassignShift(db, admin.ID, false, group.ID, body)
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
 
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
@@ -1859,50 +1998,103 @@ func TestReassignShift(t *testing.T) {
 		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
 		outsider := CreateTestUser(t, db, "outsider", "outsider@example.com", "password123", false)
 		date := nextWeekday(time.Tuesday)
-		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hour":10}`, requester.ID, outsider.ID, date)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10]}`, requester.ID, outsider.ID, date)
 
-		w := performReassignShift(db, admin.ID, false, group.ID, body)
+		w := performReassignShiftsBatch(db, admin.ID, false, group.ID, body)
 
 		if w.Code != http.StatusNotFound {
 			t.Fatalf("Expected 404, got %d: %s", w.Code, w.Body.String())
 		}
 	})
+}
 
-	t.Run("rejects when to_user already has a conflicting shift at that exact date/hour", func(t *testing.T) {
+// TestReassignShiftsBatch_NotifyFlag covers the optional notify field: an
+// admin arranging a reassignment already agreed in person can skip the
+// notification emails entirely. This is distinct from (and layered on top
+// of) the existing SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED flag and each
+// user's own EmailNotificationsEnabled preference, both of which stay on
+// in these tests so only the request-level notify field is under test -
+// mirrors TestCreateCoverageRequest_EmailGatedByScheduleFlag's pattern of
+// exercising the actual SendEmail call via mockEmailProvider, not just the
+// gating condition in isolation.
+func TestReassignShiftsBatch_NotifyFlag(t *testing.T) {
+	t.Run("notify:false sends no email even with the schedule flag and both users' preferences on", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
 		db := SetupTestDB(t)
 		requester, other, group := setupCoverageTestGroup(t, db)
 		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
 		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
-
-		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
-		AddUserToGroupWithAdmin(t, db, other.ID, otherGroup.ID, false)
-		if err := db.Create(&models.ShiftSlot{UserID: other.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10}).Error; err != nil {
-			t.Fatalf("Failed to create conflicting shift slot: %v", err)
+		if err := db.Model(requester).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable requester's email notifications: %v", err)
 		}
+		if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable other's email notifications: %v", err)
+		}
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
+
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", admin.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.POST("/groups/:id/schedule/reassign", ReassignShiftsBatch(db, emailSvc, nil))
+
 		date := nextWeekday(time.Tuesday)
-		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hour":10}`, requester.ID, other.ID, date)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10],"notify":false}`, requester.ID, other.ID, date)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/reassign", group.ID), strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
 
-		w := performReassignShift(db, admin.ID, false, group.ID, body)
-
-		if w.Code != http.StatusConflict {
-			t.Fatalf("Expected 409, got %d: %s", w.Code, w.Body.String())
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got != 0 {
+			t.Fatalf("Expected no email when notify is false, got %d", got)
 		}
 	})
 
-	t.Run("rejects when an active coverage request already exists for the from_user at that date/hour", func(t *testing.T) {
+	t.Run("omitting notify defaults to sending emails", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
 		db := SetupTestDB(t)
 		requester, other, group := setupCoverageTestGroup(t, db)
 		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
 		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
-		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
-		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if err := db.Model(requester).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable requester's email notifications: %v", err)
+		}
+		if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable other's email notifications: %v", err)
+		}
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
 
-		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hour":10}`, requester.ID, other.ID, date.Format("2006-01-02"))
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", admin.ID)
+			c.Set("is_admin", false)
+			c.Next()
+		})
+		router.POST("/groups/:id/schedule/reassign", ReassignShiftsBatch(db, emailSvc, nil))
 
-		w := performReassignShift(db, admin.ID, false, group.ID, body)
+		date := nextWeekday(time.Tuesday)
+		body := fmt.Sprintf(`{"from_user_id":%d,"to_user_id":%d,"date":"%s","hours":[10]}`, requester.ID, other.ID, date)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/reassign", group.ID), strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
 
-		if w.Code != http.StatusConflict {
-			t.Fatalf("Expected 409, got %d: %s", w.Code, w.Body.String())
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got == 0 {
+			t.Fatal("Expected emails to be sent when notify is omitted, got none")
 		}
 	})
 }

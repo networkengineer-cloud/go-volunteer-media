@@ -118,3 +118,47 @@ func TestSlotActiveForWeek(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatHourRangeLabel(t *testing.T) {
+	tests := []struct {
+		name      string
+		dayOfWeek int
+		firstHour int
+		lastHour  int
+		want      string
+	}{
+		{"a plain weekday range", 2, 8, 10, "8:00–11:00 AM"},
+		{"a single hour still renders as a start-end range", 2, 8, 8, "8:00–9:00 AM"},
+		{"a range ending at the weekday terminal hour accounts for the 90-min slot", 2, 16, 17, "4:00–6:30 PM"},
+		{"a range ending at the weekend terminal hour accounts for the 90-min slot", 6, 14, 15, "2:00–4:30 PM"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatHourRangeLabel(tt.dayOfWeek, tt.firstHour, tt.lastHour); got != tt.want {
+				t.Errorf("formatHourRangeLabel(%d, %d, %d) = %q, want %q", tt.dayOfWeek, tt.firstHour, tt.lastHour, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatReassignedHoursSummary(t *testing.T) {
+	tests := []struct {
+		name      string
+		dayOfWeek int
+		hours     []int
+		want      string
+	}{
+		{"empty input is an empty string", 2, []int{}, ""},
+		{"a single hour", 2, []int{9}, "9:00–10:00 AM"},
+		{"a contiguous run", 2, []int{8, 9, 10}, "8:00–11:00 AM"},
+		{"two separate runs are joined with 'and'", 2, []int{8, 9, 10, 13}, "8:00–11:00 AM and 1:00–2:00 PM"},
+		{"a run ending at the weekend terminal hour", 6, []int{14, 15}, "2:00–4:30 PM"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatReassignedHoursSummary(tt.dayOfWeek, tt.hours); got != tt.want {
+				t.Errorf("formatReassignedHoursSummary(%d, %v) = %q, want %q", tt.dayOfWeek, tt.hours, got, tt.want)
+			}
+		})
+	}
+}
