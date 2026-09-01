@@ -314,9 +314,41 @@
   background: color-mix(in srgb, var(--brand) 40%, var(--surface));
 }
 
-.schedule-grid__cadence-tag {
-  font-size: 0.7rem;
+/* Leads the name instead of trailing it, and encodes cadence with both
+   color and letter (not color alone) so it reads without needing the
+   legend or a hover title - important since this grid is used on touch
+   devices where hover text never appears. Colors match the biweekly-a/b
+   cell fills above so the chip and the cell it sits in agree visually. */
+.schedule-grid__cadence-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 3px;
+  border-radius: 4px;
+  font-size: 0.62rem;
   font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  flex: none;
+  vertical-align: -2px;
+}
+
+.schedule-grid__cadence-chip--a {
+  background: var(--brand);
+}
+
+.schedule-grid__cadence-chip--b {
+  background: color-mix(in srgb, var(--brand) 88%, var(--surface));
+}
+
+[data-theme='dark'] .schedule-grid__cadence-chip--a {
+  background: color-mix(in srgb, var(--brand) 60%, var(--surface));
+}
+
+[data-theme='dark'] .schedule-grid__cadence-chip--b {
+  background: color-mix(in srgb, var(--brand) 40%, var(--surface));
 }
 
 .schedule-tab__hours-caption {

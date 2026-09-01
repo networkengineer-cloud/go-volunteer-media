@@ -90,7 +90,7 @@ describe('ScheduleOverview', () => {
     render(<ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />);
 
     const cell = await screen.findByRole('cell', { name: /Tue 10:00 AM, 1 available/ });
-    expect(within(cell).getByText('A', { selector: '.schedule-grid__cadence-tag' })).toBeInTheDocument();
+    expect(within(cell).getByText('A', { selector: '.schedule-grid__cadence-chip' })).toBeInTheDocument();
   });
 
   it('does not tag a member with weekly cadence', async () => {
@@ -109,8 +109,8 @@ describe('ScheduleOverview', () => {
     render(<ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />);
 
     const cell = await screen.findByRole('cell', { name: /Tue 10:00 AM, 1 available/ });
-    expect(within(cell).queryByText('A', { selector: '.schedule-grid__cadence-tag' })).not.toBeInTheDocument();
-    expect(within(cell).queryByText('B', { selector: '.schedule-grid__cadence-tag' })).not.toBeInTheDocument();
+    expect(within(cell).queryByText('A', { selector: '.schedule-grid__cadence-chip' })).not.toBeInTheDocument();
+    expect(within(cell).queryByText('B', { selector: '.schedule-grid__cadence-chip' })).not.toBeInTheDocument();
   });
 
   it('loads the overview for the given group and week on mount', async () => {

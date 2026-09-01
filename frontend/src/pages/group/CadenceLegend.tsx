@@ -33,6 +33,15 @@ const LegendEntry: React.FC<LegendEntryProps> = ({ letter, dates, isCurrent }) =
     className={`cadence-legend__entry ${isCurrent ? 'cadence-legend__entry--current' : ''}`}
     aria-current={isCurrent ? 'true' : undefined}
   >
+    {/* Same chip markup/colors as the grid cells (ScheduleTab.css) - lets
+        someone connect a chip they see on a name back to what it means here,
+        without relying on the chip's own hover title. */}
+    <span
+      className={`schedule-grid__cadence-chip schedule-grid__cadence-chip--${letter.toLowerCase()}`}
+      aria-hidden="true"
+    >
+      {letter}
+    </span>
     <strong>Week {letter}:</strong> weeks of {dates.map(formatShortDate).join(', ')}
     {isCurrent && ' (currently viewing)'}
   </span>
@@ -47,6 +56,7 @@ const CadenceLegend: React.FC<CadenceLegendProps> = ({ referenceWeekStart }) => 
     <div className="cadence-legend">
       <LegendEntry letter="A" dates={datesA} isCurrent={currentParity === 'a'} />
       <LegendEntry letter="B" dates={datesB} isCurrent={currentParity === 'b'} />
+      <span className="cadence-legend__note">No chip = every week</span>
     </div>
   );
 };
