@@ -894,6 +894,277 @@ func TestCancelCoverageRequest(t *testing.T) {
 			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
 		}
 	})
+
+	t.Run("claimant can release their own claimed request", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+
+		w := performCancelCoverageRequest(db, claimant.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var updated models.ShiftCoverageRequest
+		db.First(&updated, reqRow.ID)
+		if updated.Status != models.CoverageRequestCancelled {
+			t.Fatalf("Expected status cancelled, got %s", updated.Status)
+		}
+	})
+
+	t.Run("releasing a claim restores the original owner's normal slot on the overview", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+
+		if w := performCancelCoverageRequest(db, claimant.ID, false, group.ID, reqRow.ID); w.Code != http.StatusOK {
+			t.Fatalf("Expected release to succeed, got %d: %s", w.Code, w.Body.String())
+		}
+
+		overview := performGetGroupScheduleOverview(db, requester.ID, group.ID, weekStartOf(date).Format("2006-01-02"))
+		if overview.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", overview.Code, overview.Body.String())
+		}
+		var body struct {
+			Slots []scheduleOverviewSlot `json:"slots"`
+		}
+		if err := json.Unmarshal(overview.Body.Bytes(), &body); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		found := false
+		for _, slot := range body.Slots {
+			if slot.Date != date.Format("2006-01-02") || slot.Hour != 10 {
+				continue
+			}
+			for _, m := range slot.Members {
+				if m.UserID == requester.ID {
+					found = true
+					if m.Status != "normal" {
+						t.Fatalf("Expected requester's slot status to be normal again, got %q", m.Status)
+					}
+				}
+				if m.UserID == claimant.ID {
+					t.Fatalf("Expected claimant to no longer appear on this slot, got member %+v", m)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("Expected to find the requester's slot back on the overview for %s hour 10", date.Format("2006-01-02"))
+		}
+	})
+
+	t.Run("claimant cannot release someone else's claim", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		thirdUser := CreateTestUser(t, db, "third", "third@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, thirdUser.ID, group.ID, false)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+
+		w := performCancelCoverageRequest(db, thirdUser.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func performReopenCoverageRequest(db *gorm.DB, callerID uint, isAdmin bool, groupID, requestID uint) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", callerID)
+		c.Set("is_admin", isAdmin)
+		c.Next()
+	})
+	router.POST("/groups/:id/schedule/coverage-requests/:requestId/reopen", ReopenCoverageRequest(db, nil, nil))
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/%d/reopen", groupID, requestID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func TestReopenCoverageRequest(t *testing.T) {
+	t.Run("claimant can reopen their own claim, keeping the original requester", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+
+		w := performReopenCoverageRequest(db, claimant.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var updated models.ShiftCoverageRequest
+		db.First(&updated, reqRow.ID)
+		if updated.Status != models.CoverageRequestOpen {
+			t.Fatalf("Expected status open, got %s", updated.Status)
+		}
+		if updated.RequestedByUserID != requester.ID {
+			t.Fatalf("Expected requested_by_user_id to stay %d, got %d", requester.ID, updated.RequestedByUserID)
+		}
+		if updated.ClaimedByUserID != nil {
+			t.Fatalf("Expected claimed_by_user_id to be cleared, got %v", updated.ClaimedByUserID)
+		}
+	})
+
+	t.Run("reopening a claim puts the original requester back on the overview as needs_coverage", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+
+		if w := performReopenCoverageRequest(db, claimant.ID, false, group.ID, reqRow.ID); w.Code != http.StatusOK {
+			t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
+		}
+
+		overview := performGetGroupScheduleOverview(db, requester.ID, group.ID, weekStartOf(date).Format("2006-01-02"))
+		if overview.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", overview.Code, overview.Body.String())
+		}
+		var body struct {
+			Slots []scheduleOverviewSlot `json:"slots"`
+		}
+		if err := json.Unmarshal(overview.Body.Bytes(), &body); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		found := false
+		for _, slot := range body.Slots {
+			if slot.Date != date.Format("2006-01-02") || slot.Hour != 10 {
+				continue
+			}
+			for _, m := range slot.Members {
+				if m.UserID == requester.ID {
+					found = true
+					if m.Status != "needs_coverage" {
+						t.Fatalf("Expected requester's slot status to be needs_coverage again, got %q", m.Status)
+					}
+					if m.CoverageRequestID == nil || *m.CoverageRequestID != reqRow.ID {
+						t.Fatalf("Expected coverage_request_id %d, got %v", reqRow.ID, m.CoverageRequestID)
+					}
+				}
+				if m.UserID == claimant.ID {
+					t.Fatalf("Expected the ex-claimant to no longer appear on this slot, got member %+v", m)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("Expected to find the requester's slot back on the overview for %s hour 10", date.Format("2006-01-02"))
+		}
+	})
+
+	t.Run("reopened request is claimable by a third member but not by the original requester", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		thirdUser := CreateTestUser(t, db, "third", "third@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, thirdUser.ID, group.ID, false)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+		if w := performReopenCoverageRequest(db, claimant.ID, false, group.ID, reqRow.ID); w.Code != http.StatusOK {
+			t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
+		}
+
+		if w := performClaimCoverageRequest(db, requester.ID, group.ID, reqRow.ID); w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected the original requester's self-claim to be rejected with 400, got %d: %s", w.Code, w.Body.String())
+		}
+
+		w := performClaimCoverageRequest(db, thirdUser.ID, group.ID, reqRow.ID)
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected the third member's claim to succeed, got %d: %s", w.Code, w.Body.String())
+		}
+		var updated models.ShiftCoverageRequest
+		db.First(&updated, reqRow.ID)
+		if updated.ClaimedByUserID == nil || *updated.ClaimedByUserID != thirdUser.ID {
+			t.Fatalf("Expected claimed_by_user_id %d, got %v", thirdUser.ID, updated.ClaimedByUserID)
+		}
+	})
+
+	t.Run("group admin can reopen a claim on the claimant's behalf", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+
+		w := performReopenCoverageRequest(db, admin.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("a third member cannot reopen someone else's claim", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		thirdUser := CreateTestUser(t, db, "third", "third@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, thirdUser.ID, group.ID, false)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+
+		w := performReopenCoverageRequest(db, thirdUser.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("cannot reopen a request that is still open", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performReopenCoverageRequest(db, requester.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusConflict {
+			t.Fatalf("Expected 409, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("cannot reopen a cancelled request", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		if w := performCancelCoverageRequest(db, requester.ID, false, group.ID, reqRow.ID); w.Code != http.StatusOK {
+			t.Fatalf("Expected cancel to succeed, got %d: %s", w.Code, w.Body.String())
+		}
+
+		w := performReopenCoverageRequest(db, requester.ID, false, group.ID, reqRow.ID)
+
+		if w.Code != http.StatusConflict {
+			t.Fatalf("Expected 409, got %d: %s", w.Code, w.Body.String())
+		}
+	})
 }
 
 func performCreateCoverageRequestsBatch(db *gorm.DB, callerID uint, groupID uint, body string) *httptest.ResponseRecorder {

@@ -661,12 +661,14 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 						continue
 					}
 					seenUserIDs[r.ClaimedByUser.ID] = true
+					reqID := r.ID
 					members = append(members, scheduleOverviewMember{
-						UserID:    r.ClaimedByUser.ID,
-						Username:  r.ClaimedByUser.Username,
-						FirstName: r.ClaimedByUser.FirstName,
-						LastName:  r.ClaimedByUser.LastName,
-						Status:    "covering",
+						UserID:            r.ClaimedByUser.ID,
+						Username:          r.ClaimedByUser.Username,
+						FirstName:         r.ClaimedByUser.FirstName,
+						LastName:          r.ClaimedByUser.LastName,
+						Status:            "covering",
+						CoverageRequestID: &reqID,
 					})
 				}
 

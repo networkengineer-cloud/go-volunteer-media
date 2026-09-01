@@ -1304,6 +1304,7 @@ func TestGetGroupScheduleOverview_EffectiveRoster(t *testing.T) {
 		json.Unmarshal(w.Body.Bytes(), &body)
 
 		var requesterPresent, claimantPresent bool
+		var claimantCoverageRequestID *uint
 		for _, s := range body.Slots {
 			if s.Date != tuesday.Format("2006-01-02") || s.Hour != 10 {
 				continue
@@ -1314,6 +1315,7 @@ func TestGetGroupScheduleOverview_EffectiveRoster(t *testing.T) {
 				}
 				if m.UserID == claimant.ID && m.Status == "covering" {
 					claimantPresent = true
+					claimantCoverageRequestID = m.CoverageRequestID
 				}
 			}
 		}
@@ -1322,6 +1324,9 @@ func TestGetGroupScheduleOverview_EffectiveRoster(t *testing.T) {
 		}
 		if !claimantPresent {
 			t.Fatal("Expected claimant to appear in the roster, tagged covering")
+		}
+		if claimantCoverageRequestID == nil || *claimantCoverageRequestID != reqRow.ID {
+			t.Fatalf("Expected the covering member's coverage_request_id to be %d, got %v", reqRow.ID, claimantCoverageRequestID)
 		}
 	})
 
@@ -1494,7 +1499,7 @@ func TestParseWeekStart(t *testing.T) {
 			t.Fatalf("expected result to be a Sunday, got %s", got.Weekday())
 		}
 		now := time.Now().UTC()
-		wantWeekStart := now.Truncate(24 * time.Hour).AddDate(0, 0, -int(now.Weekday()))
+		wantWeekStart := now.Truncate(24*time.Hour).AddDate(0, 0, -int(now.Weekday()))
 		if !got.Equal(wantWeekStart) {
 			t.Fatalf("expected %s (this week's Sunday), got %s", wantWeekStart.Format("2006-01-02"), got.Format("2006-01-02"))
 		}

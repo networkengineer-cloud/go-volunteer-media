@@ -21,15 +21,16 @@ import (
 )
 
 var (
-	errNoMatchingSlot   = errors.New("no matching recurring shift for that date and hour")
-	errDuplicateRequest = errors.New("a coverage request already exists for that date and hour")
-	errPastDate         = errors.New("date must not be in the past")
-	errRequestNotFound  = errors.New("coverage request not found")
-	errRequestNotOpen   = errors.New("coverage request is no longer open")
-	errSelfClaim        = errors.New("cannot claim your own coverage request")
-	errClaimConflict    = errors.New("claimant already has a conflicting shift at that time")
-	errReassignSameUser = errors.New("cannot reassign a shift to the same person")
-	errNotGroupMember   = errors.New("user is not a member of this group")
+	errNoMatchingSlot    = errors.New("no matching recurring shift for that date and hour")
+	errDuplicateRequest  = errors.New("a coverage request already exists for that date and hour")
+	errPastDate          = errors.New("date must not be in the past")
+	errRequestNotFound   = errors.New("coverage request not found")
+	errRequestNotOpen    = errors.New("coverage request is no longer open")
+	errSelfClaim         = errors.New("cannot claim your own coverage request")
+	errClaimConflict     = errors.New("claimant already has a conflicting shift at that time")
+	errReassignSameUser  = errors.New("cannot reassign a shift to the same person")
+	errNotGroupMember    = errors.New("user is not a member of this group")
+	errRequestNotClaimed = errors.New("coverage request is not currently claimed")
 )
 
 // hasConflictingCommitment reports whether userID already has a real-world
@@ -939,7 +940,13 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 
 		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
 		isOwnOpenRequest := reqRow.RequestedByUserID == callerUserID && reqRow.Status == models.CoverageRequestOpen
-		if !isOwnOpenRequest && !isAdminCaller {
+		// isOwnClaim: the volunteer currently covering this shift backing out
+		// of their own claim (e.g. something came up and they can no longer
+		// make it) - distinct from isOwnOpenRequest, which is the original
+		// requester withdrawing their own still-open ask.
+		isOwnClaim := reqRow.Status == models.CoverageRequestClaimed &&
+			reqRow.ClaimedByUserID != nil && *reqRow.ClaimedByUserID == callerUserID
+		if !isOwnOpenRequest && !isOwnClaim && !isAdminCaller {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot cancel this coverage request"})
 			return
 		}
@@ -948,13 +955,20 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 		// closes the race with a concurrent claim (or cancel) landing between
 		// the read above and this write - same technique as the conditional
 		// update in ClaimCoverageRequest. A non-admin owner may only flip
-		// open -> cancelled; an admin may flip open or claimed -> cancelled.
+		// open -> cancelled; a non-admin claimant may only flip their own
+		// claimed -> cancelled; an admin may flip open or claimed ->
+		// cancelled regardless of who owns/claimed it.
 		var result *gorm.DB
-		if isAdminCaller {
+		switch {
+		case isAdminCaller:
 			result = db.Model(&models.ShiftCoverageRequest{}).
 				Where("id = ? AND status IN ?", reqRow.ID, []models.CoverageRequestStatus{models.CoverageRequestOpen, models.CoverageRequestClaimed}).
 				Update("status", models.CoverageRequestCancelled)
-		} else {
+		case isOwnClaim:
+			result = db.Model(&models.ShiftCoverageRequest{}).
+				Where("id = ? AND claimed_by_user_id = ? AND status = ?", reqRow.ID, callerUserID, models.CoverageRequestClaimed).
+				Update("status", models.CoverageRequestCancelled)
+		default:
 			result = db.Model(&models.ShiftCoverageRequest{}).
 				Where("id = ? AND requested_by_user_id = ? AND status = ?", reqRow.ID, callerUserID, models.CoverageRequestOpen).
 				Update("status", models.CoverageRequestCancelled)
@@ -967,9 +981,9 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 			// Someone else changed the request's state between our read and
 			// this write. For an admin, the only remaining state given the
 			// (open, claimed) guard is "already cancelled". For a non-admin
-			// owner, it most likely means someone claimed it out from under
-			// them (or cancelled it) - either way it's no longer cancellable
-			// by them.
+			// owner or claimant, it most likely means someone else (an admin,
+			// or - for the owner's case - a new claimant) changed it first -
+			// either way it's no longer cancellable by them.
 			if isAdminCaller {
 				c.JSON(http.StatusConflict, gin.H{"error": "Coverage request is already cancelled"})
 			} else {
@@ -1524,4 +1538,107 @@ func notifyRequesterOfClaimBatch(db *gorm.DB, emailService *email.Service, group
 			}
 		}
 	}()
+}
+
+// ReopenCoverageRequest lets the current claimant of a claimed coverage
+// request put it back into the open pool - e.g. they claimed a shift but
+// something came up and they can no longer cover it, and rather than
+// silently going back to the original requester (that's CancelCoverageRequest's
+// job), they want ANY other member to be able to pick it up. The
+// requested_by_user_id is deliberately left unchanged: the original
+// requester still can't self-claim it (same as before it was ever
+// claimed), but it reappears in their name on the Needs Coverage list and
+// the schedule overview exactly like a freshly-created request would, so
+// no other code path needs to know the difference. A group admin may also
+// reopen a claim on the claimant's behalf (e.g. an unresponsive volunteer).
+func ReopenCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rawDB := db
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		callerUserID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		requestID, err := strconv.ParseUint(c.Param("requestId"), 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
+			return
+		}
+
+		var reqRow models.ShiftCoverageRequest
+		if err := db.Where("id = ? AND group_id = ?", requestID, groupIDParam).First(&reqRow).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": errRequestNotFound.Error()})
+			return
+		}
+
+		if reqRow.Status == models.CoverageRequestCancelled {
+			c.JSON(http.StatusConflict, gin.H{"error": "Coverage request is already cancelled"})
+			return
+		}
+		if reqRow.Status == models.CoverageRequestOpen {
+			c.JSON(http.StatusConflict, gin.H{"error": errRequestNotClaimed.Error()})
+			return
+		}
+
+		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
+		isOwnClaim := reqRow.ClaimedByUserID != nil && *reqRow.ClaimedByUserID == callerUserID
+		if !isOwnClaim && !isAdminCaller {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot reopen this coverage request"})
+			return
+		}
+
+		// Conditional update, gated on the state actually authorized above,
+		// closes the race with a concurrent cancel/reopen landing between the
+		// read above and this write, same technique used throughout this
+		// file. An admin may reopen any claimed request; a non-admin
+		// claimant may only reopen their own.
+		var result *gorm.DB
+		if isAdminCaller {
+			result = db.Model(&models.ShiftCoverageRequest{}).
+				Where("id = ? AND status = ?", reqRow.ID, models.CoverageRequestClaimed).
+				Updates(map[string]interface{}{
+					"status":             models.CoverageRequestOpen,
+					"claimed_by_user_id": nil,
+					"claimed_at":         nil,
+				})
+		} else {
+			result = db.Model(&models.ShiftCoverageRequest{}).
+				Where("id = ? AND claimed_by_user_id = ? AND status = ?", reqRow.ID, callerUserID, models.CoverageRequestClaimed).
+				Updates(map[string]interface{}{
+					"status":             models.CoverageRequestOpen,
+					"claimed_by_user_id": nil,
+					"claimed_at":         nil,
+				})
+		}
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reopen coverage request"})
+			return
+		}
+		if result.RowsAffected == 0 {
+			c.JSON(http.StatusConflict, gin.H{"error": "Coverage request is no longer claimed"})
+			return
+		}
+
+		reqRow.Status = models.CoverageRequestOpen
+		reqRow.ClaimedByUserID = nil
+		reqRow.ClaimedAt = nil
+		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
+
+		notifyGroupOfOpenCoverageRequests(rawDB, emailService, groupMeService, reqRow.GroupID, reqRow.RequestedByUserID)
+	}
 }

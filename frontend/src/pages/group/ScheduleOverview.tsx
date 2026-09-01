@@ -287,6 +287,22 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
       .finally(() => setBusyRequestId(null));
   };
 
+  const handleReopenRequest = (requestId: number) => {
+    setBusyRequestId(requestId);
+    scheduleApi.reopenCoverageRequest(groupId, requestId)
+      .then(() => {
+        toast.showSuccess('Shift reopened for anyone to claim.');
+        setActiveCellKey(null);
+        setPopoverPosition(null);
+        loadOverview();
+      })
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to reopen coverage request.');
+        loadOverview();
+      })
+      .finally(() => setBusyRequestId(null));
+  };
+
   const handleReassign = (fromUserId: number, date: string, hours: number[]) => {
     if (reassignToUserId === '' || hours.length === 0) return;
     setReassigning(true);
@@ -490,6 +506,26 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                               >
                                 Cancel request
                               </button>
+                            )}
+                            {(member.user_id === currentUserId || canManageMembers) && member.status === 'covering' && member.coverage_request_id !== undefined && (
+                              <span className="schedule-overview__covering-actions">
+                                <button
+                                  type="button"
+                                  className="btn-secondary schedule-overview__action"
+                                  disabled={busyRequestId === member.coverage_request_id}
+                                  onClick={() => handleCancelRequest(member.coverage_request_id as number)}
+                                >
+                                  Give back shift
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-secondary schedule-overview__action"
+                                  disabled={busyRequestId === member.coverage_request_id}
+                                  onClick={() => handleReopenRequest(member.coverage_request_id as number)}
+                                >
+                                  Request coverage
+                                </button>
+                              </span>
                             )}
                             {member.user_id === currentUserId && member.status === 'normal' && date >= today && (
                               <button
