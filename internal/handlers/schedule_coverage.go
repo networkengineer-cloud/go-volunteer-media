@@ -1323,3 +1323,205 @@ func CancelCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, response)
 	}
 }
+
+type claimCoverageRequestsBatchRequest struct {
+	RequestIDs []uint `json:"request_ids"`
+}
+
+type coverageRequestClaimBatchSkipped struct {
+	ID     uint   `json:"id"`
+	Reason string `json:"reason"`
+}
+
+type coverageRequestClaimBatchResponse struct {
+	Claimed []coverageRequestResponse          `json:"claimed"`
+	Skipped []coverageRequestClaimBatchSkipped `json:"skipped"`
+}
+
+// ClaimCoverageRequestsBatch lets a member take several open coverage
+// requests in one call, so covering a whole run of open shifts (e.g. a
+// stretch someone dropped) doesn't require claiming them one at a time.
+// Each item is validated and claimed independently - not found, not open,
+// self-claim, or a conflicting commitment are skipped and reported rather
+// than failing the whole batch, matching CancelCoverageRequestsBatch's
+// partial-success shape - and every successful claim still goes through
+// the same race-safe conditional update as the single-item
+// ClaimCoverageRequest. Requires group membership (or site admin).
+func ClaimCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rawDB := db
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		callerUserID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+			return
+		}
+
+		var req claimCoverageRequestsBatchRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+		if len(req.RequestIDs) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "request_ids must not be empty"})
+			return
+		}
+		const maxBatchItems = 200
+		if len(req.RequestIDs) > maxBatchItems {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("request_ids must not exceed %d items", maxBatchItems)})
+			return
+		}
+
+		response := coverageRequestClaimBatchResponse{
+			Claimed: make([]coverageRequestResponse, 0, len(req.RequestIDs)),
+			Skipped: make([]coverageRequestClaimBatchSkipped, 0),
+		}
+		claimedByRequester := make(map[uint][]models.ShiftCoverageRequest)
+
+		for _, requestID := range req.RequestIDs {
+			var claimed models.ShiftCoverageRequest
+			err := db.Transaction(func(tx *gorm.DB) error {
+				var reqRow models.ShiftCoverageRequest
+				if err := tx.Where("id = ? AND group_id = ?", requestID, groupIDParam).First(&reqRow).Error; err != nil {
+					return errRequestNotFound
+				}
+				if reqRow.Status != models.CoverageRequestOpen {
+					return errRequestNotOpen
+				}
+				if reqRow.RequestedByUserID == callerUserID {
+					return errSelfClaim
+				}
+
+				conflict, err := hasConflictingCommitment(tx, callerUserID, reqRow.Date, reqRow.Hour)
+				if err != nil {
+					return err
+				}
+				if conflict {
+					return errClaimConflict
+				}
+
+				now := time.Now().UTC()
+				result := tx.Model(&models.ShiftCoverageRequest{}).
+					Where("id = ? AND status = ?", reqRow.ID, models.CoverageRequestOpen).
+					Updates(map[string]interface{}{
+						"status":             models.CoverageRequestClaimed,
+						"claimed_by_user_id": callerUserID,
+						"claimed_at":         now,
+					})
+				if result.Error != nil {
+					return result.Error
+				}
+				if result.RowsAffected == 0 {
+					return errRequestNotOpen
+				}
+
+				reqRow.Status = models.CoverageRequestClaimed
+				reqRow.ClaimedByUserID = &callerUserID
+				reqRow.ClaimedAt = &now
+				claimed = reqRow
+				return nil
+			})
+
+			switch {
+			case errors.Is(err, errRequestNotFound):
+				response.Skipped = append(response.Skipped, coverageRequestClaimBatchSkipped{ID: requestID, Reason: errRequestNotFound.Error()})
+			case errors.Is(err, errRequestNotOpen):
+				response.Skipped = append(response.Skipped, coverageRequestClaimBatchSkipped{ID: requestID, Reason: errRequestNotOpen.Error()})
+			case errors.Is(err, errSelfClaim):
+				response.Skipped = append(response.Skipped, coverageRequestClaimBatchSkipped{ID: requestID, Reason: errSelfClaim.Error()})
+			case errors.Is(err, errClaimConflict):
+				response.Skipped = append(response.Skipped, coverageRequestClaimBatchSkipped{ID: requestID, Reason: errClaimConflict.Error()})
+			case err != nil:
+				logging.WithContext(c.Request.Context()).WithFields(map[string]interface{}{
+					"group_id":   groupIDParam,
+					"request_id": requestID,
+				}).Error("Failed to claim coverage request in batch", err)
+				response.Skipped = append(response.Skipped, coverageRequestClaimBatchSkipped{ID: requestID, Reason: "internal error, please try again"})
+			default:
+				response.Claimed = append(response.Claimed, toCoverageRequestResponse(claimed))
+				claimedByRequester[claimed.RequestedByUserID] = append(claimedByRequester[claimed.RequestedByUserID], claimed)
+			}
+		}
+
+		c.JSON(http.StatusOK, response)
+
+		for requesterID, claims := range claimedByRequester {
+			notifyRequesterOfClaimBatch(rawDB, emailService, groupMeService, requesterID, callerUserID, claims)
+		}
+	}
+}
+
+// notifyRequesterOfClaimBatch tells one original requester their shifts are
+// covered, summarizing every shift claimed from them in this batch in a
+// single message - so a claimant covering several of the same person's
+// shifts in one bulk action sends exactly one notification to that person,
+// not one per shift, mirroring notifyOfReassignmentBatch's per-recipient
+// batching for ReassignShiftsBatch. Runs in the background so it never
+// delays the HTTP response.
+func notifyRequesterOfClaimBatch(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, requesterID, claimantID uint, claims []models.ShiftCoverageRequest) {
+	if emailService == nil && groupMeService == nil {
+		return
+	}
+	if len(claims) == 0 {
+		return
+	}
+	go func() {
+		bgCtx := context.Background()
+		logger := logging.WithContext(bgCtx)
+
+		var requester, claimant models.User
+		if err := db.WithContext(bgCtx).First(&requester, requesterID).Error; err != nil {
+			logger.Error("Failed to load requester for coverage claim batch notification", err)
+			return
+		}
+		if err := db.WithContext(bgCtx).First(&claimant, claimantID).Error; err != nil {
+			logger.Error("Failed to load claimant for coverage claim batch notification", err)
+			return
+		}
+
+		sorted := append([]models.ShiftCoverageRequest(nil), claims...)
+		sort.Slice(sorted, func(i, j int) bool {
+			if !sorted[i].Date.Equal(sorted[j].Date) {
+				return sorted[i].Date.Before(sorted[j].Date)
+			}
+			return sorted[i].Hour < sorted[j].Hour
+		})
+		shiftLabels := make([]string, 0, len(sorted))
+		for _, claim := range sorted {
+			shiftLabels = append(shiftLabels, fmt.Sprintf("%s on %s",
+				formatSlotRangeLabel(int(claim.Date.Weekday()), claim.Hour), claim.Date.Format("Monday, January 2")))
+		}
+
+		title := "Your shifts are covered"
+		verb := "shift is"
+		if len(shiftLabels) > 1 {
+			verb = "shifts are"
+		}
+		content := fmt.Sprintf("%s will cover your %s: %s.", displayName(claimant), verb, strings.Join(shiftLabels, "; "))
+
+		groupID := sorted[0].GroupID
+		if emailService != nil && emailService.IsConfigured() && requester.EmailNotificationsEnabled && scheduleEmailNotificationsEnabled() {
+			if err := emailService.SendAnnouncementEmail(bgCtx, requester.Email, title, content); err != nil {
+				logger.Error("Failed to send coverage claim batch email", err)
+			}
+		}
+		if groupMeService != nil {
+			if err := sendUpdateToGroupMe(bgCtx, db, groupMeService, groupID, title, content); err != nil {
+				logger.Error("Failed to send coverage claim batch GroupMe message", err)
+			}
+		}
+	}()
+}

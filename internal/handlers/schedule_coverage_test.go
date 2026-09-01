@@ -1566,6 +1566,284 @@ func TestCancelCoverageRequestsBatch(t *testing.T) {
 	})
 }
 
+func performClaimCoverageRequestsBatch(db *gorm.DB, callerID uint, isAdmin bool, groupID uint, body string) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", callerID)
+		c.Set("is_admin", isAdmin)
+		c.Next()
+	})
+	router.POST("/groups/:id/schedule/coverage-requests/claim-batch", ClaimCoverageRequestsBatch(db, nil, nil))
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/claim-batch", groupID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func TestClaimCoverageRequestsBatch(t *testing.T) {
+	t.Run("claimant can bulk-claim open requests from different requesters", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requesterA, claimant, group := setupCoverageTestGroup(t, db)
+		requesterB := CreateTestUser(t, db, "requesterB", "requesterB@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, requesterB.ID, group.ID, false)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		wed, _ := time.Parse("2006-01-02", nextWeekday(time.Wednesday))
+		reqA := createOpenCoverageRequest(t, db, group.ID, requesterA.ID, 2, 10, tue)
+		reqB := createOpenCoverageRequest(t, db, group.ID, requesterB.ID, 3, 11, wed)
+
+		body := fmt.Sprintf(`{"request_ids":[%d,%d]}`, reqA.ID, reqB.ID)
+		w := performClaimCoverageRequestsBatch(db, claimant.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestClaimBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Claimed) != 2 {
+			t.Fatalf("Expected 2 claimed, got %d", len(resp.Claimed))
+		}
+		if len(resp.Skipped) != 0 {
+			t.Fatalf("Expected 0 skipped, got %d", len(resp.Skipped))
+		}
+		var updatedA, updatedB models.ShiftCoverageRequest
+		db.First(&updatedA, reqA.ID)
+		db.First(&updatedB, reqB.ID)
+		if updatedA.Status != models.CoverageRequestClaimed || updatedB.Status != models.CoverageRequestClaimed {
+			t.Fatalf("Expected both requests claimed, got %s and %s", updatedA.Status, updatedB.Status)
+		}
+		if updatedA.ClaimedByUserID == nil || *updatedA.ClaimedByUserID != claimant.ID {
+			t.Fatalf("Expected claimed_by_user_id %d on reqA, got %v", claimant.ID, updatedA.ClaimedByUserID)
+		}
+		if updatedB.ClaimedByUserID == nil || *updatedB.ClaimedByUserID != claimant.ID {
+			t.Fatalf("Expected claimed_by_user_id %d on reqB, got %v", claimant.ID, updatedB.ClaimedByUserID)
+		}
+	})
+
+	t.Run("an already-claimed request is skipped while the rest still claim", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		thirdUser := CreateTestUser(t, db, "third", "third@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, thirdUser.ID, group.ID, false)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		alreadyClaimed := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+		if claim := performClaimCoverageRequest(db, claimant.ID, group.ID, alreadyClaimed.ID); claim.Code != http.StatusOK {
+			t.Fatalf("Expected setup claim to succeed, got %d: %s", claim.Code, claim.Body.String())
+		}
+		stillOpen := createOpenCoverageRequest(t, db, group.ID, requester.ID, 4, 14, thu)
+
+		body := fmt.Sprintf(`{"request_ids":[%d,%d]}`, alreadyClaimed.ID, stillOpen.ID)
+		w := performClaimCoverageRequestsBatch(db, thirdUser.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestClaimBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Claimed) != 1 || resp.Claimed[0].ID != stillOpen.ID {
+			t.Fatalf("Expected only the still-open request claimed, got %+v", resp.Claimed)
+		}
+		if len(resp.Skipped) != 1 || resp.Skipped[0].ID != alreadyClaimed.ID {
+			t.Fatalf("Expected the already-claimed request to be reported skipped, got %+v", resp.Skipped)
+		}
+	})
+
+	t.Run("claiming your own request is skipped rather than failing the batch", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		otherRequester := CreateTestUser(t, db, "otherRequester", "otherRequester@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, otherRequester.ID, group.ID, false)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		ownRequest := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+		othersRequest := createOpenCoverageRequest(t, db, group.ID, otherRequester.ID, 4, 14, thu)
+
+		body := fmt.Sprintf(`{"request_ids":[%d,%d]}`, ownRequest.ID, othersRequest.ID)
+		w := performClaimCoverageRequestsBatch(db, requester.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestClaimBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Claimed) != 1 || resp.Claimed[0].ID != othersRequest.ID {
+			t.Fatalf("Expected only the other member's request claimed, got %+v", resp.Claimed)
+		}
+		if len(resp.Skipped) != 1 || resp.Skipped[0].ID != ownRequest.ID || resp.Skipped[0].Reason != errSelfClaim.Error() {
+			t.Fatalf("Expected own request skipped with self-claim reason, got %+v", resp.Skipped)
+		}
+	})
+
+	t.Run("a request conflicting with the claimant's own shift is skipped", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		otherGroup := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		AddUserToGroupWithAdmin(t, db, claimant.ID, otherGroup.ID, false)
+		if err := db.Create(&models.ShiftSlot{UserID: claimant.ID, GroupID: otherGroup.ID, DayOfWeek: 2, Hour: 10}).Error; err != nil {
+			t.Fatalf("Failed to create conflicting shift slot: %v", err)
+		}
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		conflicting := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+		nonConflicting := createOpenCoverageRequest(t, db, group.ID, requester.ID, 4, 14, thu)
+
+		body := fmt.Sprintf(`{"request_ids":[%d,%d]}`, conflicting.ID, nonConflicting.ID)
+		w := performClaimCoverageRequestsBatch(db, claimant.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestClaimBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Claimed) != 1 || resp.Claimed[0].ID != nonConflicting.ID {
+			t.Fatalf("Expected only the non-conflicting request claimed, got %+v", resp.Claimed)
+		}
+		if len(resp.Skipped) != 1 || resp.Skipped[0].ID != conflicting.ID || resp.Skipped[0].Reason != errClaimConflict.Error() {
+			t.Fatalf("Expected the conflicting request skipped with conflict reason, got %+v", resp.Skipped)
+		}
+	})
+
+	t.Run("a not-found id is skipped rather than failing the batch", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+
+		body := fmt.Sprintf(`{"request_ids":[999999,%d]}`, reqRow.ID)
+		w := performClaimCoverageRequestsBatch(db, claimant.ID, false, group.ID, body)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp coverageRequestClaimBatchResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if len(resp.Claimed) != 1 || resp.Claimed[0].ID != reqRow.ID {
+			t.Fatalf("Expected the valid request claimed, got %+v", resp.Claimed)
+		}
+		if len(resp.Skipped) != 1 || resp.Skipped[0].ID != 999999 {
+			t.Fatalf("Expected the bogus id reported skipped, got %+v", resp.Skipped)
+		}
+	})
+
+	t.Run("empty request_ids is rejected", func(t *testing.T) {
+		db := SetupTestDB(t)
+		_, _, group := setupCoverageTestGroup(t, db)
+		w := performClaimCoverageRequestsBatch(db, 1, false, group.ID, `{"request_ids":[]}`)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("a batch exceeding the item cap is rejected and claims nothing", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, claimant, group := setupCoverageTestGroup(t, db)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+
+		ids := make([]string, 0, 201)
+		for i := 0; i < 201; i++ {
+			ids = append(ids, "999999")
+		}
+		body := fmt.Sprintf(`{"request_ids":[%s]}`, strings.Join(ids, ","))
+		w := performClaimCoverageRequestsBatch(db, claimant.ID, false, group.ID, body)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+		var unchanged models.ShiftCoverageRequest
+		db.First(&unchanged, reqRow.ID)
+		if unchanged.Status != models.CoverageRequestOpen {
+			t.Fatalf("Expected the unrelated request untouched, got %s", unchanged.Status)
+		}
+	})
+
+	t.Run("non-member is denied", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		outsider := CreateTestUser(t, db, "outsider", "outsider@example.com", "password123", false)
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tue)
+
+		body := fmt.Sprintf(`{"request_ids":[%d]}`, reqRow.ID)
+		w := performClaimCoverageRequestsBatch(db, outsider.ID, false, group.ID, body)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+// TestClaimCoverageRequestsBatch_NotifiesOncePerRequester exercises the
+// actual SendEmail call via mockEmailProvider to prove a claimant clearing
+// several shifts requested by the same person in one batch triggers exactly
+// one notification to that person, not one per shift - mirroring the
+// per-recipient batching notifyOfReassignmentBatch already does for
+// ReassignShiftsBatch.
+func TestClaimCoverageRequestsBatch_NotifiesOncePerRequester(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requesterA, claimant, group := setupCoverageTestGroup(t, db)
+	requesterB := CreateTestUser(t, db, "requesterB", "requesterB@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, requesterB.ID, group.ID, false)
+	if err := db.Create(&models.ShiftSlot{UserID: requesterA.ID, GroupID: group.ID, DayOfWeek: 4, Hour: 14}).Error; err != nil {
+		t.Fatalf("Failed to create requesterA's second shift slot: %v", err)
+	}
+	if err := db.Model(requesterA).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable requesterA's email notifications: %v", err)
+	}
+	if err := db.Model(requesterB).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable requesterB's email notifications: %v", err)
+	}
+
+	tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+	wed, _ := time.Parse("2006-01-02", nextWeekday(time.Wednesday))
+	// Two shifts requested by requesterA, one requested by requesterB - three
+	// shifts claimed but only two distinct requesters to notify.
+	reqA1 := createOpenCoverageRequest(t, db, group.ID, requesterA.ID, 2, 10, tue)
+	reqA2 := createOpenCoverageRequest(t, db, group.ID, requesterA.ID, 4, 14, thu)
+	reqB1 := createOpenCoverageRequest(t, db, group.ID, requesterB.ID, 3, 11, wed)
+
+	provider := &mockEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", claimant.ID)
+		c.Set("is_admin", false)
+		c.Next()
+	})
+	router.POST("/groups/:id/schedule/coverage-requests/claim-batch", ClaimCoverageRequestsBatch(db, emailSvc, nil))
+
+	body := fmt.Sprintf(`{"request_ids":[%d,%d,%d]}`, reqA1.ID, reqA2.ID, reqB1.ID)
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/claim-batch", group.ID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := provider.sendCount(); got != 2 {
+		t.Fatalf("Expected exactly 2 emails (one per distinct requester), got %d", got)
+	}
+}
+
 func performUpdateCoverageRequestPriority(db *gorm.DB, callerID uint, isAdmin bool, groupID, requestID uint, body string) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

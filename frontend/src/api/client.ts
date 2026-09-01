@@ -706,6 +706,16 @@ export interface CoverageRequestCancelBatchResult {
   skipped: CoverageRequestCancelBatchSkipped[];
 }
 
+export interface CoverageRequestClaimBatchSkipped {
+  id: number;
+  reason: string;
+}
+
+export interface CoverageRequestClaimBatchResult {
+  claimed: CoverageRequest[];
+  skipped: CoverageRequestClaimBatchSkipped[];
+}
+
 export interface ReassignShiftsBatchSkipped {
   hour: number;
   reason: string;
@@ -754,6 +764,8 @@ export const scheduleApi = {
     api.patch<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/priority`, { priority }),
   cancelCoverageRequestsBatch: (groupId: number, requestIds: number[]) =>
     api.post<CoverageRequestCancelBatchResult>(`/groups/${groupId}/schedule/coverage-requests/cancel-batch`, { request_ids: requestIds }),
+  claimCoverageRequestsBatch: (groupId: number, requestIds: number[]) =>
+    api.post<CoverageRequestClaimBatchResult>(`/groups/${groupId}/schedule/coverage-requests/claim-batch`, { request_ids: requestIds }),
   listCoverageRequests: (groupId: number, options?: { signal?: AbortSignal }) =>
     api.get<CoverageRequestListItem[]>(`/groups/${groupId}/schedule/coverage-requests`, { signal: options?.signal }),
 };

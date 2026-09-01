@@ -457,6 +457,7 @@ func main() {
 			group.POST("/schedule/coverage-requests", handlers.CreateCoverageRequest(db, emailService, groupMeService))
 			group.POST("/schedule/coverage-requests/batch", handlers.CreateCoverageRequestsBatch(db, emailService, groupMeService))
 			group.POST("/schedule/coverage-requests/cancel-batch", handlers.CancelCoverageRequestsBatch(db))
+			group.POST("/schedule/coverage-requests/claim-batch", handlers.ClaimCoverageRequestsBatch(db, emailService, groupMeService))
 			group.POST("/schedule/coverage-requests/:requestId/claim", handlers.ClaimCoverageRequest(db, emailService, groupMeService))
 			group.POST("/schedule/reassign", handlers.ReassignShiftsBatch(db, emailService, groupMeService))
 			group.PATCH("/schedule/coverage-requests/:requestId/priority", handlers.UpdateCoverageRequestPriority(db))
