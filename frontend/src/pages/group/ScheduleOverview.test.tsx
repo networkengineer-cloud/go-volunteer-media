@@ -10,6 +10,7 @@ vi.mock('../../api/client', () => ({
     getOverview: vi.fn(),
     claimCoverageRequest: vi.fn(),
     cancelCoverageRequest: vi.fn(),
+    reopenCoverageRequest: vi.fn(),
     createCoverageRequestsBatch: vi.fn(),
     reassignShiftsBatch: vi.fn(),
   },
@@ -940,5 +941,85 @@ describe('ScheduleOverview', () => {
     await screen.findByRole('button', { name: /cancel request/i });
 
     expect(screen.queryByRole('button', { name: /^claim$/i })).not.toBeInTheDocument();
+  });
+
+  describe('covering row', () => {
+    it('shows Give back shift and Request coverage buttons on the caller\'s own covering row, and gives back on click', async () => {
+      vi.mocked(scheduleApi.cancelCoverageRequest).mockResolvedValue({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 1, username: 'me', status: 'covering', coverage_request_id: 77 },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+      const cell = await screen.findByRole('cell', { name: /1 available/i });
+      fireEvent.click(cell);
+      const giveBackButton = await screen.findByRole('button', { name: /give back shift/i });
+      await screen.findByRole('button', { name: /request coverage/i });
+      fireEvent.click(giveBackButton);
+
+      await waitFor(() => expect(scheduleApi.cancelCoverageRequest).toHaveBeenCalledWith(7, 77));
+    });
+
+    it('reopens the shift for anyone to claim when Request coverage is clicked on a covering row', async () => {
+      vi.mocked(scheduleApi.reopenCoverageRequest).mockResolvedValue({ data: {} as CoverageRequest } as AxiosResponse<CoverageRequest>);
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 1, username: 'me', status: 'covering', coverage_request_id: 77 },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+      const cell = await screen.findByRole('cell', { name: /1 available/i });
+      fireEvent.click(cell);
+      fireEvent.click(await screen.findByRole('button', { name: /request coverage/i }));
+
+      await waitFor(() => expect(scheduleApi.reopenCoverageRequest).toHaveBeenCalledWith(7, 77));
+      await waitFor(() => expect(mockShowSuccess).toHaveBeenCalled());
+    });
+
+    it('does not show Give back shift or Request coverage on someone else\'s covering row for a non-admin viewer', async () => {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 2, username: 'vol2', status: 'covering', coverage_request_id: 77 },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+      const cell = await screen.findByRole('cell', { name: /1 available/i });
+      fireEvent.click(cell);
+      await screen.findByText(/covering/i);
+
+      expect(screen.queryByRole('button', { name: /give back shift/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /request coverage/i })).not.toBeInTheDocument();
+    });
+
+    it('shows Give back shift and Request coverage on another member\'s covering row for an admin', async () => {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [
+          { date: '2026-08-11', day_of_week: 2, hour: 9, members: [
+            { user_id: 2, username: 'vol2', status: 'covering', coverage_request_id: 77 },
+          ] },
+        ],
+      });
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} canManageMembers groupMembers={testMembers} />);
+
+      const cell = await screen.findByRole('cell', { name: /1 available/i });
+      fireEvent.click(cell);
+
+      expect(await screen.findByRole('button', { name: /give back shift/i })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /request coverage/i })).toBeInTheDocument();
+    });
   });
 });

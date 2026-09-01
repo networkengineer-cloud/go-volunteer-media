@@ -758,6 +758,8 @@ export const scheduleApi = {
     }),
   cancelCoverageRequest: (groupId: number, requestId: number) =>
     api.delete<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}`),
+  reopenCoverageRequest: (groupId: number, requestId: number) =>
+    api.post<CoverageRequest>(`/groups/${groupId}/schedule/coverage-requests/${requestId}/reopen`),
   createCoverageRequestsBatch: (groupId: number, requests: CoverageRequestBatchItem[], priority?: CoverageRequestPriority) =>
     api.post<CoverageRequestBatchResult>(`/groups/${groupId}/schedule/coverage-requests/batch`, { requests, priority }),
   updateCoverageRequestPriority: (groupId: number, requestId: number, priority: CoverageRequestPriority) =>
