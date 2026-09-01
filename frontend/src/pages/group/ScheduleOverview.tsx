@@ -38,6 +38,23 @@ function shortDisplayName(member: ScheduleOverviewMember): string {
   return member.last_name ? `${member.first_name} ${member.last_name.charAt(0)}.` : member.first_name;
 }
 
+// Leads the name with a colored letter chip rather than a trailing bare
+// letter: color plus letter is legible at a glance (matches CadenceLegend's
+// swatches) and doesn't depend on the hover-only title to be understood, so
+// it still works on the touch devices this grid is used on.
+function CadenceChip({ cadence }: { cadence: 'biweekly_a' | 'biweekly_b' }) {
+  const letter = cadence === 'biweekly_a' ? 'A' : 'B';
+  const modifier = cadence === 'biweekly_a' ? 'a' : 'b';
+  return (
+    <span
+      className={`schedule-grid__cadence-chip schedule-grid__cadence-chip--${modifier}`}
+      title={`Occurs every other week (Week ${letter})`}
+    >
+      {letter}
+    </span>
+  );
+}
+
 // Caps how many names render inline per cell before collapsing the rest
 // into a "+N more" indicator, so a heavily-staffed slot can't blow out the
 // row height for the whole week.
@@ -445,9 +462,10 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                     <span className="schedule-overview__names">
                       {visibleMembers.map(member => (
                         <span key={member.user_id} className="schedule-overview__name">
+                          {(member.cadence === 'biweekly_a' || member.cadence === 'biweekly_b') && (
+                            <CadenceChip cadence={member.cadence} />
+                          )}
                           {shortDisplayName(member)}
-                          {member.cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag"> A</span>}
-                          {member.cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag"> B</span>}
                           {member.status === 'needs_coverage' && member.priority !== 'optional' && (
                             <span className="schedule-overview__tag" aria-hidden="true"> ⚠</span>
                           )}
@@ -476,9 +494,10 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                           return (
                           <li key={member.user_id} className="schedule-overview__popover-row">
                             <span>
+                              {(member.cadence === 'biweekly_a' || member.cadence === 'biweekly_b') && (
+                                <CadenceChip cadence={member.cadence} />
+                              )}
                               {memberDisplayName(member)}
-                              {member.cadence === 'biweekly_a' && <span className="schedule-grid__cadence-tag"> A</span>}
-                              {member.cadence === 'biweekly_b' && <span className="schedule-grid__cadence-tag"> B</span>}
                               {member.status === 'needs_coverage' && (
                                 <span className="schedule-overview__tag">
                                   {' '}needs coverage{member.priority === 'optional' ? ' (optional)' : ''}
