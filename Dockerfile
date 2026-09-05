@@ -69,7 +69,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # or by editing Dockerfile.base (it also rebuilds monthly for security patches).
 # Tag format: YYYY.MM — Renovate (see renovate.json) opens a PR bumping this
 # after each monthly rebuild in build-base-image.yml.
-FROM ghcr.io/networkengineer-cloud/go-volunteer-media-base:2026.06
+FROM ghcr.io/networkengineer-cloud/go-volunteer-media-base:2026.09
 
 # Copy binary from backend builder
 COPY --from=backend-builder /app/api /api
