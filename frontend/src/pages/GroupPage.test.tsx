@@ -409,6 +409,19 @@ describe('GroupPage', () => {
       expect(lastCall?.[1]?.from).toBeUndefined();
       expect(lastCall?.[1]?.to).toBeUndefined();
     });
+
+    it('sends type=coverage_requests when "Coverage Requests Only" is selected', async () => {
+      renderGroupPage();
+      const select = await screen.findByLabelText('Filter activity by type');
+
+      fireEvent.change(select, { target: { value: 'coverage_requests' } });
+
+      await waitFor(() => {
+        expect(groupsApi.getActivityFeed).toHaveBeenLastCalledWith(1, expect.objectContaining({
+          type: 'coverage_requests',
+        }));
+      });
+    });
   });
 
   // Regression coverage for a request-cancellation gap found while verifying
@@ -530,6 +543,55 @@ describe('GroupPage', () => {
       renderGroupPage();
       await screen.findByRole('tab', { name: /animals/i });
       expect(screen.queryByRole('button', { name: /enable scheduling|disable scheduling/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('preview as role', () => {
+    it('does not show the "viewing as" selector to a non-site-admin', async () => {
+      renderGroupPage();
+      await screen.findByRole('tab', { name: /animals/i });
+      expect(screen.queryByRole('combobox', { name: /viewing as/i })).not.toBeInTheDocument();
+    });
+
+    it('shows the "viewing as" selector to a site admin, defaulted to Site Admin', async () => {
+      vi.mocked(groupsApi.getMembership).mockResolvedValue({
+        data: { ...mockMembership, is_site_admin: true },
+      } as AxiosResponse<GroupMembership>);
+
+      renderGroupPage();
+      const select = await screen.findByRole('combobox', { name: /viewing as/i });
+      expect(select).toHaveValue('site_admin');
+    });
+
+    it('hides group-admin-only Quick Actions and shows a banner when previewing as Member', async () => {
+      vi.mocked(groupsApi.getMembership).mockResolvedValue({
+        data: { ...mockMembership, is_site_admin: true },
+      } as AxiosResponse<GroupMembership>);
+
+      renderGroupPage();
+      expect(await screen.findByText(/quick actions/i)).toBeInTheDocument();
+
+      const select = screen.getByRole('combobox', { name: /viewing as/i });
+      fireEvent.change(select, { target: { value: 'member' } });
+
+      expect(screen.queryByText(/quick actions/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/previewing as member/i)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /exit preview/i }));
+      expect(await screen.findByText(/quick actions/i)).toBeInTheDocument();
+      expect(screen.queryByText(/previewing as member/i)).not.toBeInTheDocument();
+    });
+
+    it('keeps the Members tab visible while previewing as Member, even if the site admin has no membership row', async () => {
+      vi.mocked(groupsApi.getMembership).mockResolvedValue({
+        data: { ...mockMembership, is_member: false, is_site_admin: true },
+      } as AxiosResponse<GroupMembership>);
+
+      renderGroupPage();
+      const select = await screen.findByRole('combobox', { name: /viewing as/i });
+      fireEvent.change(select, { target: { value: 'member' } });
+
+      expect(screen.getByRole('tab', { name: /members/i })).toBeInTheDocument();
     });
   });
 });

@@ -415,6 +415,54 @@ func TestActivityFeed_Postgres_RatingFilterExcludesAnnouncements(t *testing.T) {
 	}
 }
 
+// TestActivityFeed_Postgres_RatingFilterExcludesCoverageRequests guards
+// against the same class of bug as the announcement/animal-filter cases: a
+// coverage request has no session rating any more than an announcement does
+// (models.ShiftCoverageRequest has no metadata/rating concept at all), so an
+// active rating filter must exclude it too. This test needs real Postgres
+// specifically because the rating filter itself pushes a jsonb predicate
+// into SQL that SQLite can't execute - see
+// TestActivityFeed_Postgres_RatingFilterMatchesOriginalSemantics above.
+func TestActivityFeed_Postgres_RatingFilterExcludesCoverageRequests(t *testing.T) {
+	db := openSearchTestPostgres(t)
+	f := newActivityFeedTestFixture(t, db)
+
+	animal := models.Animal{GroupID: f.group.ID, Name: "Rex", Species: "Dog", Status: "available"}
+	if err := f.tx.Create(&animal).Error; err != nil {
+		t.Fatalf("create animal: %v", err)
+	}
+	if err := f.tx.Create(&models.AnimalComment{
+		AnimalID: animal.ID,
+		UserID:   f.user.ID,
+		Content:  "great session today",
+		Metadata: &models.SessionMetadata{SessionRating: 5},
+	}).Error; err != nil {
+		t.Fatalf("create rated comment: %v", err)
+	}
+	if err := f.tx.Create(&models.ShiftCoverageRequest{
+		GroupID:           f.group.ID,
+		RequestedByUserID: f.user.ID,
+		Date:              time.Now(),
+		Hour:              9,
+		Status:            models.CoverageRequestOpen,
+	}).Error; err != nil {
+		t.Fatalf("create coverage request: %v", err)
+	}
+
+	body := f.feedRequest(t, "rating=5")
+
+	items, _ := body["items"].([]interface{})
+	for _, raw := range items {
+		item := raw.(map[string]interface{})
+		if item["type"] == "coverage_request" {
+			t.Fatalf("expected an active rating filter to exclude coverage requests, got: %v", item)
+		}
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected exactly 1 item (the rated comment), got %d: %v", len(items), items)
+	}
+}
+
 // TestActivityFeed_Postgres_AnimalFilterExcludesAnnouncements guards against
 // the same class of bug as the tag/rating filters: announcements
 // (models.Update) have no animal association at all - they're group-wide,
