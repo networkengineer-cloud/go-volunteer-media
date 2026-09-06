@@ -24,7 +24,7 @@ import ScheduleTab from './group/ScheduleTab';
 import './GroupPage.css';
 
 type ViewMode = 'activity' | 'animals' | 'protocols' | 'members' | 'documents' | 'schedule';
-type FilterType = 'all' | 'comments' | 'announcements';
+type FilterType = 'all' | 'comments' | 'announcements' | 'coverage_requests';
 
 // Matches GroupSearch.tsx's debounce delay for the same kind of free-text
 // filter input.
@@ -47,6 +47,16 @@ const GroupPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [animals, setAnimals] = useState<Animal[]>([]);
   const [membership, setMembership] = useState<GroupMembership | null>(null);
+  // Lets a real site admin preview this group as a group admin or member
+  // would see it, without logging into a separate account. Persisted per
+  // group in sessionStorage (survives tab-switching within the group,
+  // clears on tab close) rather than component state alone.
+  const [previewRole, setPreviewRole] = useState<'group_admin' | 'member' | null>(
+    () => {
+      const stored = id ? sessionStorage.getItem(`previewRole:${id}`) : null;
+      return stored === 'group_admin' || stored === 'member' ? stored : null;
+    }
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
@@ -236,7 +246,21 @@ const GroupPage: React.FC = () => {
     }
     // Load all groups for the switcher
     loadAllGroups();
+
+    // Re-read the preview role for whichever group we've just switched to -
+    // the useState initializer above only ran once, on first mount.
+    const stored = id ? sessionStorage.getItem(`previewRole:${id}`) : null;
+    setPreviewRole(stored === 'group_admin' || stored === 'member' ? stored : null);
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    if (previewRole) {
+      sessionStorage.setItem(`previewRole:${id}`, previewRole);
+    } else {
+      sessionStorage.removeItem(`previewRole:${id}`);
+    }
+  }, [id, previewRole]);
 
   // The one place that triggers loadAnimals: on mount/group switch, and
   // whenever the status or (debounced) name filter actually changes.
@@ -555,6 +579,20 @@ const GroupPage: React.FC = () => {
     );
   }
 
+  // Only a real site admin ever sees the "viewing as" control (gated on the
+  // raw `membership`, never `displayMembership`, so the control itself can't
+  // vanish once a preview role is active). Both preview roles imply real
+  // group membership - that's what makes "member" preview show anything at
+  // all, since most tabs are gated on is_member || is_site_admin.
+  const displayMembership: GroupMembership | null = membership && previewRole
+    ? {
+        ...membership,
+        is_member: true,
+        is_site_admin: false,
+        is_group_admin: previewRole === 'group_admin',
+      }
+    : membership;
+
   return (
     <div className="group-page">
       {/* Hero Image */}
@@ -590,8 +628,46 @@ const GroupPage: React.FC = () => {
               </select>
             </div>
           )}
+          {/* Preview-as-role control. Gated on the raw membership (never
+              displayMembership) so it stays visible while a preview is
+              active - otherwise switching to "Member" would immediately
+              hide the control that switched you there. */}
+          {membership?.is_site_admin && (
+            <div className="preview-as-role">
+              <label htmlFor="preview-as-role-select" className="sr-only">Viewing as:</label>
+              <select
+                id="preview-as-role-select"
+                value={previewRole ?? 'site_admin'}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setPreviewRole(value === 'group_admin' || value === 'member' ? value : null);
+                }}
+                className="group-select preview-as-role-select"
+                aria-label="Viewing as"
+              >
+                <option value="site_admin">Viewing as: Site Admin</option>
+                <option value="group_admin">Viewing as: Group Admin</option>
+                <option value="member">Viewing as: Member</option>
+              </select>
+            </div>
+          )}
         </div>
         <p className="group-description">{group.description}</p>
+        {previewRole && (
+          <div className="preview-as-role-banner" role="status">
+            <span>
+              Previewing as {previewRole === 'group_admin' ? 'Group Admin' : 'Member'} - you're still really a
+              site admin, this only changes what's shown.
+            </span>
+            <button
+              type="button"
+              className="preview-as-role-banner__exit"
+              onClick={() => setPreviewRole(null)}
+            >
+              Exit preview
+            </button>
+          </div>
+        )}
       </div>
 
       {/* View Mode Tabs */}
@@ -640,7 +716,7 @@ const GroupPage: React.FC = () => {
               <span>Scripts</span>
             </button>
           )}
-          {(membership?.is_member || membership?.is_site_admin) && (
+          {(displayMembership?.is_member || displayMembership?.is_site_admin) && (
             <button
               role="tab"
               aria-selected={viewMode === 'members'}
@@ -658,7 +734,7 @@ const GroupPage: React.FC = () => {
               <span>Members</span>
             </button>
           )}
-          {(membership?.is_member || membership?.is_site_admin) && (
+          {(displayMembership?.is_member || displayMembership?.is_site_admin) && (
             <button
               role="tab"
               aria-selected={viewMode === 'documents'}
@@ -677,7 +753,7 @@ const GroupPage: React.FC = () => {
               <span>Documents</span>
             </button>
           )}
-          {scheduleTabAccess && group.scheduling_enabled && (membership?.is_member || membership?.is_site_admin) && (
+          {scheduleTabAccess && group.scheduling_enabled && (displayMembership?.is_member || displayMembership?.is_site_admin) && (
             <button
               role="tab"
               aria-selected={viewMode === 'schedule'}
@@ -709,7 +785,7 @@ const GroupPage: React.FC = () => {
       </div>
 
       {/* Group Admin Quick Links - shown only to group admins (site admins already have nav bar) */}
-      {(membership?.is_group_admin || membership?.is_site_admin) && (
+      {(displayMembership?.is_group_admin || displayMembership?.is_site_admin) && (
         <div className="group-admin-links" role="navigation" aria-label="Group administration links">
           <span className="group-admin-links__title">Quick Actions:</span>
           <Link to={`/groups/${id}/animals/new`} className="group-admin-link">
@@ -780,6 +856,7 @@ const GroupPage: React.FC = () => {
                 <option value="all">All Activity</option>
                 <option value="comments">Comments Only</option>
                 <option value="announcements">Announcements Only</option>
+                <option value="coverage_requests">Coverage Requests Only</option>
               </select>
 
               {/* Searchable Animal Filter with Autocomplete */}
@@ -923,7 +1000,7 @@ const GroupPage: React.FC = () => {
               {activities.map((activity) => {
                 const canDeleteAnnouncement =
                   activity.type === 'announcement' &&
-                  (membership?.is_group_admin || membership?.is_site_admin);
+                  (displayMembership?.is_group_admin || displayMembership?.is_site_admin);
                 return (
                 <div key={`${activity.type}-${activity.id}`} className="activity-card">
                   <div className="activity-header">
@@ -1091,7 +1168,7 @@ const GroupPage: React.FC = () => {
                 description={
                   statusFilter || nameSearch
                     ? 'Try adjusting your search or filter to see more results.'
-                    : (membership?.is_group_admin || membership?.is_site_admin)
+                    : (displayMembership?.is_group_admin || displayMembership?.is_site_admin)
                       ? `Get started by adding your first animal to ${group.name}. Animals added here will be visible to all group members.`
                       : `This group doesn't have any animals yet. An admin will need to add animals before volunteers can share updates.`
                 }
@@ -1101,7 +1178,7 @@ const GroupPage: React.FC = () => {
                         label: 'Clear Filters',
                         onClick: handleClearAnimalFilters,
                       }
-                    : (membership?.is_group_admin || membership?.is_site_admin)
+                    : (displayMembership?.is_group_admin || displayMembership?.is_site_admin)
                       ? {
                           label: 'Add First Animal',
                           onClick: () => navigate(`/groups/${id}/animals/new`),
@@ -1265,7 +1342,7 @@ const GroupPage: React.FC = () => {
         >
           <ScriptsList 
             groupId={Number(id)} 
-            isGroupAdmin={membership?.is_group_admin || membership?.is_site_admin}
+            isGroupAdmin={displayMembership?.is_group_admin || displayMembership?.is_site_admin}
             showFormExternal={showProtocolForm}
             onShowFormChange={setShowProtocolForm}
             hideAddButton={true}
@@ -1274,7 +1351,7 @@ const GroupPage: React.FC = () => {
       )}
 
       {/* Members View */}
-      {viewMode === 'members' && (membership?.is_member || membership?.is_site_admin) && (
+      {viewMode === 'members' && (displayMembership?.is_member || displayMembership?.is_site_admin) && (
         <div
           role="tabpanel"
           id="members-panel"
@@ -1284,7 +1361,7 @@ const GroupPage: React.FC = () => {
           <div className="members-section">
             <div className="section-header">
               <h2>Members</h2>
-              {(membership?.is_group_admin || membership?.is_site_admin) && (
+              {(displayMembership?.is_group_admin || displayMembership?.is_site_admin) && (
                 <button
                   className="btn-secondary btn-manage-tags"
                   onClick={() => setShowSkillTagForm(v => !v)}
@@ -1295,7 +1372,7 @@ const GroupPage: React.FC = () => {
             </div>
 
             {/* Skill tag management panel (group admins only) */}
-            {showSkillTagForm && (membership?.is_group_admin || membership?.is_site_admin) && (
+            {showSkillTagForm && (displayMembership?.is_group_admin || displayMembership?.is_site_admin) && (
               <div className="skill-tag-panel">
                 <h3 className="skill-tag-panel__title">Group Skill Tags</h3>
                 <div className="skill-tag-list">
@@ -1391,7 +1468,7 @@ const GroupPage: React.FC = () => {
                           </div>
                         )}
                         {/* Inline skill-tag editor for group admins */}
-                        {isEditingThisMember && (membership?.is_group_admin || membership?.is_site_admin) && (
+                        {isEditingThisMember && (displayMembership?.is_group_admin || displayMembership?.is_site_admin) && (
                           <div className="skill-tag-editor">
                             <div className="skill-tag-editor__options">
                               {skillTags.map(tag => {
@@ -1446,7 +1523,7 @@ const GroupPage: React.FC = () => {
                         <Link to={`/users/${member.user_id}/profile`} className="btn-view-profile">
                           View Profile
                         </Link>
-                        {(membership?.is_group_admin || membership?.is_site_admin) && (
+                        {(displayMembership?.is_group_admin || displayMembership?.is_site_admin) && (
                           skillTags.length > 0 ? (
                             <button
                               className="btn-secondary btn-edit-tags"
@@ -1476,7 +1553,7 @@ const GroupPage: React.FC = () => {
       )}
 
       {/* Documents View */}
-      {viewMode === 'documents' && (membership?.is_member || membership?.is_site_admin) && (
+      {viewMode === 'documents' && (displayMembership?.is_member || displayMembership?.is_site_admin) && (
         <div
           role="tabpanel"
           id="documents-panel"
@@ -1486,7 +1563,7 @@ const GroupPage: React.FC = () => {
           <div className="documents-section">
             <div className="documents-section-header">
               <h2>Group Documents</h2>
-              {(membership?.is_group_admin || membership?.is_site_admin) && (
+              {(displayMembership?.is_group_admin || displayMembership?.is_site_admin) && (
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -1573,7 +1650,7 @@ const GroupPage: React.FC = () => {
                         >
                           ↓
                         </button>
-                        {(membership?.is_group_admin || membership?.is_site_admin) && (
+                        {(displayMembership?.is_group_admin || displayMembership?.is_site_admin) && (
                           <button
                             type="button"
                             className="document-card__icon-btn document-card__icon-btn--danger"
@@ -1594,7 +1671,7 @@ const GroupPage: React.FC = () => {
         </div>
       )}
 
-      {viewMode === 'schedule' && scheduleTabAccess && group.scheduling_enabled && (membership?.is_member || membership?.is_site_admin) && id && (
+      {viewMode === 'schedule' && scheduleTabAccess && group.scheduling_enabled && (displayMembership?.is_member || displayMembership?.is_site_admin) && id && (
         <div
           role="tabpanel"
           id="schedule-panel"
@@ -1603,7 +1680,7 @@ const GroupPage: React.FC = () => {
         >
           <ScheduleTab
             groupId={Number(id)}
-            canManageMembers={!!(membership?.is_group_admin || membership?.is_site_admin)}
+            canManageMembers={!!(displayMembership?.is_group_admin || displayMembership?.is_site_admin)}
             currentUserId={user?.id ?? 0}
           />
         </div>

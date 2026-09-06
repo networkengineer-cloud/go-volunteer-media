@@ -392,7 +392,7 @@ export interface DuplicateNameInfo {
 
 export interface ActivityItem {
   id: number;
-  type: 'comment' | 'announcement';
+  type: 'comment' | 'announcement' | 'coverage_request';
   created_at: string;
   updated_at?: string;
   user_id: number;
@@ -404,6 +404,10 @@ export interface ActivityItem {
   animal?: Animal;
   tags?: CommentTag[];
   metadata?: SessionMetadata;
+  date?: string;
+  hour?: number;
+  status?: string;
+  claimed_by_user?: User;
 }
 
 export interface ActivityFeedResponse {
@@ -572,7 +576,7 @@ export const groupsApi = {
   getActivityFeed: (id: number, options?: {
     limit?: number;
     offset?: number;
-    type?: 'all' | 'comments' | 'announcements';
+    type?: 'all' | 'comments' | 'announcements' | 'coverage_requests';
     animal?: number;
     tags?: string;
     rating?: string;

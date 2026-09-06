@@ -15,18 +15,22 @@ import (
 
 // ActivityItem represents a unified activity feed item
 type ActivityItem struct {
-	ID        uint                    `json:"id"`
-	Type      string                  `json:"type"` // "comment", "announcement"
-	CreatedAt time.Time               `json:"created_at"`
-	UserID    uint                    `json:"user_id"`
-	User      *models.User            `json:"user,omitempty"`
-	Content   string                  `json:"content"`
-	Title     string                  `json:"title,omitempty"` // For announcements
-	ImageURL  string                  `json:"image_url,omitempty"`
-	AnimalID  *uint                   `json:"animal_id,omitempty"` // For comments
-	Animal    *models.Animal          `json:"animal,omitempty"`    // For comments
-	Tags      []models.CommentTag     `json:"tags,omitempty"`      // For comments
-	Metadata  *models.SessionMetadata `json:"metadata,omitempty"`  // For session reports
+	ID            uint                    `json:"id"`
+	Type          string                  `json:"type"` // "comment", "announcement", "coverage_request"
+	CreatedAt     time.Time               `json:"created_at"`
+	UserID        uint                    `json:"user_id"`
+	User          *models.User            `json:"user,omitempty"`
+	Content       string                  `json:"content"`
+	Title         string                  `json:"title,omitempty"` // For announcements
+	ImageURL      string                  `json:"image_url,omitempty"`
+	AnimalID      *uint                   `json:"animal_id,omitempty"`       // For comments
+	Animal        *models.Animal          `json:"animal,omitempty"`          // For comments
+	Tags          []models.CommentTag     `json:"tags,omitempty"`            // For comments
+	Metadata      *models.SessionMetadata `json:"metadata,omitempty"`        // For session reports
+	Date          *time.Time              `json:"date,omitempty"`            // For coverage requests
+	Hour          *int                    `json:"hour,omitempty"`            // For coverage requests
+	Status        *string                 `json:"status,omitempty"`          // For coverage requests
+	ClaimedByUser *models.User            `json:"claimed_by_user,omitempty"` // For coverage requests
 }
 
 // ActivityFeedSummary provides quick stats about concerns
@@ -158,6 +162,51 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 					Content:   update.Content,
 					Title:     update.Title,
 					ImageURL:  update.ImageURL,
+				})
+			}
+		}
+
+		var totalCoverageRequests int
+
+		// Fetch coverage requests under the same gating as announcements
+		// above: tags/rating/animal are comment-only concepts, and a
+		// ShiftCoverageRequest has none of them either. Cancelled requests
+		// are excluded outright - a cancelled request isn't something that
+		// happened, from the feed's point of view.
+		if (filterType == "" || filterType == "all" || filterType == "coverage_requests") && filterTags == "" && filterRating == "" && filterAnimal == "" {
+			var coverageRequests []models.ShiftCoverageRequest
+			query := db.Where("group_id = ? AND status != ?", groupID, models.CoverageRequestCancelled)
+
+			if dateFrom != nil {
+				query = query.Where("created_at >= ?", dateFrom)
+			}
+			if dateTo != nil {
+				query = query.Where("created_at <= ?", dateTo)
+			}
+
+			err := query.Preload("RequestedByUser").
+				Preload("ClaimedByUser").
+				Order("created_at DESC").
+				Find(&coverageRequests).Error
+
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch coverage requests"})
+				return
+			}
+			totalCoverageRequests = len(coverageRequests)
+
+			for _, req := range coverageRequests {
+				status := string(req.Status)
+				activityItems = append(activityItems, ActivityItem{
+					ID:            req.ID,
+					Type:          "coverage_request",
+					CreatedAt:     req.CreatedAt,
+					UserID:        req.RequestedByUserID,
+					User:          &req.RequestedByUser,
+					Date:          &req.Date,
+					Hour:          &req.Hour,
+					Status:        &status,
+					ClaimedByUser: req.ClaimedByUser,
 				})
 			}
 		}
@@ -352,7 +401,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		// above (len(updates) is already an accurate count), comments use
 		// the dedicated count query above (totalComments) since the comment
 		// fetch itself is now bounded.
-		total := int64(totalAnnouncements) + totalComments
+		total := int64(totalAnnouncements) + int64(totalCoverageRequests) + totalComments
 		hasMore := int64(offset+len(paginatedItems)) < total
 
 		// Return response with pagination metadata and summary

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { scheduleApi } from '../../api/client';
 import type { CoverageRequestListItem, CoverageRequestPriority } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
-import { formatSlotRangeLabel } from './scheduleGrid';
+import { formatSlotRangeLabel, formatDateLabel, dayOfWeekFromIso } from './scheduleGrid';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
 import './NeedsCoverageList.css';
@@ -12,18 +12,6 @@ export interface NeedsCoverageListProps {
   groupId: number;
   currentUserId: number;
   canManageMembers?: boolean;
-}
-
-function formatDateLabel(isoDate: string): string {
-  const opts: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' };
-  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString(undefined, opts);
-}
-
-// CoverageRequestListItem only carries a `date` (not a day_of_week), so the
-// day-of-week needed by formatSlotRangeLabel (to know whether this item's
-// hour is a day's terminal 90-min slot) is derived here from that date.
-function dayOfWeekFromIso(isoDate: string): number {
-  return new Date(`${isoDate}T00:00:00Z`).getUTCDay();
 }
 
 const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentUserId, canManageMembers = false }) => {

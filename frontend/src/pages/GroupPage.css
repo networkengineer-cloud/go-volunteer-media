@@ -92,6 +92,48 @@
   line-height: 1.6;
 }
 
+.preview-as-role {
+  display: flex;
+  align-items: center;
+}
+
+.preview-as-role-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding: 0.625rem 1rem;
+  background: var(--warning-100, #fef3c7);
+  border: 1px solid var(--warning-300, #fcd34d);
+  border-radius: 6px;
+  color: var(--warning-900, #78350f);
+  font-size: 0.9rem;
+}
+
+[data-theme='dark'] .preview-as-role-banner {
+  background: rgba(252, 211, 77, 0.12);
+  border-color: rgba(252, 211, 77, 0.3);
+  color: #fcd34d;
+}
+
+.preview-as-role-banner__exit {
+  flex-shrink: 0;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.preview-as-role-banner__exit:hover {
+  opacity: 0.75;
+}
+
 .back-link {
   color: var(--brand);
   text-decoration: none;
