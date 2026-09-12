@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './DateRangePicker.css';
 
 export interface DateRangePickerProps {
@@ -82,6 +83,17 @@ const POPOVER_MAX_HEIGHT = 340;
 // from getBoundingClientRect() escapes that clipping ancestor entirely,
 // the same fix ScheduleOverview.tsx's member popover already uses for an
 // identical class of problem.
+//
+// The popover itself is also rendered via a portal to document.body (see
+// render below) rather than left in place under Modal's own tree: Modal's
+// `.modal-backdrop` sets `backdrop-filter`, which - like `transform` or
+// `filter` - makes an element the containing block for its `position:
+// fixed` descendants. Left in place, this popover's fixed positioning
+// would resolve against `.modal-backdrop`'s padding box instead of the
+// true viewport, throwing off the viewport-relative math above by exactly
+// that padding and cutting off the grid's right-most columns. Portaling
+// out from under `.modal-backdrop` avoids that containing-block trap
+// entirely instead of compensating for its offset.
 function popoverPositionFor(rect: DOMRect): PopoverPosition {
   const spaceBelow = window.innerHeight - rect.bottom - 4;
   const top = spaceBelow >= POPOVER_MAX_HEIGHT
@@ -106,13 +118,18 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ startDate, endDate, o
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
+      const target = event.target as Node;
+      // The popover is portaled to document.body (see render below), so it's
+      // no longer a DOM descendant of containerRef - it must be checked
+      // separately or every click inside it would register as "outside".
+      if (containerRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false);
@@ -163,10 +180,11 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ startDate, endDate, o
       <button type="button" className="date-range-picker__trigger" onClick={toggleOpen} ref={triggerRef}>
         {triggerLabel}
       </button>
-      {open && popoverPosition && (
+      {open && popoverPosition && createPortal(
         <div
           className="date-range-picker__popover"
           style={{ top: popoverPosition.top, left: popoverPosition.left }}
+          ref={popoverRef}
         >
           <div className="date-range-picker__nav">
             <button
@@ -216,7 +234,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ startDate, endDate, o
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

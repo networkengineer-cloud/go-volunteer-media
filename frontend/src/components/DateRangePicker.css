@@ -89,6 +89,13 @@
 }
 
 .date-range-picker__day {
+  /* Global button rule in index.css floors every button at 44x44px for
+     touch targets. That's wider than this 7-column grid's 1fr tracks can
+     give it (1fr's implicit minimum is auto, i.e. the item's min-width),
+     so the day grid was overflowing past the header row's width and past
+     its own height: 30px. */
+  min-width: 0;
+  min-height: 0;
   height: 30px;
   border: none;
   border-radius: 4px;
