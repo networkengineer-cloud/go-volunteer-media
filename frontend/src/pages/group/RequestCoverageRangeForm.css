@@ -4,6 +4,26 @@
   gap: 1rem;
 }
 
+/* DateRangePicker's own .date-range-picker is display:inline-block, so as
+   a flex child it stretches to the form's full width but its visible
+   trigger button stays sized to its own 220px min-width - leaving a
+   button-sized control adrift in a full-width row, with the border-radius
+   and font-size of DateRangePicker.css's generic (smaller) styling
+   clashing with the Cancel/Request Coverage buttons below it. Scope it to
+   match: full width, and the same radius/size as the rest of the form. */
+.request-coverage-range-form .date-range-picker {
+  display: block;
+  width: 100%;
+}
+
+.request-coverage-range-form .date-range-picker__trigger {
+  width: 100%;
+  min-width: 0;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9375rem;
+  border-radius: 8px;
+}
+
 .request-coverage-range-form__warning {
   color: var(--warning, #d97706);
   font-size: 0.85rem;
@@ -95,16 +115,35 @@
   outline-offset: 2px;
 }
 
-/* .btn-primary is a global, unscoped class reused across many pages with
-   inconsistent :disabled rules (some use opacity, some swap the
-   background) - whichever one wins the cascade here is undefined. Scope
-   an explicit override so the disabled "Request Coverage" button always
-   gets a clearly-disabled, still-readable look instead of an opacity dip
-   that alpha-blends the button toward whatever is behind the modal. */
-.request-coverage-range-form .btn-primary:disabled {
+/* Scoped for the same reason as .request-coverage-range-form__cancel-btn
+   above: .btn-primary is a global, unscoped class redefined per-page with
+   different padding/font-size/disabled treatments, and since Modal portals
+   this form to document.body, whichever page's rule happens to sort last
+   in the bundle wins here - not GroupPage.css's. That mismatch is what
+   made this button a different height/font than Cancel next to it. */
+.request-coverage-range-form__submit-btn {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9375rem;
+  background: var(--brand);
+  color: var(--brand-contrast, white);
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.request-coverage-range-form__submit-btn:hover:not(:disabled) {
+  background: var(--brand-600);
+}
+
+.request-coverage-range-form__submit-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.request-coverage-range-form__submit-btn:disabled {
   background: var(--neutral-300);
   color: var(--text-secondary);
   cursor: not-allowed;
-  box-shadow: none;
-  transform: none;
 }
