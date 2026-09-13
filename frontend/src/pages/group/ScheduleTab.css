@@ -145,8 +145,13 @@
   margin-top: 1rem;
 }
 
+/* width: auto overrides the unscoped, global .btn-secondary { width: 100% }
+   rule from Login.css - same specificity as this selector, so without an
+   explicit width here that page's rule still wins the cascade and
+   stretches this button across the whole tab. */
 .schedule-tab__request-range {
   display: inline-block;
+  width: auto;
   margin-bottom: 1rem;
 }
 

@@ -269,7 +269,7 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
         </button>
         <button
           type="button"
-          className="btn-primary"
+          className="request-coverage-range-form__submit-btn"
           onClick={handleSubmit}
           disabled={submitting || rangeTooLong || checkedKeys.size === 0 || checkedKeys.size > MAX_BATCH_ITEMS}
         >
