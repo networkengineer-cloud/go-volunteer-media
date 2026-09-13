@@ -146,7 +146,7 @@
 }
 
 .schedule-tab__request-range {
-  display: block;
+  display: inline-block;
   margin-bottom: 1rem;
 }
 

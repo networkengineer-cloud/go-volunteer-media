@@ -94,3 +94,17 @@
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
+
+/* .btn-primary is a global, unscoped class reused across many pages with
+   inconsistent :disabled rules (some use opacity, some swap the
+   background) - whichever one wins the cascade here is undefined. Scope
+   an explicit override so the disabled "Request Coverage" button always
+   gets a clearly-disabled, still-readable look instead of an opacity dip
+   that alpha-blends the button toward whatever is behind the modal. */
+.request-coverage-range-form .btn-primary:disabled {
+  background: var(--neutral-300);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
