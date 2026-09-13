@@ -177,12 +177,12 @@ if [[ "${SKIP_BUILD}" == false ]]; then
   
   echo "Pushing revision image to registry..."
   docker push "${FULL_IMAGE_TAG}"
-  
+
   echo "Pushing base tag to registry..."
   docker push "${REPO}:${IMAGE_TAG}"
 else
   echo "Skipping build (--skip-build or --rollback specified)"
-  
+
   # Verify the image exists
   if ! docker manifest inspect "${FULL_IMAGE_TAG}" &> /dev/null; then
     echo "Error: Image ${FULL_IMAGE_TAG} not found in registry"
@@ -192,21 +192,41 @@ else
   fi
 fi
 
-echo ""
-echo "Updating Azure Container App '${APP_NAME}' (${ENVIRONMENT}) to use image ${FULL_IMAGE_TAG}..."
+# Resolve the tag to its immutable digest before deploying. REVISION_TAG is
+# just {date}-{git-sha}, so re-running a deploy on the same day at an
+# unchanged commit reuses the exact same tag string - Azure then sees no
+# diff on `--image` and can skip pulling the new content, silently leaving
+# the previous (stale) revision running even though the registry has been
+# updated. `docker pull` re-resolves the tag against the registry right
+# before we deploy, so the digest we hand to Azure always matches what was
+# just pushed, not whatever the tag happened to resolve to earlier.
+echo "Resolving ${FULL_IMAGE_TAG} to its digest..."
+docker pull "${FULL_IMAGE_TAG}" > /dev/null
+IMAGE_DIGEST=$(docker inspect "${FULL_IMAGE_TAG}" --format '{{index .RepoDigests 0}}')
+if [[ -z "${IMAGE_DIGEST}" ]]; then
+  echo "Error: Could not resolve digest for ${FULL_IMAGE_TAG}"
+  exit 1
+fi
 
-# Generate Azure revision suffix (max 10 chars, alphanumeric and hyphens only)
-# Format: MMDD-gitsha (e.g., 0117-abc1234 = 12 chars, or 0117abc123 = 10 chars)
-MONTH_DAY=$(echo ${REVISION_TAG} | cut -d'-' -f1 | cut -c5-8)  # MMDD from YYYYMMDD
+echo ""
+echo "Updating Azure Container App '${APP_NAME}' (${ENVIRONMENT}) to use image ${IMAGE_DIGEST}..."
+
+# Generate Azure revision suffix (alphanumeric and hyphens only). Azure
+# rejects re-provisioning a suffix that already exists on the app, even
+# after the earlier revision is inactive - so a suffix built only from
+# {date}-{git-sha} collides on a second same-day deploy at an unchanged
+# commit. Appending the build time keeps it unique per invocation while
+# staying far under Azure's revision-name length limit.
 GIT_SHORT=$(echo ${REVISION_TAG} | cut -d'-' -f2 | cut -c1-6)  # First 6 chars of git SHA
-REVISION_SUFFIX="${MONTH_DAY}${GIT_SHORT}"
+BUILD_TIME=$(date -u +%H%M%S)  # HHMMSS (UTC)
+REVISION_SUFFIX="${GIT_SHORT}${BUILD_TIME}"
 
 echo "Using Azure revision suffix: ${REVISION_SUFFIX}"
 
 az containerapp update \
   --name "${APP_NAME}" \
   --resource-group "${RG}" \
-  --image "${FULL_IMAGE_TAG}" \
+  --image "${IMAGE_DIGEST}" \
   --revision-suffix "${REVISION_SUFFIX}"
 
 # Give Azure a moment to create the new revision
@@ -239,7 +259,8 @@ echo "Deployment finished successfully!"
 echo "=========================================="
 echo "Environment: ${ENVIRONMENT}"
 echo "Revision:    ${REVISION_TAG}"
-echo "Image:       ${FULL_IMAGE_TAG}"
+echo "Tag:         ${FULL_IMAGE_TAG}"
+echo "Deployed:    ${IMAGE_DIGEST}"
 echo ""
 echo "To rollback to this revision later, run:"
 echo "  ./scripts/deploy-ghcr-az.sh --env ${ENVIRONMENT} --rollback ${REVISION_TAG}"
