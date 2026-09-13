@@ -34,7 +34,12 @@
    ancestor entirely, same fix ScheduleOverview.tsx's own popover uses. */
 .date-range-picker__popover {
   position: fixed;
-  z-index: 20;
+  /* Portaled to document.body (see DateRangePicker.tsx), so it's a sibling
+     of Modal's own backdrop/content rather than a descendant - it no longer
+     inherits the modal's stacking context and must out-rank the modal's own
+     z-index tokens directly or it renders underneath the backdrop, showing
+     through only faded by the backdrop's blur/dark overlay. */
+  z-index: calc(var(--z-modal, 1050) + 10);
   width: 260px;
   max-height: 340px;
   overflow-y: auto;
