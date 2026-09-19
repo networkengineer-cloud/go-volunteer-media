@@ -21,7 +21,8 @@ describe('AuthContext', () => {
     vi.clearAllMocks();
     // Clear localStorage
     localStorage.clear();
-    
+    sessionStorage.clear();
+
     // Mock getCurrentUser to return a rejected promise by default
     // This prevents the useEffect from trying to fetch user on mount
     vi.mocked(authApi.getCurrentUser).mockRejectedValue(new Error('Not authenticated'));
@@ -159,6 +160,47 @@ describe('AuthContext', () => {
       expect(result.current.user).toBeNull();
       expect(result.current.token).toBeNull();
       expect(localStorage.getItem('token')).toBeNull();
+    });
+
+    // Regression test: sessionStorage isn't cleared by logging out, only by
+    // closing the tab, so a site admin's "viewing as" preview (GroupPage.tsx)
+    // used to survive into whichever user logged into the same tab next.
+    it('clears any stored group-preview role so it cannot leak into the next user in this tab', async () => {
+      sessionStorage.setItem('previewRole:1', 'member');
+      sessionStorage.setItem('previewRole:2', 'group_admin');
+
+      const mockResponse = {
+        data: {
+          token: 'fake-token',
+          user: {
+            id: 1,
+            username: 'testuser',
+            email: 'test@example.com',
+            is_admin: false,
+          },
+        },
+      };
+
+      vi.mocked(authApi.login).mockResolvedValue(mockResponse as never);
+
+      const { result } = renderHook(() => useAuth(), {
+        wrapper: AuthProvider,
+      });
+
+      await act(async () => {
+        await result.current.login('testuser', 'password123');
+      });
+
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true);
+      });
+
+      act(() => {
+        result.current.logout();
+      });
+
+      expect(sessionStorage.getItem('previewRole:1')).toBeNull();
+      expect(sessionStorage.getItem('previewRole:2')).toBeNull();
     });
   });
 
