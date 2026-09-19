@@ -4,6 +4,22 @@
   gap: 0.75rem;
 }
 
+.needs-coverage-list__header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Same descendant-selector technique as the row/bulk-bar buttons below, to
+   beat any single-class `.btn-secondary` rule elsewhere in the app that
+   would otherwise stretch this to the header's full width. */
+.needs-coverage-list-wrapper .needs-coverage-list__remind {
+  width: auto;
+  min-width: 0;
+  min-height: 40px;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+}
+
 .needs-coverage-list__bulk-bar {
   display: flex;
   flex-direction: column;

@@ -76,6 +76,8 @@ SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED=true  # Set to "true" or "1" to enable
 ```
 Coverage-request and claim emails from the Schedule tab are opt-in and default to disabled, independent of `EMAIL_ENABLED`. The Schedule tab itself is currently gated to a small set of users via a LaunchDarkly flag; this keeps those beta testers from emailing the whole group before the feature is ready for everyone. Leave unset until you're ready to enable Schedule emails broadly.
 
+These automatic emails only fire once, at the moment a coverage request is created (or claimed) - there's no scheduled digest for requests that are still open days or weeks later. A group admin can manually re-notify the group about every currently-open request with the "Send reminder" button on the Needs Coverage list, which is also gated by this same flag.
+
 ### Provider Selection
 ```env
 EMAIL_PROVIDER=resend  # or "smtp"

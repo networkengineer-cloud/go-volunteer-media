@@ -2261,6 +2261,142 @@ func TestUpdateCoverageRequestPriority(t *testing.T) {
 	})
 }
 
+func performSendCoverageReminder(db *gorm.DB, emailSvc *email.Service, callerID uint, isAdmin bool, groupID uint) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", callerID)
+		c.Set("is_admin", isAdmin)
+		c.Next()
+	})
+	router.POST("/groups/:id/schedule/coverage-requests/remind", SendCoverageReminder(db, emailSvc, nil))
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/remind", groupID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func TestSendCoverageReminder(t *testing.T) {
+	t.Run("group admin can trigger a reminder covering every open request, from any requester", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		db := SetupTestDB(t)
+		requester, other, group := setupCoverageTestGroup(t, db)
+		if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("Failed to enable other's email notifications: %v", err)
+		}
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		createOpenCoverageRequest(t, db, group.ID, other.ID, 2, 11, date)
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
+
+		w := performSendCoverageReminder(db, emailSvc, admin.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp sendCoverageReminderResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if resp.RequestCount != 2 {
+			t.Fatalf("Expected request_count 2, got %d", resp.RequestCount)
+		}
+		if !resp.EmailQueued {
+			t.Fatal("Expected email_queued to be true")
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got == 0 {
+			t.Fatal("Expected a reminder email to be sent, got none")
+		}
+	})
+
+	t.Run("site admin can also trigger a reminder", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		siteAdmin := CreateTestUser(t, db, "admin", "admin@example.com", "password123", true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performSendCoverageReminder(db, nil, siteAdmin.ID, true, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("non-admin member cannot trigger a reminder", func(t *testing.T) {
+		db := SetupTestDB(t)
+		_, other, group := setupCoverageTestGroup(t, db)
+
+		w := performSendCoverageReminder(db, nil, other.ID, false, group.ID)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("reports no open requests instead of sending an empty reminder", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		db := SetupTestDB(t)
+		_, _, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
+
+		w := performSendCoverageReminder(db, emailSvc, admin.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp sendCoverageReminderResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if resp.RequestCount != 0 || resp.EmailQueued {
+			t.Fatalf("Expected an empty, unqueued response, got %+v", resp)
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got != 0 {
+			t.Fatalf("Expected no email when there's nothing to remind about, got %d", got)
+		}
+	})
+
+	t.Run("no email is sent while the schedule email flag is off", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "")
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+		provider := &mockEmailProvider{}
+		emailSvc := email.NewServiceWithProvider(provider, db)
+
+		w := performSendCoverageReminder(db, emailSvc, admin.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp sendCoverageReminderResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if resp.EmailQueued {
+			t.Fatal("Expected email_queued to be false while the flag is off")
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := provider.sendCount(); got != 0 {
+			t.Fatalf("Expected no reminder email while the flag is off, got %d", got)
+		}
+	})
+}
+
 func performReassignShiftsBatch(db *gorm.DB, callerID uint, isAdmin bool, groupID uint, body string) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

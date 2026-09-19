@@ -24,6 +24,7 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
   const [cancelling, setCancelling] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [busyPriorityId, setBusyPriorityId] = useState<number | null>(null);
+  const [remindLoading, setRemindLoading] = useState(false);
 
   // Cancels any in-flight request before starting a new one, matching the
   // AbortController pattern already used by ScheduleTab/ScheduleOverview's
@@ -97,6 +98,23 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
         toast.showError(err.response?.data?.error || 'Failed to update priority.');
       })
       .finally(() => setBusyPriorityId(null));
+  };
+
+  const handleSendReminder = () => {
+    setRemindLoading(true);
+    scheduleApi.sendCoverageReminder(groupId)
+      .then(res => {
+        const { message, email_queued: emailQueued, groupme_queued: groupMeQueued } = res.data;
+        if (emailQueued || groupMeQueued) {
+          toast.showSuccess(message);
+        } else {
+          toast.showError(message);
+        }
+      })
+      .catch(err => {
+        toast.showError(err.response?.data?.error || 'Failed to send reminder.');
+      })
+      .finally(() => setRemindLoading(false));
   };
 
   const isCancellable = (item: CoverageRequestListItem) => item.requested_by_user_id === currentUserId || canManageMembers;
@@ -181,6 +199,18 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
 
   return (
     <div className="needs-coverage-list-wrapper">
+      {canManageMembers && (
+        <div className="needs-coverage-list__header">
+          <button
+            type="button"
+            className="btn-secondary needs-coverage-list__remind"
+            disabled={remindLoading}
+            onClick={handleSendReminder}
+          >
+            Send reminder
+          </button>
+        </div>
+      )}
       {selectableIds.length > 0 && (
         <div className="needs-coverage-list__bulk-bar">
           <label className="needs-coverage-list__select-all">
