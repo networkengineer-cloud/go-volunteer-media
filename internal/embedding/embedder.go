@@ -50,7 +50,17 @@ type Embedder interface {
 // VOYAGE_API_KEY but never separately considers this flag should not
 // silently start incurring real outbound API calls.
 func SemanticSearchEnabled() bool {
-	v := os.Getenv("SEMANTIC_SEARCH_ENABLED")
+	return OptInEnvFlag("SEMANTIC_SEARCH_ENABLED")
+}
+
+// OptInEnvFlag reads an opt-in boolean env var by the same convention as
+// SemanticSearchEnabled: unset or any value other than "true"/"1" means
+// disabled. Shared so every opt-in feature flag in the codebase (paid APIs,
+// features still rolling out, etc.) parses "enabled" identically instead of
+// each call site re-implementing - and risking silently diverging on - the
+// same two-value check.
+func OptInEnvFlag(name string) bool {
+	v := os.Getenv(name)
 	return v == "true" || v == "1"
 }
 

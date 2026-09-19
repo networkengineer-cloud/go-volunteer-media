@@ -41,6 +41,19 @@ export function formatSlotRangeLabel(dayOfWeek: number, hour: number): string {
   return formatRangeLabel(hour, duration);
 }
 
+// formatDateLabel/dayOfWeekFromIso format a coverage request's plain
+// YYYY-MM-DD date consistently everywhere one is shown (the needs-coverage
+// list and the activity feed) - both interpret the date at UTC midnight so a
+// date-only string never shifts by a day under a non-UTC local timezone.
+export function formatDateLabel(isoDate: string): string {
+  const opts: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' };
+  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString(undefined, opts);
+}
+
+export function dayOfWeekFromIso(isoDate: string): number {
+  return new Date(`${isoDate}T00:00:00Z`).getUTCDay();
+}
+
 export interface RowHeaderInfo {
   label: string;
   note?: string;

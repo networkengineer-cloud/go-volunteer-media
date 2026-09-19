@@ -100,6 +100,11 @@
   color: #1e40af;
 }
 
+.activity-item__type-badge--coverage_request {
+  background: #dcfce7;
+  color: #166534;
+}
+
 /* Content */
 .activity-item__content {
   margin-bottom: 1rem;
@@ -154,6 +159,19 @@
   color: var(--neutral-700);
   white-space: pre-wrap;
   word-break: break-word;
+  margin: 0;
+}
+
+.activity-item__coverage-request-shift {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+  margin: 0 0 0.25rem;
+}
+
+.activity-item__coverage-request-status {
+  font-size: 0.9375rem;
+  color: var(--neutral-700);
   margin: 0;
 }
 
@@ -256,6 +274,11 @@
 [data-theme='dark'] .activity-item__type-badge--comment {
   background: #1e3a8a;
   color: #dbeafe;
+}
+
+[data-theme='dark'] .activity-item__type-badge--coverage_request {
+  background: #14532d;
+  color: #dcfce7;
 }
 
 [data-theme='dark'] .activity-item__animal-name:hover {

@@ -14,7 +14,7 @@ import { ToastProvider } from '../contexts/ToastContext';
 // tab. Routed through a controllable mock (mockUseFlags) defaulting to flag-on,
 // so most tests exercise the same group.scheduling_enabled/membership logic
 // they did before the flag existed, while a dedicated test below can flip it off.
-const mockUseFlags = vi.fn(() => ({ scheduleTabAccess: true }));
+const mockUseFlags = vi.fn(() => ({ scheduleTabAccess: true, coverageRequestsInFeed: true }));
 vi.mock('launchdarkly-react-client-sdk', () => ({
   useFlags: () => mockUseFlags(),
 }));
@@ -129,9 +129,9 @@ describe('GroupPage', () => {
     // down override this in their own beforeEach.
     mockUseSearchParams.mockReturnValue([new URLSearchParams('view=animals'), vi.fn()]);
 
-    // Default flag-on so most tests exercise the same scheduling logic they
-    // did before the flag existed; the dedicated flag test overrides this.
-    mockUseFlags.mockReturnValue({ scheduleTabAccess: true });
+    // Default flag-on so most tests exercise the same scheduling/activity-filter
+    // logic they did before either flag existed; dedicated flag tests override this.
+    mockUseFlags.mockReturnValue({ scheduleTabAccess: true, coverageRequestsInFeed: true });
   });
 
   const renderGroupPage = () => {
@@ -409,6 +409,62 @@ describe('GroupPage', () => {
       expect(lastCall?.[1]?.from).toBeUndefined();
       expect(lastCall?.[1]?.to).toBeUndefined();
     });
+
+    it('sends type=coverage_requests when "Coverage Requests Only" is selected', async () => {
+      renderGroupPage();
+      const select = await screen.findByLabelText('Filter activity by type');
+
+      fireEvent.change(select, { target: { value: 'coverage_requests' } });
+
+      await waitFor(() => {
+        expect(groupsApi.getActivityFeed).toHaveBeenLastCalledWith(1, expect.objectContaining({
+          type: 'coverage_requests',
+        }));
+      });
+    });
+
+    it('hides the "Coverage Requests Only" filter option when the LaunchDarkly flag is off', async () => {
+      mockUseFlags.mockReturnValue({ scheduleTabAccess: true, coverageRequestsInFeed: false });
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(screen.queryByRole('option', { name: 'Coverage Requests Only' })).not.toBeInTheDocument();
+    });
+
+    // Regression test: COVERAGE_REQUESTS_FEED_ENABLED is a single global env
+    // var, so once it's on, the backend includes coverage_request items
+    // under "All Activity" for every caller - the LaunchDarkly flag can't
+    // stop that server-side. This item must still not render for a user not
+    // yet targeted by the flag, or the flag would only ever have hidden the
+    // now-pointless dropdown option, not the feature itself.
+    it('does not render a coverage_request item returned by the backend when the LaunchDarkly flag is off', async () => {
+      mockUseFlags.mockReturnValue({ scheduleTabAccess: true, coverageRequestsInFeed: false });
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            date: '2026-09-12',
+            hour: 9,
+            status: 'open',
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(screen.queryByText(/needs coverage/i)).not.toBeInTheDocument();
+    });
   });
 
   // Regression coverage for a request-cancellation gap found while verifying
@@ -506,7 +562,7 @@ describe('GroupPage', () => {
     });
 
     it('does not show the Schedule tab when the LaunchDarkly flag is off, even with scheduling enabled', async () => {
-      mockUseFlags.mockReturnValue({ scheduleTabAccess: false });
+      mockUseFlags.mockReturnValue({ scheduleTabAccess: false, coverageRequestsInFeed: true });
       vi.mocked(groupsApi.getById).mockResolvedValue({
         data: { ...mockGroup, scheduling_enabled: true },
       } as AxiosResponse<Group>);
@@ -530,6 +586,55 @@ describe('GroupPage', () => {
       renderGroupPage();
       await screen.findByRole('tab', { name: /animals/i });
       expect(screen.queryByRole('button', { name: /enable scheduling|disable scheduling/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('preview as role', () => {
+    it('does not show the "viewing as" selector to a non-site-admin', async () => {
+      renderGroupPage();
+      await screen.findByRole('tab', { name: /animals/i });
+      expect(screen.queryByRole('combobox', { name: /viewing as/i })).not.toBeInTheDocument();
+    });
+
+    it('shows the "viewing as" selector to a site admin, defaulted to Site Admin', async () => {
+      vi.mocked(groupsApi.getMembership).mockResolvedValue({
+        data: { ...mockMembership, is_site_admin: true },
+      } as AxiosResponse<GroupMembership>);
+
+      renderGroupPage();
+      const select = await screen.findByRole('combobox', { name: /viewing as/i });
+      expect(select).toHaveValue('site_admin');
+    });
+
+    it('hides group-admin-only Quick Actions and shows a banner when previewing as Member', async () => {
+      vi.mocked(groupsApi.getMembership).mockResolvedValue({
+        data: { ...mockMembership, is_site_admin: true },
+      } as AxiosResponse<GroupMembership>);
+
+      renderGroupPage();
+      expect(await screen.findByText(/quick actions/i)).toBeInTheDocument();
+
+      const select = screen.getByRole('combobox', { name: /viewing as/i });
+      fireEvent.change(select, { target: { value: 'member' } });
+
+      expect(screen.queryByText(/quick actions/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/previewing as member/i)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /exit preview/i }));
+      expect(await screen.findByText(/quick actions/i)).toBeInTheDocument();
+      expect(screen.queryByText(/previewing as member/i)).not.toBeInTheDocument();
+    });
+
+    it('keeps the Members tab visible while previewing as Member, even if the site admin has no membership row', async () => {
+      vi.mocked(groupsApi.getMembership).mockResolvedValue({
+        data: { ...mockMembership, is_member: false, is_site_admin: true },
+      } as AxiosResponse<GroupMembership>);
+
+      renderGroupPage();
+      const select = await screen.findByRole('combobox', { name: /viewing as/i });
+      fireEvent.change(select, { target: { value: 'member' } });
+
+      expect(screen.getByRole('tab', { name: /members/i })).toBeInTheDocument();
     });
   });
 });
