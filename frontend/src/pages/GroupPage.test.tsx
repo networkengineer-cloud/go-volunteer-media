@@ -92,6 +92,10 @@ const quarantinedAnimal: Animal = {
 describe('GroupPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // previewRole is real per-group sessionStorage (see GroupPage.tsx), not
+    // a mock - clear it so one test's preview choice can't leak into the
+    // next the way it used to leak across real logins/logouts in a browser.
+    sessionStorage.clear();
 
     vi.mocked(authApi.getCurrentUser).mockResolvedValue({
       data: {
@@ -635,6 +639,25 @@ describe('GroupPage', () => {
       fireEvent.change(select, { target: { value: 'member' } });
 
       expect(screen.getByRole('tab', { name: /members/i })).toBeInTheDocument();
+    });
+
+    // Regression test for a real bug: sessionStorage persists across
+    // logout/login in the same browser tab, so a site admin's leftover
+    // "previewRole:<groupId>" entry used to (a) show a stale "Previewing
+    // as..." banner and (b) silently override the new user's own real
+    // membership - here, a plain member would have incorrectly gotten
+    // is_group_admin: true and seen the group-admin-only Quick Actions -
+    // for whichever non-site-admin user logged into that tab next.
+    it('ignores a stale previewRole left in sessionStorage for a non-site-admin user', async () => {
+      sessionStorage.setItem('previewRole:1', 'group_admin');
+      // Default mockMembership: a real member, not a group or site admin.
+
+      renderGroupPage();
+      await screen.findByRole('tab', { name: /animals/i });
+
+      expect(screen.queryByText(/previewing as/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /exit preview/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/quick actions/i)).not.toBeInTheDocument();
     });
   });
 });

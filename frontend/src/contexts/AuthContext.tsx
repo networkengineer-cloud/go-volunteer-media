@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { authApi } from '../api/client';
 import type { User } from '../api/client';
+import { clearPreviewRoleState } from '../utils/previewRole';
 
 interface AuthContextType {
   user: User | null;
@@ -56,6 +57,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } catch {
           // ignore storage errors
         }
+        clearPreviewRoleState();
         setToken(null);
         setUser(null);
       })
@@ -102,6 +104,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch {
       // ignore storage errors
     }
+    clearPreviewRoleState();
   };
 
   return (

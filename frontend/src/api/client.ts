@@ -46,6 +46,7 @@ export const groupAdminApi = {
   deleteUser: (userId: number) => api.delete(`/users/${userId}`),
 };
 import axios from 'axios';
+import { clearPreviewRoleState } from '../utils/previewRole';
 
 const api = axios.create({
   baseURL: '/api',
@@ -67,7 +68,8 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // Clear invalid token
       localStorage.removeItem('token');
-      
+      clearPreviewRoleState();
+
       // Redirect to login if not already there
       if (window.location.pathname !== '/login') {
         // Store the current path to redirect back after login

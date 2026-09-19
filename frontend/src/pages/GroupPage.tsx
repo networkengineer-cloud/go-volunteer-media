@@ -20,6 +20,7 @@ import { calculateAge, formatAge, formatQuarantineEndDate, localDayStartISO, loc
 import { formatAnimalStatus } from '../utils/animalUtils';
 import QuarantineApprovalBadge from '../components/QuarantineApprovalBadge';
 import { formatDisplayName } from '../utils/formatName';
+import { previewRoleKey } from '../utils/previewRole';
 import ScheduleTab from './group/ScheduleTab';
 import './GroupPage.css';
 
@@ -58,7 +59,7 @@ const GroupPage: React.FC = () => {
   // clears on tab close) rather than component state alone.
   const [previewRole, setPreviewRole] = useState<'group_admin' | 'member' | null>(
     () => {
-      const stored = id ? sessionStorage.getItem(`previewRole:${id}`) : null;
+      const stored = id ? sessionStorage.getItem(previewRoleKey(id)) : null;
       return stored === 'group_admin' || stored === 'member' ? stored : null;
     }
   );
@@ -254,16 +255,16 @@ const GroupPage: React.FC = () => {
 
     // Re-read the preview role for whichever group we've just switched to -
     // the useState initializer above only ran once, on first mount.
-    const stored = id ? sessionStorage.getItem(`previewRole:${id}`) : null;
+    const stored = id ? sessionStorage.getItem(previewRoleKey(id)) : null;
     setPreviewRole(stored === 'group_admin' || stored === 'member' ? stored : null);
   }, [id]);
 
   useEffect(() => {
     if (!id) return;
     if (previewRole) {
-      sessionStorage.setItem(`previewRole:${id}`, previewRole);
+      sessionStorage.setItem(previewRoleKey(id), previewRole);
     } else {
-      sessionStorage.removeItem(`previewRole:${id}`);
+      sessionStorage.removeItem(previewRoleKey(id));
     }
   }, [id, previewRole]);
 
@@ -589,7 +590,15 @@ const GroupPage: React.FC = () => {
   // vanish once a preview role is active). Both preview roles imply real
   // group membership - that's what makes "member" preview show anything at
   // all, since most tabs are gated on is_member || is_site_admin.
-  const displayMembership: GroupMembership | null = membership && previewRole
+  //
+  // Gated on membership.is_site_admin (not just previewRole being set) as a
+  // second line of defense against stale sessionStorage: previewRole is
+  // persisted per-group, not per-user, so if a site admin leaves a preview
+  // active and a different user logs into the same browser tab afterward,
+  // previewRole would still be truthy for that new user. Requiring real
+  // site-admin membership here means it can never downgrade (or upgrade) a
+  // non-site-admin's own view.
+  const displayMembership: GroupMembership | null = membership?.is_site_admin && previewRole
     ? {
         ...membership,
         is_member: true,
@@ -658,7 +667,7 @@ const GroupPage: React.FC = () => {
           )}
         </div>
         <p className="group-description">{group.description}</p>
-        {previewRole && (
+        {previewRole && membership?.is_site_admin && (
           <div className="preview-as-role-banner" role="status">
             <span>
               Previewing as {previewRole === 'group_admin' ? 'Group Admin' : 'Member'} - you're still really a
