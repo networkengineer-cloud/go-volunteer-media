@@ -201,7 +201,7 @@ fi
 # before we deploy, so the digest we hand to Azure always matches what was
 # just pushed, not whatever the tag happened to resolve to earlier.
 echo "Resolving ${FULL_IMAGE_TAG} to its digest..."
-docker pull "${FULL_IMAGE_TAG}" > /dev/null
+docker pull --platform linux/amd64 "${FULL_IMAGE_TAG}" > /dev/null
 IMAGE_DIGEST=$(docker inspect "${FULL_IMAGE_TAG}" --format '{{index .RepoDigests 0}}')
 if [[ -z "${IMAGE_DIGEST}" ]]; then
   echo "Error: Could not resolve digest for ${FULL_IMAGE_TAG}"
