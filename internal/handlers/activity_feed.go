@@ -2,27 +2,23 @@ package handlers
 
 import (
 	"net/http"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
 
 // coverageRequestsFeedEnabled gates whether coverage requests are surfaced in
-// the group activity feed. Deliberately opt-in (unset or any value other
-// than "true"/"1" means disabled), matching
-// embedding.SemanticSearchEnabled's convention - this feed item type is
-// still being rolled out and must not go live just because the PR that
-// introduces it merges.
+// the group activity feed. This feed item type is still being rolled out and
+// must not go live just because the PR that introduces it merges.
 func coverageRequestsFeedEnabled() bool {
-	v := os.Getenv("COVERAGE_REQUESTS_FEED_ENABLED")
-	return v == "true" || v == "1"
+	return embedding.OptInEnvFlag("COVERAGE_REQUESTS_FEED_ENABLED")
 }
 
 // ActivityItem represents a unified activity feed item

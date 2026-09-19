@@ -430,6 +430,41 @@ describe('GroupPage', () => {
 
       expect(screen.queryByRole('option', { name: 'Coverage Requests Only' })).not.toBeInTheDocument();
     });
+
+    // Regression test: COVERAGE_REQUESTS_FEED_ENABLED is a single global env
+    // var, so once it's on, the backend includes coverage_request items
+    // under "All Activity" for every caller - the LaunchDarkly flag can't
+    // stop that server-side. This item must still not render for a user not
+    // yet targeted by the flag, or the flag would only ever have hidden the
+    // now-pointless dropdown option, not the feature itself.
+    it('does not render a coverage_request item returned by the backend when the LaunchDarkly flag is off', async () => {
+      mockUseFlags.mockReturnValue({ scheduleTabAccess: true, coverageRequestsInFeed: false });
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            date: '2026-09-12',
+            hour: 9,
+            status: 'open',
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(screen.queryByText(/needs coverage/i)).not.toBeInTheDocument();
+    });
   });
 
   // Regression coverage for a request-cancellation gap found while verifying

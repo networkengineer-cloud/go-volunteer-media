@@ -1005,6 +1005,16 @@ const GroupPage: React.FC = () => {
           ) : (
             <div className="activity-list">
               {activities.map((activity) => {
+                // Belt-and-suspenders alongside hiding the "Coverage
+                // Requests Only" filter option above: the backend's
+                // COVERAGE_REQUESTS_FEED_ENABLED is a single global switch,
+                // so once it's on, coverage_request items also show up
+                // under "All Activity" for every user - this flag is what
+                // actually keeps them off a not-yet-targeted user's screen
+                // during a staged LaunchDarkly rollout.
+                if (activity.type === 'coverage_request' && !coverageRequestsInFeed) {
+                  return null;
+                }
                 const canDeleteAnnouncement =
                   activity.type === 'announcement' &&
                   (displayMembership?.is_group_admin || displayMembership?.is_site_admin);
