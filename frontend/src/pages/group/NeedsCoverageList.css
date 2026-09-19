@@ -1,58 +1,130 @@
 .needs-coverage-list-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.75rem;
 }
 
 .needs-coverage-list__bulk-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
   font-size: 0.9rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--neutral-100, #f3f4f6);
+  border-radius: 0.5rem;
+}
+
+[data-theme='dark'] .needs-coverage-list__bulk-bar {
+  background: var(--neutral-800, #1f2937);
+}
+
+.needs-coverage-list__select-all {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.needs-coverage-list__bulk-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 /* Same technique as .needs-coverage-list .needs-coverage-list__claim below:
    a descendant selector beats any single-class `.btn-secondary` rule
    elsewhere in the app regardless of load order, so these buttons don't
-   stretch to fill the bulk bar and break the space-between layout. */
+   stretch to fill the row and can instead share it evenly, sized for a
+   thumb to hit without their label ("Claim selected (3)") getting cut off. */
 .needs-coverage-list-wrapper .needs-coverage-list__cancel-selected,
 .needs-coverage-list-wrapper .needs-coverage-list__claim-selected {
+  flex: 1 1 0;
   font-size: 0.8rem;
-  padding: 0.25rem 0.75rem;
-  width: auto;
+  padding: 0.5rem 0.5rem;
+  min-height: 40px;
   min-width: 0;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .needs-coverage-list {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .needs-coverage-list__row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.6rem 0;
-  border-bottom: 1px solid var(--neutral-200);
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  background: var(--surface, #fff);
+  border: 1px solid var(--neutral-200);
+  border-radius: 0.5rem;
 }
 
-.needs-coverage-list__row:last-child {
-  border-bottom: none;
+[data-theme='dark'] .needs-coverage-list__row {
+  background: var(--neutral-900, #111827);
+  border-color: var(--neutral-300);
 }
 
-.needs-coverage-list__details {
+.needs-coverage-list__main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.needs-coverage-list__checkbox {
+  margin-top: 0.3rem;
+  flex-shrink: 0;
+}
+
+.needs-coverage-list__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.needs-coverage-list__when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
   color: var(--text-primary);
-  display: inline-flex;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.needs-coverage-list__who {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .needs-coverage-list__name {
   font-weight: 600;
+  color: var(--text-primary);
+}
+
+.needs-coverage-list__priority-badge {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--neutral-300);
+  border-radius: 999px;
+}
+
+.needs-coverage-list__actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 /* Descendant selector (not just .needs-coverage-list__claim), so this has
@@ -62,36 +134,14 @@
    only tie on specificity and be at the mercy of load order instead.
    Same technique as .schedule-overview__cell-wrapper .schedule-grid__slot
    in ScheduleOverview.css. */
-.needs-coverage-list .needs-coverage-list__claim {
-  font-size: 0.8rem;
-  padding: 0.25rem 0.75rem;
-  /* Some unrelated page's globally-scoped `.btn-secondary` rule sets
-     width: 100% and, since no other `.btn-secondary` rule in the app
-     happens to redeclare `width`, that declaration wins by default even
-     here (CSS cascades per-property, not per-rule) - explicit auto is
-     what actually stops this button from stretching to fill the row. */
-  width: auto;
-  min-width: 0;
-  white-space: nowrap;
-}
-
-.needs-coverage-list__priority-badge {
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-/* Same descendant-selector + explicit width:auto technique as
-   .needs-coverage-list__claim above, to beat the global .btn-secondary
-   rule's width:100%. */
+.needs-coverage-list .needs-coverage-list__claim,
 .needs-coverage-list .needs-coverage-list__priority-toggle {
-  font-size: 0.8rem;
-  padding: 0.25rem 0.75rem;
-  width: auto;
+  flex: 1 1 0;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.5rem;
+  min-height: 40px;
   min-width: 0;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .needs-coverage-list__empty {
@@ -99,6 +149,36 @@
   padding: 1rem 0;
 }
 
-[data-theme='dark'] .needs-coverage-list__row {
-  border-color: var(--neutral-300);
+/* Above the phone breakpoint there's room to keep each request on one
+   line and let its buttons size to their own text instead of stretching
+   to fill the row. */
+@media (min-width: 641px) {
+  .needs-coverage-list__bulk-bar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .needs-coverage-list-wrapper .needs-coverage-list__cancel-selected,
+  .needs-coverage-list-wrapper .needs-coverage-list__claim-selected {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .needs-coverage-list__row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .needs-coverage-list__when,
+  .needs-coverage-list__who {
+    font-size: 0.9rem;
+  }
+
+  .needs-coverage-list .needs-coverage-list__claim,
+  .needs-coverage-list .needs-coverage-list__priority-toggle {
+    flex: none;
+    white-space: nowrap;
+  }
 }

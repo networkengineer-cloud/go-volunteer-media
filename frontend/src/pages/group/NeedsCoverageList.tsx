@@ -183,69 +183,80 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
     <div className="needs-coverage-list-wrapper">
       {selectableIds.length > 0 && (
         <div className="needs-coverage-list__bulk-bar">
-          <label>
+          <label className="needs-coverage-list__select-all">
             <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all requests" />
             Select all
           </label>
-          <button
-            type="button"
-            className="btn-secondary needs-coverage-list__claim-selected"
-            disabled={checkedClaimableIds.length === 0 || claiming}
-            onClick={handleClaimSelected}
-          >
-            Claim selected ({checkedClaimableIds.length})
-          </button>
-          <button
-            type="button"
-            className="btn-secondary needs-coverage-list__cancel-selected"
-            disabled={checkedCancellableIds.length === 0 || cancelling}
-            onClick={handleCancelSelected}
-          >
-            Cancel selected ({checkedCancellableIds.length})
-          </button>
+          <div className="needs-coverage-list__bulk-actions">
+            <button
+              type="button"
+              className="btn-secondary needs-coverage-list__claim-selected"
+              disabled={checkedClaimableIds.length === 0 || claiming}
+              onClick={handleClaimSelected}
+            >
+              Claim selected ({checkedClaimableIds.length})
+            </button>
+            <button
+              type="button"
+              className="btn-secondary needs-coverage-list__cancel-selected"
+              disabled={checkedCancellableIds.length === 0 || cancelling}
+              onClick={handleCancelSelected}
+            >
+              Cancel selected ({checkedCancellableIds.length})
+            </button>
+          </div>
         </div>
       )}
       <ul className="needs-coverage-list">
         {items.map(item => (
           <li key={item.id} className="needs-coverage-list__row">
-            <span className="needs-coverage-list__details">
+            <div className="needs-coverage-list__main">
               {(isCancellable(item) || isClaimable(item)) && (
                 <input
                   type="checkbox"
+                  className="needs-coverage-list__checkbox"
                   checked={checkedIds.has(item.id)}
                   onChange={() => toggleChecked(item.id)}
                   aria-label={`Select coverage request for ${item.date} at ${formatSlotRangeLabel(dayOfWeekFromIso(item.date), item.hour)}`}
                 />
               )}
-              <span className="needs-coverage-list__date">{formatDateLabel(item.date)}</span>
-              {' at '}
-              <span className="needs-coverage-list__hour">{formatSlotRangeLabel(dayOfWeekFromIso(item.date), item.hour)}</span>
-              {' — '}
-              <span className="needs-coverage-list__name">{item.requested_by_name}</span>
-              {item.priority === 'optional' && (
-                <span className="needs-coverage-list__priority-badge"> Optional</span>
-              )}
-            </span>
-            {canManageMembers && (
-              <button
-                type="button"
-                className="btn-secondary needs-coverage-list__priority-toggle"
-                disabled={busyPriorityId === item.id}
-                onClick={() => handleTogglePriority(item)}
-              >
-                {item.priority === 'optional' ? 'Mark normal' : 'Mark optional'}
-              </button>
-            )}
-            {item.requested_by_user_id !== currentUserId && (
-              <button
-                type="button"
-                className="btn-secondary needs-coverage-list__claim"
-                disabled={!item.claimable || busyRequestId === item.id}
-                title={!item.claimable ? 'You already have a conflicting shift at this time' : undefined}
-                onClick={() => handleClaim(item.id)}
-              >
-                Claim
-              </button>
+              <div className="needs-coverage-list__info">
+                <span className="needs-coverage-list__when">
+                  <span className="needs-coverage-list__date">{formatDateLabel(item.date)}</span>
+                  <span className="needs-coverage-list__hour">{formatSlotRangeLabel(dayOfWeekFromIso(item.date), item.hour)}</span>
+                </span>
+                <span className="needs-coverage-list__who">
+                  Requested by <span className="needs-coverage-list__name">{item.requested_by_name}</span>
+                  {item.priority === 'optional' && (
+                    <span className="needs-coverage-list__priority-badge">Optional</span>
+                  )}
+                </span>
+              </div>
+            </div>
+            {(canManageMembers || item.requested_by_user_id !== currentUserId) && (
+              <div className="needs-coverage-list__actions">
+                {canManageMembers && (
+                  <button
+                    type="button"
+                    className="btn-secondary needs-coverage-list__priority-toggle"
+                    disabled={busyPriorityId === item.id}
+                    onClick={() => handleTogglePriority(item)}
+                  >
+                    {item.priority === 'optional' ? 'Mark normal' : 'Mark optional'}
+                  </button>
+                )}
+                {item.requested_by_user_id !== currentUserId && (
+                  <button
+                    type="button"
+                    className="btn-secondary needs-coverage-list__claim"
+                    disabled={!item.claimable || busyRequestId === item.id}
+                    title={!item.claimable ? 'You already have a conflicting shift at this time' : undefined}
+                    onClick={() => handleClaim(item.id)}
+                  >
+                    Claim
+                  </button>
+                )}
+              </div>
             )}
           </li>
         ))}
