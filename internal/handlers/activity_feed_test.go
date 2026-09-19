@@ -222,6 +222,7 @@ func itemsOfType(t *testing.T, body map[string]interface{}, itemType string) []m
 }
 
 func TestGetGroupActivityFeed_IncludesOpenCoverageRequest(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
 	db := setupActivityFeedTestDB(t)
 	defer func() {
 		sqlDB, _ := db.DB()
@@ -258,6 +259,7 @@ func TestGetGroupActivityFeed_IncludesOpenCoverageRequest(t *testing.T) {
 }
 
 func TestGetGroupActivityFeed_ClaimedCoverageRequestIncludesClaimer(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
 	db := setupActivityFeedTestDB(t)
 	defer func() {
 		sqlDB, _ := db.DB()
@@ -301,6 +303,7 @@ func TestGetGroupActivityFeed_ClaimedCoverageRequestIncludesClaimer(t *testing.T
 }
 
 func TestGetGroupActivityFeed_ExcludesCancelledCoverageRequest(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
 	db := setupActivityFeedTestDB(t)
 	defer func() {
 		sqlDB, _ := db.DB()
@@ -326,6 +329,7 @@ func TestGetGroupActivityFeed_ExcludesCancelledCoverageRequest(t *testing.T) {
 }
 
 func TestGetGroupActivityFeed_FilterTypeCoverageRequestsOnlyExcludesCommentsAndAnnouncements(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
 	db := setupActivityFeedTestDB(t)
 	defer func() {
 		sqlDB, _ := db.DB()
@@ -351,5 +355,39 @@ func TestGetGroupActivityFeed_FilterTypeCoverageRequestsOnlyExcludesCommentsAndA
 	}
 	if items[0].(map[string]interface{})["type"] != "coverage_request" {
 		t.Fatalf("expected the one item to be a coverage_request, got %v", items[0])
+	}
+}
+
+// TestGetGroupActivityFeed_CoverageRequestsHiddenByDefault guards the
+// COVERAGE_REQUESTS_FEED_ENABLED feature flag's opt-in default: this feed
+// item type is still rolling out, so an operator who hasn't explicitly set
+// the env var must never see coverage requests, under "all" or even under an
+// explicit type=coverage_requests filter.
+func TestGetGroupActivityFeed_CoverageRequestsHiddenByDefault(t *testing.T) {
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	req := models.ShiftCoverageRequest{
+		GroupID:           1,
+		RequestedByUserID: 1,
+		Date:              time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC),
+		Hour:              9,
+		Status:            models.CoverageRequestOpen,
+	}
+	if err := db.Create(&req).Error; err != nil {
+		t.Fatalf("create coverage request: %v", err)
+	}
+
+	if body := fetchActivityFeed(t, db, ""); len(itemsOfType(t, body, "coverage_request")) != 0 {
+		t.Fatalf("expected no coverage_request items under the default-disabled flag, got %v", body["items"])
+	}
+
+	body := fetchActivityFeed(t, db, "type=coverage_requests")
+	items, _ := body["items"].([]interface{})
+	if len(items) != 0 {
+		t.Fatalf("expected type=coverage_requests to return nothing under the default-disabled flag, got %v", items)
 	}
 }

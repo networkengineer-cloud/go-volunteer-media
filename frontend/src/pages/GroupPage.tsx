@@ -35,7 +35,12 @@ const GroupPage: React.FC = () => {
   const { user } = useAuth(); // Ensure user is authenticated; also need their id for schedule actions
   // Gates the Schedule tab to specific LaunchDarkly-targeted users while it's
   // being rolled out, on top of the existing group.scheduling_enabled toggle.
-  const { scheduleTabAccess } = useFlags();
+  // coverageRequestsInFeed similarly gates the "Coverage Requests Only"
+  // activity filter while that feed item type finishes rollout - the
+  // backend's own COVERAGE_REQUESTS_FEED_ENABLED flag is the real kill
+  // switch (it never returns coverage_request items when unset), so this is
+  // purely about not showing a filter option for a feature that isn't live.
+  const { scheduleTabAccess, coverageRequestsInFeed } = useFlags();
   const navigate = useNavigate();
   const toast = useToast();
   const [searchParams] = useSearchParams();
@@ -856,7 +861,9 @@ const GroupPage: React.FC = () => {
                 <option value="all">All Activity</option>
                 <option value="comments">Comments Only</option>
                 <option value="announcements">Announcements Only</option>
-                <option value="coverage_requests">Coverage Requests Only</option>
+                {coverageRequestsInFeed && (
+                  <option value="coverage_requests">Coverage Requests Only</option>
+                )}
               </select>
 
               {/* Searchable Animal Filter with Autocomplete */}

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +13,17 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
+
+// coverageRequestsFeedEnabled gates whether coverage requests are surfaced in
+// the group activity feed. Deliberately opt-in (unset or any value other
+// than "true"/"1" means disabled), matching
+// embedding.SemanticSearchEnabled's convention - this feed item type is
+// still being rolled out and must not go live just because the PR that
+// introduces it merges.
+func coverageRequestsFeedEnabled() bool {
+	v := os.Getenv("COVERAGE_REQUESTS_FEED_ENABLED")
+	return v == "true" || v == "1"
+}
 
 // ActivityItem represents a unified activity feed item
 type ActivityItem struct {
@@ -173,7 +185,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		// ShiftCoverageRequest has none of them either. Cancelled requests
 		// are excluded outright - a cancelled request isn't something that
 		// happened, from the feed's point of view.
-		if (filterType == "" || filterType == "all" || filterType == "coverage_requests") && filterTags == "" && filterRating == "" && filterAnimal == "" {
+		if coverageRequestsFeedEnabled() && (filterType == "" || filterType == "all" || filterType == "coverage_requests") && filterTags == "" && filterRating == "" && filterAnimal == "" {
 			var coverageRequests []models.ShiftCoverageRequest
 			query := db.Where("group_id = ? AND status != ?", groupID, models.CoverageRequestCancelled)
 

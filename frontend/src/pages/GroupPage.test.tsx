@@ -14,7 +14,7 @@ import { ToastProvider } from '../contexts/ToastContext';
 // tab. Routed through a controllable mock (mockUseFlags) defaulting to flag-on,
 // so most tests exercise the same group.scheduling_enabled/membership logic
 // they did before the flag existed, while a dedicated test below can flip it off.
-const mockUseFlags = vi.fn(() => ({ scheduleTabAccess: true }));
+const mockUseFlags = vi.fn(() => ({ scheduleTabAccess: true, coverageRequestsInFeed: true }));
 vi.mock('launchdarkly-react-client-sdk', () => ({
   useFlags: () => mockUseFlags(),
 }));
@@ -129,9 +129,9 @@ describe('GroupPage', () => {
     // down override this in their own beforeEach.
     mockUseSearchParams.mockReturnValue([new URLSearchParams('view=animals'), vi.fn()]);
 
-    // Default flag-on so most tests exercise the same scheduling logic they
-    // did before the flag existed; the dedicated flag test overrides this.
-    mockUseFlags.mockReturnValue({ scheduleTabAccess: true });
+    // Default flag-on so most tests exercise the same scheduling/activity-filter
+    // logic they did before either flag existed; dedicated flag tests override this.
+    mockUseFlags.mockReturnValue({ scheduleTabAccess: true, coverageRequestsInFeed: true });
   });
 
   const renderGroupPage = () => {
@@ -422,6 +422,14 @@ describe('GroupPage', () => {
         }));
       });
     });
+
+    it('hides the "Coverage Requests Only" filter option when the LaunchDarkly flag is off', async () => {
+      mockUseFlags.mockReturnValue({ scheduleTabAccess: true, coverageRequestsInFeed: false });
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(screen.queryByRole('option', { name: 'Coverage Requests Only' })).not.toBeInTheDocument();
+    });
   });
 
   // Regression coverage for a request-cancellation gap found while verifying
@@ -519,7 +527,7 @@ describe('GroupPage', () => {
     });
 
     it('does not show the Schedule tab when the LaunchDarkly flag is off, even with scheduling enabled', async () => {
-      mockUseFlags.mockReturnValue({ scheduleTabAccess: false });
+      mockUseFlags.mockReturnValue({ scheduleTabAccess: false, coverageRequestsInFeed: true });
       vi.mocked(groupsApi.getById).mockResolvedValue({
         data: { ...mockGroup, scheduling_enabled: true },
       } as AxiosResponse<Group>);
