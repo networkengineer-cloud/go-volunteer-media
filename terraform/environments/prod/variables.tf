@@ -217,7 +217,13 @@ variable "semantic_search_enabled" {
 variable "schedule_email_notifications_enabled" {
   type        = bool
   description = "Whether coverage-request and claim emails go out for the Schedule tab (in beta, gated separately by LaunchDarkly). Defaults to false so beta testers don't email the whole group before the feature is ready for everyone."
-  default     = false
+  default     = true
+}
+
+variable "coverage_requests_feed_enabled" {
+  type        = bool
+  description = "Whether open shift-coverage requests are surfaced as entries in the group activity feed."
+  default     = true
 }
 
 # Axiom / OpenTelemetry Configuration
