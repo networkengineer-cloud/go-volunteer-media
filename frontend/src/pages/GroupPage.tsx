@@ -7,6 +7,7 @@ import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSki
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { useDebounce } from '../hooks/useDebounce';
+import { formatDateLabel, formatSlotRangeLabel, dayOfWeekFromIso } from './group/scheduleGrid';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
 import AnnouncementForm from '../components/AnnouncementForm';
 import EmptyState from '../components/EmptyState';
@@ -1060,6 +1061,19 @@ const GroupPage: React.FC = () => {
 
                     {activity.type === 'comment' ? (
                       <SessionCommentDisplay comment={activity as any} />
+                    ) : activity.type === 'coverage_request' ? (
+                      activity.date && activity.hour !== undefined && (
+                        <div className="activity-coverage-request">
+                          <p className="activity-coverage-request-shift">
+                            {formatDateLabel(activity.date)} &middot; {formatSlotRangeLabel(dayOfWeekFromIso(activity.date), activity.hour)}
+                          </p>
+                          <p className="activity-coverage-request-status">
+                            {activity.status === 'claimed' && activity.claimed_by_user
+                              ? `Claimed by ${formatDisplayName(activity.claimed_by_user)}`
+                              : 'Needs coverage'}
+                          </p>
+                        </div>
+                      )
                     ) : (
                       <p className="activity-text">{activity.content}</p>
                     )}
@@ -1069,11 +1083,16 @@ const GroupPage: React.FC = () => {
                     )}
                   </div>
 
-                  {(activity.animal || canDeleteAnnouncement) && (
+                  {(activity.animal || canDeleteAnnouncement || activity.type === 'coverage_request') && (
                     <div className="activity-footer">
                       {activity.animal && (
                         <Link to={`/groups/${id}/animals/${activity.animal.id}/view`} className="btn-view-profile">
                           View {activity.animal.name}'s Profile →
+                        </Link>
+                      )}
+                      {activity.type === 'coverage_request' && (
+                        <Link to={`/groups/${id}?view=schedule`} className="btn-view-profile">
+                          View in schedule →
                         </Link>
                       )}
                       {canDeleteAnnouncement && (

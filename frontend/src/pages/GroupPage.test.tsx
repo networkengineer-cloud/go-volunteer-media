@@ -413,6 +413,42 @@ describe('GroupPage', () => {
       });
     });
 
+    // Regression test: a coverage_request item has no title/content (those
+    // are comment/announcement-only fields), so the activity card's default
+    // rendering path (title, then a <p> of activity.content) rendered a
+    // visually empty card - the shift date/time and claim status were never
+    // wired into GroupPage's own activity-card markup, unlike the separate
+    // (unused-here) ActivityItem.tsx component that already had this block.
+    it('renders shift date/time and status for a coverage_request item', async () => {
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            date: '2026-09-25',
+            hour: 14,
+            status: 'open',
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(await screen.findByText(/Fri, Sep 25/)).toBeInTheDocument();
+      expect(screen.getByText(/2:00 PM/)).toBeInTheDocument();
+      expect(screen.getByText('Needs coverage')).toBeInTheDocument();
+    });
+
   });
 
   // Regression coverage for a request-cancellation gap found while verifying
