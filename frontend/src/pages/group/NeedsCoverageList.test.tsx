@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import NeedsCoverageList from './NeedsCoverageList';
 import { scheduleApi } from '../../api/client';
 import type { AxiosResponse } from 'axios';
-import type { CoverageRequestListItem, CoverageRequestCancelBatchResult, CoverageRequestClaimBatchResult } from '../../api/client';
+import type { CoverageRequestListItem, CoverageRequestCancelBatchResult, CoverageRequestClaimBatchResult, SendCoverageReminderResult } from '../../api/client';
 
 vi.mock('../../api/client', () => ({
   scheduleApi: {
@@ -12,6 +12,7 @@ vi.mock('../../api/client', () => ({
     cancelCoverageRequestsBatch: vi.fn(),
     claimCoverageRequestsBatch: vi.fn(),
     updateCoverageRequestPriority: vi.fn(),
+    sendCoverageReminder: vi.fn(),
   },
 }));
 
@@ -355,6 +356,63 @@ describe('NeedsCoverageList', () => {
       fireEvent.click(screen.getByRole('button', { name: /mark normal/i }));
 
       await waitFor(() => expect(scheduleApi.updateCoverageRequestPriority).toHaveBeenCalledWith(7, 5, 'normal'));
+    });
+  });
+
+  describe('reminder', () => {
+    function mockReminder(result: SendCoverageReminderResult) {
+      vi.mocked(scheduleApi.sendCoverageReminder).mockResolvedValue({ data: result } as unknown as AxiosResponse<SendCoverageReminderResult>);
+    }
+
+    it('does not show a Send reminder button for a non-admin', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers={false} />);
+
+      await screen.findByText('Jane Doe');
+      expect(screen.queryByRole('button', { name: /send reminder/i })).not.toBeInTheDocument();
+    });
+
+    it('a group admin can send a reminder about the currently open requests', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      mockReminder({ request_count: 1, email_queued: true, groupme_queued: false, message: 'Reminder sent about 1 open coverage request.' });
+      render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
+
+      await screen.findByText('Jane Doe');
+      fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
+
+      await waitFor(() => expect(scheduleApi.sendCoverageReminder).toHaveBeenCalledWith(7));
+      await waitFor(() => expect(mockShowSuccess).toHaveBeenCalledWith('Reminder sent about 1 open coverage request.'));
+    });
+
+    it('shows an error toast instead of a success one when nothing was actually queued', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      mockReminder({ request_count: 1, email_queued: false, groupme_queued: false, message: "Email notifications aren't enabled for this group yet, so no reminder was sent." });
+      render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
+
+      await screen.findByText('Jane Doe');
+      fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
+
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith("Email notifications aren't enabled for this group yet, so no reminder was sent."));
+      expect(mockShowSuccess).not.toHaveBeenCalled();
+    });
+
+    it('shows a failure toast when the reminder request fails', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      vi.mocked(scheduleApi.sendCoverageReminder).mockRejectedValue({ response: { data: { error: 'Admin access required' } } });
+      render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
+
+      await screen.findByText('Jane Doe');
+      fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
+
+      await waitFor(() => expect(mockShowError).toHaveBeenCalledWith('Admin access required'));
     });
   });
 });

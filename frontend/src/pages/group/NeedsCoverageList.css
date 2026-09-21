@@ -4,6 +4,22 @@
   gap: 0.75rem;
 }
 
+.needs-coverage-list__header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Same descendant-selector technique as the row/bulk-bar buttons below, to
+   beat any single-class `.btn-secondary` rule elsewhere in the app that
+   would otherwise stretch this to the header's full width. */
+.needs-coverage-list-wrapper .needs-coverage-list__remind {
+  width: auto;
+  min-width: 0;
+  min-height: 40px;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+}
+
 .needs-coverage-list__bulk-bar {
   display: flex;
   flex-direction: column;
@@ -11,12 +27,12 @@
   gap: 0.5rem;
   font-size: 0.9rem;
   padding: 0.5rem 0.6rem;
+  /* --neutral-100 already flips to a dark gray under [data-theme='dark']
+     (see index.css) - no separate dark-mode rule needed here. Adding one
+     that reaches for --neutral-800 would backfire, since that token flips
+     the other way (dark gray in light mode -> near-white in dark mode). */
   background: var(--neutral-100, #f3f4f6);
   border-radius: 0.5rem;
-}
-
-[data-theme='dark'] .needs-coverage-list__bulk-bar {
-  background: var(--neutral-800, #1f2937);
 }
 
 .needs-coverage-list__select-all {
@@ -59,14 +75,14 @@
   flex-direction: column;
   gap: 0.6rem;
   padding: 0.75rem;
+  /* --surface and --neutral-200 already flip correctly under
+     [data-theme='dark'] (see index.css), so no separate dark-mode rule is
+     needed - one that reached for --neutral-900 for the background would
+     backfire, since that token flips the other way (near-black in light
+     mode -> white in dark mode). */
   background: var(--surface, #fff);
   border: 1px solid var(--neutral-200);
   border-radius: 0.5rem;
-}
-
-[data-theme='dark'] .needs-coverage-list__row {
-  background: var(--neutral-900, #111827);
-  border-color: var(--neutral-300);
 }
 
 .needs-coverage-list__main {

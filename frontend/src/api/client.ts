@@ -732,6 +732,13 @@ export interface ReassignShiftsBatchResult {
   skipped: ReassignShiftsBatchSkipped[];
 }
 
+export interface SendCoverageReminderResult {
+  request_count: number;
+  email_queued: boolean;
+  groupme_queued: boolean;
+  message: string;
+}
+
 export const scheduleApi = {
   getMine: (groupId: number, options?: { signal?: AbortSignal }) =>
     api.get<ScheduleResponse>(`/groups/${groupId}/schedule/me`, { signal: options?.signal }),
@@ -776,6 +783,8 @@ export const scheduleApi = {
     api.post<CoverageRequestClaimBatchResult>(`/groups/${groupId}/schedule/coverage-requests/claim-batch`, { request_ids: requestIds }),
   listCoverageRequests: (groupId: number, options?: { signal?: AbortSignal }) =>
     api.get<CoverageRequestListItem[]>(`/groups/${groupId}/schedule/coverage-requests`, { signal: options?.signal }),
+  sendCoverageReminder: (groupId: number) =>
+    api.post<SendCoverageReminderResult>(`/groups/${groupId}/schedule/coverage-requests/remind`),
 };
 
 // Animals API

@@ -1642,3 +1642,121 @@ func ReopenCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		notifyGroupOfOpenCoverageRequests(rawDB, emailService, groupMeService, reqRow.GroupID, reqRow.RequestedByUserID)
 	}
 }
+
+type sendCoverageReminderResponse struct {
+	RequestCount  int    `json:"request_count"`
+	EmailQueued   bool   `json:"email_queued"`
+	GroupMeQueued bool   `json:"groupme_queued"`
+	Message       string `json:"message"`
+}
+
+// SendCoverageReminder is a manual, admin-triggered broadcast covering
+// every request currently open in the group, regardless of who requested
+// it - unlike notifyGroupOfOpenCoverageRequests, which fires automatically
+// but only once, right when a request is created. It exists for requests
+// that already had their one-time creation notice go out and are still
+// sitting unfilled days or weeks later, with no other way to re-notify the
+// group about them.
+func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		userID, _ := c.Get("user_id")
+		isAdmin, _ := c.Get("is_admin")
+
+		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+		if !requireSchedulingEnabled(c, db, groupIDParam) {
+			return
+		}
+
+		groupIDUint64, err := strconv.ParseUint(groupIDParam, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+		groupIDUint := uint(groupIDUint64)
+
+		today := time.Now().UTC().Truncate(24 * time.Hour)
+		var openRequests []models.ShiftCoverageRequest
+		if err := db.Preload("RequestedByUser").
+			Where("group_id = ? AND status = ? AND date >= ?", groupIDUint, models.CoverageRequestOpen, today).
+			Order("requested_by_user_id, date, hour").
+			Find(&openRequests).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load coverage requests"})
+			return
+		}
+
+		if len(openRequests) == 0 {
+			c.JSON(http.StatusOK, sendCoverageReminderResponse{Message: "No open coverage requests to remind about."})
+			return
+		}
+
+		var grp models.Group
+		if err := db.Select("name", "groupme_enabled", "groupme_bot_id").First(&grp, groupIDUint).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load group"})
+			return
+		}
+
+		// Group requests by requester, preserving the requested_by_user_id
+		// ordering from the query, so each requester's shifts are summarized
+		// together with the same wording buildCoverageRequestSummary already
+		// uses for the automatic per-requester notification.
+		var order []uint
+		byRequester := make(map[uint][]models.ShiftCoverageRequest)
+		names := make(map[uint]string)
+		for _, r := range openRequests {
+			if _, seen := byRequester[r.RequestedByUserID]; !seen {
+				order = append(order, r.RequestedByUserID)
+				names[r.RequestedByUserID] = displayName(r.RequestedByUser)
+			}
+			byRequester[r.RequestedByUserID] = append(byRequester[r.RequestedByUserID], r)
+		}
+
+		sections := make([]string, 0, len(order))
+		for _, requesterID := range order {
+			sections = append(sections, buildCoverageRequestSummary(names[requesterID], byRequester[requesterID]))
+		}
+		title := fmt.Sprintf("Reminder: coverage still needed in %s", grp.Name)
+		content := strings.Join(sections, "\n\n")
+
+		resp := sendCoverageReminderResponse{RequestCount: len(openRequests)}
+
+		// Mirrors notifyGroupOfOpenCoverageRequests: email is gated by the
+		// same beta flag (GroupMe posts are not), and both run in the
+		// background since this handler shouldn't block on delivery.
+		if emailService != nil && emailService.IsConfigured() && scheduleEmailNotificationsEnabled() {
+			resp.EmailQueued = true
+			go func() {
+				bgCtx := context.Background()
+				if err := sendGroupAnnouncementEmails(bgCtx, db, emailService, groupIDUint, title, content); err != nil {
+					logging.WithContext(bgCtx).Error("Error sending coverage reminder emails", err)
+				}
+			}()
+		}
+		if groupMeService != nil && grp.GroupMeEnabled && grp.GroupMeBotID != "" {
+			resp.GroupMeQueued = true
+			go func() {
+				bgCtx := context.Background()
+				if err := sendUpdateToGroupMe(bgCtx, db, groupMeService, groupIDUint, title, content); err != nil {
+					logging.WithContext(bgCtx).Error("Error sending coverage reminder to GroupMe", err)
+				}
+			}()
+		}
+
+		if resp.EmailQueued || resp.GroupMeQueued {
+			plural := "s"
+			if resp.RequestCount == 1 {
+				plural = ""
+			}
+			resp.Message = fmt.Sprintf("Reminder sent about %d open coverage request%s.", resp.RequestCount, plural)
+		} else {
+			resp.Message = "Email and GroupMe notifications aren't enabled for this group yet, so no reminder was sent."
+		}
+
+		c.JSON(http.StatusOK, resp)
+	}
+}
