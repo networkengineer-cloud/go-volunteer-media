@@ -142,18 +142,6 @@ func displayName(u models.User) string {
 	return u.Username
 }
 
-// buildCoverageRequestSummary renders one requester's currently-open
-// coverage requests as a single bulk notification body, so a member with
-// several shifts needing coverage produces one accurate email/GroupMe post
-// listing all of them instead of a separate, fragmented message per shift.
-// A request's Priority softens the wording - "optional" requests read as a
-// nice-to-have rather than urgent, since the whole point of the flag is to
-// stop an over-staffed shift from broadcasting to the group as if it needs
-// help. The softer wording alone isn't obvious enough on its own, though, so
-// every optional request also always gets an explicit "(optional)" tag -
-// on its own line in a list, or inline in the single-request sentence -
-// even when every request in the list is optional and the header already
-// says so.
 // sortShiftsByDateHour sorts coverage requests into date/hour order - the
 // order a person reading a list of their own shifts would expect,
 // independent of creation or claim order. Shared by the batch-claim
@@ -167,6 +155,18 @@ func sortShiftsByDateHour(requests []models.ShiftCoverageRequest) {
 	})
 }
 
+// buildCoverageRequestSummary renders one requester's currently-open
+// coverage requests as a single bulk notification body, so a member with
+// several shifts needing coverage produces one accurate email/GroupMe post
+// listing all of them instead of a separate, fragmented message per shift.
+// A request's Priority softens the wording - "optional" requests read as a
+// nice-to-have rather than urgent, since the whole point of the flag is to
+// stop an over-staffed shift from broadcasting to the group as if it needs
+// help. The softer wording alone isn't obvious enough on its own, though, so
+// every optional request also always gets an explicit "(optional)" tag -
+// on its own line in a list, or inline in the single-request sentence -
+// even when every request in the list is optional and the header already
+// says so.
 func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCoverageRequest) string {
 	if len(requests) == 1 {
 		r := requests[0]

@@ -68,12 +68,17 @@ type ActivityFeedSummary struct {
 // created_at can be from its group's first row's created_at and still count
 // as "the same batch" for feed grouping. createOneCoverageRequest runs one
 // DB transaction per row even for a multi-shift batch submission
-// (CreateCoverageRequestsBatch loops sequentially), so rows from one real
-// submit action land within a couple seconds of each other in practice; 30s
-// comfortably covers that with room for a slow request, while staying tight
-// enough that two genuinely separate submissions from the same person rarely
-// collide.
-const coverageRequestBatchWindow = 30 * time.Second
+// (CreateCoverageRequestsBatch loops sequentially), and that batch can be up
+// to maxBatchItems (200, see schedule_coverage.go and the frontend's
+// MAX_BATCH_ITEMS - a long-leave coverage request spanning up to 90 days is
+// a real, designed-for use case, not a hypothetical). Each row's own
+// transaction is normally fast, but the DB runs on a burstable tier
+// (B_Standard_B1ms) that can be considerably slower after being idle, so
+// this window is sized to comfortably cover even a slow 200-item batch
+// end-to-end (900ms/row) rather than just a typical one, while staying short
+// enough that two genuinely separate submissions from the same person still
+// rarely collide.
+const coverageRequestBatchWindow = 3 * time.Minute
 
 // groupCoverageRequests buckets ShiftCoverageRequest rows into the groups
 // that should render as a single coverage_request activity item: consecutive
@@ -116,12 +121,10 @@ func groupCoverageRequests(requests []models.ShiftCoverageRequest) [][]models.Sh
 
 	// Each group's slice stays ordered by CreatedAt ascending (from the sort
 	// above) so group[0] is reliably its earliest-created member - the
-	// caller uses that row for the item's ID/CreatedAt/requester. Newest
-	// group first, matching the feed's created_at-descending order.
-	sort.Slice(groups, func(i, j int) bool {
-		return groups[i][0].CreatedAt.After(groups[j][0].CreatedAt)
-	})
-
+	// caller uses that row for the item's ID/CreatedAt/requester. groups
+	// itself is left in that same bucketing order (not re-sorted newest
+	// first) since GetGroupActivityFeed re-sorts the full combined
+	// activityItems slice by CreatedAt before returning anyway.
 	return groups
 }
 

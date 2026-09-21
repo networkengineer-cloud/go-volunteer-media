@@ -556,10 +556,13 @@ func TestGetGroupActivityFeed_DoesNotGroupCoverageRequestsAcrossRequesters(t *te
 }
 
 // TestGetGroupActivityFeed_CoverageRequestGroupSpanIsCappedAtBatchWindow
-// guards against chaining off only the previous row: four single requests
-// each 29s after the last (well inside the window pairwise) but 87s apart
-// end-to-end must NOT collapse into one group, since they're each within
-// coverageRequestBatchWindow of the *first* one only for the first two.
+// guards against chaining off only the previous row: four single requests,
+// each spaced just under coverageRequestBatchWindow/2 apart (well inside the
+// window pairwise) but well over the window apart end-to-end, must NOT all
+// collapse into one group - only into 2, since rows 0-1 and rows 2-3 are
+// each within the window of their own group's first row, but row 2 is not
+// within the window of row 0. Spacing is derived from the constant itself
+// so this test keeps testing the same relationship if the window changes.
 func TestGetGroupActivityFeed_CoverageRequestGroupSpanIsCappedAtBatchWindow(t *testing.T) {
 	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
 	db := setupActivityFeedTestDB(t)
@@ -568,12 +571,13 @@ func TestGetGroupActivityFeed_CoverageRequestGroupSpanIsCappedAtBatchWindow(t *t
 		sqlDB.Close()
 	}()
 
+	step := coverageRequestBatchWindow/2 + time.Second
 	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
 	for i := 0; i < 4; i++ {
 		req := models.ShiftCoverageRequest{
 			GroupID: 1, RequestedByUserID: 1,
 			Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 9 + i,
-			Status: models.CoverageRequestOpen, CreatedAt: base.Add(time.Duration(i) * 29 * time.Second),
+			Status: models.CoverageRequestOpen, CreatedAt: base.Add(time.Duration(i) * step),
 		}
 		if err := db.Create(&req).Error; err != nil {
 			t.Fatalf("create coverage request %d: %v", i, err)
@@ -584,6 +588,6 @@ func TestGetGroupActivityFeed_CoverageRequestGroupSpanIsCappedAtBatchWindow(t *t
 
 	coverageItems := itemsOfType(t, body, "coverage_request")
 	if len(coverageItems) != 2 {
-		t.Fatalf("expected the 87s span to split into 2 groups (first two within 29s of row 0, last two within 29s of row 2), got %d: %v", len(coverageItems), body["items"])
+		t.Fatalf("expected a %s total span to split into 2 groups (rows 0-1 within the window of row 0, rows 2-3 within the window of row 2 but not row 0), got %d: %v", 3*step, len(coverageItems), body["items"])
 	}
 }
