@@ -149,13 +149,16 @@ func displayName(u models.User) string {
 // A request's Priority softens the wording - "optional" requests read as a
 // nice-to-have rather than urgent, since the whole point of the flag is to
 // stop an over-staffed shift from broadcasting to the group as if it needs
-// help. When every request in the list is optional, that's said once in
-// the header rather than repeated on every line.
+// help. The softer wording alone isn't obvious enough on its own, though, so
+// every optional request also always gets an explicit "(optional)" tag -
+// on its own line in a list, or inline in the single-request sentence -
+// even when every request in the list is optional and the header already
+// says so.
 func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCoverageRequest) string {
 	if len(requests) == 1 {
 		r := requests[0]
 		if r.Priority == "optional" {
-			return fmt.Sprintf("%s could use coverage for their %s shift on %s, if anyone's available.",
+			return fmt.Sprintf("%s could use coverage for their %s shift on %s (optional), if anyone's available.",
 				requesterName, formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour), r.Date.Format("Monday, January 2"))
 		}
 		return fmt.Sprintf("%s needs coverage for their %s shift on %s.",
@@ -173,7 +176,7 @@ func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCo
 	lines := make([]string, 0, len(requests))
 	for _, r := range requests {
 		line := fmt.Sprintf("- %s at %s", r.Date.Format("Monday, January 2"), formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour))
-		if r.Priority == "optional" && !allOptional {
+		if r.Priority == "optional" {
 			line += " (optional)"
 		}
 		lines = append(lines, line)
