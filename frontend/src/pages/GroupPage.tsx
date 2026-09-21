@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { useFlags } from 'launchdarkly-react-client-sdk';
 import { groupsApi, animalsApi, authApi, updatesApi, groupDocumentsApi } from '../api/client';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSkillTag, GroupDocument } from '../api/client';
@@ -34,14 +33,6 @@ const NAME_SEARCH_DEBOUNCE_MS = 400;
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth(); // Ensure user is authenticated; also need their id for schedule actions
-  // Gates the Schedule tab to specific LaunchDarkly-targeted users while it's
-  // being rolled out, on top of the existing group.scheduling_enabled toggle.
-  // coverageRequestsInFeed similarly gates the "Coverage Requests Only"
-  // activity filter while that feed item type finishes rollout - the
-  // backend's own COVERAGE_REQUESTS_FEED_ENABLED flag is the real kill
-  // switch (it never returns coverage_request items when unset), so this is
-  // purely about not showing a filter option for a feature that isn't live.
-  const { scheduleTabAccess, coverageRequestsInFeed } = useFlags();
   const navigate = useNavigate();
   const toast = useToast();
   const [searchParams] = useSearchParams();
@@ -219,17 +210,16 @@ const GroupPage: React.FC = () => {
       setViewMode(viewParam);
     } else if (viewParam === 'members' && isMember) {
       setViewMode(viewParam);
-    } else if (viewParam === 'schedule' && isMember && scheduleTabAccess) {
+    } else if (viewParam === 'schedule' && isMember) {
       setViewMode(viewParam);
     } else if (viewParam === 'members' || viewParam === 'schedule') {
-      // Covers both a non-member deep-linking to a members-only view, and a
-      // member deep-linking to ?view=schedule without scheduleTabAccess -
-      // without this, viewMode would flip to 'schedule' while both the tab
+      // Covers a non-member deep-linking to a members-only or schedule view -
+      // without this, viewMode would flip to that view while both the tab
       // button and its content panel stay hidden, leaving a blank panel
       // with no tab selected.
       setViewMode('activity');
     }
-  }, [searchParams, membership, scheduleTabAccess]);
+  }, [searchParams, membership]);
 
   // Once-per-page-visit data: email preferences, group details/membership,
   // and the full groups list (for the switcher). Deliberately depends only
@@ -767,7 +757,7 @@ const GroupPage: React.FC = () => {
               <span>Documents</span>
             </button>
           )}
-          {scheduleTabAccess && group.scheduling_enabled && (displayMembership?.is_member || displayMembership?.is_site_admin) && (
+          {group.scheduling_enabled && (displayMembership?.is_member || displayMembership?.is_site_admin) && (
             <button
               role="tab"
               aria-selected={viewMode === 'schedule'}
@@ -870,9 +860,7 @@ const GroupPage: React.FC = () => {
                 <option value="all">All Activity</option>
                 <option value="comments">Comments Only</option>
                 <option value="announcements">Announcements Only</option>
-                {coverageRequestsInFeed && (
-                  <option value="coverage_requests">Coverage Requests Only</option>
-                )}
+                <option value="coverage_requests">Coverage Requests Only</option>
               </select>
 
               {/* Searchable Animal Filter with Autocomplete */}
@@ -1014,16 +1002,6 @@ const GroupPage: React.FC = () => {
           ) : (
             <div className="activity-list">
               {activities.map((activity) => {
-                // Belt-and-suspenders alongside hiding the "Coverage
-                // Requests Only" filter option above: the backend's
-                // COVERAGE_REQUESTS_FEED_ENABLED is a single global switch,
-                // so once it's on, coverage_request items also show up
-                // under "All Activity" for every user - this flag is what
-                // actually keeps them off a not-yet-targeted user's screen
-                // during a staged LaunchDarkly rollout.
-                if (activity.type === 'coverage_request' && !coverageRequestsInFeed) {
-                  return null;
-                }
                 const canDeleteAnnouncement =
                   activity.type === 'announcement' &&
                   (displayMembership?.is_group_admin || displayMembership?.is_site_admin);
@@ -1697,7 +1675,7 @@ const GroupPage: React.FC = () => {
         </div>
       )}
 
-      {viewMode === 'schedule' && scheduleTabAccess && group.scheduling_enabled && (displayMembership?.is_member || displayMembership?.is_site_admin) && id && (
+      {viewMode === 'schedule' && group.scheduling_enabled && (displayMembership?.is_member || displayMembership?.is_site_admin) && id && (
         <div
           role="tabpanel"
           id="schedule-panel"

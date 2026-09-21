@@ -9,16 +9,6 @@ import type { AxiosResponse } from 'axios';
 import { AuthProvider } from '../contexts/AuthContext';
 import { ToastProvider } from '../contexts/ToastContext';
 
-// GroupPage isn't wrapped in a real LDProvider here (that only happens in App.tsx),
-// so useFlags() would otherwise return {} and hide LD-gated UI like the Schedule
-// tab. Routed through a controllable mock (mockUseFlags) defaulting to flag-on,
-// so most tests exercise the same group.scheduling_enabled/membership logic
-// they did before the flag existed, while a dedicated test below can flip it off.
-const mockUseFlags = vi.fn(() => ({ scheduleTabAccess: true, coverageRequestsInFeed: true }));
-vi.mock('launchdarkly-react-client-sdk', () => ({
-  useFlags: () => mockUseFlags(),
-}));
-
 // Mock the API client. GroupPage's 'animals' view only needs group/membership/animal
 // data plus the site-wide group switcher list and the length-of-stay preference; the
 // members/documents view APIs are intentionally left unmocked since this test never
@@ -132,10 +122,6 @@ describe('GroupPage', () => {
     // Default view for most tests below; the 'activity' view tests further
     // down override this in their own beforeEach.
     mockUseSearchParams.mockReturnValue([new URLSearchParams('view=animals'), vi.fn()]);
-
-    // Default flag-on so most tests exercise the same scheduling/activity-filter
-    // logic they did before either flag existed; dedicated flag tests override this.
-    mockUseFlags.mockReturnValue({ scheduleTabAccess: true, coverageRequestsInFeed: true });
   });
 
   const renderGroupPage = () => {
@@ -427,48 +413,6 @@ describe('GroupPage', () => {
       });
     });
 
-    it('hides the "Coverage Requests Only" filter option when the LaunchDarkly flag is off', async () => {
-      mockUseFlags.mockReturnValue({ scheduleTabAccess: true, coverageRequestsInFeed: false });
-      renderGroupPage();
-      await screen.findByLabelText('Filter activity by type');
-
-      expect(screen.queryByRole('option', { name: 'Coverage Requests Only' })).not.toBeInTheDocument();
-    });
-
-    // Regression test: COVERAGE_REQUESTS_FEED_ENABLED is a single global env
-    // var, so once it's on, the backend includes coverage_request items
-    // under "All Activity" for every caller - the LaunchDarkly flag can't
-    // stop that server-side. This item must still not render for a user not
-    // yet targeted by the flag, or the flag would only ever have hidden the
-    // now-pointless dropdown option, not the feature itself.
-    it('does not render a coverage_request item returned by the backend when the LaunchDarkly flag is off', async () => {
-      mockUseFlags.mockReturnValue({ scheduleTabAccess: true, coverageRequestsInFeed: false });
-      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
-        data: {
-          items: [{
-            id: 1,
-            type: 'coverage_request',
-            created_at: '2026-09-01T12:00:00Z',
-            user_id: 2,
-            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
-            content: '',
-            date: '2026-09-12',
-            hour: 9,
-            status: 'open',
-          }],
-          total: 1,
-          limit: 20,
-          offset: 0,
-          hasMore: false,
-          summary: {},
-        },
-      } as unknown as AxiosResponse);
-
-      renderGroupPage();
-      await screen.findByLabelText('Filter activity by type');
-
-      expect(screen.queryByText(/needs coverage/i)).not.toBeInTheDocument();
-    });
   });
 
   // Regression coverage for a request-cancellation gap found while verifying
@@ -563,17 +507,6 @@ describe('GroupPage', () => {
 
       renderGroupPage();
       expect(await screen.findByRole('tab', { name: /schedule/i })).toBeInTheDocument();
-    });
-
-    it('does not show the Schedule tab when the LaunchDarkly flag is off, even with scheduling enabled', async () => {
-      mockUseFlags.mockReturnValue({ scheduleTabAccess: false, coverageRequestsInFeed: true });
-      vi.mocked(groupsApi.getById).mockResolvedValue({
-        data: { ...mockGroup, scheduling_enabled: true },
-      } as AxiosResponse<Group>);
-
-      renderGroupPage();
-      await screen.findByRole('tab', { name: /animals/i });
-      expect(screen.queryByRole('tab', { name: /schedule/i })).not.toBeInTheDocument();
     });
 
     it('does not show a scheduling toggle button to a regular member', async () => {
