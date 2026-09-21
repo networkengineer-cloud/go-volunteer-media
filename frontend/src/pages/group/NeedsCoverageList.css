@@ -175,7 +175,7 @@
 
 .needs-coverage-list__actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 /* Descendant selector (not just .needs-coverage-list__claim), so this has
@@ -195,6 +195,40 @@
   white-space: normal;
 }
 
+/* Claim is the primary action on a row - the same accent fill used for
+   "Claim selected" in the bulk bar - so it reads as the one thing worth
+   doing here, not a peer of the admin-only Mark optional toggle. */
+.needs-coverage-list .needs-coverage-list__claim {
+  background: var(--accent, #f2b705);
+  border-color: var(--accent, #f2b705);
+  color: var(--accent-contrast, #1f2937);
+}
+
+.needs-coverage-list .needs-coverage-list__claim:hover:not(:disabled) {
+  background: var(--accent-600, #d09e05);
+  border-color: var(--accent-600, #d09e05);
+}
+
+.needs-coverage-list .needs-coverage-list__claim:disabled {
+  background: var(--neutral-200);
+  border-color: var(--neutral-200);
+  color: var(--text-secondary);
+}
+
+/* Mark optional/normal is an infrequent admin toggle, not an action a
+   volunteer needs to notice - a borderless ghost treatment keeps it out
+   of the way of Claim instead of matching it stroke-for-stroke. */
+.needs-coverage-list .needs-coverage-list__priority-toggle {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+.needs-coverage-list .needs-coverage-list__priority-toggle:hover:not(:disabled) {
+  background: var(--neutral-100, #f3f4f6);
+  color: var(--text-primary);
+}
+
 .needs-coverage-list__empty {
   color: var(--text-secondary);
   padding: 1rem 0;
@@ -204,6 +238,13 @@
    line and let its buttons size to their own text instead of stretching
    to fill the row. */
 @media (min-width: 641px) {
+  /* Caps how wide a row can stretch so Claim/Mark optional stay next to
+     the request they act on instead of stranded at the far edge of a
+     wide viewport, with a big dead gap in between. */
+  .needs-coverage-list-wrapper {
+    max-width: 40rem;
+  }
+
   .needs-coverage-list__bulk-bar {
     flex-direction: row;
     align-items: center;
@@ -251,17 +292,18 @@
     font-size: 0.9rem;
   }
 
-  /* Fixed-ish width keeps Claim/Mark-optional buttons lined up vertically
-     across every row in a group instead of each row's buttons hugging its
-     own content width. */
   .needs-coverage-list__actions {
     flex: 0 0 auto;
   }
 
+  /* Sized to each label instead of a fixed 9rem, so Claim and Mark
+     optional read as compact, right-sized controls next to the row's
+     content rather than two oversized, mostly-empty boxes. */
   .needs-coverage-list .needs-coverage-list__claim,
   .needs-coverage-list .needs-coverage-list__priority-toggle {
     flex: none;
-    min-width: 9rem;
+    min-width: 0;
+    padding: 0.4rem 0.9rem;
     white-space: nowrap;
   }
 }
