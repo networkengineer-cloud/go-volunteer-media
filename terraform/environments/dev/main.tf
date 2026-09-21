@@ -397,8 +397,7 @@ resource "azurerm_container_app" "main" {
         value = var.semantic_search_enabled ? "true" : "false"
       }
 
-      # Schedule tab beta (LaunchDarkly gates who sees the tab; this
-      # separately gates whether coverage-request/claim emails go out)
+      # Whether coverage-request/claim emails go out for the Schedule tab
       env {
         name  = "SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED"
         value = var.schedule_email_notifications_enabled ? "true" : "false"
