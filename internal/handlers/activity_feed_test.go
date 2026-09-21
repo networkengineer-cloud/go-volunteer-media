@@ -272,6 +272,14 @@ func TestGetGroupActivityFeed_IncludesOpenCoverageRequest(t *testing.T) {
 	if shift["hour"] != float64(9) {
 		t.Fatalf("expected hour=9, got %v", shift["hour"])
 	}
+	// Regression: a raw time.Time here marshals as a full RFC3339 timestamp
+	// ("2026-09-12T00:00:00Z"), not the plain date scheduleGrid.ts's
+	// formatDateLabel/dayOfWeekFromIso expect - they append their own
+	// "T00:00:00Z" suffix, so a timestamp value here double-suffixes into an
+	// invalid date string on the frontend.
+	if shift["date"] != "2026-09-12" {
+		t.Fatalf("expected date=\"2026-09-12\" (date-only, not a timestamp), got %v", shift["date"])
+	}
 }
 
 func TestGetGroupActivityFeed_ClaimedCoverageRequestIncludesClaimer(t *testing.T) {
@@ -544,5 +552,38 @@ func TestGetGroupActivityFeed_DoesNotGroupCoverageRequestsAcrossRequesters(t *te
 	coverageItems := itemsOfType(t, body, "coverage_request")
 	if len(coverageItems) != 2 {
 		t.Fatalf("expected 2 separate items across different requesters, got %d: %v", len(coverageItems), body["items"])
+	}
+}
+
+// TestGetGroupActivityFeed_CoverageRequestGroupSpanIsCappedAtBatchWindow
+// guards against chaining off only the previous row: four single requests
+// each 29s after the last (well inside the window pairwise) but 87s apart
+// end-to-end must NOT collapse into one group, since they're each within
+// coverageRequestBatchWindow of the *first* one only for the first two.
+func TestGetGroupActivityFeed_CoverageRequestGroupSpanIsCappedAtBatchWindow(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < 4; i++ {
+		req := models.ShiftCoverageRequest{
+			GroupID: 1, RequestedByUserID: 1,
+			Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 9 + i,
+			Status: models.CoverageRequestOpen, CreatedAt: base.Add(time.Duration(i) * 29 * time.Second),
+		}
+		if err := db.Create(&req).Error; err != nil {
+			t.Fatalf("create coverage request %d: %v", i, err)
+		}
+	}
+
+	body := fetchActivityFeed(t, db, "")
+
+	coverageItems := itemsOfType(t, body, "coverage_request")
+	if len(coverageItems) != 2 {
+		t.Fatalf("expected the 87s span to split into 2 groups (first two within 29s of row 0, last two within 29s of row 2), got %d: %v", len(coverageItems), body["items"])
 	}
 }

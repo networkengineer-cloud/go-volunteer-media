@@ -45,8 +45,13 @@ type ActivityItem struct {
 // together. Each shift still carries its own live status/claim state, since
 // members of a group can be claimed independently of one another.
 type CoverageRequestShift struct {
-	ID            uint         `json:"id"`
-	Date          time.Time    `json:"date"`
+	ID uint `json:"id"`
+	// Date-only, matching toCoverageRequestResponse in schedule_coverage.go -
+	// a raw time.Time here would marshal as a full RFC3339 timestamp, which
+	// scheduleGrid.ts's formatDateLabel/dayOfWeekFromIso (fed a "date"
+	// string with a literal "T00:00:00Z" appended) would then double-suffix
+	// into an invalid date string.
+	Date          string       `json:"date"`
 	Hour          int          `json:"hour"`
 	Status        string       `json:"status"`
 	ClaimedByUser *models.User `json:"claimed_by_user,omitempty"`
@@ -59,26 +64,30 @@ type ActivityFeedSummary struct {
 	PoorSessionsCount     int `json:"poor_sessions_count"` // Sessions rated 1-2
 }
 
-// coverageRequestBatchWindow is how close together two ShiftCoverageRequest
-// rows from the same requester have to be created to count as "the same
-// batch" for feed grouping. createOneCoverageRequest runs one DB
-// transaction per row even for a multi-shift batch submission (CreateCoverageRequestsBatch
-// loops sequentially), so rows from one real submit action land within a
-// couple seconds of each other in practice; 30s comfortably covers that
-// with room for a slow request, while staying tight enough that two
-// genuinely separate submissions from the same person rarely collide.
+// coverageRequestBatchWindow bounds how far a ShiftCoverageRequest row's
+// created_at can be from its group's first row's created_at and still count
+// as "the same batch" for feed grouping. createOneCoverageRequest runs one
+// DB transaction per row even for a multi-shift batch submission
+// (CreateCoverageRequestsBatch loops sequentially), so rows from one real
+// submit action land within a couple seconds of each other in practice; 30s
+// comfortably covers that with room for a slow request, while staying tight
+// enough that two genuinely separate submissions from the same person rarely
+// collide.
 const coverageRequestBatchWindow = 30 * time.Second
 
 // groupCoverageRequests buckets ShiftCoverageRequest rows into the groups
 // that should render as a single coverage_request activity item: consecutive
-// (sorted by requester then time) rows from the same requester chain
-// together as long as each is within coverageRequestBatchWindow of the
-// previous row in its chain. This has no explicit "batch ID" to key off of
-// (the requests aren't otherwise linked), so it's a best-effort
-// reconstruction of "submitted together" from timing alone - see the
-// activity feed handler's caller for how each group becomes one item.
-// Within a group, shifts are ordered by date/hour for a stable display
-// order independent of insertion order.
+// (sorted by requester then time) rows from the same requester join the
+// current group as long as each is within coverageRequestBatchWindow of that
+// group's *first* row - not just the previous row - so a group's total span
+// is capped at the window instead of being able to drift indefinitely
+// (chaining off only the previous row would let several genuinely separate,
+// closely-spaced submissions merge into one ever-growing group). This has no
+// explicit "batch ID" to key off of (the requests aren't otherwise linked),
+// so it's a best-effort reconstruction of "submitted together" from timing
+// alone - see the activity feed handler's caller for how each group becomes
+// one item. Within a group, shifts are ordered by date/hour for a stable
+// display order independent of insertion order.
 func groupCoverageRequests(requests []models.ShiftCoverageRequest) [][]models.ShiftCoverageRequest {
 	if len(requests) == 0 {
 		return nil
@@ -96,8 +105,8 @@ func groupCoverageRequests(requests []models.ShiftCoverageRequest) [][]models.Sh
 	var groups [][]models.ShiftCoverageRequest
 	for _, req := range sorted {
 		if n := len(groups); n > 0 {
-			last := groups[n-1][len(groups[n-1])-1]
-			if last.RequestedByUserID == req.RequestedByUserID && req.CreatedAt.Sub(last.CreatedAt) <= coverageRequestBatchWindow {
+			first := groups[n-1][0]
+			if first.RequestedByUserID == req.RequestedByUserID && req.CreatedAt.Sub(first.CreatedAt) <= coverageRequestBatchWindow {
 				groups[n-1] = append(groups[n-1], req)
 				continue
 			}
@@ -273,20 +282,17 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			totalCoverageRequests = len(groups)
 
 			for _, group := range groups {
+				// first is captured (by value) before sorting group in
+				// place for display order below - group itself is never
+				// read again after this point, so no separate copy is
+				// needed just to reorder it.
 				first := group[0]
-				displayOrder := make([]models.ShiftCoverageRequest, len(group))
-				copy(displayOrder, group)
-				sort.Slice(displayOrder, func(i, j int) bool {
-					if !displayOrder[i].Date.Equal(displayOrder[j].Date) {
-						return displayOrder[i].Date.Before(displayOrder[j].Date)
-					}
-					return displayOrder[i].Hour < displayOrder[j].Hour
-				})
-				shifts := make([]CoverageRequestShift, 0, len(displayOrder))
-				for _, req := range displayOrder {
+				sortShiftsByDateHour(group)
+				shifts := make([]CoverageRequestShift, 0, len(group))
+				for _, req := range group {
 					shifts = append(shifts, CoverageRequestShift{
 						ID:            req.ID,
-						Date:          req.Date,
+						Date:          req.Date.Format("2006-01-02"),
 						Hour:          req.Hour,
 						Status:        string(req.Status),
 						ClaimedByUser: req.ClaimedByUser,
