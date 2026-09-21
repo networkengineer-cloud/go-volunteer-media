@@ -456,12 +456,12 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		}
 	})
 
-	t.Run("a single optional request uses softer phrasing than a normal one", func(t *testing.T) {
+	t.Run("a single optional request uses softer phrasing than a normal one, and still says (optional) explicitly", func(t *testing.T) {
 		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
 			{Date: date, Hour: 10, Priority: "optional"},
 		})
-		want := fmt.Sprintf("Jane Doe could use coverage for their 10:00 AM shift on %s, if anyone's available.", date.Format("Monday, January 2"))
+		want := fmt.Sprintf("Jane Doe could use coverage for their 10:00 AM shift on %s (optional), if anyone's available.", date.Format("Monday, January 2"))
 		if summary != want {
 			t.Fatalf("Expected %q, got %q", want, summary)
 		}
@@ -481,14 +481,14 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		}
 	})
 
-	t.Run("an all-optional list uses softer header phrasing and skips redundant per-line marks", func(t *testing.T) {
+	t.Run("an all-optional list uses softer header phrasing and still marks every line (optional)", func(t *testing.T) {
 		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
 		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
 			{Date: tue, Hour: 10, Priority: "optional"},
 			{Date: thu, Hour: 14, Priority: "optional"},
 		})
-		want := fmt.Sprintf("Jane Doe could use coverage for 2 shifts, if anyone's available:\n- %s at 10:00 AM\n- %s at 2:00 PM",
+		want := fmt.Sprintf("Jane Doe could use coverage for 2 shifts, if anyone's available:\n- %s at 10:00 AM (optional)\n- %s at 2:00 PM (optional)",
 			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
 		if summary != want {
 			t.Fatalf("Expected %q, got %q", want, summary)
