@@ -1062,17 +1062,21 @@ const GroupPage: React.FC = () => {
                     {activity.type === 'comment' ? (
                       <SessionCommentDisplay comment={activity as any} />
                     ) : activity.type === 'coverage_request' ? (
-                      activity.date && activity.hour !== undefined && (
-                        <div className="activity-coverage-request">
-                          <p className="activity-coverage-request-shift">
-                            {formatDateLabel(activity.date)} &middot; {formatSlotRangeLabel(dayOfWeekFromIso(activity.date), activity.hour)}
-                          </p>
-                          <p className="activity-coverage-request-status">
-                            {activity.status === 'claimed' && activity.claimed_by_user
-                              ? `Claimed by ${formatDisplayName(activity.claimed_by_user)}`
-                              : 'Needs coverage'}
-                          </p>
-                        </div>
+                      activity.coverage_shifts && activity.coverage_shifts.length > 0 && (
+                        <ul className="activity-coverage-request-list">
+                          {activity.coverage_shifts.map((shift) => (
+                            <li key={shift.id} className="activity-coverage-request">
+                              <span className="activity-coverage-request-shift">
+                                {formatDateLabel(shift.date)} &middot; {formatSlotRangeLabel(dayOfWeekFromIso(shift.date), shift.hour)}
+                              </span>
+                              <span className="activity-coverage-request-status">
+                                {shift.status === 'claimed' && shift.claimed_by_user
+                                  ? `Claimed by ${formatDisplayName(shift.claimed_by_user)}`
+                                  : 'Needs coverage'}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
                       )
                     ) : (
                       <p className="activity-text">{activity.content}</p>

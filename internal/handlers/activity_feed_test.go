@@ -221,6 +221,22 @@ func itemsOfType(t *testing.T, body map[string]interface{}, itemType string) []m
 	return matched
 }
 
+// singleShift asserts a coverage_request item's coverage_shifts array has
+// exactly one entry and returns it, for tests exercising a single (ungrouped)
+// request.
+func singleShift(t *testing.T, item map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	shifts, _ := item["coverage_shifts"].([]interface{})
+	if len(shifts) != 1 {
+		t.Fatalf("expected exactly 1 shift in coverage_shifts, got %d: %v", len(shifts), item["coverage_shifts"])
+	}
+	shift, ok := shifts[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected coverage_shifts[0] to be an object, got %v", shifts[0])
+	}
+	return shift
+}
+
 func TestGetGroupActivityFeed_IncludesOpenCoverageRequest(t *testing.T) {
 	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
 	db := setupActivityFeedTestDB(t)
@@ -246,15 +262,15 @@ func TestGetGroupActivityFeed_IncludesOpenCoverageRequest(t *testing.T) {
 	if len(coverageItems) != 1 {
 		t.Fatalf("expected exactly 1 coverage_request item, got %d: %v", len(coverageItems), body["items"])
 	}
-	item := coverageItems[0]
-	if item["status"] != "open" {
-		t.Fatalf("expected status \"open\", got %v", item["status"])
+	shift := singleShift(t, coverageItems[0])
+	if shift["status"] != "open" {
+		t.Fatalf("expected status \"open\", got %v", shift["status"])
 	}
-	if item["claimed_by_user"] != nil {
-		t.Fatalf("expected no claimed_by_user on an open request, got %v", item["claimed_by_user"])
+	if shift["claimed_by_user"] != nil {
+		t.Fatalf("expected no claimed_by_user on an open request, got %v", shift["claimed_by_user"])
 	}
-	if item["hour"] != float64(9) {
-		t.Fatalf("expected hour=9, got %v", item["hour"])
+	if shift["hour"] != float64(9) {
+		t.Fatalf("expected hour=9, got %v", shift["hour"])
 	}
 }
 
@@ -289,13 +305,13 @@ func TestGetGroupActivityFeed_ClaimedCoverageRequestIncludesClaimer(t *testing.T
 	if len(coverageItems) != 1 {
 		t.Fatalf("expected exactly 1 coverage_request item, got %d: %v", len(coverageItems), body["items"])
 	}
-	item := coverageItems[0]
-	if item["status"] != "claimed" {
-		t.Fatalf("expected status \"claimed\", got %v", item["status"])
+	shift := singleShift(t, coverageItems[0])
+	if shift["status"] != "claimed" {
+		t.Fatalf("expected status \"claimed\", got %v", shift["status"])
 	}
-	claimedByUser, ok := item["claimed_by_user"].(map[string]interface{})
+	claimedByUser, ok := shift["claimed_by_user"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected claimed_by_user to be present on a claimed request, got %v", item["claimed_by_user"])
+		t.Fatalf("expected claimed_by_user to be present on a claimed request, got %v", shift["claimed_by_user"])
 	}
 	if uint(claimedByUser["id"].(float64)) != claimer.ID {
 		t.Fatalf("expected claimed_by_user.id=%d, got %v", claimer.ID, claimedByUser["id"])
@@ -389,5 +405,144 @@ func TestGetGroupActivityFeed_CoverageRequestsHiddenByDefault(t *testing.T) {
 	items, _ := body["items"].([]interface{})
 	if len(items) != 0 {
 		t.Fatalf("expected type=coverage_requests to return nothing under the default-disabled flag, got %v", items)
+	}
+}
+
+// TestGetGroupActivityFeed_GroupsBatchedCoverageRequestsFromSameRequester
+// covers the main case groupCoverageRequests exists for: a single batch
+// submission (CreateCoverageRequestsBatch) creates several
+// ShiftCoverageRequest rows in quick succession, and the feed should show
+// that as one card listing every shift, not one card per row.
+func TestGetGroupActivityFeed_GroupsBatchedCoverageRequestsFromSameRequester(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	first := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 15,
+		Status: models.CoverageRequestOpen, CreatedAt: base,
+	}
+	second := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 14,
+		Status: models.CoverageRequestOpen, CreatedAt: base.Add(3 * time.Second),
+	}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create first coverage request: %v", err)
+	}
+	if err := db.Create(&second).Error; err != nil {
+		t.Fatalf("create second coverage request: %v", err)
+	}
+
+	body := fetchActivityFeed(t, db, "")
+
+	coverageItems := itemsOfType(t, body, "coverage_request")
+	if len(coverageItems) != 1 {
+		t.Fatalf("expected the two batched requests to collapse into 1 item, got %d: %v", len(coverageItems), body["items"])
+	}
+	shifts, _ := coverageItems[0]["coverage_shifts"].([]interface{})
+	if len(shifts) != 2 {
+		t.Fatalf("expected 2 shifts in the grouped item, got %d: %v", len(shifts), coverageItems[0]["coverage_shifts"])
+	}
+	// Display order is by date/hour, not creation order, so the 14:00 shift
+	// (created second) should come first.
+	if shifts[0].(map[string]interface{})["hour"] != float64(14) {
+		t.Fatalf("expected shifts sorted by hour, got %v", shifts)
+	}
+	if shifts[1].(map[string]interface{})["hour"] != float64(15) {
+		t.Fatalf("expected shifts sorted by hour, got %v", shifts)
+	}
+
+	// Scoped to just coverage requests, total should count the group once,
+	// not the 2 underlying rows - it drives this endpoint's pagination.
+	scoped := fetchActivityFeed(t, db, "type=coverage_requests")
+	if scoped["total"] != float64(1) {
+		t.Fatalf("expected total to count the group once, got %v", scoped["total"])
+	}
+}
+
+// TestGetGroupActivityFeed_DoesNotGroupCoverageRequestsAcrossBatchWindow
+// ensures two requests from the same person well outside
+// coverageRequestBatchWindow of each other are treated as separate actions,
+// not merged into one card.
+func TestGetGroupActivityFeed_DoesNotGroupCoverageRequestsAcrossBatchWindow(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	first := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 14,
+		Status: models.CoverageRequestOpen, CreatedAt: base,
+	}
+	second := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date: time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC), Hour: 14,
+		Status: models.CoverageRequestOpen, CreatedAt: base.Add(coverageRequestBatchWindow + time.Second),
+	}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create first coverage request: %v", err)
+	}
+	if err := db.Create(&second).Error; err != nil {
+		t.Fatalf("create second coverage request: %v", err)
+	}
+
+	body := fetchActivityFeed(t, db, "")
+
+	coverageItems := itemsOfType(t, body, "coverage_request")
+	if len(coverageItems) != 2 {
+		t.Fatalf("expected 2 separate items outside the batch window, got %d: %v", len(coverageItems), body["items"])
+	}
+}
+
+// TestGetGroupActivityFeed_DoesNotGroupCoverageRequestsAcrossRequesters
+// ensures two different people requesting coverage at the same instant never
+// merge into one card, even though the timing alone would otherwise chain
+// them.
+func TestGetGroupActivityFeed_DoesNotGroupCoverageRequestsAcrossRequesters(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	otherUser := models.User{Username: "otherrequester", Email: "other@example.com", Password: "hashedpassword"}
+	if err := db.Create(&otherUser).Error; err != nil {
+		t.Fatalf("create other user: %v", err)
+	}
+
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	first := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 14,
+		Status: models.CoverageRequestOpen, CreatedAt: base,
+	}
+	second := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: otherUser.ID,
+		Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 15,
+		Status: models.CoverageRequestOpen, CreatedAt: base,
+	}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create first coverage request: %v", err)
+	}
+	if err := db.Create(&second).Error; err != nil {
+		t.Fatalf("create second coverage request: %v", err)
+	}
+
+	body := fetchActivityFeed(t, db, "")
+
+	coverageItems := itemsOfType(t, body, "coverage_request")
+	if len(coverageItems) != 2 {
+		t.Fatalf("expected 2 separate items across different requesters, got %d: %v", len(coverageItems), body["items"])
 	}
 }

@@ -93,17 +93,22 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ item, groupId, onImageClick
           <h3 className="activity-item__title">{item.title}</h3>
         )}
 
-        {/* Shift date/time and status for coverage requests */}
-        {item.type === 'coverage_request' && item.date && item.hour !== undefined && (
-          <div className="activity-item__coverage-request">
-            <p className="activity-item__coverage-request-shift">
-              {formatDateLabel(item.date)} &middot; {formatSlotRangeLabel(dayOfWeekFromIso(item.date), item.hour)}
-            </p>
-            <p className="activity-item__coverage-request-status">
-              {item.status === 'claimed' && item.claimed_by_user
-                ? `Claimed by ${formatDisplayName(item.claimed_by_user)}`
-                : 'Needs coverage'}
-            </p>
+        {/* Shift date/time and status for coverage requests - one or more
+            shifts requested together render as separate rows in one item */}
+        {item.type === 'coverage_request' && item.coverage_shifts && item.coverage_shifts.length > 0 && (
+          <div className="activity-item__coverage-request-list">
+            {item.coverage_shifts.map((shift) => (
+              <div key={shift.id} className="activity-item__coverage-request">
+                <p className="activity-item__coverage-request-shift">
+                  {formatDateLabel(shift.date)} &middot; {formatSlotRangeLabel(dayOfWeekFromIso(shift.date), shift.hour)}
+                </p>
+                <p className="activity-item__coverage-request-status">
+                  {shift.status === 'claimed' && shift.claimed_by_user
+                    ? `Claimed by ${formatDisplayName(shift.claimed_by_user)}`
+                    : 'Needs coverage'}
+                </p>
+              </div>
+            ))}
           </div>
         )}
 

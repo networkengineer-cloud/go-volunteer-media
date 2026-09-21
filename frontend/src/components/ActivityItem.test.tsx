@@ -11,9 +11,9 @@ const baseItem: ActivityItemType = {
   user_id: 2,
   user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
   content: '',
-  date: '2026-09-12',
-  hour: 9,
-  status: 'open',
+  coverage_shifts: [
+    { id: 10, date: '2026-09-12', hour: 9, status: 'open' },
+  ],
 };
 
 const renderItem = (item: ActivityItemType) =>
@@ -35,8 +35,12 @@ describe('ActivityItem coverage_request rendering', () => {
   it('shows who claimed the shift for a claimed request', () => {
     renderItem({
       ...baseItem,
-      status: 'claimed',
-      claimed_by_user: { id: 3, username: 'bob', email: 'bob@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+      coverage_shifts: [
+        {
+          id: 10, date: '2026-09-12', hour: 9, status: 'claimed',
+          claimed_by_user: { id: 3, username: 'bob', email: 'bob@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+        },
+      ],
     });
 
     expect(screen.getByText(/claimed by bob/i)).toBeInTheDocument();
@@ -48,5 +52,23 @@ describe('ActivityItem coverage_request rendering', () => {
 
     const link = screen.getByRole('link', { name: /view in schedule/i });
     expect(link).toHaveAttribute('href', '/groups/1?view=schedule');
+  });
+
+  it('renders every shift in a batched request, each with its own status', () => {
+    renderItem({
+      ...baseItem,
+      coverage_shifts: [
+        { id: 10, date: '2026-09-12', hour: 9, status: 'open' },
+        {
+          id: 11, date: '2026-09-13', hour: 14, status: 'claimed',
+          claimed_by_user: { id: 3, username: 'bob', email: 'bob@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+        },
+      ],
+    });
+
+    expect(screen.getByText(/sat, sep 12/i)).toBeInTheDocument();
+    expect(screen.getByText(/sun, sep 13/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs coverage/i)).toBeInTheDocument();
+    expect(screen.getByText(/claimed by bob/i)).toBeInTheDocument();
   });
 });

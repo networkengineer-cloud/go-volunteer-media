@@ -429,9 +429,9 @@ describe('GroupPage', () => {
             user_id: 2,
             user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
             content: '',
-            date: '2026-09-25',
-            hour: 14,
-            status: 'open',
+            coverage_shifts: [
+              { id: 10, date: '2026-09-25', hour: 14, status: 'open' },
+            ],
           }],
           total: 1,
           limit: 20,
@@ -449,6 +449,44 @@ describe('GroupPage', () => {
       expect(screen.getByText('Needs coverage')).toBeInTheDocument();
     });
 
+    // The backend groups shifts requested together (same requester, same
+    // batch) into one coverage_request item with several coverage_shifts -
+    // each shift should render as its own row with its own status, inside
+    // one card.
+    it('renders every shift in a batched coverage_request item, each with its own status', async () => {
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            coverage_shifts: [
+              { id: 10, date: '2026-09-25', hour: 14, status: 'open' },
+              {
+                id: 11, date: '2026-09-26', hour: 9, status: 'claimed',
+                claimed_by_user: { id: 3, username: 'sam', email: 'sam@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+              },
+            ],
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(await screen.findByText(/Fri, Sep 25/)).toBeInTheDocument();
+      expect(screen.getByText(/Sat, Sep 26/)).toBeInTheDocument();
+      expect(screen.getByText('Needs coverage')).toBeInTheDocument();
+      expect(screen.getByText('Claimed by sam')).toBeInTheDocument();
+    });
   });
 
   // Regression coverage for a request-cancellation gap found while verifying

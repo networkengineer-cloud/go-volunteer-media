@@ -23,22 +23,33 @@ func coverageRequestsFeedEnabled() bool {
 
 // ActivityItem represents a unified activity feed item
 type ActivityItem struct {
-	ID            uint                    `json:"id"`
-	Type          string                  `json:"type"` // "comment", "announcement", "coverage_request"
-	CreatedAt     time.Time               `json:"created_at"`
-	UserID        uint                    `json:"user_id"`
-	User          *models.User            `json:"user,omitempty"`
-	Content       string                  `json:"content"`
-	Title         string                  `json:"title,omitempty"` // For announcements
-	ImageURL      string                  `json:"image_url,omitempty"`
-	AnimalID      *uint                   `json:"animal_id,omitempty"`       // For comments
-	Animal        *models.Animal          `json:"animal,omitempty"`          // For comments
-	Tags          []models.CommentTag     `json:"tags,omitempty"`            // For comments
-	Metadata      *models.SessionMetadata `json:"metadata,omitempty"`        // For session reports
-	Date          *time.Time              `json:"date,omitempty"`            // For coverage requests
-	Hour          *int                    `json:"hour,omitempty"`            // For coverage requests
-	Status        *string                 `json:"status,omitempty"`          // For coverage requests
-	ClaimedByUser *models.User            `json:"claimed_by_user,omitempty"` // For coverage requests
+	ID             uint                    `json:"id"`
+	Type           string                  `json:"type"` // "comment", "announcement", "coverage_request"
+	CreatedAt      time.Time               `json:"created_at"`
+	UserID         uint                    `json:"user_id"`
+	User           *models.User            `json:"user,omitempty"`
+	Content        string                  `json:"content"`
+	Title          string                  `json:"title,omitempty"` // For announcements
+	ImageURL       string                  `json:"image_url,omitempty"`
+	AnimalID       *uint                   `json:"animal_id,omitempty"`       // For comments
+	Animal         *models.Animal          `json:"animal,omitempty"`          // For comments
+	Tags           []models.CommentTag     `json:"tags,omitempty"`            // For comments
+	Metadata       *models.SessionMetadata `json:"metadata,omitempty"`        // For session reports
+	CoverageShifts []CoverageRequestShift  `json:"coverage_shifts,omitempty"` // For coverage requests
+}
+
+// CoverageRequestShift is one shift within a coverage_request activity item.
+// A single item can represent several ShiftCoverageRequest rows created
+// together in the same requester action (a single request, or a batch of
+// several) - see groupCoverageRequests below for how rows get bucketed
+// together. Each shift still carries its own live status/claim state, since
+// members of a group can be claimed independently of one another.
+type CoverageRequestShift struct {
+	ID            uint         `json:"id"`
+	Date          time.Time    `json:"date"`
+	Hour          int          `json:"hour"`
+	Status        string       `json:"status"`
+	ClaimedByUser *models.User `json:"claimed_by_user,omitempty"`
 }
 
 // ActivityFeedSummary provides quick stats about concerns
@@ -46,6 +57,63 @@ type ActivityFeedSummary struct {
 	BehaviorConcernsCount int `json:"behavior_concerns_count"`
 	MedicalConcernsCount  int `json:"medical_concerns_count"`
 	PoorSessionsCount     int `json:"poor_sessions_count"` // Sessions rated 1-2
+}
+
+// coverageRequestBatchWindow is how close together two ShiftCoverageRequest
+// rows from the same requester have to be created to count as "the same
+// batch" for feed grouping. createOneCoverageRequest runs one DB
+// transaction per row even for a multi-shift batch submission (CreateCoverageRequestsBatch
+// loops sequentially), so rows from one real submit action land within a
+// couple seconds of each other in practice; 30s comfortably covers that
+// with room for a slow request, while staying tight enough that two
+// genuinely separate submissions from the same person rarely collide.
+const coverageRequestBatchWindow = 30 * time.Second
+
+// groupCoverageRequests buckets ShiftCoverageRequest rows into the groups
+// that should render as a single coverage_request activity item: consecutive
+// (sorted by requester then time) rows from the same requester chain
+// together as long as each is within coverageRequestBatchWindow of the
+// previous row in its chain. This has no explicit "batch ID" to key off of
+// (the requests aren't otherwise linked), so it's a best-effort
+// reconstruction of "submitted together" from timing alone - see the
+// activity feed handler's caller for how each group becomes one item.
+// Within a group, shifts are ordered by date/hour for a stable display
+// order independent of insertion order.
+func groupCoverageRequests(requests []models.ShiftCoverageRequest) [][]models.ShiftCoverageRequest {
+	if len(requests) == 0 {
+		return nil
+	}
+
+	sorted := make([]models.ShiftCoverageRequest, len(requests))
+	copy(sorted, requests)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].RequestedByUserID != sorted[j].RequestedByUserID {
+			return sorted[i].RequestedByUserID < sorted[j].RequestedByUserID
+		}
+		return sorted[i].CreatedAt.Before(sorted[j].CreatedAt)
+	})
+
+	var groups [][]models.ShiftCoverageRequest
+	for _, req := range sorted {
+		if n := len(groups); n > 0 {
+			last := groups[n-1][len(groups[n-1])-1]
+			if last.RequestedByUserID == req.RequestedByUserID && req.CreatedAt.Sub(last.CreatedAt) <= coverageRequestBatchWindow {
+				groups[n-1] = append(groups[n-1], req)
+				continue
+			}
+		}
+		groups = append(groups, []models.ShiftCoverageRequest{req})
+	}
+
+	// Each group's slice stays ordered by CreatedAt ascending (from the sort
+	// above) so group[0] is reliably its earliest-created member - the
+	// caller uses that row for the item's ID/CreatedAt/requester. Newest
+	// group first, matching the feed's created_at-descending order.
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i][0].CreatedAt.After(groups[j][0].CreatedAt)
+	})
+
+	return groups
 }
 
 // GetGroupActivityFeed returns a unified activity feed combining updates/announcements and comments
@@ -201,20 +269,36 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch coverage requests"})
 				return
 			}
-			totalCoverageRequests = len(coverageRequests)
+			groups := groupCoverageRequests(coverageRequests)
+			totalCoverageRequests = len(groups)
 
-			for _, req := range coverageRequests {
-				status := string(req.Status)
+			for _, group := range groups {
+				first := group[0]
+				displayOrder := make([]models.ShiftCoverageRequest, len(group))
+				copy(displayOrder, group)
+				sort.Slice(displayOrder, func(i, j int) bool {
+					if !displayOrder[i].Date.Equal(displayOrder[j].Date) {
+						return displayOrder[i].Date.Before(displayOrder[j].Date)
+					}
+					return displayOrder[i].Hour < displayOrder[j].Hour
+				})
+				shifts := make([]CoverageRequestShift, 0, len(displayOrder))
+				for _, req := range displayOrder {
+					shifts = append(shifts, CoverageRequestShift{
+						ID:            req.ID,
+						Date:          req.Date,
+						Hour:          req.Hour,
+						Status:        string(req.Status),
+						ClaimedByUser: req.ClaimedByUser,
+					})
+				}
 				activityItems = append(activityItems, ActivityItem{
-					ID:            req.ID,
-					Type:          "coverage_request",
-					CreatedAt:     req.CreatedAt,
-					UserID:        req.RequestedByUserID,
-					User:          &req.RequestedByUser,
-					Date:          &req.Date,
-					Hour:          &req.Hour,
-					Status:        &status,
-					ClaimedByUser: req.ClaimedByUser,
+					ID:             first.ID,
+					Type:           "coverage_request",
+					CreatedAt:      first.CreatedAt,
+					UserID:         first.RequestedByUserID,
+					User:           &first.RequestedByUser,
+					CoverageShifts: shifts,
 				})
 			}
 		}
