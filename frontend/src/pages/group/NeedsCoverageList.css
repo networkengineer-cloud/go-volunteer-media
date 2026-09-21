@@ -64,8 +64,12 @@
 /* Claim selected is the primary call-to-action of the bulk bar - accent
    fill (same CTA yellow used for the app's primary buttons elsewhere)
    distinguishes it from Cancel selected, which stays a muted secondary
-   action rather than looking like an equally-weighted twin button. */
-.needs-coverage-list-wrapper .needs-coverage-list__claim-selected {
+   action rather than looking like an equally-weighted twin button.
+   Three-class selector (not two) so this beats UsersPage.css's global,
+   unscoped `[data-theme='dark'] .btn-secondary` background/color rule -
+   at two classes each, dark mode was a load-order coin flip that could
+   leave this showing that rule's dark fill instead of the accent one. */
+.needs-coverage-list-wrapper .needs-coverage-list__bulk-actions .needs-coverage-list__claim-selected {
   background: var(--accent, #f2b705);
   border-color: var(--accent, #f2b705);
   color: var(--accent-contrast, #1f2937);
@@ -197,35 +201,43 @@
 
 /* Claim is the primary action on a row - the same accent fill used for
    "Claim selected" in the bulk bar - so it reads as the one thing worth
-   doing here, not a peer of the admin-only Mark optional toggle. */
-.needs-coverage-list .needs-coverage-list__claim {
+   doing here, not a peer of the admin-only Mark optional toggle.
+   Three-class selector (not two) so this beats UsersPage.css's global,
+   unscoped `[data-theme='dark'] .btn-secondary` background/color rule -
+   at two classes each, dark mode was a load-order coin flip that could
+   leave this showing that rule's dark fill instead of the accent one. */
+.needs-coverage-list .needs-coverage-list__actions .needs-coverage-list__claim {
   background: var(--accent, #f2b705);
   border-color: var(--accent, #f2b705);
   color: var(--accent-contrast, #1f2937);
 }
 
-.needs-coverage-list .needs-coverage-list__claim:hover:not(:disabled) {
+.needs-coverage-list .needs-coverage-list__actions .needs-coverage-list__claim:hover:not(:disabled) {
   background: var(--accent-600, #d09e05);
   border-color: var(--accent-600, #d09e05);
 }
 
-.needs-coverage-list .needs-coverage-list__claim:disabled {
+.needs-coverage-list .needs-coverage-list__actions .needs-coverage-list__claim:disabled {
   background: var(--neutral-200);
   border-color: var(--neutral-200);
   color: var(--text-secondary);
 }
 
 /* Mark optional/normal is an infrequent admin toggle, not an action a
-   volunteer needs to notice - a borderless ghost treatment keeps it out
-   of the way of Claim instead of matching it stroke-for-stroke. */
-.needs-coverage-list .needs-coverage-list__priority-toggle {
+   volunteer needs to notice, so it stays lower-emphasis than Claim - but
+   it still needs its own visible outline (a muted neutral one, not the
+   bold border every button had before) so it still reads as a button
+   rather than plain row text. Same three-class specificity reasoning
+   as .needs-coverage-list__claim above. */
+.needs-coverage-list .needs-coverage-list__actions .needs-coverage-list__priority-toggle {
   background: transparent;
-  border-color: transparent;
+  border-color: var(--neutral-300, #d1d5db);
   color: var(--text-secondary);
 }
 
-.needs-coverage-list .needs-coverage-list__priority-toggle:hover:not(:disabled) {
+.needs-coverage-list .needs-coverage-list__actions .needs-coverage-list__priority-toggle:hover:not(:disabled) {
   background: var(--neutral-100, #f3f4f6);
+  border-color: var(--neutral-400, #9ca3af);
   color: var(--text-primary);
 }
 
