@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
@@ -2262,6 +2263,10 @@ func TestUpdateCoverageRequestPriority(t *testing.T) {
 }
 
 func performSendCoverageReminder(db *gorm.DB, emailSvc *email.Service, callerID uint, isAdmin bool, groupID uint) *httptest.ResponseRecorder {
+	return performSendCoverageReminderWithGroupMe(db, emailSvc, nil, callerID, isAdmin, groupID)
+}
+
+func performSendCoverageReminderWithGroupMe(db *gorm.DB, emailSvc *email.Service, groupMeSvc *groupme.Service, callerID uint, isAdmin bool, groupID uint) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
@@ -2269,7 +2274,7 @@ func performSendCoverageReminder(db *gorm.DB, emailSvc *email.Service, callerID 
 		c.Set("is_admin", isAdmin)
 		c.Next()
 	})
-	router.POST("/groups/:id/schedule/coverage-requests/remind", SendCoverageReminder(db, emailSvc, nil))
+	router.POST("/groups/:id/schedule/coverage-requests/remind", SendCoverageReminder(db, emailSvc, groupMeSvc))
 
 	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/remind", groupID), nil)
 	w := httptest.NewRecorder()
@@ -2393,6 +2398,53 @@ func TestSendCoverageReminder(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		if got := provider.sendCount(); got != 0 {
 			t.Fatalf("Expected no reminder email while the flag is off, got %d", got)
+		}
+	})
+
+	t.Run("groupme_queued stays false when the group hasn't configured GroupMe", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performSendCoverageReminderWithGroupMe(db, nil, groupme.NewService(), admin.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp sendCoverageReminderResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if resp.GroupMeQueued {
+			t.Fatal("Expected groupme_queued to be false when the group has no GroupMe bot configured, even though a GroupMe service is available")
+		}
+	})
+
+	t.Run("groupme_queued is true when the group has GroupMe configured", func(t *testing.T) {
+		db := SetupTestDB(t)
+		requester, _, group := setupCoverageTestGroup(t, db)
+		if err := db.Model(group).Updates(map[string]interface{}{"groupme_enabled": true, "groupme_bot_id": "test-bot-123"}).Error; err != nil {
+			t.Fatalf("Failed to enable GroupMe for group: %v", err)
+		}
+		admin := CreateTestUser(t, db, "groupadmin", "groupadmin@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+		w := performSendCoverageReminderWithGroupMe(db, nil, groupme.NewService(), admin.ID, false, group.ID)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp sendCoverageReminderResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if !resp.GroupMeQueued {
+			t.Fatal("Expected groupme_queued to be true when the group has a GroupMe bot configured")
 		}
 	})
 }

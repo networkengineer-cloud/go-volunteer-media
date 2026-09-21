@@ -1696,7 +1696,7 @@ func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeServi
 		}
 
 		var grp models.Group
-		if err := db.Select("name").First(&grp, groupIDUint).Error; err != nil {
+		if err := db.Select("name", "groupme_enabled", "groupme_bot_id").First(&grp, groupIDUint).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load group"})
 			return
 		}
@@ -1737,7 +1737,7 @@ func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeServi
 				}
 			}()
 		}
-		if groupMeService != nil {
+		if groupMeService != nil && grp.GroupMeEnabled && grp.GroupMeBotID != "" {
 			resp.GroupMeQueued = true
 			go func() {
 				bgCtx := context.Background()
@@ -1754,7 +1754,7 @@ func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeServi
 			}
 			resp.Message = fmt.Sprintf("Reminder sent about %d open coverage request%s.", resp.RequestCount, plural)
 		} else {
-			resp.Message = "Email notifications aren't enabled for this group yet, so no reminder was sent."
+			resp.Message = "Email and GroupMe notifications aren't enabled for this group yet, so no reminder was sent."
 		}
 
 		c.JSON(http.StatusOK, resp)
