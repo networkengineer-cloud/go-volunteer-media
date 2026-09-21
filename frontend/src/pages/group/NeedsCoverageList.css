@@ -61,6 +61,40 @@
   white-space: normal;
 }
 
+/* Claim selected is the primary call-to-action of the bulk bar - accent
+   fill (same CTA yellow used for the app's primary buttons elsewhere)
+   distinguishes it from Cancel selected, which stays a muted secondary
+   action rather than looking like an equally-weighted twin button. */
+.needs-coverage-list-wrapper .needs-coverage-list__claim-selected {
+  background: var(--accent, #f2b705);
+  border-color: var(--accent, #f2b705);
+  color: var(--accent-contrast, #1f2937);
+}
+
+.needs-coverage-list-wrapper .needs-coverage-list__claim-selected:hover:not(:disabled) {
+  background: var(--accent-600, #d09e05);
+  border-color: var(--accent-600, #d09e05);
+}
+
+.needs-coverage-list-wrapper .needs-coverage-list__claim-selected:disabled {
+  background: var(--neutral-200);
+  border-color: var(--neutral-200);
+  color: var(--text-secondary);
+}
+
+.needs-coverage-list__date-group + .needs-coverage-list__date-group {
+  margin-top: 0.75rem;
+}
+
+.needs-coverage-list__date-heading {
+  margin: 0 0 0.4rem;
+  padding-bottom: 0.3rem;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--neutral-200);
+}
+
 .needs-coverage-list {
   list-style: none;
   margin: 0;
@@ -128,13 +162,14 @@
 }
 
 .needs-coverage-list__priority-badge {
-  color: var(--text-secondary);
+  color: var(--warning-600, #d97706);
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  padding: 0.1rem 0.4rem;
-  border: 1px solid var(--neutral-300);
+  padding: 0.1rem 0.5rem;
+  background: color-mix(in srgb, var(--warning, #f59e0b) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning, #f59e0b) 45%, transparent);
   border-radius: 999px;
 }
 
@@ -181,10 +216,34 @@
     white-space: nowrap;
   }
 
+  /* Rows within a date group read as a flat, scannable list rather than a
+     stack of separate cards on desktop - each card's own border/radius is
+     replaced by a divider between rows and a hover highlight, matching how
+     the date heading above already reads as one panel. The last row in a
+     group keeps no divider since the group's own margin closes it out. */
   .needs-coverage-list__row {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 0.5rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--neutral-200);
+    border-radius: 0;
+  }
+
+  .needs-coverage-list__row:hover {
+    background: var(--neutral-100, #f3f4f6);
+  }
+
+  .needs-coverage-list__row:last-child {
+    border-bottom: none;
+  }
+
+  .needs-coverage-list__main {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .needs-coverage-list__when,
@@ -192,9 +251,17 @@
     font-size: 0.9rem;
   }
 
+  /* Fixed-ish width keeps Claim/Mark-optional buttons lined up vertically
+     across every row in a group instead of each row's buttons hugging its
+     own content width. */
+  .needs-coverage-list__actions {
+    flex: 0 0 auto;
+  }
+
   .needs-coverage-list .needs-coverage-list__claim,
   .needs-coverage-list .needs-coverage-list__priority-toggle {
     flex: none;
+    min-width: 9rem;
     white-space: nowrap;
   }
 }

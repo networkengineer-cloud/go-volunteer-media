@@ -115,6 +115,32 @@ describe('NeedsCoverageList', () => {
     expect(screen.queryByRole('button', { name: 'Claim' })).not.toBeInTheDocument();
   });
 
+  describe('date grouping', () => {
+    it('shows a single date heading above multiple shifts on the same date', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+        { id: 6, group_id: 7, requested_by_user_id: 3, requested_by_name: 'John Roe', date: '2026-08-11', hour: 10, priority: 'normal', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} />);
+
+      await screen.findByText('Jane Doe');
+      expect(screen.getAllByText('Tue, Aug 11')).toHaveLength(1);
+      expect(screen.getByText('John Roe')).toBeInTheDocument();
+    });
+
+    it('shows a separate heading for each distinct date', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+        { id: 6, group_id: 7, requested_by_user_id: 3, requested_by_name: 'John Roe', date: '2026-08-13', hour: 10, priority: 'normal', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} />);
+
+      await screen.findByText('Jane Doe');
+      expect(screen.getByText('Tue, Aug 11')).toBeInTheDocument();
+      expect(screen.getByText('Thu, Aug 13')).toBeInTheDocument();
+    });
+  });
+
   describe('bulk cancel', () => {
     function mockCancelBatch(result: CoverageRequestCancelBatchResult) {
       vi.mocked(scheduleApi.cancelCoverageRequestsBatch).mockResolvedValue({ data: result } as unknown as AxiosResponse<CoverageRequestCancelBatchResult>);
