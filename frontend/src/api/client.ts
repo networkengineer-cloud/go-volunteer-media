@@ -397,6 +397,7 @@ export interface CoverageRequestShift {
   date: string;
   hour: number;
   status: string;
+  priority: string;
   claimed_by_user?: User;
 }
 
