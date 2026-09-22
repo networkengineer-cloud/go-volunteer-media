@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios';
 import { groupsApi, animalsApi, authApi, updatesApi, groupDocumentsApi } from '../api/client';
 import ConfirmDialog from '../components/ConfirmDialog';
-import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSkillTag, GroupDocument } from '../api/client';
+import type { Group, Animal, GroupMembership, ActivityItem, CoverageRequestShift, GroupMember, UserSkillTag, GroupDocument } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { useDebounce } from '../hooks/useDebounce';
@@ -30,6 +30,66 @@ type FilterType = 'all' | 'comments' | 'announcements' | 'coverage_requests';
 // Matches GroupSearch.tsx's debounce delay for the same kind of free-text
 // filter input.
 const NAME_SEARCH_DEBOUNCE_MS = 400;
+
+// A batched coverage_request can carry up to 300 shifts (the backend caps
+// the query there) - render only this many rows before collapsing the rest
+// behind a "Show more" toggle, so one big batch doesn't dominate the feed.
+const COVERAGE_SHIFT_COLLAPSE_THRESHOLD = 8;
+
+function summarizeCoverageShifts(shifts: CoverageRequestShift[]): string {
+  const claimedCount = shifts.filter((shift) => shift.status === 'claimed').length;
+  const openCount = shifts.length - claimedCount;
+  if (openCount === 0) {
+    return `All ${claimedCount} shifts are covered — thank you!`;
+  }
+  // Deliberately doesn't distinguish "nobody's claimed yet" from "some have"
+  // here - thanking the people who already claimed a shift right next to
+  // "still need a volunteer" reads as pointed at whoever hasn't, which
+  // isn't the intent. Save the thanks for once everything's covered above.
+  return `${openCount} shift${openCount === 1 ? '' : 's'} still need${openCount === 1 ? 's' : ''} a volunteer — can you help?`;
+}
+
+const CoverageShiftList: React.FC<{ shifts: CoverageRequestShift[] }> = ({ shifts }) => {
+  const [expanded, setExpanded] = useState(false);
+  const visibleShifts = expanded ? shifts : shifts.slice(0, COVERAGE_SHIFT_COLLAPSE_THRESHOLD);
+  const hiddenCount = shifts.length - visibleShifts.length;
+
+  return (
+    <>
+      {shifts.length > 1 && (
+        <p className="activity-coverage-request-summary">{summarizeCoverageShifts(shifts)}</p>
+      )}
+      <ul className="activity-coverage-request-list">
+        {visibleShifts.map((shift) => (
+          <li key={shift.id} className="activity-coverage-request">
+            <span className="activity-coverage-request-shift">
+              {formatDateLabel(shift.date)} &middot; {formatSlotRangeLabel(dayOfWeekFromIso(shift.date), shift.hour)}
+            </span>
+            <span
+              className={`activity-coverage-request-status activity-coverage-request-status--${
+                shift.status === 'claimed' ? 'claimed' : 'open'
+              }`}
+            >
+              {shift.status === 'claimed' && shift.claimed_by_user
+                ? `Claimed by ${formatDisplayName(shift.claimed_by_user)}`
+                : 'Needs coverage'}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {hiddenCount > 0 && (
+        <button type="button" className="activity-coverage-request-toggle" onClick={() => setExpanded(true)}>
+          Show {hiddenCount} more
+        </button>
+      )}
+      {expanded && shifts.length > COVERAGE_SHIFT_COLLAPSE_THRESHOLD && (
+        <button type="button" className="activity-coverage-request-toggle" onClick={() => setExpanded(false)}>
+          Show less
+        </button>
+      )}
+    </>
+  );
+};
 
 const GroupPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -1063,20 +1123,7 @@ const GroupPage: React.FC = () => {
                       <SessionCommentDisplay comment={activity as any} />
                     ) : activity.type === 'coverage_request' ? (
                       activity.coverage_shifts && activity.coverage_shifts.length > 0 && (
-                        <ul className="activity-coverage-request-list">
-                          {activity.coverage_shifts.map((shift) => (
-                            <li key={shift.id} className="activity-coverage-request">
-                              <span className="activity-coverage-request-shift">
-                                {formatDateLabel(shift.date)} &middot; {formatSlotRangeLabel(dayOfWeekFromIso(shift.date), shift.hour)}
-                              </span>
-                              <span className="activity-coverage-request-status">
-                                {shift.status === 'claimed' && shift.claimed_by_user
-                                  ? `Claimed by ${formatDisplayName(shift.claimed_by_user)}`
-                                  : 'Needs coverage'}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
+                        <CoverageShiftList shifts={activity.coverage_shifts} />
                       )
                     ) : (
                       <p className="activity-text">{activity.content}</p>
