@@ -82,7 +82,7 @@ const CoverageShiftList: React.FC<{ shifts: CoverageRequestShift[] }> = ({ shift
             >
               {isShiftCovered(shift)
                 ? `Claimed by ${formatDisplayName(shift.claimed_by_user!)}`
-                : 'Needs coverage'}
+                : `Needs coverage${shift.priority === 'optional' ? ' (optional)' : ''}`}
             </span>
           </li>
         ))}

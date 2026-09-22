@@ -54,6 +54,7 @@ type CoverageRequestShift struct {
 	Date          string       `json:"date"`
 	Hour          int          `json:"hour"`
 	Status        string       `json:"status"`
+	Priority      string       `json:"priority"`
 	ClaimedByUser *models.User `json:"claimed_by_user,omitempty"`
 }
 
@@ -327,6 +328,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 						Date:          req.Date.Format("2006-01-02"),
 						Hour:          req.Hour,
 						Status:        string(req.Status),
+						Priority:      req.Priority,
 						ClaimedByUser: req.ClaimedByUser,
 					})
 				}
