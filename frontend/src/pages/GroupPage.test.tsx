@@ -447,6 +447,9 @@ describe('GroupPage', () => {
       expect(await screen.findByText(/Fri, Sep 25/)).toBeInTheDocument();
       expect(screen.getByText(/2:00 PM/)).toBeInTheDocument();
       expect(screen.getByText('Needs coverage')).toBeInTheDocument();
+
+      const link = screen.getByRole('link', { name: /view in schedule/i });
+      expect(link).toHaveAttribute('href', '/groups/1?view=schedule');
     });
 
     // The backend groups shifts requested together (same requester, same

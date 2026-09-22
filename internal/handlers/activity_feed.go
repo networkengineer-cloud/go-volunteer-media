@@ -71,14 +71,17 @@ type ActivityFeedSummary struct {
 // (CreateCoverageRequestsBatch loops sequentially), and that batch can be up
 // to maxBatchItems (200, see schedule_coverage.go and the frontend's
 // MAX_BATCH_ITEMS - a long-leave coverage request spanning up to 90 days is
-// a real, designed-for use case, not a hypothetical). Each row's own
-// transaction is normally fast, but the DB runs on a burstable tier
-// (B_Standard_B1ms) that can be considerably slower after being idle, so
-// this window is sized to comfortably cover even a slow 200-item batch
-// end-to-end (900ms/row) rather than just a typical one, while staying short
+// a real, designed-for use case, not a hypothetical). A single row's
+// transaction (2 selects + 1 insert) is normally well under 100ms, but the
+// DB runs on a burstable tier (B_Standard_B1ms) that throttles toward its
+// baseline performance once its CPU credits are exhausted under sustained
+// load - a 200-item batch is exactly that kind of sustained load. 10
+// minutes gives ~3s/row of margin end-to-end (600s / 199 gaps between the
+// first and last row) even in that degraded case - genuine headroom, not
+// just barely covering the typical-case estimate - while staying short
 // enough that two genuinely separate submissions from the same person still
 // rarely collide.
-const coverageRequestBatchWindow = 3 * time.Minute
+const coverageRequestBatchWindow = 10 * time.Minute
 
 // groupCoverageRequests buckets ShiftCoverageRequest rows into the groups
 // that should render as a single coverage_request activity item: consecutive
