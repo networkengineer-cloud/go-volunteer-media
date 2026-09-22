@@ -666,6 +666,47 @@ describe('GroupPage', () => {
       expect(screen.getByText('Claimed by sam')).toHaveClass('activity-coverage-request-status--claimed');
     });
 
+    // A shift can come back with status "claimed" but no claimed_by_user -
+    // e.g. the claiming user was soft-deleted, so GORM's default Preload
+    // excludes them and the backend omits the field. The row already falls
+    // back to "Needs coverage" text in that case; the pill's color must
+    // fall back the same way; a green pill next to "Needs coverage" text
+    // would contradict itself.
+    it('renders the open (not claimed) pill when a shift is marked claimed but has no resolved claimer', async () => {
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            coverage_shifts: [
+              { id: 10, date: '2026-09-25', hour: 14, status: 'claimed' },
+              { id: 11, date: '2026-09-26', hour: 9, status: 'open' },
+            ],
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      const statuses = await screen.findAllByText('Needs coverage');
+      expect(statuses).toHaveLength(2);
+      statuses.forEach((status) => expect(status).toHaveClass('activity-coverage-request-status--open'));
+      // The summary count should agree with the pills - a shift without a
+      // resolved claimer isn't meaningfully "claimed" from a volunteer's
+      // point of view, so both shifts here count as still open.
+      expect(screen.getByText('2 shifts still need a volunteer — can you help?')).toBeInTheDocument();
+    });
+
     // A large batch (the backend allows up to 300 shifts per batch) used to
     // dump every row into one ever-growing card. Collapse it behind a
     // "Show N more" toggle so the feed stays scannable.

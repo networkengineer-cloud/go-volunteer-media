@@ -1212,8 +1212,8 @@
 
 .activity-coverage-request-status--open {
   color: var(--warning-600, #d97706);
-  background: color-mix(in srgb, var(--warning, #f59e0b) 18%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warning, #f59e0b) 45%, transparent);
+  background: var(--warning-badge-bg, color-mix(in srgb, var(--warning, #f59e0b) 18%, transparent));
+  border: 1px solid var(--warning-badge-border, color-mix(in srgb, var(--warning, #f59e0b) 45%, transparent));
 }
 
 .activity-coverage-request-status--claimed {
@@ -1236,10 +1236,6 @@
 
 .activity-coverage-request-toggle:hover {
   text-decoration: underline;
-}
-
-.activity-coverage-request-toggle + .activity-coverage-request-toggle {
-  margin-left: 1rem;
 }
 
 .activity-image {

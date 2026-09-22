@@ -36,8 +36,18 @@ const NAME_SEARCH_DEBOUNCE_MS = 400;
 // behind a "Show more" toggle, so one big batch doesn't dominate the feed.
 const COVERAGE_SHIFT_COLLAPSE_THRESHOLD = 8;
 
+// A shift's status can be "claimed" with no resolved claimed_by_user - e.g.
+// the claiming user was soft-deleted, so the backend's default Preload
+// excludes them and omits the field entirely. From a volunteer's point of
+// view that shift still needs a person, so treat it as open everywhere
+// (pill color, status text, and the summary counts) rather than letting the
+// two disagree.
+function isShiftCovered(shift: CoverageRequestShift): boolean {
+  return shift.status === 'claimed' && !!shift.claimed_by_user;
+}
+
 function summarizeCoverageShifts(shifts: CoverageRequestShift[]): string {
-  const claimedCount = shifts.filter((shift) => shift.status === 'claimed').length;
+  const claimedCount = shifts.filter(isShiftCovered).length;
   const openCount = shifts.length - claimedCount;
   if (openCount === 0) {
     return `All ${claimedCount} shifts are covered — thank you!`;
@@ -67,11 +77,11 @@ const CoverageShiftList: React.FC<{ shifts: CoverageRequestShift[] }> = ({ shift
             </span>
             <span
               className={`activity-coverage-request-status activity-coverage-request-status--${
-                shift.status === 'claimed' ? 'claimed' : 'open'
+                isShiftCovered(shift) ? 'claimed' : 'open'
               }`}
             >
-              {shift.status === 'claimed' && shift.claimed_by_user
-                ? `Claimed by ${formatDisplayName(shift.claimed_by_user)}`
+              {isShiftCovered(shift)
+                ? `Claimed by ${formatDisplayName(shift.claimed_by_user!)}`
                 : 'Needs coverage'}
             </span>
           </li>
