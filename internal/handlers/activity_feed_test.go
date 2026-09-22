@@ -591,3 +591,47 @@ func TestGetGroupActivityFeed_CoverageRequestGroupSpanIsCappedAtBatchWindow(t *t
 		t.Fatalf("expected a %s total span to split into 2 groups (rows 0-1 within the window of row 0, rows 2-3 within the window of row 2 but not row 0), got %d: %v", 3*step, len(coverageItems), body["items"])
 	}
 }
+
+// TestGetGroupActivityFeed_CoverageRequestsAreCappedAtFetchLimit guards
+// against the unbounded-forever-growing query this cap exists to fix: an
+// open request never expires (not even once its own shift date has passed),
+// so a group's history of never-claimed, never-cancelled requests -
+// "optional" ones especially - can otherwise accumulate without limit.
+// Creates well more than coverageRequestFetchCap rows, each an hour apart
+// (comfortably outside coverageRequestBatchWindow, so none group together)
+// and asserts only coverageRequestFetchCap of them - the most recent -
+// come back.
+func TestGetGroupActivityFeed_CoverageRequestsAreCappedAtFetchLimit(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	const overCap = coverageRequestFetchCap + 50
+	for i := 0; i < overCap; i++ {
+		req := models.ShiftCoverageRequest{
+			GroupID: 1, RequestedByUserID: 1,
+			Date: base.AddDate(0, 0, i/9), Hour: 9 + i%9,
+			Status: models.CoverageRequestOpen, CreatedAt: base.Add(time.Duration(i) * time.Hour),
+		}
+		if err := db.Create(&req).Error; err != nil {
+			t.Fatalf("create coverage request %d: %v", i, err)
+		}
+	}
+
+	// limit is capped at 100 by the endpoint itself (see GetGroupActivityFeed),
+	// so the *page* of items can never directly show coverageRequestFetchCap
+	// (300) at once - total is the field that reflects the capped fetch.
+	body := fetchActivityFeed(t, db, "type=coverage_requests&limit=100")
+
+	coverageItems := itemsOfType(t, body, "coverage_request")
+	if len(coverageItems) != 100 {
+		t.Fatalf("expected a full page of 100 items, got %d", len(coverageItems))
+	}
+	if body["total"] != float64(coverageRequestFetchCap) {
+		t.Fatalf("expected total to reflect the capped fetch (%d rows created, %d cap), got %v", overCap, coverageRequestFetchCap, body["total"])
+	}
+}

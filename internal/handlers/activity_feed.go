@@ -83,6 +83,28 @@ type ActivityFeedSummary struct {
 // rarely collide.
 const coverageRequestBatchWindow = 10 * time.Minute
 
+// coverageRequestFetchCap bounds how many non-cancelled ShiftCoverageRequest
+// rows the activity feed fetches for a group, most-recent first. Nothing
+// ever expires an open request - not even once its shift date is in the
+// past - so a group's open (especially "optional") requests can otherwise
+// accumulate forever, unlike the comments query in this same handler, which
+// is already bounded to Limit(offset+limit).
+//
+// This can't use that same offset+limit bound, though: a comment row maps
+// 1:1 to a feed item, so "fetch the top offset+limit rows" trivially fetches
+// the top offset+limit items too. A coverage_request item can represent
+// several rows (see groupCoverageRequests), so bounding tightly to
+// offset+limit rows risks truncating a group mid-batch - cutting off its
+// true earliest (anchor) row would hand the item's id/created_at/requester
+// to a later row instead, the same class of identity drift already accepted
+// for the anchor-row-gets-cancelled case below. A looser, fixed cap avoids
+// making that worse while still turning "unbounded forever" into "bounded."
+// It also means totalCoverageRequests (and the total/hasMore this
+// contributes to) is an upper-bound estimate rather than a true count once
+// a group's history exceeds the cap - computing an exact total for grouped
+// data would require the same unbounded fetch this cap exists to avoid.
+const coverageRequestFetchCap = 300
+
 // groupCoverageRequests buckets ShiftCoverageRequest rows into the groups
 // that should render as a single coverage_request activity item: consecutive
 // (sorted by requester then time) rows from the same requester join the
@@ -212,6 +234,9 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		// any bounded fetch below - len(activityItems) can no longer be used
 		// for "total"/"hasMore" once the comments query is limited, since it
 		// would silently undercount past the fetched window.
+		// totalCoverageRequests (below) doesn't get the same treatment - see
+		// coverageRequestFetchCap's comment for why an exact total isn't
+		// available there without undoing the point of capping the fetch.
 		var totalAnnouncements int
 		summary := ActivityFeedSummary{}
 
@@ -278,6 +303,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			err := query.Preload("RequestedByUser").
 				Preload("ClaimedByUser").
 				Order("created_at DESC").
+				Limit(coverageRequestFetchCap).
 				Find(&coverageRequests).Error
 
 			if err != nil {
