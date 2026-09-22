@@ -1169,6 +1169,36 @@
   white-space: pre-wrap;
 }
 
+.activity-coverage-request-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.activity-coverage-request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+}
+
+.activity-coverage-request-shift {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.activity-coverage-request-status {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 .activity-image {
   max-width: 100%;
   height: auto;

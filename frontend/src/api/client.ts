@@ -392,6 +392,14 @@ export interface DuplicateNameInfo {
   has_duplicates: boolean;
 }
 
+export interface CoverageRequestShift {
+  id: number;
+  date: string;
+  hour: number;
+  status: string;
+  claimed_by_user?: User;
+}
+
 export interface ActivityItem {
   id: number;
   type: 'comment' | 'announcement' | 'coverage_request';
@@ -406,10 +414,9 @@ export interface ActivityItem {
   animal?: Animal;
   tags?: CommentTag[];
   metadata?: SessionMetadata;
-  date?: string;
-  hour?: number;
-  status?: string;
-  claimed_by_user?: User;
+  // For coverage_request items - one or more shifts requested together
+  // (a single request, or a batch submitted at the same time).
+  coverage_shifts?: CoverageRequestShift[];
 }
 
 export interface ActivityFeedResponse {

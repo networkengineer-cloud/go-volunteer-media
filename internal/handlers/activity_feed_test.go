@@ -221,6 +221,22 @@ func itemsOfType(t *testing.T, body map[string]interface{}, itemType string) []m
 	return matched
 }
 
+// singleShift asserts a coverage_request item's coverage_shifts array has
+// exactly one entry and returns it, for tests exercising a single (ungrouped)
+// request.
+func singleShift(t *testing.T, item map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	shifts, _ := item["coverage_shifts"].([]interface{})
+	if len(shifts) != 1 {
+		t.Fatalf("expected exactly 1 shift in coverage_shifts, got %d: %v", len(shifts), item["coverage_shifts"])
+	}
+	shift, ok := shifts[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected coverage_shifts[0] to be an object, got %v", shifts[0])
+	}
+	return shift
+}
+
 func TestGetGroupActivityFeed_IncludesOpenCoverageRequest(t *testing.T) {
 	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
 	db := setupActivityFeedTestDB(t)
@@ -246,15 +262,23 @@ func TestGetGroupActivityFeed_IncludesOpenCoverageRequest(t *testing.T) {
 	if len(coverageItems) != 1 {
 		t.Fatalf("expected exactly 1 coverage_request item, got %d: %v", len(coverageItems), body["items"])
 	}
-	item := coverageItems[0]
-	if item["status"] != "open" {
-		t.Fatalf("expected status \"open\", got %v", item["status"])
+	shift := singleShift(t, coverageItems[0])
+	if shift["status"] != "open" {
+		t.Fatalf("expected status \"open\", got %v", shift["status"])
 	}
-	if item["claimed_by_user"] != nil {
-		t.Fatalf("expected no claimed_by_user on an open request, got %v", item["claimed_by_user"])
+	if shift["claimed_by_user"] != nil {
+		t.Fatalf("expected no claimed_by_user on an open request, got %v", shift["claimed_by_user"])
 	}
-	if item["hour"] != float64(9) {
-		t.Fatalf("expected hour=9, got %v", item["hour"])
+	if shift["hour"] != float64(9) {
+		t.Fatalf("expected hour=9, got %v", shift["hour"])
+	}
+	// Regression: a raw time.Time here marshals as a full RFC3339 timestamp
+	// ("2026-09-12T00:00:00Z"), not the plain date scheduleGrid.ts's
+	// formatDateLabel/dayOfWeekFromIso expect - they append their own
+	// "T00:00:00Z" suffix, so a timestamp value here double-suffixes into an
+	// invalid date string on the frontend.
+	if shift["date"] != "2026-09-12" {
+		t.Fatalf("expected date=\"2026-09-12\" (date-only, not a timestamp), got %v", shift["date"])
 	}
 }
 
@@ -289,13 +313,13 @@ func TestGetGroupActivityFeed_ClaimedCoverageRequestIncludesClaimer(t *testing.T
 	if len(coverageItems) != 1 {
 		t.Fatalf("expected exactly 1 coverage_request item, got %d: %v", len(coverageItems), body["items"])
 	}
-	item := coverageItems[0]
-	if item["status"] != "claimed" {
-		t.Fatalf("expected status \"claimed\", got %v", item["status"])
+	shift := singleShift(t, coverageItems[0])
+	if shift["status"] != "claimed" {
+		t.Fatalf("expected status \"claimed\", got %v", shift["status"])
 	}
-	claimedByUser, ok := item["claimed_by_user"].(map[string]interface{})
+	claimedByUser, ok := shift["claimed_by_user"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected claimed_by_user to be present on a claimed request, got %v", item["claimed_by_user"])
+		t.Fatalf("expected claimed_by_user to be present on a claimed request, got %v", shift["claimed_by_user"])
 	}
 	if uint(claimedByUser["id"].(float64)) != claimer.ID {
 		t.Fatalf("expected claimed_by_user.id=%d, got %v", claimer.ID, claimedByUser["id"])
@@ -389,5 +413,225 @@ func TestGetGroupActivityFeed_CoverageRequestsHiddenByDefault(t *testing.T) {
 	items, _ := body["items"].([]interface{})
 	if len(items) != 0 {
 		t.Fatalf("expected type=coverage_requests to return nothing under the default-disabled flag, got %v", items)
+	}
+}
+
+// TestGetGroupActivityFeed_GroupsBatchedCoverageRequestsFromSameRequester
+// covers the main case groupCoverageRequests exists for: a single batch
+// submission (CreateCoverageRequestsBatch) creates several
+// ShiftCoverageRequest rows in quick succession, and the feed should show
+// that as one card listing every shift, not one card per row.
+func TestGetGroupActivityFeed_GroupsBatchedCoverageRequestsFromSameRequester(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	first := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 15,
+		Status: models.CoverageRequestOpen, CreatedAt: base,
+	}
+	second := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 14,
+		Status: models.CoverageRequestOpen, CreatedAt: base.Add(3 * time.Second),
+	}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create first coverage request: %v", err)
+	}
+	if err := db.Create(&second).Error; err != nil {
+		t.Fatalf("create second coverage request: %v", err)
+	}
+
+	body := fetchActivityFeed(t, db, "")
+
+	coverageItems := itemsOfType(t, body, "coverage_request")
+	if len(coverageItems) != 1 {
+		t.Fatalf("expected the two batched requests to collapse into 1 item, got %d: %v", len(coverageItems), body["items"])
+	}
+	shifts, _ := coverageItems[0]["coverage_shifts"].([]interface{})
+	if len(shifts) != 2 {
+		t.Fatalf("expected 2 shifts in the grouped item, got %d: %v", len(shifts), coverageItems[0]["coverage_shifts"])
+	}
+	// Display order is by date/hour, not creation order, so the 14:00 shift
+	// (created second) should come first.
+	if shifts[0].(map[string]interface{})["hour"] != float64(14) {
+		t.Fatalf("expected shifts sorted by hour, got %v", shifts)
+	}
+	if shifts[1].(map[string]interface{})["hour"] != float64(15) {
+		t.Fatalf("expected shifts sorted by hour, got %v", shifts)
+	}
+
+	// Scoped to just coverage requests, total should count the group once,
+	// not the 2 underlying rows - it drives this endpoint's pagination.
+	scoped := fetchActivityFeed(t, db, "type=coverage_requests")
+	if scoped["total"] != float64(1) {
+		t.Fatalf("expected total to count the group once, got %v", scoped["total"])
+	}
+}
+
+// TestGetGroupActivityFeed_DoesNotGroupCoverageRequestsAcrossBatchWindow
+// ensures two requests from the same person well outside
+// coverageRequestBatchWindow of each other are treated as separate actions,
+// not merged into one card.
+func TestGetGroupActivityFeed_DoesNotGroupCoverageRequestsAcrossBatchWindow(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	first := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 14,
+		Status: models.CoverageRequestOpen, CreatedAt: base,
+	}
+	second := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date: time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC), Hour: 14,
+		Status: models.CoverageRequestOpen, CreatedAt: base.Add(coverageRequestBatchWindow + time.Second),
+	}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create first coverage request: %v", err)
+	}
+	if err := db.Create(&second).Error; err != nil {
+		t.Fatalf("create second coverage request: %v", err)
+	}
+
+	body := fetchActivityFeed(t, db, "")
+
+	coverageItems := itemsOfType(t, body, "coverage_request")
+	if len(coverageItems) != 2 {
+		t.Fatalf("expected 2 separate items outside the batch window, got %d: %v", len(coverageItems), body["items"])
+	}
+}
+
+// TestGetGroupActivityFeed_DoesNotGroupCoverageRequestsAcrossRequesters
+// ensures two different people requesting coverage at the same instant never
+// merge into one card, even though the timing alone would otherwise chain
+// them.
+func TestGetGroupActivityFeed_DoesNotGroupCoverageRequestsAcrossRequesters(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	otherUser := models.User{Username: "otherrequester", Email: "other@example.com", Password: "hashedpassword"}
+	if err := db.Create(&otherUser).Error; err != nil {
+		t.Fatalf("create other user: %v", err)
+	}
+
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	first := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 14,
+		Status: models.CoverageRequestOpen, CreatedAt: base,
+	}
+	second := models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: otherUser.ID,
+		Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 15,
+		Status: models.CoverageRequestOpen, CreatedAt: base,
+	}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create first coverage request: %v", err)
+	}
+	if err := db.Create(&second).Error; err != nil {
+		t.Fatalf("create second coverage request: %v", err)
+	}
+
+	body := fetchActivityFeed(t, db, "")
+
+	coverageItems := itemsOfType(t, body, "coverage_request")
+	if len(coverageItems) != 2 {
+		t.Fatalf("expected 2 separate items across different requesters, got %d: %v", len(coverageItems), body["items"])
+	}
+}
+
+// TestGetGroupActivityFeed_CoverageRequestGroupSpanIsCappedAtBatchWindow
+// guards against chaining off only the previous row: four single requests,
+// each spaced just under coverageRequestBatchWindow/2 apart (well inside the
+// window pairwise) but well over the window apart end-to-end, must NOT all
+// collapse into one group - only into 2, since rows 0-1 and rows 2-3 are
+// each within the window of their own group's first row, but row 2 is not
+// within the window of row 0. Spacing is derived from the constant itself
+// so this test keeps testing the same relationship if the window changes.
+func TestGetGroupActivityFeed_CoverageRequestGroupSpanIsCappedAtBatchWindow(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	step := coverageRequestBatchWindow/2 + time.Second
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < 4; i++ {
+		req := models.ShiftCoverageRequest{
+			GroupID: 1, RequestedByUserID: 1,
+			Date: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), Hour: 9 + i,
+			Status: models.CoverageRequestOpen, CreatedAt: base.Add(time.Duration(i) * step),
+		}
+		if err := db.Create(&req).Error; err != nil {
+			t.Fatalf("create coverage request %d: %v", i, err)
+		}
+	}
+
+	body := fetchActivityFeed(t, db, "")
+
+	coverageItems := itemsOfType(t, body, "coverage_request")
+	if len(coverageItems) != 2 {
+		t.Fatalf("expected a %s total span to split into 2 groups (rows 0-1 within the window of row 0, rows 2-3 within the window of row 2 but not row 0), got %d: %v", 3*step, len(coverageItems), body["items"])
+	}
+}
+
+// TestGetGroupActivityFeed_CoverageRequestsAreCappedAtFetchLimit guards
+// against the unbounded-forever-growing query this cap exists to fix: an
+// open request never expires (not even once its own shift date has passed),
+// so a group's history of never-claimed, never-cancelled requests -
+// "optional" ones especially - can otherwise accumulate without limit.
+// Creates well more than coverageRequestFetchCap rows, each an hour apart
+// (comfortably outside coverageRequestBatchWindow, so none group together)
+// and asserts only coverageRequestFetchCap of them - the most recent -
+// come back.
+func TestGetGroupActivityFeed_CoverageRequestsAreCappedAtFetchLimit(t *testing.T) {
+	t.Setenv("COVERAGE_REQUESTS_FEED_ENABLED", "true")
+	db := setupActivityFeedTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	const overCap = coverageRequestFetchCap + 50
+	for i := 0; i < overCap; i++ {
+		req := models.ShiftCoverageRequest{
+			GroupID: 1, RequestedByUserID: 1,
+			Date: base.AddDate(0, 0, i/9), Hour: 9 + i%9,
+			Status: models.CoverageRequestOpen, CreatedAt: base.Add(time.Duration(i) * time.Hour),
+		}
+		if err := db.Create(&req).Error; err != nil {
+			t.Fatalf("create coverage request %d: %v", i, err)
+		}
+	}
+
+	// limit is capped at 100 by the endpoint itself (see GetGroupActivityFeed),
+	// so the *page* of items can never directly show coverageRequestFetchCap
+	// (300) at once - total is the field that reflects the capped fetch.
+	body := fetchActivityFeed(t, db, "type=coverage_requests&limit=100")
+
+	coverageItems := itemsOfType(t, body, "coverage_request")
+	if len(coverageItems) != 100 {
+		t.Fatalf("expected a full page of 100 items, got %d", len(coverageItems))
+	}
+	if body["total"] != float64(coverageRequestFetchCap) {
+		t.Fatalf("expected total to reflect the capped fetch (%d rows created, %d cap), got %v", overCap, coverageRequestFetchCap, body["total"])
 	}
 }

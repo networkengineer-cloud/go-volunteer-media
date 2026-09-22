@@ -142,6 +142,19 @@ func displayName(u models.User) string {
 	return u.Username
 }
 
+// sortShiftsByDateHour sorts coverage requests into date/hour order - the
+// order a person reading a list of their own shifts would expect,
+// independent of creation or claim order. Shared by the batch-claim
+// notification's shift summary and the activity feed's grouped display.
+func sortShiftsByDateHour(requests []models.ShiftCoverageRequest) {
+	sort.Slice(requests, func(i, j int) bool {
+		if !requests[i].Date.Equal(requests[j].Date) {
+			return requests[i].Date.Before(requests[j].Date)
+		}
+		return requests[i].Hour < requests[j].Hour
+	})
+}
+
 // buildCoverageRequestSummary renders one requester's currently-open
 // coverage requests as a single bulk notification body, so a member with
 // several shifts needing coverage produces one accurate email/GroupMe post
@@ -1510,12 +1523,7 @@ func notifyRequesterOfClaimBatch(db *gorm.DB, emailService *email.Service, group
 		}
 
 		sorted := append([]models.ShiftCoverageRequest(nil), claims...)
-		sort.Slice(sorted, func(i, j int) bool {
-			if !sorted[i].Date.Equal(sorted[j].Date) {
-				return sorted[i].Date.Before(sorted[j].Date)
-			}
-			return sorted[i].Hour < sorted[j].Hour
-		})
+		sortShiftsByDateHour(sorted)
 		shiftLabels := make([]string, 0, len(sorted))
 		for _, claim := range sorted {
 			shiftLabels = append(shiftLabels, fmt.Sprintf("%s on %s",

@@ -7,6 +7,7 @@ import type { Group, Animal, GroupMembership, ActivityItem, GroupMember, UserSki
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { useDebounce } from '../hooks/useDebounce';
+import { formatDateLabel, formatSlotRangeLabel, dayOfWeekFromIso } from './group/scheduleGrid';
 import SessionCommentDisplay from '../components/SessionCommentDisplay';
 import AnnouncementForm from '../components/AnnouncementForm';
 import EmptyState from '../components/EmptyState';
@@ -1060,6 +1061,23 @@ const GroupPage: React.FC = () => {
 
                     {activity.type === 'comment' ? (
                       <SessionCommentDisplay comment={activity as any} />
+                    ) : activity.type === 'coverage_request' ? (
+                      activity.coverage_shifts && activity.coverage_shifts.length > 0 && (
+                        <ul className="activity-coverage-request-list">
+                          {activity.coverage_shifts.map((shift) => (
+                            <li key={shift.id} className="activity-coverage-request">
+                              <span className="activity-coverage-request-shift">
+                                {formatDateLabel(shift.date)} &middot; {formatSlotRangeLabel(dayOfWeekFromIso(shift.date), shift.hour)}
+                              </span>
+                              <span className="activity-coverage-request-status">
+                                {shift.status === 'claimed' && shift.claimed_by_user
+                                  ? `Claimed by ${formatDisplayName(shift.claimed_by_user)}`
+                                  : 'Needs coverage'}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )
                     ) : (
                       <p className="activity-text">{activity.content}</p>
                     )}
@@ -1069,11 +1087,16 @@ const GroupPage: React.FC = () => {
                     )}
                   </div>
 
-                  {(activity.animal || canDeleteAnnouncement) && (
+                  {(activity.animal || canDeleteAnnouncement || activity.type === 'coverage_request') && (
                     <div className="activity-footer">
                       {activity.animal && (
                         <Link to={`/groups/${id}/animals/${activity.animal.id}/view`} className="btn-view-profile">
                           View {activity.animal.name}'s Profile →
+                        </Link>
+                      )}
+                      {activity.type === 'coverage_request' && (
+                        <Link to={`/groups/${id}?view=schedule`} className="btn-view-profile">
+                          View in schedule →
                         </Link>
                       )}
                       {canDeleteAnnouncement && (

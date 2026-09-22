@@ -23,22 +23,38 @@ func coverageRequestsFeedEnabled() bool {
 
 // ActivityItem represents a unified activity feed item
 type ActivityItem struct {
-	ID            uint                    `json:"id"`
-	Type          string                  `json:"type"` // "comment", "announcement", "coverage_request"
-	CreatedAt     time.Time               `json:"created_at"`
-	UserID        uint                    `json:"user_id"`
-	User          *models.User            `json:"user,omitempty"`
-	Content       string                  `json:"content"`
-	Title         string                  `json:"title,omitempty"` // For announcements
-	ImageURL      string                  `json:"image_url,omitempty"`
-	AnimalID      *uint                   `json:"animal_id,omitempty"`       // For comments
-	Animal        *models.Animal          `json:"animal,omitempty"`          // For comments
-	Tags          []models.CommentTag     `json:"tags,omitempty"`            // For comments
-	Metadata      *models.SessionMetadata `json:"metadata,omitempty"`        // For session reports
-	Date          *time.Time              `json:"date,omitempty"`            // For coverage requests
-	Hour          *int                    `json:"hour,omitempty"`            // For coverage requests
-	Status        *string                 `json:"status,omitempty"`          // For coverage requests
-	ClaimedByUser *models.User            `json:"claimed_by_user,omitempty"` // For coverage requests
+	ID             uint                    `json:"id"`
+	Type           string                  `json:"type"` // "comment", "announcement", "coverage_request"
+	CreatedAt      time.Time               `json:"created_at"`
+	UserID         uint                    `json:"user_id"`
+	User           *models.User            `json:"user,omitempty"`
+	Content        string                  `json:"content"`
+	Title          string                  `json:"title,omitempty"` // For announcements
+	ImageURL       string                  `json:"image_url,omitempty"`
+	AnimalID       *uint                   `json:"animal_id,omitempty"`       // For comments
+	Animal         *models.Animal          `json:"animal,omitempty"`          // For comments
+	Tags           []models.CommentTag     `json:"tags,omitempty"`            // For comments
+	Metadata       *models.SessionMetadata `json:"metadata,omitempty"`        // For session reports
+	CoverageShifts []CoverageRequestShift  `json:"coverage_shifts,omitempty"` // For coverage requests
+}
+
+// CoverageRequestShift is one shift within a coverage_request activity item.
+// A single item can represent several ShiftCoverageRequest rows created
+// together in the same requester action (a single request, or a batch of
+// several) - see groupCoverageRequests below for how rows get bucketed
+// together. Each shift still carries its own live status/claim state, since
+// members of a group can be claimed independently of one another.
+type CoverageRequestShift struct {
+	ID uint `json:"id"`
+	// Date-only, matching toCoverageRequestResponse in schedule_coverage.go -
+	// a raw time.Time here would marshal as a full RFC3339 timestamp, which
+	// scheduleGrid.ts's formatDateLabel/dayOfWeekFromIso (fed a "date"
+	// string with a literal "T00:00:00Z" appended) would then double-suffix
+	// into an invalid date string.
+	Date          string       `json:"date"`
+	Hour          int          `json:"hour"`
+	Status        string       `json:"status"`
+	ClaimedByUser *models.User `json:"claimed_by_user,omitempty"`
 }
 
 // ActivityFeedSummary provides quick stats about concerns
@@ -46,6 +62,95 @@ type ActivityFeedSummary struct {
 	BehaviorConcernsCount int `json:"behavior_concerns_count"`
 	MedicalConcernsCount  int `json:"medical_concerns_count"`
 	PoorSessionsCount     int `json:"poor_sessions_count"` // Sessions rated 1-2
+}
+
+// coverageRequestBatchWindow bounds how far a ShiftCoverageRequest row's
+// created_at can be from its group's first row's created_at and still count
+// as "the same batch" for feed grouping. createOneCoverageRequest runs one
+// DB transaction per row even for a multi-shift batch submission
+// (CreateCoverageRequestsBatch loops sequentially), and that batch can be up
+// to maxBatchItems (200, see schedule_coverage.go and the frontend's
+// MAX_BATCH_ITEMS - a long-leave coverage request spanning up to 90 days is
+// a real, designed-for use case, not a hypothetical). A single row's
+// transaction (2 selects + 1 insert) is normally well under 100ms, but the
+// DB runs on a burstable tier (B_Standard_B1ms) that throttles toward its
+// baseline performance once its CPU credits are exhausted under sustained
+// load - a 200-item batch is exactly that kind of sustained load. 10
+// minutes gives ~3s/row of margin end-to-end (600s / 199 gaps between the
+// first and last row) even in that degraded case - genuine headroom, not
+// just barely covering the typical-case estimate - while staying short
+// enough that two genuinely separate submissions from the same person still
+// rarely collide.
+const coverageRequestBatchWindow = 10 * time.Minute
+
+// coverageRequestFetchCap bounds how many non-cancelled ShiftCoverageRequest
+// rows the activity feed fetches for a group, most-recent first. Nothing
+// ever expires an open request - not even once its shift date is in the
+// past - so a group's open (especially "optional") requests can otherwise
+// accumulate forever, unlike the comments query in this same handler, which
+// is already bounded to Limit(offset+limit).
+//
+// This can't use that same offset+limit bound, though: a comment row maps
+// 1:1 to a feed item, so "fetch the top offset+limit rows" trivially fetches
+// the top offset+limit items too. A coverage_request item can represent
+// several rows (see groupCoverageRequests), so bounding tightly to
+// offset+limit rows risks truncating a group mid-batch - cutting off its
+// true earliest (anchor) row would hand the item's id/created_at/requester
+// to a later row instead, the same class of identity drift already accepted
+// for the anchor-row-gets-cancelled case below. A looser, fixed cap avoids
+// making that worse while still turning "unbounded forever" into "bounded."
+// It also means totalCoverageRequests (and the total/hasMore this
+// contributes to) is an upper-bound estimate rather than a true count once
+// a group's history exceeds the cap - computing an exact total for grouped
+// data would require the same unbounded fetch this cap exists to avoid.
+const coverageRequestFetchCap = 300
+
+// groupCoverageRequests buckets ShiftCoverageRequest rows into the groups
+// that should render as a single coverage_request activity item: consecutive
+// (sorted by requester then time) rows from the same requester join the
+// current group as long as each is within coverageRequestBatchWindow of that
+// group's *first* row - not just the previous row - so a group's total span
+// is capped at the window instead of being able to drift indefinitely
+// (chaining off only the previous row would let several genuinely separate,
+// closely-spaced submissions merge into one ever-growing group). This has no
+// explicit "batch ID" to key off of (the requests aren't otherwise linked),
+// so it's a best-effort reconstruction of "submitted together" from timing
+// alone - see the activity feed handler's caller for how each group becomes
+// one item. Within a group, shifts are ordered by date/hour for a stable
+// display order independent of insertion order.
+func groupCoverageRequests(requests []models.ShiftCoverageRequest) [][]models.ShiftCoverageRequest {
+	if len(requests) == 0 {
+		return nil
+	}
+
+	sorted := make([]models.ShiftCoverageRequest, len(requests))
+	copy(sorted, requests)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].RequestedByUserID != sorted[j].RequestedByUserID {
+			return sorted[i].RequestedByUserID < sorted[j].RequestedByUserID
+		}
+		return sorted[i].CreatedAt.Before(sorted[j].CreatedAt)
+	})
+
+	var groups [][]models.ShiftCoverageRequest
+	for _, req := range sorted {
+		if n := len(groups); n > 0 {
+			first := groups[n-1][0]
+			if first.RequestedByUserID == req.RequestedByUserID && req.CreatedAt.Sub(first.CreatedAt) <= coverageRequestBatchWindow {
+				groups[n-1] = append(groups[n-1], req)
+				continue
+			}
+		}
+		groups = append(groups, []models.ShiftCoverageRequest{req})
+	}
+
+	// Each group's slice stays ordered by CreatedAt ascending (from the sort
+	// above) so group[0] is reliably its earliest-created member - the
+	// caller uses that row for the item's ID/CreatedAt/requester. groups
+	// itself is left in that same bucketing order (not re-sorted newest
+	// first) since GetGroupActivityFeed re-sorts the full combined
+	// activityItems slice by CreatedAt before returning anyway.
+	return groups
 }
 
 // GetGroupActivityFeed returns a unified activity feed combining updates/announcements and comments
@@ -129,6 +234,9 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 		// any bounded fetch below - len(activityItems) can no longer be used
 		// for "total"/"hasMore" once the comments query is limited, since it
 		// would silently undercount past the fetched window.
+		// totalCoverageRequests (below) doesn't get the same treatment - see
+		// coverageRequestFetchCap's comment for why an exact total isn't
+		// available there without undoing the point of capping the fetch.
 		var totalAnnouncements int
 		summary := ActivityFeedSummary{}
 
@@ -195,26 +303,40 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			err := query.Preload("RequestedByUser").
 				Preload("ClaimedByUser").
 				Order("created_at DESC").
+				Limit(coverageRequestFetchCap).
 				Find(&coverageRequests).Error
 
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch coverage requests"})
 				return
 			}
-			totalCoverageRequests = len(coverageRequests)
+			groups := groupCoverageRequests(coverageRequests)
+			totalCoverageRequests = len(groups)
 
-			for _, req := range coverageRequests {
-				status := string(req.Status)
+			for _, group := range groups {
+				// first is captured (by value) before sorting group in
+				// place for display order below - group itself is never
+				// read again after this point, so no separate copy is
+				// needed just to reorder it.
+				first := group[0]
+				sortShiftsByDateHour(group)
+				shifts := make([]CoverageRequestShift, 0, len(group))
+				for _, req := range group {
+					shifts = append(shifts, CoverageRequestShift{
+						ID:            req.ID,
+						Date:          req.Date.Format("2006-01-02"),
+						Hour:          req.Hour,
+						Status:        string(req.Status),
+						ClaimedByUser: req.ClaimedByUser,
+					})
+				}
 				activityItems = append(activityItems, ActivityItem{
-					ID:            req.ID,
-					Type:          "coverage_request",
-					CreatedAt:     req.CreatedAt,
-					UserID:        req.RequestedByUserID,
-					User:          &req.RequestedByUser,
-					Date:          &req.Date,
-					Hour:          &req.Hour,
-					Status:        &status,
-					ClaimedByUser: req.ClaimedByUser,
+					ID:             first.ID,
+					Type:           "coverage_request",
+					CreatedAt:      first.CreatedAt,
+					UserID:         first.RequestedByUserID,
+					User:           &first.RequestedByUser,
+					CoverageShifts: shifts,
 				})
 			}
 		}
