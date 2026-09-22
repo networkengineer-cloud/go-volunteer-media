@@ -82,8 +82,10 @@ crash.log
 crash.*.log
 
 # Claude AI
-.claude/
-CLAUDE.md
+# Project guidance (CLAUDE.md) and skills are tracked and shared.
+# Local settings and worktrees are not.
+.claude/*
+!.claude/skills/
 
 .worktrees/
 
