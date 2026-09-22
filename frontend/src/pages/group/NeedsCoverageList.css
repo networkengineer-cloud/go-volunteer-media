@@ -172,8 +172,8 @@
   text-transform: uppercase;
   letter-spacing: 0.02em;
   padding: 0.1rem 0.5rem;
-  background: color-mix(in srgb, var(--warning, #f59e0b) 18%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warning, #f59e0b) 45%, transparent);
+  background: var(--warning-badge-bg, color-mix(in srgb, var(--warning, #f59e0b) 18%, transparent));
+  border: 1px solid var(--warning-badge-border, color-mix(in srgb, var(--warning, #f59e0b) 45%, transparent));
   border-radius: 999px;
 }
 

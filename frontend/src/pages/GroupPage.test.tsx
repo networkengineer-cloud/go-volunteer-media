@@ -490,6 +490,264 @@ describe('GroupPage', () => {
       expect(screen.getByText('Needs coverage')).toBeInTheDocument();
       expect(screen.getByText('Claimed by sam')).toBeInTheDocument();
     });
+
+    // A batch of several shifts used to give no sense of how many were open
+    // vs. already spoken for without reading every row - a summary line
+    // should total that up. It deliberately does NOT call out who has or
+    // hasn't claimed a shift yet here (e.g. "thanks to those who already
+    // helped") - paired with "still need a volunteer" that reads as an
+    // implicit dig at whoever hasn't claimed one, which isn't the intent.
+    it('invites help in the summary for a batched coverage_request item with some shifts already claimed', async () => {
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            coverage_shifts: [
+              { id: 10, date: '2026-09-25', hour: 14, status: 'open' },
+              { id: 11, date: '2026-09-26', hour: 9, status: 'open' },
+              {
+                id: 12, date: '2026-09-27', hour: 9, status: 'claimed',
+                claimed_by_user: { id: 3, username: 'sam', email: 'sam@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+              },
+            ],
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(await screen.findByText('2 shifts still need a volunteer — can you help?')).toBeInTheDocument();
+    });
+
+    // With nobody claimed yet, the summary should read as an invitation
+    // rather than the more measured "thanks, X already claimed" phrasing
+    // used once someone has.
+    it('invites help in the summary when no shifts in the batch are claimed yet', async () => {
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            coverage_shifts: [
+              { id: 10, date: '2026-09-25', hour: 14, status: 'open' },
+              { id: 11, date: '2026-09-26', hour: 9, status: 'open' },
+            ],
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(await screen.findByText('2 shifts still need a volunteer — can you help?')).toBeInTheDocument();
+    });
+
+    // Once every shift in a batch is claimed, the summary should say thanks
+    // rather than keep listing a claim count.
+    it('thanks the group in the summary once every shift in the batch is claimed', async () => {
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            coverage_shifts: [
+              {
+                id: 10, date: '2026-09-25', hour: 14, status: 'claimed',
+                claimed_by_user: { id: 3, username: 'sam', email: 'sam@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+              },
+              {
+                id: 11, date: '2026-09-26', hour: 9, status: 'claimed',
+                claimed_by_user: { id: 3, username: 'sam', email: 'sam@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+              },
+            ],
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(await screen.findByText('All 2 shifts are covered — thank you!')).toBeInTheDocument();
+    });
+
+    // A single-shift item repeats the same information in its one row, so
+    // the summary line would be redundant clutter there.
+    it('omits the summary line for a single-shift coverage_request item', async () => {
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            coverage_shifts: [
+              { id: 10, date: '2026-09-25', hour: 14, status: 'open' },
+            ],
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByText(/Fri, Sep 25/);
+
+      expect(screen.queryByText(/still need a volunteer|already stepped up|covered — thank you/)).not.toBeInTheDocument();
+    });
+
+    // The status text used to be plain, unstyled text - it should now carry
+    // an open/claimed modifier class so CSS can render it as a colored pill,
+    // matching the badge treatment used elsewhere on the page (tag-badge,
+    // session-rating-badge, the schedule tab's priority badge).
+    it('marks each shift status with an open/claimed modifier class for pill styling', async () => {
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            coverage_shifts: [
+              { id: 10, date: '2026-09-25', hour: 14, status: 'open' },
+              {
+                id: 11, date: '2026-09-26', hour: 9, status: 'claimed',
+                claimed_by_user: { id: 3, username: 'sam', email: 'sam@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+              },
+            ],
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(await screen.findByText('Needs coverage')).toHaveClass('activity-coverage-request-status--open');
+      expect(screen.getByText('Claimed by sam')).toHaveClass('activity-coverage-request-status--claimed');
+    });
+
+    // A shift can come back with status "claimed" but no claimed_by_user -
+    // e.g. the claiming user was soft-deleted, so GORM's default Preload
+    // excludes them and the backend omits the field. The row already falls
+    // back to "Needs coverage" text in that case; the pill's color must
+    // fall back the same way; a green pill next to "Needs coverage" text
+    // would contradict itself.
+    it('renders the open (not claimed) pill when a shift is marked claimed but has no resolved claimer', async () => {
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            coverage_shifts: [
+              { id: 10, date: '2026-09-25', hour: 14, status: 'claimed' },
+              { id: 11, date: '2026-09-26', hour: 9, status: 'open' },
+            ],
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      const statuses = await screen.findAllByText('Needs coverage');
+      expect(statuses).toHaveLength(2);
+      statuses.forEach((status) => expect(status).toHaveClass('activity-coverage-request-status--open'));
+      // The summary count should agree with the pills - a shift without a
+      // resolved claimer isn't meaningfully "claimed" from a volunteer's
+      // point of view, so both shifts here count as still open.
+      expect(screen.getByText('2 shifts still need a volunteer — can you help?')).toBeInTheDocument();
+    });
+
+    // A large batch (the backend allows up to 300 shifts per batch) used to
+    // dump every row into one ever-growing card. Collapse it behind a
+    // "Show N more" toggle so the feed stays scannable.
+    it('collapses a large batch of shifts behind a "Show more" toggle', async () => {
+      const manyShifts = Array.from({ length: 10 }, (_, i) => ({
+        id: 100 + i,
+        date: `2026-10-${String(i + 1).padStart(2, '0')}`,
+        hour: 12,
+        status: 'open',
+      }));
+
+      vi.mocked(groupsApi.getActivityFeed).mockResolvedValue({
+        data: {
+          items: [{
+            id: 1,
+            type: 'coverage_request',
+            created_at: '2026-09-01T12:00:00Z',
+            user_id: 2,
+            user: { id: 2, username: 'jane', email: 'jane@example.com', phone_number: '', hide_email: false, hide_phone_number: false, is_admin: false },
+            content: '',
+            coverage_shifts: manyShifts,
+          }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+          hasMore: false,
+          summary: {},
+        },
+      } as unknown as AxiosResponse);
+
+      renderGroupPage();
+      await screen.findByLabelText('Filter activity by type');
+
+      expect(await screen.findAllByText('Needs coverage')).toHaveLength(8);
+      const toggle = screen.getByRole('button', { name: 'Show 2 more' });
+
+      fireEvent.click(toggle);
+
+      expect(await screen.findAllByText('Needs coverage')).toHaveLength(10);
+      expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+    });
   });
 
   // Regression coverage for a request-cancellation gap found while verifying

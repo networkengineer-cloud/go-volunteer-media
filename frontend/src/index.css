@@ -32,6 +32,12 @@
   --info: #3b82f6; /* Blue */
   --info-600: #2563eb;
 
+  /* Warning "pill" badge treatment (background/border tint over --warning) -
+     shared by the schedule tab's priority badge and the activity feed's
+     coverage-status pill, so a future tweak to the tint only needs one edit. */
+  --warning-badge-bg: color-mix(in srgb, var(--warning) 18%, transparent);
+  --warning-badge-border: color-mix(in srgb, var(--warning) 45%, transparent);
+
   /* Neutral Grays */
   --bg: #f9fafb;
   --surface: #ffffff;
