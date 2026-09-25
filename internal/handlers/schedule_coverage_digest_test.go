@@ -478,3 +478,93 @@ func TestReopenCoverageRequest_DoesNotLeaveWorkForTheDigestSweep(t *testing.T) {
 		t.Errorf("reopen already announced this request; expected the sweep to stay quiet, got %d notification(s)", got)
 	}
 }
+
+// Round-2 finding 1. The reopen stamps rows so the digest sweep won't
+// re-announce what it just announced - but the announcement it fires sends
+// the requester's COMPLETE open list, not just the reopened shift. Stamping
+// only the reopened row leaves any sibling still in the digest queue to be
+// announced a second time, byte-identical, a few minutes later. The stamp
+// has to cover what the announcement actually covered.
+func TestReopenCoverageRequest_StampsEveryShiftItsAnnouncementCovered(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, claimant, group := setupCoverageTestGroup(t, db)
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+
+	// A sibling shift the requester flagged a minute ago: still unannounced,
+	// still sitting in the digest queue.
+	sibling := createDigestRequest(t, db, group.ID, requester.ID, 11, time.Minute)
+
+	// A different shift of theirs, previously claimed, now handed back.
+	reopened := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+	if err := db.Model(reopened).Updates(map[string]interface{}{
+		"status":             models.CoverageRequestClaimed,
+		"claimed_by_user_id": claimant.ID,
+		"claimed_at":         time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("Failed to claim: %v", err)
+	}
+	if w := performReopenCoverageRequest(db, claimant.ID, false, group.ID, reopened.ID); w.Code != 200 {
+		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// The reopen's announcement listed both shifts, so both are now told.
+	var stillPending int64
+	db.Model(&models.ShiftCoverageRequest{}).
+		Where("group_id = ? AND requested_by_user_id = ? AND notified_at IS NULL", group.ID, requester.ID).
+		Count(&stillPending)
+	if stillPending != 0 {
+		t.Errorf("expected the reopen to stamp every shift its announcement listed, %d left pending", stillPending)
+	}
+
+	// Age the sibling past the quiet period: the sweep must stay quiet.
+	if err := db.Model(&models.ShiftCoverageRequest{}).Where("id = ?", sibling.ID).
+		UpdateColumn("created_at", time.Now().Add(-10*time.Minute)).Error; err != nil {
+		t.Fatalf("Failed to backdate sibling: %v", err)
+	}
+	rec := &notifyRecorder{}
+	sweepCoverageDigests(db, rec.record)
+
+	if got := rec.count(); got != 0 {
+		t.Errorf("the reopen already announced these shifts; expected no second announcement, got %d", got)
+	}
+}
+
+// Round-2 finding 2. The reopen announces off-request so the caller isn't
+// blocked on email delivery, but that goroutine writes to the database after
+// the handler returns. Shutdown must drain it, exactly as it drains the
+// write-path embed goroutines - otherwise the pool closes mid-send and the
+// announcement is lost with its rows already stamped.
+func TestWaitForPendingCoverageNotifications_DrainsInFlightSends(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	finished := make(chan struct{})
+
+	trackCoverageNotification(func() {
+		close(started)
+		<-release
+		close(finished)
+	})
+
+	<-started
+
+	drained := make(chan struct{})
+	go func() {
+		WaitForPendingCoverageNotifications()
+		close(drained)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-drained:
+		t.Fatal("WaitForPendingCoverageNotifications returned while a send was still in flight")
+	default:
+	}
+
+	close(release)
+	<-finished
+	select {
+	case <-drained:
+	case <-time.After(coverageNotifyDrainTimeout + 2*time.Second):
+		t.Fatal("WaitForPendingCoverageNotifications never returned")
+	}
+}

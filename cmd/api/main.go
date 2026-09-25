@@ -615,6 +615,12 @@ func main() {
 	// an already-closed *sql.DB.
 	handlers.WaitForPendingEmbeds()
 
+	// Coverage announcements that ReopenCoverageRequest detached from their
+	// request are tracked the same way, and must finish before the deferred
+	// sqlDB.Close() above: their rows are already stamped as announced, so a
+	// send cut short by a closed pool is lost for good.
+	handlers.WaitForPendingCoverageNotifications()
+
 	logger.Info("Server exited gracefully")
 }
 

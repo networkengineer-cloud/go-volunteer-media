@@ -40,6 +40,47 @@ const coverageDigestMaxDelay = 15 * time.Minute
 // the other bounded shutdown waits in cmd/api/main.go.
 const coverageDigestStopTimeout = 10 * time.Second
 
+// coverageNotifyWG tracks in-flight coverage announcements that were
+// deliberately detached from a request (see ReopenCoverageRequest), so
+// shutdown can drain them the way WaitForPendingEmbeds drains write-path
+// embed goroutines. Without it, the DB pool could close mid-send and lose an
+// announcement whose rows are already stamped - unrecoverable, because the
+// sweep will never see those rows again.
+var coverageNotifyWG sync.WaitGroup
+
+// coverageNotifyDrainTimeout bounds the shutdown wait, mirroring the other
+// bounded drains in this package. Generous because an announcement fans out
+// one email per group member over SMTP.
+const coverageNotifyDrainTimeout = 30 * time.Second
+
+// trackCoverageNotification runs fn in a goroutine that shutdown knows about.
+// Every detached coverage announcement must go through here rather than a
+// bare `go`, or it is invisible to WaitForPendingCoverageNotifications.
+func trackCoverageNotification(fn func()) {
+	coverageNotifyWG.Add(1)
+	go func() {
+		defer coverageNotifyWG.Done()
+		fn()
+	}()
+}
+
+// WaitForPendingCoverageNotifications blocks (up to
+// coverageNotifyDrainTimeout) until every detached coverage announcement has
+// finished. Call during graceful shutdown, after the HTTP server has stopped
+// accepting requests but before closing the DB pool.
+func WaitForPendingCoverageNotifications() {
+	done := make(chan struct{})
+	go func() {
+		coverageNotifyWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(coverageNotifyDrainTimeout):
+		logging.Warn(fmt.Sprintf("Coverage announcement goroutines did not finish within %s of shutdown signal; proceeding with shutdown anyway", coverageNotifyDrainTimeout))
+	}
+}
+
 // coverageDigestTarget is one (group, requester) pair with at least one
 // coverage request due for announcement. Requests are grouped this way
 // because notifyGroupOfOpenCoverageRequests sends one summary per requester
@@ -62,8 +103,11 @@ type coverageDigestTarget struct {
 //
 // Returns a stop function; call it during graceful shutdown. stop() blocks
 // (up to coverageDigestStopTimeout) until the goroutine has actually
-// exited, so a caller that closes the DB pool immediately afterwards can't
-// race an in-flight tick's writes against a closed *sql.DB. This holds only
+// exited, so a caller that closes the DB pool immediately afterwards does
+// not race an in-flight tick's writes against a closed *sql.DB. Best-effort
+// rather than absolute: the wait is bounded, and a tick fanning email out to
+// a large group over SMTP can exceed coverageDigestStopTimeout, after which
+// shutdown proceeds anyway. This holds only
 // because notifyGroupOfOpenCoverageRequests sends synchronously: the
 // announcement is part of the tick, not detached from it. If it were
 // detached, a shutdown landing just after a claim would close the pool

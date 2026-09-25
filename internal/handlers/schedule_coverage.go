@@ -1089,8 +1089,8 @@ type coverageRequestBatchResponse struct {
 // in a single round trip. Coalescing those into one group notification is
 // the digest sweep's job, not this handler's - batching here saves the
 // requests, not the emails. Self-service only - always creates on behalf of
-// the caller, no
-// on-behalf-of-another-member support (unlike CreateCoverageRequest).
+// the caller - no on-behalf-of-another-member support, unlike
+// CreateCoverageRequest.
 // Each item may set its own Priority (e.g. "Sat is optional, Sun and Tue
 // aren't") - an item that omits it falls back to the request's top-level
 // Priority.
@@ -1630,18 +1630,29 @@ func ReopenCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		reqRow.ClaimedAt = nil
 		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
 
-		// Announce inline (off-request, so the caller isn't blocked on
-		// delivery) AND stamp the row as announced. Without the stamp the
-		// reopened request is back to open with notified_at NULL, so the
-		// digest sweep would treat it as pending work and tell the group a
-		// second time about a shift it was just told about.
+		// Stamp everything this announcement is about to cover, then announce
+		// off-request so the caller isn't blocked on delivery.
+		//
+		// The stamp spans the requester's whole open set, not just the
+		// reopened row, because notifyGroupOfOpenCoverageRequests sends their
+		// COMPLETE open list. Stamping only reqRow would leave any sibling
+		// still in the digest queue to be announced again by the next sweep -
+		// the same shifts, the same wording, minutes apart.
+		//
+		// The send is detached but tracked, so shutdown drains it before
+		// closing the DB pool. An untracked goroutine here would stamp the
+		// rows and then lose the announcement if the pool closed mid-send,
+		// and the sweep would never revisit them.
 		if err := rawDB.Model(&models.ShiftCoverageRequest{}).
-			Where("id = ?", reqRow.ID).
+			Where("group_id = ? AND requested_by_user_id = ? AND status = ? AND notified_at IS NULL",
+				reqRow.GroupID, reqRow.RequestedByUserID, models.CoverageRequestOpen).
 			Update("notified_at", time.Now()).Error; err != nil {
 			logging.WithField("request_id", reqRow.ID).
-				Error("Failed to stamp reopened coverage request as announced; the digest sweep may re-announce it", err)
+				Error("Failed to stamp reopened coverage requests as announced; the digest sweep may re-announce them", err)
 		}
-		go notifyGroupOfOpenCoverageRequests(rawDB, emailService, groupMeService, reqRow.GroupID, reqRow.RequestedByUserID)
+		trackCoverageNotification(func() {
+			notifyGroupOfOpenCoverageRequests(rawDB, emailService, groupMeService, reqRow.GroupID, reqRow.RequestedByUserID)
+		})
 	}
 }
 
@@ -1654,11 +1665,12 @@ type sendCoverageReminderResponse struct {
 
 // SendCoverageReminder is a manual, admin-triggered broadcast covering
 // every request currently open in the group, regardless of who requested
-// it - unlike notifyGroupOfOpenCoverageRequests, which fires automatically
-// but only once, right when a request is created. It exists for requests
-// that already had their one-time creation notice go out and are still
-// sitting unfilled days or weeks later, with no other way to re-notify the
-// group about them.
+// it - unlike the automatic digest, which announces a requester's shifts
+// once, when the coverage digest sweep first picks them up. It exists for
+// requests that already had their digest go out and are still sitting
+// unfilled days or weeks later, with no other way to re-notify the group
+// about them. It also sends immediately, making it the escape hatch when
+// something can't wait for the digest's quiet period.
 func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)

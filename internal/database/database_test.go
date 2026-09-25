@@ -386,3 +386,43 @@ func TestConfigureTracing_RegistersPluginWithoutError(t *testing.T) {
 		t.Fatalf("configureTracing returned error: %v", err)
 	}
 }
+
+// Round-2 finding 3. The marker must be written BEFORE the destructive
+// UPDATE, and claimed atomically. Written after, a failed marker insert
+// leaves the backfill ungated and the next boot wipes the digest queue;
+// claimed non-atomically, two replicas booting at once both run it and the
+// loser errors on the unique key.
+func TestBackfillCoverageRequestNotifiedAt_IsClaimedAtomically(t *testing.T) {
+	dsn := fmt.Sprintf("file:backfill_marker_test_%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite db: %v", err)
+	}
+	if err := db.AutoMigrate(&models.SiteSetting{}, &models.ShiftCoverageRequest{}); err != nil {
+		t.Fatalf("failed to automigrate: %v", err)
+	}
+
+	// Two replicas boot at once: both reach the claim, only one may win.
+	wonA, err := claimCoverageDigestBackfill(db)
+	if err != nil {
+		t.Fatalf("replica A claim: %v", err)
+	}
+	wonB, err := claimCoverageDigestBackfill(db)
+	if err != nil {
+		t.Fatalf("replica B claim: %v", err)
+	}
+	if wonA == wonB {
+		t.Errorf("exactly one replica may run the backfill; got A=%v B=%v", wonA, wonB)
+	}
+
+	// And the full call is a no-op once claimed, without erroring.
+	if err := backfillCoverageRequestNotifiedAt(db); err != nil {
+		t.Fatalf("backfill after the claim should be a silent no-op, got: %v", err)
+	}
+
+	var markers int64
+	db.Model(&models.SiteSetting{}).Where("key = ?", coverageDigestBackfillMarker).Count(&markers)
+	if markers != 1 {
+		t.Errorf("expected exactly 1 marker row, got %d", markers)
+	}
+}
