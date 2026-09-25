@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import NeedsCoverageList from './NeedsCoverageList';
 import { scheduleApi } from '../../api/client';
 import type { AxiosResponse } from 'axios';
@@ -386,8 +386,23 @@ describe('NeedsCoverageList', () => {
   });
 
   describe('reminder', () => {
+    // The suite-level beforeEach clears only the toast spies, so this mock
+    // would otherwise carry calls between tests - which matters here because
+    // the confirm-gate test asserts the API was NOT called.
+    beforeEach(() => {
+      vi.mocked(scheduleApi.sendCoverageReminder).mockReset();
+    });
+
     function mockReminder(result: SendCoverageReminderResult) {
       vi.mocked(scheduleApi.sendCoverageReminder).mockResolvedValue({ data: result } as unknown as AxiosResponse<SendCoverageReminderResult>);
+    }
+
+    // The trigger and the dialog's accept button share the "Send reminder"
+    // label, so the accept click is scoped to the dialog to stay unambiguous.
+    async function clickSendReminderAndConfirm() {
+      fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: /send reminder/i }));
     }
 
     it('does not show a Send reminder button for a non-admin', async () => {
@@ -408,7 +423,7 @@ describe('NeedsCoverageList', () => {
       render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
 
       await screen.findByText('Jane Doe');
-      fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
+      await clickSendReminderAndConfirm();
 
       await waitFor(() => expect(scheduleApi.sendCoverageReminder).toHaveBeenCalledWith(7));
       await waitFor(() => expect(mockShowSuccess).toHaveBeenCalledWith('Reminder sent about 1 open coverage request.'));
@@ -422,10 +437,44 @@ describe('NeedsCoverageList', () => {
       render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
 
       await screen.findByText('Jane Doe');
-      fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
+      await clickSendReminderAndConfirm();
 
       await waitFor(() => expect(mockShowError).toHaveBeenCalledWith("Email notifications aren't enabled for this group yet, so no reminder was sent."));
       expect(mockShowSuccess).not.toHaveBeenCalled();
+    });
+
+    it('asks for confirmation before sending, and sends nothing if dismissed', async () => {
+      // The button fans an unrecallable message out to the whole group, so a
+      // single mis-click must not be enough to send it.
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
+
+      await screen.findByText('Jane Doe');
+      fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(scheduleApi.sendCoverageReminder).not.toHaveBeenCalled();
+
+      fireEvent.click(within(dialog).getByRole('button', { name: /cancel/i }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(scheduleApi.sendCoverageReminder).not.toHaveBeenCalled();
+    });
+
+    it('names the number of shifts the reminder will cover', async () => {
+      mockList([
+        { id: 5, group_id: 7, requested_by_user_id: 2, requested_by_name: 'Jane Doe', date: '2026-08-11', hour: 9, priority: 'normal', claimable: true },
+        { id: 6, group_id: 7, requested_by_user_id: 3, requested_by_name: 'Sam Roe', date: '2026-08-12', hour: 10, priority: 'normal', claimable: true },
+      ]);
+      render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
+
+      await screen.findByText('Jane Doe');
+      fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/all 2 shifts/i)).toBeInTheDocument();
     });
 
     it('shows a failure toast when the reminder request fails', async () => {
@@ -436,7 +485,7 @@ describe('NeedsCoverageList', () => {
       render(<NeedsCoverageList groupId={7} currentUserId={1} canManageMembers />);
 
       await screen.findByText('Jane Doe');
-      fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
+      await clickSendReminderAndConfirm();
 
       await waitFor(() => expect(mockShowError).toHaveBeenCalledWith('Admin access required'));
     });
