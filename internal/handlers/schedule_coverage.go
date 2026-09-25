@@ -298,13 +298,8 @@ func notifyGroupOfOpenCoverageRequests(rawDB *gorm.DB, emailService *email.Servi
 // (or, for a group admin, another member's) recurring shift as needing
 // coverage. Requires group membership (or site admin) for self-requests;
 // requires group admin (or site admin) to request on behalf of someone else.
-func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
+func CreateCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// rawDB is captured before the shadow below so the notification
-		// goroutines get the unscoped db, not one bound to this request's
-		// context (which is canceled the instant this handler returns). See
-		// the same pattern in update.go's CreateUpdate.
-		rawDB := db
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
@@ -382,32 +377,14 @@ func CreateCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 
 		c.JSON(http.StatusCreated, toCoverageRequestResponse(created))
 
-		// Cooldown: throttle (not silence) the group-wide broadcast if this
-		// same user created another coverage request in this group within
-		// the last few seconds, so a rapid double-submission (e.g. a network
-		// retry on a slow connection) doesn't fire two near-identical emails/
-		// GroupMe posts back to back. Deliberately short: a real, separate
-		// request even a few seconds later should still notify normally.
-		//
-		// KNOWN LIMITATION: this checks "was another row created recently,"
-		// not "was a notification actually sent recently." If a batch create
-		// (CreateCoverageRequestsBatch, which always notifies unconditionally)
-		// is immediately followed by a single create within this window, the
-		// single create's notification is suppressed even though the group
-		// was never told about that specific new item. A fully correct fix
-		// needs a persisted "last notified at" timestamp per (user, group),
-		// which is out of scope here - this short window just keeps the
-		// practical blast radius small. Runs on the outer (non-transaction)
-		// db since the transaction has already committed by this point,
-		// matching how the notification helper below already runs post-commit.
-		const coverageNotificationCooldown = 5 * time.Second
-		var recentCount int64
-		if err := rawDB.Model(&models.ShiftCoverageRequest{}).
-			Where("group_id = ? AND requested_by_user_id = ? AND id != ? AND created_at > ?",
-				groupIDUint, targetUserID, created.ID, time.Now().Add(-coverageNotificationCooldown)).
-			Count(&recentCount).Error; err == nil && recentCount == 0 {
-			notifyGroupOfOpenCoverageRequests(rawDB, emailService, groupMeService, groupIDUint, targetUserID)
-		}
+		// No notification here: the request is left with notified_at NULL and
+		// the coverage digest sweep announces it once the quiet period has
+		// elapsed (see schedule_coverage_digest.go). That is what collapses a
+		// burst of single-shift requests - the schedule popover creates one
+		// per cell - into a single email and GroupMe post. It also replaces
+		// the short create-time cooldown this handler used to apply, which
+		// could only throttle a rapid double-submit and silently dropped the
+		// second request's announcement entirely.
 	}
 }
 
@@ -1106,9 +1083,11 @@ type coverageRequestBatchResponse struct {
 
 // CreateCoverageRequestsBatch flags several future occurrences of the
 // caller's own recurring shifts as needing coverage in one call, so a
-// volunteer requesting coverage for multiple shifts (e.g. "I'm out all of
-// next week") triggers exactly one group notification instead of one per
-// shift. Self-service only - always creates on behalf of the caller, no
+// volunteer out for a stretch (e.g. "I'm away all of next week") files them
+// in a single round trip. Coalescing those into one group notification is
+// the digest sweep's job, not this handler's - batching here saves the
+// requests, not the emails. Self-service only - always creates on behalf of
+// the caller, no
 // on-behalf-of-another-member support (unlike CreateCoverageRequest).
 // Each item may set its own Priority (e.g. "Sat is optional, Sun and Tue
 // aren't") - an item that omits it falls back to the request's top-level
@@ -1119,9 +1098,8 @@ type coverageRequestBatchResponse struct {
 // out-of-range hour) fails the whole request with 400, since that's a
 // payload error, not a per-item business-rule rejection. Requires group
 // membership (or site admin).
-func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
+func CreateCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		rawDB := db
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
@@ -1224,9 +1202,9 @@ func CreateCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, group
 
 		c.JSON(http.StatusOK, response)
 
-		if len(response.Created) > 0 {
-			notifyGroupOfOpenCoverageRequests(rawDB, emailService, groupMeService, groupIDUint, callerUserID)
-		}
+		// Announcement is the digest sweep's job - see the note in
+		// CreateCoverageRequest. Created rows carry notified_at NULL and are
+		// picked up once the quiet period elapses.
 	}
 }
 

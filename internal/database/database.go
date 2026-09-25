@@ -284,6 +284,11 @@ func RunMigrations(db *gorm.DB) error {
 		logging.WithField("error", err.Error()).Warn("Failed to backfill is_edited flag")
 	}
 
+	// Backfill notified_at for coverage requests that predate the digest sweep
+	if err := backfillCoverageRequestNotifiedAt(db); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to backfill coverage request notified_at")
+	}
+
 	// Drop return_count column from animals table
 	if err := dropReturnCount(db); err != nil {
 		return fmt.Errorf("failed to drop return_count column: %w", err)
@@ -1065,6 +1070,29 @@ func backfillIsEdited(db *gorm.DB) error {
 	}
 	if result.RowsAffected > 0 {
 		logging.WithField("count", result.RowsAffected).Info("Backfilled is_edited flag for previously edited comments")
+	}
+	return nil
+}
+
+// backfillCoverageRequestNotifiedAt stamps notified_at on any coverage
+// request that predates the column. Without this, the first coverage digest
+// sweep tick after deploying would treat every already-announced open
+// request as unannounced and re-broadcast the whole backlog to each group.
+// Stamping them as already-notified is the safe direction: the worst case is
+// that a request created in the few minutes before the deploy never gets its
+// digest, and the requester's next request re-sends the full cumulative
+// summary anyway. Idempotent — only touches rows where notified_at IS NULL.
+func backfillCoverageRequestNotifiedAt(db *gorm.DB) error {
+	result := db.Exec(`
+		UPDATE shift_coverage_requests
+		SET notified_at = ?
+		WHERE notified_at IS NULL
+	`, time.Now())
+	if result.Error != nil {
+		return fmt.Errorf("failed to backfill coverage request notified_at: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		logging.WithField("count", result.RowsAffected).Info("Backfilled notified_at for pre-existing coverage requests")
 	}
 	return nil
 }

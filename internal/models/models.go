@@ -563,7 +563,13 @@ type ShiftCoverageRequest struct {
 	Priority          string                `gorm:"not null;default:normal" json:"priority"`
 	ClaimedByUserID   *uint                 `json:"claimed_by_user_id"`
 	ClaimedAt         *time.Time            `json:"claimed_at"`
-	RequestedByUser   User                  `gorm:"foreignKey:RequestedByUserID" json:"-"`
-	ClaimedByUser     *User                 `gorm:"foreignKey:ClaimedByUserID" json:"-"`
-	Group             Group                 `gorm:"foreignKey:GroupID" json:"-"`
+	// NotifiedAt is stamped once the group has been told about this request
+	// via the coverage digest sweep (internal/handlers/schedule_coverage_digest.go).
+	// NULL means "created but not yet announced" - the sweep's work queue.
+	// Deliberately not exposed in JSON: it's delivery bookkeeping, not
+	// something any client needs.
+	NotifiedAt      *time.Time `gorm:"index" json:"-"`
+	RequestedByUser User       `gorm:"foreignKey:RequestedByUserID" json:"-"`
+	ClaimedByUser   *User      `gorm:"foreignKey:ClaimedByUserID" json:"-"`
+	Group           Group      `gorm:"foreignKey:GroupID" json:"-"`
 }
