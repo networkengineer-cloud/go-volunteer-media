@@ -61,12 +61,13 @@ func TestSweepCoverageDigests_ConcurrentRepicasClaimOnce(t *testing.T) {
 	// finishes entirely first, the other's read simply returns nothing and
 	// the guard is never consulted.
 	cutoff := time.Now().Add(-coverageDigestQuietPeriod)
+	hardCutoff := time.Now().Add(-coverageDigestMaxDelay)
 
-	targetsA, err := pendingCoverageDigestTargets(db, cutoff)
+	targetsA, err := pendingCoverageDigestTargets(db, cutoff, hardCutoff)
 	if err != nil {
 		t.Fatalf("replica A read: %v", err)
 	}
-	targetsB, err := pendingCoverageDigestTargets(db, cutoff)
+	targetsB, err := pendingCoverageDigestTargets(db, cutoff, hardCutoff)
 	if err != nil {
 		t.Fatalf("replica B read: %v", err)
 	}
@@ -75,11 +76,11 @@ func TestSweepCoverageDigests_ConcurrentRepicasClaimOnce(t *testing.T) {
 	}
 
 	target := coverageDigestTarget{GroupID: group.ID, RequestedByUserID: requester.ID}
-	claimedA, err := claimCoverageDigest(db, cutoff, target)
+	claimedA, err := claimCoverageDigest(db, cutoff, hardCutoff, target)
 	if err != nil {
 		t.Fatalf("replica A claim: %v", err)
 	}
-	claimedB, err := claimCoverageDigest(db, cutoff, target)
+	claimedB, err := claimCoverageDigest(db, cutoff, hardCutoff, target)
 	if err != nil {
 		t.Fatalf("replica B claim: %v", err)
 	}

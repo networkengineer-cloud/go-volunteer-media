@@ -27,6 +27,14 @@ import (
 // racing to send email.
 const coverageDigestQuietPeriod = 3 * time.Minute
 
+// coverageDigestMaxDelay bounds how long a coverage request can sit
+// unannounced. The quiet period alone has no upper bound: a volunteer who
+// keeps adding shifts every couple of minutes keeps resetting it, and the
+// group would never be told at all. Once the OLDEST pending request in a
+// burst passes this age, the burst ships regardless of how recently the
+// newest one landed.
+const coverageDigestMaxDelay = 15 * time.Minute
+
 // coverageDigestStopTimeout bounds how long stop() waits for an in-flight
 // tick, mirroring embedding.StartReconciliationSweep's sweepStopTimeout and
 // the other bounded shutdown waits in cmd/api/main.go.
@@ -129,13 +137,13 @@ func coverageDigestNotifier(db *gorm.DB, emailService *email.Service, groupMeSer
 //
 // Separate from claimCoverageDigest so a test can interleave the read and
 // the write the way two replicas do - the read is where sweeps overlap.
-func pendingCoverageDigestTargets(db *gorm.DB, cutoff time.Time) ([]coverageDigestTarget, error) {
+func pendingCoverageDigestTargets(db *gorm.DB, cutoff, hardCutoff time.Time) ([]coverageDigestTarget, error) {
 	var targets []coverageDigestTarget
 	err := db.Model(&models.ShiftCoverageRequest{}).
 		Select("group_id, requested_by_user_id").
 		Where("status = ? AND notified_at IS NULL", models.CoverageRequestOpen).
 		Group("group_id, requested_by_user_id").
-		Having("MAX(created_at) < ?", cutoff).
+		Having("MAX(created_at) < ? OR MIN(created_at) < ?", cutoff, hardCutoff).
 		Find(&targets).Error
 	return targets, err
 }
@@ -154,23 +162,34 @@ func pendingCoverageDigestTargets(db *gorm.DB, cutoff time.Time) ([]coverageDige
 // failure here: notifyGroupOfOpenCoverageRequests always sends the
 // requester's *complete* open list, so their next request re-announces
 // whatever a dropped digest missed.
-func claimCoverageDigest(db *gorm.DB, cutoff time.Time, target coverageDigestTarget) (bool, error) {
+func claimCoverageDigest(db *gorm.DB, cutoff, hardCutoff time.Time, target coverageDigestTarget) (bool, error) {
 	// The cutoff is re-checked here, not just in the read above, so a
 	// request created in the gap between the two queries makes this claim
 	// find nothing and the whole burst waits for the next tick - rather
 	// than being announced without its newest shift.
 	result := db.Model(&models.ShiftCoverageRequest{}).
 		Where(`status = ? AND notified_at IS NULL AND group_id = ? AND requested_by_user_id = ?
-			AND NOT EXISTS (
-				SELECT 1 FROM shift_coverage_requests newer
-				WHERE newer.group_id = shift_coverage_requests.group_id
-				  AND newer.requested_by_user_id = shift_coverage_requests.requested_by_user_id
-				  AND newer.status = ?
-				  AND newer.notified_at IS NULL
-				  AND newer.created_at >= ?
+			AND (
+				NOT EXISTS (
+					SELECT 1 FROM shift_coverage_requests newer
+					WHERE newer.group_id = shift_coverage_requests.group_id
+					  AND newer.requested_by_user_id = shift_coverage_requests.requested_by_user_id
+					  AND newer.status = ?
+					  AND newer.notified_at IS NULL
+					  AND newer.created_at >= ?
+				)
+				OR EXISTS (
+					SELECT 1 FROM shift_coverage_requests overdue
+					WHERE overdue.group_id = shift_coverage_requests.group_id
+					  AND overdue.requested_by_user_id = shift_coverage_requests.requested_by_user_id
+					  AND overdue.status = ?
+					  AND overdue.notified_at IS NULL
+					  AND overdue.created_at < ?
+				)
 			)`,
 			models.CoverageRequestOpen, target.GroupID, target.RequestedByUserID,
-			models.CoverageRequestOpen, cutoff).
+			models.CoverageRequestOpen, cutoff,
+			models.CoverageRequestOpen, hardCutoff).
 		Update("notified_at", time.Now())
 	if result.Error != nil {
 		return false, result.Error
@@ -182,16 +201,18 @@ func claimCoverageDigest(db *gorm.DB, cutoff time.Time, target coverageDigestTar
 // before it announces. notify is injected so the claim-and-batch logic can
 // be tested without email or GroupMe services.
 func sweepCoverageDigests(db *gorm.DB, notify func(coverageDigestTarget)) {
-	cutoff := time.Now().Add(-coverageDigestQuietPeriod)
+	now := time.Now()
+	cutoff := now.Add(-coverageDigestQuietPeriod)
+	hardCutoff := now.Add(-coverageDigestMaxDelay)
 
-	targets, err := pendingCoverageDigestTargets(db, cutoff)
+	targets, err := pendingCoverageDigestTargets(db, cutoff, hardCutoff)
 	if err != nil {
 		logging.Error("Failed to list pending coverage digests", err)
 		return
 	}
 
 	for _, target := range targets {
-		claimed, err := claimCoverageDigest(db, cutoff, target)
+		claimed, err := claimCoverageDigest(db, cutoff, hardCutoff, target)
 		if err != nil {
 			logging.WithFields(map[string]interface{}{
 				"group_id": target.GroupID,

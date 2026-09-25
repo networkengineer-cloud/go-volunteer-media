@@ -138,6 +138,36 @@ func TestSweepCoverageDigests_WaitsForAStraddlingBurstToFinish(t *testing.T) {
 	}
 }
 
+// Fix 6. Waiting for the requester to go quiet has no upper bound on its
+// own: someone who adds a shift every couple of minutes keeps resetting
+// MAX(created_at), so the target never becomes eligible and the group is
+// never told at all. A hard cap makes the burst ship regardless once its
+// OLDEST pending request passes coverageDigestMaxDelay.
+func TestSweepCoverageDigests_HardCapDefeatsAnEndlessBurst(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+
+	// Oldest pending request is past the hard cap...
+	createDigestRequest(t, db, group.ID, requester.ID, 10, coverageDigestMaxDelay+time.Minute)
+	// ...but the volunteer is still adding, so the quiet period never elapses.
+	createDigestRequest(t, db, group.ID, requester.ID, 11, 10*time.Second)
+
+	rec := &notifyRecorder{}
+	sweepCoverageDigests(db, rec.record)
+
+	if got := rec.count(); got != 1 {
+		t.Errorf("expected the hard cap to force one announcement, got %d", got)
+	}
+
+	// The whole burst ships together, the still-fresh shift included, so the
+	// next tick has nothing left to announce separately.
+	var unstamped int64
+	db.Model(&models.ShiftCoverageRequest{}).Where("notified_at IS NULL").Count(&unstamped)
+	if unstamped != 0 {
+		t.Errorf("expected the hard cap to sweep the whole burst, %d left unstamped", unstamped)
+	}
+}
+
 func TestSweepCoverageDigests_SecondSweepSendsNothing(t *testing.T) {
 	db := SetupTestDB(t)
 	requester, _, group := setupCoverageTestGroup(t, db)
@@ -306,7 +336,8 @@ func TestClaimCoverageDigest_RefusesWhenANewerRequestLandedAfterTheRead(t *testi
 	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
 
 	cutoff := time.Now().Add(-coverageDigestQuietPeriod)
-	targets, err := pendingCoverageDigestTargets(db, cutoff)
+	hardCutoff := time.Now().Add(-coverageDigestMaxDelay)
+	targets, err := pendingCoverageDigestTargets(db, cutoff, hardCutoff)
 	if err != nil {
 		t.Fatalf("read targets: %v", err)
 	}
@@ -317,7 +348,7 @@ func TestClaimCoverageDigest_RefusesWhenANewerRequestLandedAfterTheRead(t *testi
 	// The volunteer adds another shift in the gap between read and claim.
 	createDigestRequest(t, db, group.ID, requester.ID, 11, 0)
 
-	claimed, err := claimCoverageDigest(db, cutoff, targets[0])
+	claimed, err := claimCoverageDigest(db, cutoff, hardCutoff, targets[0])
 	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}
