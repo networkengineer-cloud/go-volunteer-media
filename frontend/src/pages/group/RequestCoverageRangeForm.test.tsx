@@ -157,6 +157,53 @@ describe('RequestCoverageRangeForm', () => {
     }
   });
 
+  it('names the day in the select-all label when the range is pinned to a single date', async () => {
+    // From the schedule popover only the clicked hour starts ticked, so the
+    // adjacent shifts are easy to miss. Naming the day makes the one-click
+    // "take the rest of my shifts that day" affordance obvious; the generic
+    // label stays for the date-range entry point, which can span weeks.
+    const daySlots: ScheduleSlot[] = [
+      { day_of_week: 2, hour: 10 },
+      { day_of_week: 2, hour: 11 },
+      { day_of_week: 2, hour: 12 },
+    ];
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      render(
+        <RequestCoverageRangeForm
+          groupId={7}
+          slots={daySlots}
+          initialStartDate="2026-08-11"
+          initialEndDate="2026-08-11"
+          initialCheckedHours={[10]}
+        />
+      );
+
+      const selectAll = await screen.findByRole('checkbox', { name: /select all 3 shifts on/i });
+      expect(selectAll).toBeInTheDocument();
+
+      // One click takes the whole day.
+      fireEvent.click(selectAll);
+      const checkboxes = screen.getAllByRole('checkbox', { name: /2026-08-11/ });
+      expect(checkboxes.filter(c => (c as HTMLInputElement).checked)).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the generic select-all label when the range spans more than one date', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      render(<RequestCoverageRangeForm groupId={7} slots={slots} initialStartDate="2026-08-11" initialEndDate="2026-08-25" />);
+
+      expect(await screen.findByRole('checkbox', { name: /^select all$/i })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shows the 90-min start-end range for a terminal-hour occurrence, not just the start time', async () => {
     // 2026-08-11 is a Tuesday (a weekday); hour 17 is that day's terminal
     // (maxHourFor) slot, a 90-min shift ending 6:30 PM.

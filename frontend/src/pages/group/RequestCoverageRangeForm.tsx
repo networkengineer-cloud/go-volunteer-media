@@ -3,7 +3,7 @@ import { scheduleApi } from '../../api/client';
 import type { ScheduleSlot, CoverageRequestBatchItem, CoverageRequestBatchResult, CoverageRequestPriority } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import DateRangePicker from '../../components/DateRangePicker';
-import { formatSlotRangeLabel, maxHourFor, weekParity } from './scheduleGrid';
+import { formatSlotRangeLabel, formatDateLabel, maxHourFor, weekParity } from './scheduleGrid';
 import './RequestCoverageRangeForm.css';
 
 export interface RequestCoverageRangeFormProps {
@@ -155,6 +155,14 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
   };
 
   const allChecked = candidates.length > 0 && candidates.every(o => checkedKeys.has(occurrenceKey(o)));
+  // From the schedule popover the range is pinned to one date, so "select
+  // all" really means "the rest of my shifts that day" - worth saying, since
+  // only the clicked hour starts ticked and the neighbours are easy to miss.
+  // The date-range entry point can span weeks, where the generic label is
+  // the honest one.
+  const selectAllLabel = startDate !== '' && startDate === endDate && candidates.length > 1
+    ? `Select all ${candidates.length} shifts on ${formatDateLabel(startDate)}`
+    : 'Select all';
   const toggleAll = () => {
     setCheckedKeys(allChecked ? new Set() : new Set(candidates.map(occurrenceKey)));
   };
@@ -230,8 +238,8 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
         <>
           <div className="request-coverage-range-form__select-all">
             <label>
-              <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all" />
-              Select all
+              <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label={selectAllLabel} />
+              {selectAllLabel}
             </label>
             <span className="request-coverage-range-form__count">
               {checkedKeys.size} selected
