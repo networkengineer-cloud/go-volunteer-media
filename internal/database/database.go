@@ -1076,7 +1076,15 @@ func backfillIsEdited(db *gorm.DB) error {
 
 // coverageDigestBackfillMarker records that the one-time notified_at
 // backfill below has already run, so it never runs a second time.
-const coverageDigestBackfillMarker = "coverage_digest_notified_at_backfilled"
+const coverageDigestBackfillMarker = models.InternalSettingPrefix + "coverage_digest_notified_at_backfilled"
+
+// legacyCoverageDigestBackfillMarker is what the marker was called before it
+// moved under InternalSettingPrefix. Honored so a database that already ran
+// the backfill under the old key does not run it a second time - which would
+// stamp whatever is pending at that moment and silently discard those
+// announcements. The key never shipped outside this branch, so this can be
+// dropped once no unmerged environment is carrying it.
+const legacyCoverageDigestBackfillMarker = "coverage_digest_notified_at_backfilled"
 
 // claimCoverageDigestBackfill atomically reserves the right to run the
 // one-time backfill, returning true only for the caller that won it.
@@ -1086,6 +1094,15 @@ const coverageDigestBackfillMarker = "coverage_digest_notified_at_backfilled"
 // the loser failing on the unique key. Insert-on-conflict-do-nothing makes
 // the marker row itself the mutex: exactly one insert affects a row.
 func claimCoverageDigestBackfill(db *gorm.DB) (bool, error) {
+	var legacy int64
+	if err := db.Model(&models.SiteSetting{}).
+		Where("key = ?", legacyCoverageDigestBackfillMarker).Count(&legacy).Error; err != nil {
+		return false, fmt.Errorf("failed to check legacy coverage digest backfill marker: %w", err)
+	}
+	if legacy > 0 {
+		return false, nil
+	}
+
 	result := db.Clauses(clause.OnConflict{DoNothing: true}).
 		Create(&models.SiteSetting{Key: coverageDigestBackfillMarker, Value: "true"})
 	if result.Error != nil {

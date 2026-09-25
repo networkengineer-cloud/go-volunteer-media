@@ -426,3 +426,44 @@ func TestBackfillCoverageRequestNotifiedAt_IsClaimedAtomically(t *testing.T) {
 		t.Errorf("expected exactly 1 marker row, got %d", markers)
 	}
 }
+
+// A database that already ran the backfill under the pre-rename key must not
+// run it again when the marker moves under InternalSettingPrefix - a second
+// run would stamp whatever is pending at that moment and silently discard
+// those announcements, which is the very bug the marker exists to prevent.
+func TestBackfillCoverageRequestNotifiedAt_HonorsTheLegacyMarker(t *testing.T) {
+	dsn := fmt.Sprintf("file:backfill_legacy_test_%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite db: %v", err)
+	}
+	if err := db.AutoMigrate(&models.SiteSetting{}, &models.ShiftCoverageRequest{}); err != nil {
+		t.Fatalf("failed to automigrate: %v", err)
+	}
+
+	// This database ran the backfill before the key was namespaced.
+	if err := db.Create(&models.SiteSetting{Key: legacyCoverageDigestBackfillMarker, Value: "true"}).Error; err != nil {
+		t.Fatalf("failed to seed legacy marker: %v", err)
+	}
+
+	// An announcement is pending right now.
+	pending := &models.ShiftCoverageRequest{
+		GroupID: 1, RequestedByUserID: 1,
+		Date:   time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC),
+		Hour:   10,
+		Status: models.CoverageRequestOpen,
+	}
+	if err := db.Create(pending).Error; err != nil {
+		t.Fatalf("failed to create pending request: %v", err)
+	}
+
+	if err := backfillCoverageRequestNotifiedAt(db); err != nil {
+		t.Fatalf("backfill: %v", err)
+	}
+
+	var unstamped int64
+	db.Model(&models.ShiftCoverageRequest{}).Where("notified_at IS NULL").Count(&unstamped)
+	if unstamped != 1 {
+		t.Error("the backfill re-ran under the new key and discarded a pending announcement")
+	}
+}

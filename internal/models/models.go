@@ -348,6 +348,14 @@ type CommentTag struct {
 	IsSystem  bool           `gorm:"default:false" json:"is_system"` // True for behavior/medical tags
 }
 
+// InternalSettingPrefix marks a SiteSetting row as internal bookkeeping -
+// migration markers and the like - rather than configuration anyone outside
+// the server should see. GetSiteSettings is a public, unauthenticated
+// endpoint that returns the whole table, so anything carrying this prefix is
+// filtered out there. Use it for any row written by the server for its own
+// purposes rather than set by an admin.
+const InternalSettingPrefix = "internal."
+
 // SiteSetting represents configurable site settings
 type SiteSetting struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
