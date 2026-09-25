@@ -11,6 +11,14 @@ export interface RequestCoverageRangeFormProps {
   slots: ScheduleSlot[];
   initialStartDate?: string;
   initialEndDate?: string;
+  // When set, only occurrences at these hours start checked; everything else
+  // in range is offered but unticked. The schedule popover uses it so that
+  // clicking one cell still SHOWS the viewer's other shifts that day - which
+  // is what lets a run of consecutive hours go out as one request - without
+  // silently widening a one-cell click into a multi-shift submission.
+  // Omitted (the date-range entry point) means check everything, which is
+  // what "I'm away all next week" wants.
+  initialCheckedHours?: number[];
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -101,7 +109,7 @@ function rangeExceedsMaxDays(startDate: string, endDate: string): boolean {
   return (end - start) / (1000 * 60 * 60 * 24) > MAX_RANGE_DAYS;
 }
 
-const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ groupId, slots, initialStartDate, initialEndDate, onSuccess, onCancel }) => {
+const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ groupId, slots, initialStartDate, initialEndDate, initialCheckedHours, onSuccess, onCancel }) => {
   const toast = useToast();
   const [startDate, setStartDate] = useState(initialStartDate ?? '');
   const [endDate, setEndDate] = useState(initialEndDate ?? '');
@@ -119,10 +127,16 @@ const RequestCoverageRangeForm: React.FC<RequestCoverageRangeFormProps> = ({ gro
   // Re-derive which occurrences are checked whenever the candidate list
   // itself changes (start/end date edited, or the range became too long) -
   // a side effect, so it belongs in useEffect, not inside the useMemo above.
+  // Stable across renders so the effect below doesn't re-run on every one
+  // just because a fresh array literal was passed in.
+  const checkedHoursKey = initialCheckedHours ? initialCheckedHours.join(',') : '';
   useEffect(() => {
-    setCheckedKeys(new Set(candidates.map(occurrenceKey)));
+    const only = checkedHoursKey === '' ? null : new Set(checkedHoursKey.split(',').map(Number));
+    setCheckedKeys(new Set(
+      candidates.filter(o => only === null || only.has(o.hour)).map(occurrenceKey)
+    ));
     setPriorities(new Map(candidates.map(o => [occurrenceKey(o), 'normal' as CoverageRequestPriority])));
-  }, [candidates]);
+  }, [candidates, checkedHoursKey]);
 
   const setPriorityFor = (key: string, value: CoverageRequestPriority) => {
     setPriorities(prev => new Map(prev).set(key, value));

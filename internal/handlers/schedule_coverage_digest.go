@@ -162,6 +162,16 @@ func pendingCoverageDigestTargets(db *gorm.DB, cutoff, hardCutoff time.Time) ([]
 // failure here: notifyGroupOfOpenCoverageRequests always sends the
 // requester's *complete* open list, so their next request re-announces
 // whatever a dropped digest missed.
+//
+// KNOWN LIMITATION: the cutoff re-check closes the read-to-write gap only
+// for requests committed before this UPDATE takes its snapshot. Under READ
+// COMMITTED a request committed after that instant is invisible to the
+// NOT EXISTS (so the claim still succeeds) and outside the UPDATE's scope
+// (so it stays unstamped), producing one extra announcement on the next
+// tick - the split this sweep exists to avoid, in a window of a few
+// milliseconds. Closing it properly needs SERIALIZABLE or an explicit lock
+// on the requester's rows, which is a lot of machinery for an outcome no
+// worse than the pre-digest behavior. Left as a known edge.
 func claimCoverageDigest(db *gorm.DB, cutoff, hardCutoff time.Time, target coverageDigestTarget) (bool, error) {
 	// The cutoff is re-checked here, not just in the read above, so a
 	// request created in the gap between the two queries makes this claim

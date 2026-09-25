@@ -16,7 +16,11 @@ import (
 // that from sending the group two identical announcements, and only a real
 // Postgres can demonstrate it - row-level locking and READ COMMITTED
 // re-evaluation are exactly what SQLite's serialized writes paper over.
-func TestSweepCoverageDigests_ConcurrentRepicasClaimOnce(t *testing.T) {
+//
+// The test asserts that contention actually occurred (replica B's claim must
+// still be blocked when A commits), so it cannot quietly degrade into two
+// sequential claims that would pass without ever consulting the guard.
+func TestSweepCoverageDigests_ConcurrentReplicasClaimOnce(t *testing.T) {
 	db := openSearchTestPostgres(t)
 
 	unique := time.Now().UnixNano()
@@ -55,19 +59,25 @@ func TestSweepCoverageDigests_ConcurrentRepicasClaimOnce(t *testing.T) {
 		}
 	}
 
-	// Force the interleaving that a naive concurrent-goroutine test misses:
-	// BOTH replicas must complete their read before EITHER writes. That is
-	// the only window in which the claim guard does any work - if one sweep
-	// finishes entirely first, the other's read simply returns nothing and
-	// the guard is never consulted.
+	// Two replicas, genuinely concurrent: separate connections, each in its
+	// own explicit transaction, both holding the same target before either
+	// writes. This is the interleaving that matters in prod and the one a
+	// naive two-goroutine test misses - if one sweep simply finishes first,
+	// the other's read returns nothing and the guard is never consulted.
 	cutoff := time.Now().Add(-coverageDigestQuietPeriod)
 	hardCutoff := time.Now().Add(-coverageDigestMaxDelay)
+	target := coverageDigestTarget{GroupID: group.ID, RequestedByUserID: requester.ID}
 
-	targetsA, err := pendingCoverageDigestTargets(db, cutoff, hardCutoff)
+	txA := db.Begin()
+	txB := db.Begin()
+	defer func() { txA.Rollback(); txB.Rollback() }()
+
+	// Both read first - neither has written, so both see the work as pending.
+	targetsA, err := pendingCoverageDigestTargets(txA, cutoff, hardCutoff)
 	if err != nil {
 		t.Fatalf("replica A read: %v", err)
 	}
-	targetsB, err := pendingCoverageDigestTargets(db, cutoff, hardCutoff)
+	targetsB, err := pendingCoverageDigestTargets(txB, cutoff, hardCutoff)
 	if err != nil {
 		t.Fatalf("replica B read: %v", err)
 	}
@@ -75,19 +85,54 @@ func TestSweepCoverageDigests_ConcurrentRepicasClaimOnce(t *testing.T) {
 		t.Fatalf("both replicas should see the pending target, got A=%d B=%d", len(targetsA), len(targetsB))
 	}
 
-	target := coverageDigestTarget{GroupID: group.ID, RequestedByUserID: requester.ID}
-	claimedA, err := claimCoverageDigest(db, cutoff, hardCutoff, target)
+	// A claims and commits. B's claim is issued while A still holds the row
+	// locks, so it blocks until A commits, then re-evaluates its WHERE under
+	// READ COMMITTED against the now-stamped rows.
+	claimedA, err := claimCoverageDigest(txA, cutoff, hardCutoff, target)
 	if err != nil {
 		t.Fatalf("replica A claim: %v", err)
 	}
-	claimedB, err := claimCoverageDigest(db, cutoff, hardCutoff, target)
-	if err != nil {
-		t.Fatalf("replica B claim: %v", err)
+
+	type claimResult struct {
+		claimed bool
+		err     error
+	}
+	bDone := make(chan claimResult, 1)
+	go func() {
+		claimed, err := claimCoverageDigest(txB, cutoff, hardCutoff, target)
+		bDone <- claimResult{claimed, err}
+	}()
+
+	// B must still be blocked on A's locks - if it isn't, no contention
+	// happened and the test would prove nothing.
+	select {
+	case r := <-bDone:
+		t.Fatalf("replica B's claim completed before A committed (claimed=%v, err=%v) - no lock contention occurred, so this test is not exercising the guard", r.claimed, r.err)
+	case <-time.After(300 * time.Millisecond):
 	}
 
-	if claimedA == claimedB {
-		t.Errorf("exactly one replica must win the claim; got A=%v B=%v (the group would be told %s)",
-			claimedA, claimedB, map[bool]string{true: "twice", false: "never"}[claimedA])
+	if err := txA.Commit().Error; err != nil {
+		t.Fatalf("replica A commit: %v", err)
+	}
+
+	var rb claimResult
+	select {
+	case rb = <-bDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("replica B's claim never returned after A committed - possible deadlock")
+	}
+	if rb.err != nil {
+		t.Fatalf("replica B claim: %v", rb.err)
+	}
+	if err := txB.Commit().Error; err != nil {
+		t.Fatalf("replica B commit: %v", err)
+	}
+
+	if !claimedA {
+		t.Error("replica A should have won the claim")
+	}
+	if rb.claimed {
+		t.Error("replica B claimed rows A had already stamped - the group would be told twice")
 	}
 
 	var unstamped int64
@@ -95,6 +140,6 @@ func TestSweepCoverageDigests_ConcurrentRepicasClaimOnce(t *testing.T) {
 		Where("group_id = ? AND notified_at IS NULL", group.ID).
 		Count(&unstamped)
 	if unstamped != 0 {
-		t.Errorf("expected all requests stamped after the claim, %d still unstamped", unstamped)
+		t.Errorf("expected all requests stamped after the claims, %d still unstamped", unstamped)
 	}
 }

@@ -176,7 +176,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   // shifts are separate slots: passing only the clicked cell forced a
   // volunteer covering 10-11, 11-12 and 12-1 to submit three times, and each
   // submission announced itself to the group separately.
-  const [rangeFormContext, setRangeFormContext] = useState<{ slots: ScheduleSlot[]; date: string } | null>(null);
+  const [rangeFormContext, setRangeFormContext] = useState<{ slots: ScheduleSlot[]; date: string; hour: number } | null>(null);
   // Which normal-status popover row (by user_id) is mid-reassignment, plus
   // the replacement chosen in its dropdown so far. Cleared whenever the
   // popover itself closes (see the activeCellKey effect below).
@@ -568,6 +568,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                         .find(m => m.user_id === member.user_id)?.cadence,
                                     })),
                                     date,
+                                    hour,
                                   });
                                   setActiveCellKey(null);
                                   setPopoverPosition(null);
@@ -686,6 +687,7 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
           slots={rangeFormContext?.slots ?? []}
           initialStartDate={rangeFormContext?.date}
           initialEndDate={rangeFormContext?.date}
+          initialCheckedHours={rangeFormContext ? [rangeFormContext.hour] : undefined}
           onSuccess={() => loadOverview()}
           onCancel={() => {
             setRangeFormContext(null);

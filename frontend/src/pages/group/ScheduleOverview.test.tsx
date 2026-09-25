@@ -473,11 +473,12 @@ describe('ScheduleOverview', () => {
     }
   });
 
-  it('a Request coverage button offers every hour the viewer holds that day, not just the clicked cell', async () => {
+  it('a Request coverage button offers every hour the viewer holds that day, but only pre-checks the clicked one', async () => {
     // Consecutive one-hour shifts are separate slots. Offering only the
     // clicked cell made a volunteer covering 9-10, 10-11 and 11-12 submit
-    // three times, and each submission announced itself to the group
-    // separately - the bug this covers.
+    // three times, and each submission announced itself separately. All
+    // three are now offered together - but only the clicked hour starts
+    // ticked, so clicking one cell and submitting still requests one shift.
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-10T12:00:00Z')); // a Monday
     try {
@@ -499,6 +500,7 @@ describe('ScheduleOverview', () => {
           ] },
         ],
       });
+      vi.mocked(scheduleApi.createCoverageRequestsBatch).mockReset();
       vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({
         data: { created: [], skipped: [] },
       } as AxiosResponse<CoverageRequestBatchResult>);
@@ -509,10 +511,48 @@ describe('ScheduleOverview', () => {
       const popover = await screen.findByRole('list');
       fireEvent.click(within(popover).getByRole('button', { name: /request coverage/i }));
 
-      // All three of the viewer's hours on that date are selectable in one
-      // submission, so the whole run becomes a single batch call.
+      // All three of the viewer's hours that day are selectable in one go...
       const checkboxes = await screen.findAllByRole('checkbox', { name: /2026-08-11/ });
       expect(checkboxes).toHaveLength(3);
+      // ...but only the clicked 9:00 is ticked, so the click keeps its scope.
+      expect(checkboxes.filter(c => (c as HTMLInputElement).checked)).toHaveLength(1);
+
+      fireEvent.click(screen.getByRole('button', { name: /^request coverage$/i }));
+
+      await waitFor(() => expect(scheduleApi.createCoverageRequestsBatch).toHaveBeenCalledTimes(1));
+      const [, requests] = vi.mocked(scheduleApi.createCoverageRequestsBatch).mock.calls[0];
+      expect(requests.map(r => r.hour)).toEqual([9]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets the viewer add the adjacent hours so a consecutive run goes out as one request', async () => {
+    // The whole point of offering the day: three consecutive shifts become a
+    // single batch call, and therefore a single announcement.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-10T12:00:00Z'));
+    try {
+      mockOverview({
+        week_start: '2026-08-09',
+        slots: [9, 10, 11].map(hour => ({
+          date: '2026-08-11', day_of_week: 2, hour,
+          members: [{ user_id: 1, username: 'me', status: 'normal' as const }],
+        })),
+      });
+      vi.mocked(scheduleApi.createCoverageRequestsBatch).mockReset();
+      vi.mocked(scheduleApi.createCoverageRequestsBatch).mockResolvedValue({
+        data: { created: [], skipped: [] },
+      } as AxiosResponse<CoverageRequestBatchResult>);
+      render(<ScheduleOverview groupId={7} totalMembers={4} currentUserId={1} />);
+
+      const cell = await screen.findByRole('cell', { name: /Tue 9:00 AM/i });
+      fireEvent.click(cell);
+      const popover = await screen.findByRole('list');
+      fireEvent.click(within(popover).getByRole('button', { name: /request coverage/i }));
+
+      const checkboxes = await screen.findAllByRole('checkbox', { name: /2026-08-11/ });
+      checkboxes.filter(c => !(c as HTMLInputElement).checked).forEach(c => fireEvent.click(c));
 
       fireEvent.click(screen.getByRole('button', { name: /^request coverage$/i }));
 
