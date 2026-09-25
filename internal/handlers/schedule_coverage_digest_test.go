@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/database"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -260,4 +262,188 @@ func TestCoverageDigest_EmailGatedByScheduleFlag(t *testing.T) {
 			t.Fatal("Expected a coverage digest email to be sent while the flag is on, got none")
 		}
 	})
+}
+
+// Fix 1. RunMigrations runs on every process start - each API pod boot, each
+// scale-up, each `make seed` - so its notified_at backfill must not treat
+// "notified_at IS NULL" as "legacy row". That condition IS the sweep's work
+// queue: stamping it unconditionally means any restart inside the quiet
+// period silently discards every pending announcement, with nothing logged.
+func TestCoverageDigestBackfill_DoesNotDiscardPendingAnnouncements(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+
+	// The deploy that introduced the column: its one-time backfill runs here.
+	if err := database.RunMigrations(db); err != nil {
+		t.Fatalf("Failed to run initial migrations: %v", err)
+	}
+
+	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
+
+	// A second process boots (autoscale, restart, redeploy) and migrates
+	// again. The pending request above must survive it.
+	if err := database.RunMigrations(db); err != nil {
+		t.Fatalf("Failed to re-run migrations: %v", err)
+	}
+
+	rec := &notifyRecorder{}
+	sweepCoverageDigests(db, rec.record)
+
+	if got := rec.count(); got != 1 {
+		t.Errorf("expected the pending request to still be announced after a restart, got %d notification(s)", got)
+	}
+}
+
+// Fix 2. The NOT EXISTS subquery in claimCoverageDigest is the only thing
+// distinguishing it from a plain UPDATE, and the only hand-written SQL here.
+// It re-checks the quiet period at claim time so a request that lands
+// between the read and the write makes the claim find nothing, keeping the
+// burst together instead of announcing it without its newest shift. Deleting
+// the subquery must fail this test.
+func TestClaimCoverageDigest_RefusesWhenANewerRequestLandedAfterTheRead(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
+
+	cutoff := time.Now().Add(-coverageDigestQuietPeriod)
+	targets, err := pendingCoverageDigestTargets(db, cutoff)
+	if err != nil {
+		t.Fatalf("read targets: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 pending target, got %d", len(targets))
+	}
+
+	// The volunteer adds another shift in the gap between read and claim.
+	createDigestRequest(t, db, group.ID, requester.ID, 11, 0)
+
+	claimed, err := claimCoverageDigest(db, cutoff, targets[0])
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if claimed {
+		t.Error("expected the claim to be refused so the whole burst waits for the next tick")
+	}
+
+	var unstamped int64
+	db.Model(&models.ShiftCoverageRequest{}).Where("notified_at IS NULL").Count(&unstamped)
+	if unstamped != 2 {
+		t.Errorf("expected both requests left unstamped, got %d unstamped", unstamped)
+	}
+}
+
+// blockingEmailProvider signals when a send begins and holds it open until
+// released, so a test can observe whether the caller is still inside the
+// send or has detached it to a goroutine.
+type blockingEmailProvider struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+	mu      sync.Mutex
+	sends   int
+}
+
+func (m *blockingEmailProvider) SendEmail(_ context.Context, _, _, _ string) error {
+	m.once.Do(func() { close(m.started) })
+	<-m.release
+	m.mu.Lock()
+	m.sends++
+	m.mu.Unlock()
+	return nil
+}
+func (m *blockingEmailProvider) IsConfigured() bool      { return true }
+func (m *blockingEmailProvider) GetProviderName() string { return "blocking-mock" }
+
+// Fix 3. stop() promises that nothing is still writing to the database once
+// it returns, so cmd/api/main.go can close the connection pool immediately
+// afterwards. That promise rests on notifyGroupOfOpenCoverageRequests
+// sending synchronously - if it detaches the send to a goroutine, a SIGTERM
+// just after a claim closes the pool underneath it and the announcement is
+// lost permanently, because its rows are already stamped.
+//
+// This drives the REAL notifier rather than an injected stub: stubbing it
+// would assert only that the sweep waits for whatever notify does, which
+// stays true however the notifier behaves internally.
+func TestNotifyGroupOfOpenCoverageRequests_SendsSynchronously(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, other, group := setupCoverageTestGroup(t, db)
+	if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
+
+	provider := &blockingEmailProvider{started: make(chan struct{}), release: make(chan struct{})}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+
+	returned := make(chan struct{})
+	go func() {
+		notifyGroupOfOpenCoverageRequests(db, emailSvc, nil, group.ID, requester.ID)
+		close(returned)
+	}()
+
+	select {
+	case <-provider.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the notifier never attempted a send")
+	}
+
+	// The send is open. A synchronous notifier is still inside it.
+	select {
+	case <-returned:
+		t.Fatal("notifyGroupOfOpenCoverageRequests returned while its send was still in flight - it detached the send, so the sweep's stop() can no longer guarantee the DB pool is safe to close")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(provider.release)
+	select {
+	case <-returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("notifier did not return after its send completed")
+	}
+}
+
+// Fix 7. ReopenCoverageRequest announces inline, so the row it reopens must
+// be stamped as announced too. Otherwise it goes back to status=open with
+// notified_at NULL, the sweep sees pending work, and the group is told a
+// second time about a shift it was just told about - the exact double-send
+// this sweep exists to prevent.
+func TestReopenCoverageRequest_DoesNotLeaveWorkForTheDigestSweep(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, claimant, group := setupCoverageTestGroup(t, db)
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+
+	// Claimed INSIDE the quiet period, i.e. before the digest ever announced
+	// it - so notified_at is still NULL. That is the only state in which the
+	// reopen can leave pending work behind; a request claimed after its
+	// digest went out is already stamped and cannot regress.
+	if err := db.Model(reqRow).Updates(map[string]interface{}{
+		"status":             models.CoverageRequestClaimed,
+		"claimed_by_user_id": claimant.ID,
+		"claimed_at":         time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("Failed to claim request: %v", err)
+	}
+	var stamped int64
+	db.Model(&models.ShiftCoverageRequest{}).Where("id = ? AND notified_at IS NOT NULL", reqRow.ID).Count(&stamped)
+	if stamped != 0 {
+		t.Fatalf("test setup is wrong: the request must be unannounced before the reopen")
+	}
+	if w := performReopenCoverageRequest(db, claimant.ID, false, group.ID, reqRow.ID); w.Code != 200 {
+		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Backdate so the row is past the quiet period and would be picked up.
+	if err := db.Model(&models.ShiftCoverageRequest{}).Where("id = ?", reqRow.ID).
+		UpdateColumn("created_at", time.Now().Add(-10*time.Minute)).Error; err != nil {
+		t.Fatalf("Failed to backdate: %v", err)
+	}
+
+	rec := &notifyRecorder{}
+	sweepCoverageDigests(db, rec.record)
+
+	if got := rec.count(); got != 0 {
+		t.Errorf("reopen already announced this request; expected the sweep to stay quiet, got %d notification(s)", got)
+	}
 }

@@ -55,8 +55,20 @@ type coverageDigestTarget struct {
 // Returns a stop function; call it during graceful shutdown. stop() blocks
 // (up to coverageDigestStopTimeout) until the goroutine has actually
 // exited, so a caller that closes the DB pool immediately afterwards can't
-// race an in-flight tick's writes against a closed *sql.DB.
+// race an in-flight tick's writes against a closed *sql.DB. This holds only
+// because notifyGroupOfOpenCoverageRequests sends synchronously: the
+// announcement is part of the tick, not detached from it. If it were
+// detached, a shutdown landing just after a claim would close the pool
+// underneath the send and lose an announcement whose rows are already
+// stamped - unrecoverable, since the sweep would never see them again.
 func StartCoverageDigestSweep(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, interval time.Duration) (stop func()) {
+	return startCoverageDigestSweepWithNotify(db, coverageDigestNotifier(db, emailService, groupMeService), interval)
+}
+
+// startCoverageDigestSweepWithNotify is StartCoverageDigestSweep with the
+// announcement callback injected, so a test can assert that stop() really
+// does wait for an in-flight announcement rather than only for the tick.
+func startCoverageDigestSweepWithNotify(db *gorm.DB, notify func(coverageDigestTarget), interval time.Duration) (stop func()) {
 	meter := telemetry.Meter("internal/handlers")
 	heartbeat := telemetry.NewInstrument("coverage.digest.sweep.heartbeat", func() (metric.Int64Counter, error) {
 		return meter.Int64Counter(
@@ -64,8 +76,6 @@ func StartCoverageDigestSweep(db *gorm.DB, emailService *email.Service, groupMeS
 			metric.WithDescription("Incremented once per coverage digest sweep tick, regardless of outcome — absence signals the sweep goroutine died"),
 		)
 	})
-
-	notify := coverageDigestNotifier(db, emailService, groupMeService)
 
 	ticker := time.NewTicker(interval)
 	done := make(chan struct{})

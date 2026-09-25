@@ -1,6 +1,7 @@
 package database
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -1074,15 +1075,33 @@ func backfillIsEdited(db *gorm.DB) error {
 	return nil
 }
 
-// backfillCoverageRequestNotifiedAt stamps notified_at on any coverage
-// request that predates the column. Without this, the first coverage digest
-// sweep tick after deploying would treat every already-announced open
-// request as unannounced and re-broadcast the whole backlog to each group.
-// Stamping them as already-notified is the safe direction: the worst case is
-// that a request created in the few minutes before the deploy never gets its
-// digest, and the requester's next request re-sends the full cumulative
-// summary anyway. Idempotent — only touches rows where notified_at IS NULL.
+// coverageDigestBackfillMarker records that the one-time notified_at
+// backfill below has already run, so it never runs a second time.
+const coverageDigestBackfillMarker = "coverage_digest_notified_at_backfilled"
+
+// backfillCoverageRequestNotifiedAt stamps notified_at on coverage requests
+// that predate the column, so the first coverage digest sweep after the
+// deploy doesn't treat an already-announced backlog as unannounced and
+// re-broadcast all of it.
+//
+// This MUST run exactly once in the lifetime of a database, which is why it
+// is gated on a marker row rather than on "notified_at IS NULL". That
+// condition looks like "legacy row" but is actually the digest sweep's work
+// queue: RunMigrations runs on every process start - every pod boot, every
+// autoscale event, every `make seed` - so an ungated backfill would stamp
+// every in-flight pending announcement as already sent, silently discarding
+// it with nothing logged. Multi-replica prod makes that a routine event, not
+// an edge case.
 func backfillCoverageRequestNotifiedAt(db *gorm.DB) error {
+	var marker models.SiteSetting
+	err := db.Where("key = ?", coverageDigestBackfillMarker).First(&marker).Error
+	if err == nil {
+		return nil // already run
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("failed to check coverage digest backfill marker: %w", err)
+	}
+
 	result := db.Exec(`
 		UPDATE shift_coverage_requests
 		SET notified_at = ?
@@ -1090,6 +1109,12 @@ func backfillCoverageRequestNotifiedAt(db *gorm.DB) error {
 	`, time.Now())
 	if result.Error != nil {
 		return fmt.Errorf("failed to backfill coverage request notified_at: %w", result.Error)
+	}
+
+	// Record the marker even when nothing was updated (a fresh database), so
+	// the backfill cannot fire later against live pending requests.
+	if err := db.Create(&models.SiteSetting{Key: coverageDigestBackfillMarker, Value: "true"}).Error; err != nil {
+		return fmt.Errorf("failed to record coverage digest backfill marker: %w", err)
 	}
 	if result.RowsAffected > 0 {
 		logging.WithField("count", result.RowsAffected).Info("Backfilled notified_at for pre-existing coverage requests")

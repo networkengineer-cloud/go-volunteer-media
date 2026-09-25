@@ -260,6 +260,13 @@ func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date 
 // requests. Runs on rawDB (the unscoped db captured before the handler's
 // middleware.GetDB shadow) since callers invoke this after their own
 // create(s) have already committed.
+//
+// Sends SYNCHRONOUSLY. Its main caller is the digest sweep, which is already
+// off the request path and whose stop() must be able to guarantee nothing is
+// still writing once it returns - detaching the sends here would break that
+// guarantee and lose announcements whose rows are already stamped. An HTTP
+// caller that must not block (ReopenCoverageRequest) wraps the whole call in
+// its own goroutine instead.
 func notifyGroupOfOpenCoverageRequests(rawDB *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, groupIDUint, targetUserID uint) {
 	var requester models.User
 	var grp models.Group
@@ -276,21 +283,16 @@ func notifyGroupOfOpenCoverageRequests(rawDB *gorm.DB, emailService *email.Servi
 	title := fmt.Sprintf("Coverage needed in %s", grp.Name)
 	content := buildCoverageRequestSummary(displayName(requester), openRequests)
 
+	bgCtx := context.Background()
 	if emailService != nil && emailService.IsConfigured() && scheduleEmailNotificationsEnabled() {
-		go func() {
-			bgCtx := context.Background()
-			if err := sendGroupAnnouncementEmails(bgCtx, rawDB, emailService, groupIDUint, title, content); err != nil {
-				logging.WithContext(bgCtx).Error("Error sending coverage request emails", err)
-			}
-		}()
+		if err := sendGroupAnnouncementEmails(bgCtx, rawDB, emailService, groupIDUint, title, content); err != nil {
+			logging.WithContext(bgCtx).Error("Error sending coverage request emails", err)
+		}
 	}
 	if groupMeService != nil {
-		go func() {
-			bgCtx := context.Background()
-			if err := sendUpdateToGroupMe(bgCtx, rawDB, groupMeService, groupIDUint, title, content); err != nil {
-				logging.WithContext(bgCtx).Error("Error sending coverage request to GroupMe", err)
-			}
-		}()
+		if err := sendUpdateToGroupMe(bgCtx, rawDB, groupMeService, groupIDUint, title, content); err != nil {
+			logging.WithContext(bgCtx).Error("Error sending coverage request to GroupMe", err)
+		}
 	}
 }
 
@@ -1628,7 +1630,18 @@ func ReopenCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		reqRow.ClaimedAt = nil
 		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
 
-		notifyGroupOfOpenCoverageRequests(rawDB, emailService, groupMeService, reqRow.GroupID, reqRow.RequestedByUserID)
+		// Announce inline (off-request, so the caller isn't blocked on
+		// delivery) AND stamp the row as announced. Without the stamp the
+		// reopened request is back to open with notified_at NULL, so the
+		// digest sweep would treat it as pending work and tell the group a
+		// second time about a shift it was just told about.
+		if err := rawDB.Model(&models.ShiftCoverageRequest{}).
+			Where("id = ?", reqRow.ID).
+			Update("notified_at", time.Now()).Error; err != nil {
+			logging.WithField("request_id", reqRow.ID).
+				Error("Failed to stamp reopened coverage request as announced; the digest sweep may re-announce it", err)
+		}
+		go notifyGroupOfOpenCoverageRequests(rawDB, emailService, groupMeService, reqRow.GroupID, reqRow.RequestedByUserID)
 	}
 }
 
