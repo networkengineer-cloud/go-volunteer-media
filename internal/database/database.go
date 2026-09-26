@@ -284,6 +284,11 @@ func RunMigrations(db *gorm.DB) error {
 		logging.WithField("error", err.Error()).Warn("Failed to backfill is_edited flag")
 	}
 
+	// Backfill notified_at for coverage requests that predate the digest sweep
+	if err := backfillCoverageRequestNotifiedAt(db); err != nil {
+		logging.WithField("error", err.Error()).Warn("Failed to backfill coverage request notified_at")
+	}
+
 	// Drop return_count column from animals table
 	if err := dropReturnCount(db); err != nil {
 		return fmt.Errorf("failed to drop return_count column: %w", err)
@@ -1065,6 +1070,99 @@ func backfillIsEdited(db *gorm.DB) error {
 	}
 	if result.RowsAffected > 0 {
 		logging.WithField("count", result.RowsAffected).Info("Backfilled is_edited flag for previously edited comments")
+	}
+	return nil
+}
+
+// coverageDigestBackfillMarker records that the one-time notified_at
+// backfill below has already run, so it never runs a second time.
+const coverageDigestBackfillMarker = models.InternalSettingPrefix + "coverage_digest_notified_at_backfilled"
+
+// legacyCoverageDigestBackfillMarker is what the marker was called before it
+// moved under InternalSettingPrefix. Honored so a database that already ran
+// the backfill under the old key does not run it a second time - which would
+// stamp whatever is pending at that moment and silently discard those
+// announcements.
+//
+// Seeing this key also migrates the marker forward to the prefixed one, so
+// dropping this constant later is safe: by then every database that had the
+// legacy key carries the new one too. Do not drop it without confirming
+// that - removing the check while a database still holds only the legacy key
+// re-opens the backfill on that database.
+const legacyCoverageDigestBackfillMarker = "coverage_digest_notified_at_backfilled"
+
+// claimCoverageDigestBackfill atomically reserves the right to run the
+// one-time backfill, returning true only for the caller that won it.
+//
+// A plain "does the marker exist? no? insert it" would let two replicas
+// booting simultaneously both pass the check and both run the backfill, with
+// the loser failing on the unique key. Insert-on-conflict-do-nothing makes
+// the marker row itself the mutex: exactly one insert affects a row.
+func claimCoverageDigestBackfill(db *gorm.DB) (bool, error) {
+	var legacy int64
+	if err := db.Model(&models.SiteSetting{}).
+		Where("key = ?", legacyCoverageDigestBackfillMarker).Count(&legacy).Error; err != nil {
+		return false, fmt.Errorf("failed to check legacy coverage digest backfill marker: %w", err)
+	}
+	if legacy > 0 {
+		// Migrate the marker forward rather than just skipping. Leaving the
+		// database on the legacy key alone would mean that dropping the
+		// legacy constant - which the comment on it invites - silently
+		// removes the gate on every database that took this path, re-running
+		// the backfill and discarding whatever was pending. Writing the new
+		// key here is what makes that cleanup safe.
+		if err := db.Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&models.SiteSetting{Key: coverageDigestBackfillMarker, Value: "true"}).Error; err != nil {
+			return false, fmt.Errorf("failed to migrate coverage digest backfill marker: %w", err)
+		}
+		return false, nil
+	}
+
+	result := db.Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&models.SiteSetting{Key: coverageDigestBackfillMarker, Value: "true"})
+	if result.Error != nil {
+		return false, fmt.Errorf("failed to claim coverage digest backfill: %w", result.Error)
+	}
+	return result.RowsAffected > 0, nil
+}
+
+// backfillCoverageRequestNotifiedAt stamps notified_at on coverage requests
+// that predate the column, so the first coverage digest sweep after the
+// deploy doesn't treat an already-announced backlog as unannounced and
+// re-broadcast all of it.
+//
+// This MUST run exactly once in the lifetime of a database, which is why it
+// is gated on a marker rather than on "notified_at IS NULL". That condition
+// looks like "legacy row" but is actually the digest sweep's work queue:
+// RunMigrations runs on every process start - every pod boot, every
+// autoscale event, every `make seed` - so an ungated backfill would stamp
+// every in-flight pending announcement as already sent, silently discarding
+// it with nothing logged.
+//
+// The marker is claimed BEFORE the UPDATE, deliberately. Written afterwards,
+// a failed marker write would leave the backfill ungated and the next boot
+// would wipe whatever was pending by then. Claiming first inverts the
+// failure into the harmless direction: the worst case becomes a legacy
+// backlog that never gets stamped and is announced once.
+func backfillCoverageRequestNotifiedAt(db *gorm.DB) error {
+	claimed, err := claimCoverageDigestBackfill(db)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return nil // already run, or another replica is running it now
+	}
+
+	result := db.Exec(`
+		UPDATE shift_coverage_requests
+		SET notified_at = ?
+		WHERE notified_at IS NULL
+	`, time.Now())
+	if result.Error != nil {
+		return fmt.Errorf("failed to backfill coverage request notified_at: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		logging.WithField("count", result.RowsAffected).Info("Backfilled notified_at for pre-existing coverage requests")
 	}
 	return nil
 }

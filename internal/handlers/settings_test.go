@@ -75,6 +75,38 @@ func TestGetSiteSettings(t *testing.T) {
 	}
 }
 
+// /api/settings is unauthenticated, so everything in site_settings is
+// public by default. Migration bookkeeping lives in the same table (the
+// coverage digest backfill marker, for one) and has no business in a public
+// payload - the prefix convention keeps it out without each new marker
+// having to remember to opt out.
+func TestGetSiteSettings_ExcludesInternalKeys(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupSettingsTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	if err := db.Create(&models.SiteSetting{
+		Key:   models.InternalSettingPrefix + "some_migration_marker",
+		Value: "true",
+	}).Error; err != nil {
+		t.Fatalf("failed to seed internal setting: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/settings", nil)
+	GetSiteSettings(db)(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.NotContains(t, w.Body.String(), "some_migration_marker",
+		"internal migration bookkeeping must not reach the public settings endpoint")
+	// Genuine public settings still come through.
+	assert.Contains(t, w.Body.String(), "site_name")
+}
+
 func TestUpdateSiteSetting(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

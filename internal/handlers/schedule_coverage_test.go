@@ -81,7 +81,7 @@ func performCreateCoverageRequest(db *gorm.DB, callerID uint, isAdmin bool, grou
 		c.Set("is_admin", isAdmin)
 		c.Next()
 	})
-	router.POST("/groups/:id/schedule/coverage-requests", CreateCoverageRequest(db, nil, nil))
+	router.POST("/groups/:id/schedule/coverage-requests", CreateCoverageRequest(db))
 
 	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests", groupID), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -289,15 +289,13 @@ func TestCreateCoverageRequest(t *testing.T) {
 		}
 	})
 
-	t.Run("second request within the cooldown window still succeeds", func(t *testing.T) {
-		// Guards the notification-cooldown check added in CreateCoverageRequest:
-		// the recent-request count query now runs unconditionally (even with
-		// nil emailService/groupMeService, as performCreateCoverageRequest
-		// always passes), so a rapid cancel-and-recreate cycle by the same
-		// user must not error or panic - it should just skip notifications,
-		// which this test can't directly observe without mocking the
-		// email/GroupMe services, so it asserts the structural outcome
-		// instead: both rows get created successfully.
+	t.Run("a rapid cancel-and-recreate cycle succeeds and stays unannounced", func(t *testing.T) {
+		// Creation no longer notifies inline - it leaves notified_at NULL for
+		// the digest sweep - so the old create-time cooldown this subtest
+		// used to guard is gone. What still matters is that a rapid
+		// cancel-and-recreate by the same user produces both rows cleanly and
+		// leaves the live one queued for announcement rather than announced
+		// or silently skipped.
 		db := SetupTestDB(t)
 		requester, _, group := setupCoverageTestGroup(t, db)
 		date := nextWeekday(time.Tuesday)
@@ -317,7 +315,7 @@ func TestCreateCoverageRequest(t *testing.T) {
 
 		second := performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
 		if second.Code != http.StatusCreated {
-			t.Fatalf("Expected second request within cooldown to still succeed, got %d: %s", second.Code, second.Body.String())
+			t.Fatalf("Expected second request to succeed, got %d: %s", second.Code, second.Body.String())
 		}
 
 		var count int64
@@ -328,6 +326,16 @@ func TestCreateCoverageRequest(t *testing.T) {
 		}
 		if count != 2 {
 			t.Fatalf("Expected 2 requests to exist (one cancelled, one active), got %d", count)
+		}
+
+		var unannounced int64
+		if err := db.Model(&models.ShiftCoverageRequest{}).
+			Where("group_id = ? AND status = ? AND notified_at IS NULL", group.ID, models.CoverageRequestOpen).
+			Count(&unannounced).Error; err != nil {
+			t.Fatalf("Failed to count unannounced requests: %v", err)
+		}
+		if unannounced != 1 {
+			t.Fatalf("Expected the live request to be queued for the digest sweep, got %d unannounced", unannounced)
 		}
 	})
 
@@ -668,82 +676,6 @@ func TestClaimCoverageRequest(t *testing.T) {
 	})
 }
 
-// TestCreateCoverageRequest_EmailGatedByScheduleFlag exercises the actual
-// SendEmail call, not just scheduleEmailNotificationsEnabled() in isolation,
-// so a regression that only gates one of the two call sites (or gates the
-// wrong condition) would be caught here.
-func TestCreateCoverageRequest_EmailGatedByScheduleFlag(t *testing.T) {
-	t.Run("no email is sent while the flag is unset (default)", func(t *testing.T) {
-		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "")
-		db := SetupTestDB(t)
-		requester, other, group := setupCoverageTestGroup(t, db)
-		if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
-			t.Fatalf("Failed to enable other's email notifications: %v", err)
-		}
-		provider := &mockEmailProvider{}
-		emailSvc := email.NewServiceWithProvider(provider, db)
-
-		gin.SetMode(gin.TestMode)
-		router := gin.New()
-		router.Use(func(c *gin.Context) {
-			c.Set("user_id", requester.ID)
-			c.Set("is_admin", false)
-			c.Next()
-		})
-		router.POST("/groups/:id/schedule/coverage-requests", CreateCoverageRequest(db, emailSvc, nil))
-
-		date := nextWeekday(time.Tuesday)
-		body := fmt.Sprintf(`{"date":"%s","hour":10}`, date)
-		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests", group.ID), strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusCreated {
-			t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
-		}
-		time.Sleep(50 * time.Millisecond)
-		if got := provider.sendCount(); got != 0 {
-			t.Fatalf("Expected no coverage-request email while the flag is off, got %d", got)
-		}
-	})
-
-	t.Run("an email is sent once the flag is enabled", func(t *testing.T) {
-		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
-		db := SetupTestDB(t)
-		requester, other, group := setupCoverageTestGroup(t, db)
-		if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
-			t.Fatalf("Failed to enable other's email notifications: %v", err)
-		}
-		provider := &mockEmailProvider{}
-		emailSvc := email.NewServiceWithProvider(provider, db)
-
-		gin.SetMode(gin.TestMode)
-		router := gin.New()
-		router.Use(func(c *gin.Context) {
-			c.Set("user_id", requester.ID)
-			c.Set("is_admin", false)
-			c.Next()
-		})
-		router.POST("/groups/:id/schedule/coverage-requests", CreateCoverageRequest(db, emailSvc, nil))
-
-		date := nextWeekday(time.Tuesday)
-		body := fmt.Sprintf(`{"date":"%s","hour":10}`, date)
-		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests", group.ID), strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusCreated {
-			t.Fatalf("Expected 201, got %d: %s", w.Code, w.Body.String())
-		}
-		time.Sleep(50 * time.Millisecond)
-		if got := provider.sendCount(); got == 0 {
-			t.Fatal("Expected a coverage-request email to be sent while the flag is on, got none")
-		}
-	})
-}
-
 // TestClaimCoverageRequest_EmailGatedByScheduleFlag covers notifyRequesterOfClaim,
 // which has its own separate emailService/IsConfigured/EmailNotificationsEnabled
 // checks from the create path above - the flag must gate both call sites.
@@ -981,6 +913,24 @@ func TestCancelCoverageRequest(t *testing.T) {
 	})
 }
 
+// performReopenCoverageRequestWithEmail is performReopenCoverageRequest with
+// a real email service wired in, for tests that need the announcement to
+// actually attempt a send.
+func performReopenCoverageRequestWithEmail(db *gorm.DB, emailSvc *email.Service, callerID uint, isAdmin bool, groupID, requestID uint) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", callerID)
+		c.Set("is_admin", isAdmin)
+		c.Next()
+	})
+	router.POST("/groups/:id/schedule/coverage-requests/:requestId/reopen", ReopenCoverageRequest(db, emailSvc, nil))
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/%d/reopen", groupID, requestID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
 func performReopenCoverageRequest(db *gorm.DB, callerID uint, isAdmin bool, groupID, requestID uint) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -1176,7 +1126,7 @@ func performCreateCoverageRequestsBatch(db *gorm.DB, callerID uint, groupID uint
 		c.Set("is_admin", false)
 		c.Next()
 	})
-	router.POST("/groups/:id/schedule/coverage-requests/batch", CreateCoverageRequestsBatch(db, nil, nil))
+	router.POST("/groups/:id/schedule/coverage-requests/batch", CreateCoverageRequestsBatch(db))
 
 	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/batch", groupID), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

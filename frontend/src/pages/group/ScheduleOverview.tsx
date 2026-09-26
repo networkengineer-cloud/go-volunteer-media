@@ -169,11 +169,14 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const [busyRequestId, setBusyRequestId] = useState<number | null>(null);
   // Set when the viewer clicks "Request coverage" on their own normal-status
-  // popover row - carries just enough to pre-fill RequestCoverageRangeForm
-  // for that exact occurrence: a synthetic single-item slots array (so the
-  // form's own candidate computation only ever offers this one date/hour,
-  // respecting the viewer's own cadence for it) and the date itself.
-  const [rangeFormContext, setRangeFormContext] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
+  // popover row - carries what RequestCoverageRangeForm needs to pre-fill
+  // that day: every slot the viewer holds on that date (not just the cell
+  // they clicked) plus the date itself, which pins the form's range to that
+  // single day. Offering the whole day matters because consecutive one-hour
+  // shifts are separate slots: passing only the clicked cell forced a
+  // volunteer covering 10-11, 11-12 and 12-1 to submit three times, and each
+  // submission announced itself to the group separately.
+  const [rangeFormContext, setRangeFormContext] = useState<{ slots: ScheduleSlot[]; date: string; hour: number } | null>(null);
   // Which normal-status popover row (by user_id) is mid-reassignment, plus
   // the replacement chosen in its dropdown so far. Cleared whenever the
   // popover itself closes (see the activeCellKey effect below).
@@ -486,11 +489,17 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                     >
                       <ul>
                         {members.map(member => {
-                          const otherHours = HOURS.filter(h =>
+                          // Every hour this member holds on this date, the
+                          // clicked cell included. Drives both the admin
+                          // reassign checkboxes and the viewer's own
+                          // "Request coverage" pre-fill, so a run of
+                          // consecutive one-hour shifts is handled in one go
+                          // rather than one cell at a time.
+                          const memberOtherHoursThisDay = HOURS.filter(h =>
                             h !== hour &&
                             (membersBySlot.get(slotKey(dayOfWeek, h)) ?? []).some(m => m.user_id === member.user_id && m.status === 'normal')
                           );
-                          const allReassignHours = [hour, ...otherHours].sort((a, b) => a - b);
+                          const memberHoursThisDay = [hour, ...memberOtherHoursThisDay].sort((a, b) => a - b);
                           return (
                           <li key={member.user_id} className="schedule-overview__popover-row">
                             <span>
@@ -551,7 +560,16 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                 type="button"
                                 className="btn-secondary schedule-overview__action"
                                 onClick={() => {
-                                  setRangeFormContext({ slot: { day_of_week: dayOfWeek, hour, cadence: member.cadence }, date });
+                                  setRangeFormContext({
+                                    slots: memberHoursThisDay.map(h => ({
+                                      day_of_week: dayOfWeek,
+                                      hour: h,
+                                      cadence: (membersBySlot.get(slotKey(dayOfWeek, h)) ?? [])
+                                        .find(m => m.user_id === member.user_id)?.cadence,
+                                    })),
+                                    date,
+                                    hour,
+                                  });
                                   setActiveCellKey(null);
                                   setPopoverPosition(null);
                                 }}
@@ -576,9 +594,9 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
                                         </option>
                                       ))}
                                   </select>
-                                  {otherHours.length > 0 && (
+                                  {memberOtherHoursThisDay.length > 0 && (
                                     <span className="schedule-overview__reassign-hours" role="group" aria-label="Also include">
-                                      {allReassignHours.map(h => (
+                                      {memberHoursThisDay.map(h => (
                                         <label key={h} className="schedule-overview__reassign-hour">
                                           <input
                                             type="checkbox"
@@ -666,9 +684,10 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
       >
         <RequestCoverageRangeForm
           groupId={groupId}
-          slots={rangeFormContext ? [rangeFormContext.slot] : []}
+          slots={rangeFormContext?.slots ?? []}
           initialStartDate={rangeFormContext?.date}
           initialEndDate={rangeFormContext?.date}
+          initialCheckedHours={rangeFormContext ? [rangeFormContext.hour] : undefined}
           onSuccess={() => loadOverview()}
           onCancel={() => {
             setRangeFormContext(null);

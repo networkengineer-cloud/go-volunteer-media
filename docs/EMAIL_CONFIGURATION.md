@@ -76,7 +76,9 @@ SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED=true  # Set to "true" or "1" to enable
 ```
 Coverage-request and claim emails from the Schedule tab are opt-in and default to disabled, independent of `EMAIL_ENABLED`. Leave unset until you're ready to enable Schedule emails broadly.
 
-These automatic emails only fire once, at the moment a coverage request is created (or claimed) - there's no scheduled digest for requests that are still open days or weeks later. A group admin can manually re-notify the group about every currently-open request with the "Send reminder" button on the Needs Coverage list, which is also gated by this same flag.
+Coverage-request emails are sent by a background digest rather than at the moment of creation. A volunteer flagging several shifts is announced once, after they stop adding for a few minutes - so a run of consecutive shifts produces one email, not one per shift. A burst is always announced within about 16 minutes of its first shift (a 15-minute cap plus up to one sweep tick), even if the volunteer keeps adding. Three things still send immediately and bypass the digest: claim emails, handing a shift back with "Request coverage" on a covered shift, and the admin "Send reminder" button.
+
+There is no repeat digest for requests that stay open for days or weeks. A group admin can manually re-notify the group about every currently-open request with the "Send reminder" button on the Needs Coverage list, which sends immediately and is gated by this same flag.
 
 ### Provider Selection
 ```env

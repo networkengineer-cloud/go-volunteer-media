@@ -36,9 +36,16 @@ func GetSiteSettings(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Convert to map for easier frontend consumption
+		// Convert to map for easier frontend consumption, skipping internal
+		// bookkeeping rows. This endpoint is unauthenticated, so the table's
+		// contents are world-readable; migration markers and similar
+		// server-owned rows share the table but are not configuration and
+		// have no place in a public payload.
 		settingsMap := make(map[string]string)
 		for _, setting := range settings {
+			if strings.HasPrefix(setting.Key, models.InternalSettingPrefix) {
+				continue
+			}
 			settingsMap[setting.Key] = setting.Value
 		}
 

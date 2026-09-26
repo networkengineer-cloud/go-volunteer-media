@@ -3,9 +3,11 @@ import axios from 'axios';
 import { scheduleApi } from '../../api/client';
 import type { CoverageRequestListItem, CoverageRequestPriority } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { formatSlotRangeLabel, formatDateLabel, dayOfWeekFromIso } from './scheduleGrid';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import ErrorState from '../../components/ErrorState';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import './NeedsCoverageList.css';
 
 export interface NeedsCoverageListProps {
@@ -16,6 +18,7 @@ export interface NeedsCoverageListProps {
 
 const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentUserId, canManageMembers = false }) => {
   const toast = useToast();
+  const { confirmDialog, openConfirmDialog, closeConfirmDialog } = useConfirmDialog();
   const [items, setItems] = useState<CoverageRequestListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,9 +103,9 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
       .finally(() => setBusyPriorityId(null));
   };
 
-  const handleSendReminder = () => {
+  const sendReminder = () => {
     setRemindLoading(true);
-    scheduleApi.sendCoverageReminder(groupId)
+    return scheduleApi.sendCoverageReminder(groupId)
       .then(res => {
         const { message, email_queued: emailQueued, groupme_queued: groupMeQueued } = res.data;
         if (emailQueued || groupMeQueued) {
@@ -115,6 +118,18 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
         toast.showError(err.response?.data?.error || 'Failed to send reminder.');
       })
       .finally(() => setRemindLoading(false));
+  };
+
+  // Confirmed before sending: this is a one-tap button that fans a message
+  // out to the whole group and cannot be recalled, so a mis-click is
+  // expensive in a way the other one-tap actions here (cancel, claim) are
+  // not - those can simply be redone.
+  const handleSendReminder = () => {
+    openConfirmDialog(
+      'Send coverage reminder',
+      `This emails every group member who has notifications enabled, listing ${items.length === 1 ? 'the shift' : `all ${items.length} shifts`} that still need coverage. It can't be unsent.`,
+      sendReminder,
+    );
   };
 
   const isCancellable = (item: CoverageRequestListItem) => item.requested_by_user_id === currentUserId || canManageMembers;
@@ -308,6 +323,15 @@ const NeedsCoverageList: React.FC<NeedsCoverageListProps> = ({ groupId, currentU
           </ul>
         </div>
       ))}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="warning"
+        confirmLabel="Send reminder"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={closeConfirmDialog}
+      />
     </div>
   );
 };

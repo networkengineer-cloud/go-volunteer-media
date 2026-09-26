@@ -348,6 +348,14 @@ type CommentTag struct {
 	IsSystem  bool           `gorm:"default:false" json:"is_system"` // True for behavior/medical tags
 }
 
+// InternalSettingPrefix marks a SiteSetting row as internal bookkeeping -
+// migration markers and the like - rather than configuration anyone outside
+// the server should see. GetSiteSettings is a public, unauthenticated
+// endpoint that returns the whole table, so anything carrying this prefix is
+// filtered out there. Use it for any row written by the server for its own
+// purposes rather than set by an admin.
+const InternalSettingPrefix = "internal."
+
 // SiteSetting represents configurable site settings
 type SiteSetting struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
@@ -563,7 +571,13 @@ type ShiftCoverageRequest struct {
 	Priority          string                `gorm:"not null;default:normal" json:"priority"`
 	ClaimedByUserID   *uint                 `json:"claimed_by_user_id"`
 	ClaimedAt         *time.Time            `json:"claimed_at"`
-	RequestedByUser   User                  `gorm:"foreignKey:RequestedByUserID" json:"-"`
-	ClaimedByUser     *User                 `gorm:"foreignKey:ClaimedByUserID" json:"-"`
-	Group             Group                 `gorm:"foreignKey:GroupID" json:"-"`
+	// NotifiedAt is stamped once the group has been told about this request
+	// via the coverage digest sweep (internal/handlers/schedule_coverage_digest.go).
+	// NULL means "created but not yet announced" - the sweep's work queue.
+	// Deliberately not exposed in JSON: it's delivery bookkeeping, not
+	// something any client needs.
+	NotifiedAt      *time.Time `gorm:"index" json:"-"`
+	RequestedByUser User       `gorm:"foreignKey:RequestedByUserID" json:"-"`
+	ClaimedByUser   *User      `gorm:"foreignKey:ClaimedByUserID" json:"-"`
+	Group           Group      `gorm:"foreignKey:GroupID" json:"-"`
 }

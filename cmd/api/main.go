@@ -176,6 +176,14 @@ func main() {
 	groupMeService := groupme.NewService()
 	logger.Info("GroupMe service initialized and ready")
 
+	// Coverage digest sweep: announces coverage requests once they've sat
+	// unannounced for the quiet period, so a volunteer flagging several
+	// shifts produces one email and one GroupMe post rather than one per
+	// shift. Must start after groupMeService above, which it notifies
+	// through. Safe with multiple replicas — each digest is claimed in the
+	// database before it is sent.
+	stopCoverageDigestSweep := handlers.StartCoverageDigestSweep(db, emailService, groupMeService, 60*time.Second)
+
 	// Load embedded frontend assets at startup
 	distFS, err := fs.Sub(frontend.DistFS, "dist")
 	if err != nil {
@@ -454,8 +462,8 @@ func main() {
 			group.PUT("/schedule/me", handlers.UpdateMySchedule(db))
 			group.GET("/schedule/overview", handlers.GetGroupScheduleOverview(db))
 			group.GET("/schedule/coverage-requests", handlers.ListCoverageRequests(db))
-			group.POST("/schedule/coverage-requests", handlers.CreateCoverageRequest(db, emailService, groupMeService))
-			group.POST("/schedule/coverage-requests/batch", handlers.CreateCoverageRequestsBatch(db, emailService, groupMeService))
+			group.POST("/schedule/coverage-requests", handlers.CreateCoverageRequest(db))
+			group.POST("/schedule/coverage-requests/batch", handlers.CreateCoverageRequestsBatch(db))
 			group.POST("/schedule/coverage-requests/cancel-batch", handlers.CancelCoverageRequestsBatch(db))
 			group.POST("/schedule/coverage-requests/claim-batch", handlers.ClaimCoverageRequestsBatch(db, emailService, groupMeService))
 			group.POST("/schedule/coverage-requests/remind", handlers.SendCoverageReminder(db, emailService, groupMeService))
@@ -583,11 +591,12 @@ func main() {
 	<-quit
 	logger.Info("Shutting down server...")
 
-	// Stop accepting new connections first. stopEmbeddingSweep() below can
-	// block for up to sweepStopTimeout (10s) draining an in-flight sweep
-	// tick — running it before srv.Shutdown would leave the server still
-	// accepting new requests for that entire window after SIGTERM/SIGINT,
-	// delaying the graceful shutdown clients are waiting on.
+	// Stop accepting new connections first. stopEmbeddingSweep() and
+	// stopCoverageDigestSweep() below can each block for up to their sweep's
+	// stop timeout (10s) draining an in-flight tick — running them before
+	// srv.Shutdown would leave the server still accepting new requests for
+	// that entire window after SIGTERM/SIGINT, delaying the graceful
+	// shutdown clients are waiting on.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -596,6 +605,7 @@ func main() {
 	}
 
 	stopEmbeddingSweep()
+	stopCoverageDigestSweep()
 
 	// srv.Shutdown only waits for in-flight HTTP handlers, not the detached
 	// write-path embed goroutines those handlers spawn (see embedAsync in
@@ -604,6 +614,13 @@ func main() {
 	// that returned just before shutdown can't race PersistEmbedding against
 	// an already-closed *sql.DB.
 	handlers.WaitForPendingEmbeds()
+
+	// Coverage announcements that ReopenCoverageRequest and
+	// SendCoverageReminder detached from their request are tracked the same
+	// way, and must finish before the deferred sqlDB.Close() above: their
+	// rows are already stamped as announced, so a send cut short by a
+	// closed pool is lost for good.
+	handlers.WaitForPendingCoverageNotifications()
 
 	logger.Info("Server exited gracefully")
 }
