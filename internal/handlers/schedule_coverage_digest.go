@@ -41,11 +41,12 @@ const coverageDigestMaxDelay = 15 * time.Minute
 const coverageDigestStopTimeout = 10 * time.Second
 
 // coverageNotifyWG tracks in-flight coverage announcements that were
-// deliberately detached from a request (see ReopenCoverageRequest), so
-// shutdown can drain them the way WaitForPendingEmbeds drains write-path
-// embed goroutines. Without it, the DB pool could close mid-send and lose an
-// announcement whose rows are already stamped - unrecoverable, because the
-// sweep will never see those rows again.
+// deliberately detached from a request (see ReopenCoverageRequest and
+// SendCoverageReminder), so shutdown can drain them the way
+// WaitForPendingEmbeds drains write-path embed goroutines. Without it, the
+// DB pool could close mid-send and lose an announcement whose rows are
+// already stamped - unrecoverable, because the sweep will never see those
+// rows again.
 var coverageNotifyWG sync.WaitGroup
 
 // coverageNotifyDrainTimeout bounds the shutdown wait, mirroring the other
@@ -262,10 +263,28 @@ func claimCoverageDigest(db *gorm.DB, cutoff, hardCutoff time.Time, target cover
 	return result.RowsAffected > 0, nil
 }
 
+// coverageDigestClaimFunc matches claimCoverageDigest's signature.
+// sweepCoverageDigests takes it as a parameter, rather than calling
+// claimCoverageDigest directly, so a test can inject a stub that reports
+// losing the claim - exactly what a slower replica sees - and assert the
+// loop actually skips notify rather than just asserting claimCoverageDigest
+// itself behaves under real concurrency (which the Postgres replica test
+// already covers separately). Without this seam, a bug that made the loop
+// ignore its own claimed/err results - the one thing standing between "two
+// replicas" and "two identical group emails" - had no test that could catch
+// it.
+type coverageDigestClaimFunc func(db *gorm.DB, cutoff, hardCutoff time.Time, target coverageDigestTarget) (bool, error)
+
 // sweepCoverageDigests announces every pair that is due, claiming each
 // before it announces. notify is injected so the claim-and-batch logic can
 // be tested without email or GroupMe services.
 func sweepCoverageDigests(db *gorm.DB, notify func(coverageDigestTarget)) {
+	sweepCoverageDigestsWithClaim(db, claimCoverageDigest, notify)
+}
+
+// sweepCoverageDigestsWithClaim is sweepCoverageDigests with the claim step
+// injected. See coverageDigestClaimFunc for why.
+func sweepCoverageDigestsWithClaim(db *gorm.DB, claim coverageDigestClaimFunc, notify func(coverageDigestTarget)) {
 	now := time.Now()
 	cutoff := now.Add(-coverageDigestQuietPeriod)
 	hardCutoff := now.Add(-coverageDigestMaxDelay)
@@ -277,7 +296,7 @@ func sweepCoverageDigests(db *gorm.DB, notify func(coverageDigestTarget)) {
 	}
 
 	for _, target := range targets {
-		claimed, err := claimCoverageDigest(db, cutoff, hardCutoff, target)
+		claimed, err := claim(db, cutoff, hardCutoff, target)
 		if err != nil {
 			logging.WithFields(map[string]interface{}{
 				"group_id": target.GroupID,

@@ -1663,6 +1663,30 @@ type sendCoverageReminderResponse struct {
 	Message       string `json:"message"`
 }
 
+// stampCoverageRequestsAsAnnounced marks exactly the given coverage request
+// ids as announced. Scoped by id rather than by re-running whatever
+// predicate selected them, so a row that starts matching that predicate only
+// after the caller already read its announcement's content - and so was
+// never actually included in it - is left alone for the digest sweep to
+// pick up normally instead of being silently marked as told.
+func stampCoverageRequestsAsAnnounced(db *gorm.DB, ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return db.Model(&models.ShiftCoverageRequest{}).
+		Where("id IN ? AND notified_at IS NULL", ids).
+		Update("notified_at", time.Now()).Error
+}
+
+// stampCoverageRequestsAsAnnouncedFunc is stampCoverageRequestsAsAnnounced,
+// indirected through a package variable so a test can substitute a spy and
+// assert SendCoverageReminder actually calls it with the ids it read into
+// its announcement - not, say, a reversion to re-running the selecting
+// predicate a second time, which would silently widen what gets stamped to
+// include a row filed after the read. Production code has no reason to
+// reassign this outside a test.
+var stampCoverageRequestsAsAnnouncedFunc = stampCoverageRequestsAsAnnounced
+
 // SendCoverageReminder is a manual, admin-triggered broadcast covering
 // every request currently open in the group, regardless of who requested
 // it - unlike the automatic digest, which announces a requester's shifts
@@ -1751,9 +1775,15 @@ func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeServi
 		// this broadcast covers every open request in the group, which
 		// includes any still waiting in the digest queue. Leaving those
 		// unstamped means the sweep announces the same shifts again a few
-		// minutes later - the duplicate the digest exists to prevent. The
-		// scope is group-wide rather than per-requester because that is what
-		// the reminder itself covers.
+		// minutes later - the duplicate the digest exists to prevent.
+		//
+		// Stamped BY ID, from the exact rows already read into openRequests,
+		// not by re-running the group/status/date predicate a second time.
+		// Re-running it would stamp anything matching at that later instant,
+		// including a request created in the gap between the read above and
+		// this write - a row that was never part of the message that went
+		// out, silently marked as told anyway and never revisited by the
+		// sweep. Stamping by id can only mark what was actually announced.
 		//
 		// The sends are tracked so shutdown drains them: the rows are
 		// already stamped, so a send cut short by a closing DB pool is lost
@@ -1761,10 +1791,11 @@ func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeServi
 		willSend := (emailService != nil && emailService.IsConfigured() && scheduleEmailNotificationsEnabled()) ||
 			(groupMeService != nil && grp.GroupMeEnabled && grp.GroupMeBotID != "")
 		if willSend {
-			if err := rawDB.Model(&models.ShiftCoverageRequest{}).
-				Where("group_id = ? AND status = ? AND date >= ? AND notified_at IS NULL",
-					groupIDUint, models.CoverageRequestOpen, today).
-				Update("notified_at", time.Now()).Error; err != nil {
+			ids := make([]uint, len(openRequests))
+			for i, r := range openRequests {
+				ids[i] = r.ID
+			}
+			if err := stampCoverageRequestsAsAnnouncedFunc(rawDB, ids); err != nil {
 				logging.WithField("group_id", groupIDUint).
 					Error("Failed to stamp coverage requests covered by the reminder; the digest sweep may re-announce them", err)
 			}

@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"reflect"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -721,5 +724,228 @@ func TestStartCoverageDigestSweep_StopWaitsForTheAnnouncement(t *testing.T) {
 	case <-stopReturned:
 	case <-time.After(coverageDigestStopTimeout + 2*time.Second):
 		t.Fatal("stop() did not return after the announcement finished")
+	}
+}
+
+// Round-4 finding 1. sweepCoverageDigests's own use of the claim's return
+// value - "if !claimed, don't announce" - had no test of its own: the
+// Postgres replica test exercises claimCoverageDigest directly under real
+// concurrency, but nothing proved the sweep's LOOP actually honors what it
+// gets back. A stub claim that reports losing (as a slower replica would)
+// makes that assertion directly, without needing two real connections.
+func TestSweepCoverageDigests_DoesNotNotifyWhenAnotherReplicaWinsTheClaim(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
+
+	rec := &notifyRecorder{}
+	lostClaim := func(*gorm.DB, time.Time, time.Time, coverageDigestTarget) (bool, error) {
+		return false, nil
+	}
+	sweepCoverageDigestsWithClaim(db, lostClaim, rec.record)
+
+	if got := rec.count(); got != 0 {
+		t.Errorf("expected no notification when the claim is lost to another replica, got %d", got)
+	}
+}
+
+// Round-4 finding 1 (error path). A claim that fails outright must be
+// treated the same as losing it - definitely not "assume we won and
+// announce anyway".
+func TestSweepCoverageDigests_DoesNotNotifyWhenClaimErrors(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
+
+	rec := &notifyRecorder{}
+	erroringClaim := func(*gorm.DB, time.Time, time.Time, coverageDigestTarget) (bool, error) {
+		return false, errors.New("boom")
+	}
+	sweepCoverageDigestsWithClaim(db, erroringClaim, rec.record)
+
+	if got := rec.count(); got != 0 {
+		t.Errorf("expected no notification when the claim errors, got %d", got)
+	}
+}
+
+// Round-4 finding 2. TestWaitForPendingCoverageNotifications_DrainsInFlightSends
+// calls trackCoverageNotification directly, which proves the helper works
+// but not that SendCoverageReminder actually uses it - the same gap round 3
+// found and closed for the reopen path, left open here. This drives the
+// real handler.
+func TestSendCoverageReminder_ItsAnnouncementIsDrainedAtShutdown(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, other, group := setupCoverageTestGroup(t, db)
+	admin := CreateTestUser(t, db, "reminder-drain-admin", "reminder-drain-admin@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+	// sendGroupAnnouncementEmails only mails members with notifications
+	// enabled - without a recipient, blockingEmailProvider.SendEmail is
+	// never called and this test would hang waiting for provider.started.
+	if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+
+	future := time.Now().UTC().AddDate(0, 0, 7).Truncate(24 * time.Hour)
+	req := &models.ShiftCoverageRequest{
+		GroupID: group.ID, RequestedByUserID: requester.ID,
+		Date: future, Hour: 10, Status: models.CoverageRequestOpen,
+	}
+	if err := db.Create(req).Error; err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	provider := &blockingEmailProvider{started: make(chan struct{}), release: make(chan struct{})}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+
+	if w := performSendCoverageReminder(db, emailSvc, admin.ID, false, group.ID); w.Code != 200 {
+		t.Fatalf("Expected reminder to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	select {
+	case <-provider.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the reminder never attempted its announcement")
+	}
+
+	drained := make(chan struct{})
+	go func() {
+		WaitForPendingCoverageNotifications()
+		close(drained)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-drained:
+		t.Fatal("shutdown drain returned while the reminder's announcement was still in flight - the send is untracked, so the DB pool could close underneath it")
+	default:
+	}
+
+	close(provider.release)
+	select {
+	case <-drained:
+	case <-time.After(coverageNotifyDrainTimeout + 2*time.Second):
+		t.Fatal("drain never returned")
+	}
+}
+
+// Round-4 finding 3. The reminder's stamp is gated on willSend so that a
+// reminder which sends nothing (every channel disabled) doesn't stamp
+// anything either - stamping with nothing sent would permanently hide those
+// rows from the digest sweep. Nothing asserted that gate directly.
+func TestSendCoverageReminder_LeavesRequestsUnstampedWhenNothingWillBeSent(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "")
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	admin := CreateTestUser(t, db, "reminder-noop-admin", "reminder-noop-admin@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+
+	future := time.Now().UTC().AddDate(0, 0, 7).Truncate(24 * time.Hour)
+	req := &models.ShiftCoverageRequest{
+		GroupID: group.ID, RequestedByUserID: requester.ID,
+		Date: future, Hour: 10, Status: models.CoverageRequestOpen,
+	}
+	if err := db.Create(req).Error; err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	// No email service, no GroupMe service, and the flag is off: nothing
+	// will actually be sent.
+	if w := performSendCoverageReminder(db, nil, admin.ID, false, group.ID); w.Code != 200 {
+		t.Fatalf("Expected reminder call to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var reloaded models.ShiftCoverageRequest
+	if err := db.First(&reloaded, req.ID).Error; err != nil {
+		t.Fatalf("Failed to reload request: %v", err)
+	}
+	if reloaded.NotifiedAt != nil {
+		t.Error("expected the request to stay unstamped since nothing was sent - stamping here would permanently hide it from the digest sweep")
+	}
+}
+
+// Round-4 finding 4 (end to end). The unit test above proves the helper's
+// own id-scoping is correct; this proves SendCoverageReminder's call site
+// actually reaches it - so a regression that reverted the call site to
+// re-running the group/status/date predicate (the exact bug being fixed)
+// would be caught even though that mutation wouldn't touch the helper
+// itself.
+func TestSendCoverageReminder_CallsTheIDBasedStampWithExactlyWhatItAnnounced(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	admin := CreateTestUser(t, db, "reminder-spy-admin", "reminder-spy-admin@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+
+	future := time.Now().UTC().AddDate(0, 0, 7).Truncate(24 * time.Hour)
+	var wantIDs []uint
+	for _, hour := range []int{10, 11} {
+		req := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, hour, future)
+		wantIDs = append(wantIDs, req.ID)
+	}
+
+	original := stampCoverageRequestsAsAnnouncedFunc
+	t.Cleanup(func() { stampCoverageRequestsAsAnnouncedFunc = original })
+	var calls int
+	var gotIDs []uint
+	stampCoverageRequestsAsAnnouncedFunc = func(db *gorm.DB, ids []uint) error {
+		calls++
+		gotIDs = append([]uint(nil), ids...)
+		return original(db, ids)
+	}
+
+	provider := &mockEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+	if w := performSendCoverageReminder(db, emailSvc, admin.ID, false, group.ID); w.Code != 200 {
+		t.Fatalf("Expected reminder to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if calls != 1 {
+		t.Fatalf("expected the reminder to stamp through stampCoverageRequestsAsAnnouncedFunc exactly once, got %d calls - a reversion to inline predicate-based stamping would leave this at 0", calls)
+	}
+	sort.Slice(gotIDs, func(i, j int) bool { return gotIDs[i] < gotIDs[j] })
+	sort.Slice(wantIDs, func(i, j int) bool { return wantIDs[i] < wantIDs[j] })
+	if !reflect.DeepEqual(gotIDs, wantIDs) {
+		t.Errorf("expected the stamp to cover exactly the ids read into the announcement %v, got %v", wantIDs, gotIDs)
+	}
+}
+
+// Round-4 finding 4. SendCoverageReminder stamps by id, from the exact rows
+// it already read into its announcement, rather than by re-running the
+// group/status/date predicate that selected them. Re-running it would also
+// stamp a row that starts matching only after the read - never part of the
+// message that went out, silently marked as told anyway. This tests the
+// stamping mechanism directly: given an explicit id list, a second row that
+// matches the SAME broader predicate but is not in that list must be left
+// alone.
+func TestStampCoverageRequestsAsAnnounced_OnlyTouchesTheGivenIDs(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	future := time.Now().UTC().AddDate(0, 0, 7).Truncate(24 * time.Hour)
+
+	announced := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, future)
+	// Same group, same status, same future date - matches exactly the
+	// predicate SendCoverageReminder's read used - but its id is deliberately
+	// left out, standing in for a request filed after that read happened.
+	notPartOfThisAnnouncement := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 11, future)
+
+	if err := stampCoverageRequestsAsAnnounced(db, []uint{announced.ID}); err != nil {
+		t.Fatalf("stampCoverageRequestsAsAnnounced: %v", err)
+	}
+
+	var stamped models.ShiftCoverageRequest
+	if err := db.First(&stamped, announced.ID).Error; err != nil {
+		t.Fatalf("reload announced: %v", err)
+	}
+	if stamped.NotifiedAt == nil {
+		t.Error("expected the announced row to be stamped")
+	}
+
+	var untouched models.ShiftCoverageRequest
+	if err := db.First(&untouched, notPartOfThisAnnouncement.ID).Error; err != nil {
+		t.Fatalf("reload untouched: %v", err)
+	}
+	if untouched.NotifiedAt != nil {
+		t.Error("stamping by id touched a row outside the given set - a request filed in the read-to-stamp gap would be silently marked as announced despite never being in the message")
 	}
 }
