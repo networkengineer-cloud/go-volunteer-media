@@ -280,6 +280,35 @@ func notifyGroupOfOpenCoverageRequests(rawDB *gorm.DB, emailService *email.Servi
 		return
 	}
 
+	// Stamp exactly what is about to be announced, by id, before sending.
+	// This read is deliberately unfiltered by notified_at - it exists to
+	// show "every currently-open request," not just what triggered this
+	// call - so it can pick up a row that was never covered by whatever
+	// earlier stamp (a digest claim, a reopen) decided to notify at all: a
+	// request created in the gap between that stamp and this read. Without
+	// stamping it here too, it would go out in this message and still be
+	// left with notified_at NULL, guaranteeing the sweep announces it again
+	// once its own quiet period elapses - a duplicate.
+	//
+	// This closes the gap for every caller uniformly (the sweep's own
+	// synchronous claim-then-notify, and ReopenCoverageRequest's detached
+	// one) rather than requiring each caller to reason about its own timing
+	// separately. It does not require removing either caller's own earlier
+	// stamp: claimCoverageDigest's is the cross-replica claim itself, and
+	// ReopenCoverageRequest's shrinks the window before its goroutine even
+	// runs. What's left after this fix is the same class of residual as
+	// claimCoverageDigest's own documented KNOWN LIMITATION: a row created
+	// strictly after THIS read is correctly excluded from this message and
+	// left for the next tick.
+	ids := make([]uint, len(openRequests))
+	for i, r := range openRequests {
+		ids[i] = r.ID
+	}
+	if err := stampCoverageRequestsAsAnnouncedFunc(rawDB, ids); err != nil {
+		logging.WithField("group_id", groupIDUint).
+			Error("Failed to stamp coverage requests covered by this announcement; the digest sweep may re-announce them", err)
+	}
+
 	title := fmt.Sprintf("Coverage needed in %s", grp.Name)
 	content := buildCoverageRequestSummary(displayName(requester), openRequests)
 

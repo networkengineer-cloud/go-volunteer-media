@@ -733,6 +733,78 @@ func TestStartCoverageDigestSweep_StopWaitsForTheAnnouncement(t *testing.T) {
 // concurrency, but nothing proved the sweep's LOOP actually honors what it
 // gets back. A stub claim that reports losing (as a slower replica would)
 // makes that assertion directly, without needing two real connections.
+// Round-5 finding. A fifth, minimally-directed review flagged that
+// ReopenCoverageRequest's stamp-then-notify has a race window: it stamps a
+// PREDICATE-selected set, then notifies via a detached goroutine whose own
+// read (inside notifyGroupOfOpenCoverageRequests) is unfiltered by
+// notified_at - a request created in that gap is included in the message
+// but never gets stamped. Investigating showed the SAME root cause also
+// reaches the digest sweep's own synchronous claim-then-notify call, not
+// just the reopen path: claimCoverageDigest's stamp only covers rows that
+// existed at claim time, but notifyGroupOfOpenCoverageRequests' own
+// "complete picture" read runs immediately after and has no notified_at
+// filter, so a request landing in that narrow gap is announced without
+// being marked told.
+//
+// This test drives the sweep's real path, injecting the race at the exact
+// point it can occur - immediately after a real claim succeeds, before
+// notify's own read - by wrapping claimCoverageDigest rather than
+// stubbing it out, so the claim's actual DB effects are real and only the
+// timing is manufactured.
+func TestNotifyGroupOfOpenCoverageRequests_StampsWhatItActuallyAnnouncedEvenWhenClaimedByAnotherRow(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, other, group := setupCoverageTestGroup(t, db)
+	if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+
+	// Past the quiet period: the sweep will claim and announce this one.
+	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
+
+	provider := &mockEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+	notify := coverageDigestNotifier(db, emailSvc, nil)
+
+	var lateArrival *models.ShiftCoverageRequest
+	claimThenSimulateRace := func(db *gorm.DB, cutoff, hardCutoff time.Time, target coverageDigestTarget) (bool, error) {
+		claimed, err := claimCoverageDigest(db, cutoff, hardCutoff, target)
+		if err != nil || !claimed {
+			return claimed, err
+		}
+		// A brand-new request for the same requester lands in the gap
+		// between this claim committing and the notify call the sweep is
+		// about to make next - the exact race this test targets.
+		lateArrival = createDigestRequest(t, db, group.ID, requester.ID, 11, 0)
+		return claimed, err
+	}
+
+	sweepCoverageDigestsWithClaim(db, claimThenSimulateRace, notify)
+
+	if got := provider.sendCount(); got != 1 {
+		t.Fatalf("expected exactly 1 email for this tick, got %d", got)
+	}
+
+	var reloaded models.ShiftCoverageRequest
+	if err := db.First(&reloaded, lateArrival.ID).Error; err != nil {
+		t.Fatalf("reload late arrival: %v", err)
+	}
+	if reloaded.NotifiedAt == nil {
+		t.Error("the late arrival was included in this tick's announcement (notifyGroupOfOpenCoverageRequests has no notified_at filter on its own read) but was left unstamped - the sweep will announce it again once its own quiet period elapses, a duplicate of a shift already mentioned")
+	}
+
+	// Confirm that "again" actually happens without the fix: age it and
+	// sweep once more. With the fix, it's already stamped so nothing fires.
+	if err := db.Model(&reloaded).UpdateColumn("created_at", time.Now().Add(-10*time.Minute)).Error; err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	rec := &notifyRecorder{}
+	sweepCoverageDigests(db, rec.record)
+	if got := rec.count(); got != 0 {
+		t.Errorf("expected the late arrival to already be accounted for, got %d further notification(s)", got)
+	}
+}
+
 func TestSweepCoverageDigests_DoesNotNotifyWhenAnotherReplicaWinsTheClaim(t *testing.T) {
 	db := SetupTestDB(t)
 	requester, _, group := setupCoverageTestGroup(t, db)
