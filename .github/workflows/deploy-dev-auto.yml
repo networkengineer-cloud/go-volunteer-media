@@ -1,0 +1,90 @@
+name: Deploy Dev (Auto)
+
+on:
+  workflow_run:
+    workflows: ["Promote Image"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+env:
+  TERRAFORM_VERSION: '1.5.7'
+  WORKING_DIRECTORY: './terraform/environments/dev'
+  TF_CLOUD_ORGANIZATION: 'Networkengineer'
+  TF_WORKSPACE: 'volunteer-app-dev'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  APP_NAME: ca-volunteer-media-dev
+  RESOURCE_GROUP: rg-volunteer-media-dev
+
+jobs:
+  deploy:
+    name: Deploy Dev
+    runs-on: ubuntu-latest
+    environment: development
+    if: github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Download image digest
+        uses: actions/download-artifact@v4
+        with:
+          name: image-digest
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read image digest
+        id: image
+        run: |
+          set -euo pipefail
+          DIGEST=$(cat image-digest.txt)
+          test -n "$DIGEST"
+          echo "ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_DEV }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy image to Container App
+        run: |
+          set -euo pipefail
+          MONTH_DAY=$(date +%m%d)
+          GIT_SHORT=$(echo "${{ github.event.workflow_run.head_sha }}" | cut -c1-6)
+          REVISION_SUFFIX="${MONTH_DAY}${GIT_SHORT}"
+          az containerapp update \
+            --name "${{ env.APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --image "${{ steps.image.outputs.ref }}" \
+            --revision-suffix "$REVISION_SUFFIX"
+
+      - name: Create Deployment Summary
+        run: |
+          echo "## Dev Auto-Deploy Successful ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ steps.image.outputs.ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Will be torn down by the nightly destroy workflow._" >> $GITHUB_STEP_SUMMARY
