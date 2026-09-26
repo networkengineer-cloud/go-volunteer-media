@@ -916,6 +916,7 @@ const AnimalForm: React.FC = () => {
                 <option value="foster">Foster</option>
                 <option value="bite_quarantine">Bite Quarantine</option>
                 <option value="under_vet_care">Under Vet Care</option>
+                <option value="under_behavior_mod">Under Behavior Mod</option>
                 <option value="archived">Archived</option>
               </select>
               <p className="form-field__helper">Current status of the animal</p>

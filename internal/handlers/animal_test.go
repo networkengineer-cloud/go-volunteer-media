@@ -82,15 +82,19 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 	animal5.Status = "archived"
 	db.Save(animal5)
 
+	animal6 := createTestAnimal(t, db, group.ID, "Buddy", "Dog")
+	animal6.Status = "under_behavior_mod"
+	db.Save(animal6)
+
 	tests := []struct {
 		name          string
 		statusQuery   string
 		expectedCount int
 	}{
 		{
-			name:          "default filter (available, bite_quarantine, and under_vet_care)",
+			name:          "default filter (available, bite_quarantine, under_vet_care, and under_behavior_mod)",
 			statusQuery:   "",
-			expectedCount: 3, // available, bite_quarantine, and under_vet_care
+			expectedCount: 4, // available, bite_quarantine, under_vet_care, and under_behavior_mod
 		},
 		{
 			name:          "filter by available",
@@ -105,7 +109,7 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 		{
 			name:          "filter by all",
 			statusQuery:   "all",
-			expectedCount: 5,
+			expectedCount: 6,
 		},
 		{
 			name:          "filter by multiple statuses",
@@ -115,6 +119,11 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 		{
 			name:          "filter by under_vet_care",
 			statusQuery:   "under_vet_care",
+			expectedCount: 1,
+		},
+		{
+			name:          "filter by under_behavior_mod",
+			statusQuery:   "under_behavior_mod",
 			expectedCount: 1,
 		},
 	}
@@ -152,7 +161,7 @@ func TestGetAnimals_StatusFilter(t *testing.T) {
 
 // TestGetAnimals_DefaultFilterExcludesFosterAndArchived verifies by name (not just count)
 // that the default filter excludes foster and archived animals while including
-// available, bite_quarantine, and under_vet_care animals.
+// available, bite_quarantine, under_vet_care, and under_behavior_mod animals.
 func TestGetAnimals_DefaultFilterExcludesFosterAndArchived(t *testing.T) {
 	db := setupAnimalTestDB(t)
 	user, group := createAnimalTestUser(t, db, "testuser", "test@example.com", false)
@@ -177,6 +186,10 @@ func TestGetAnimals_DefaultFilterExcludesFosterAndArchived(t *testing.T) {
 	archived.Status = "archived"
 	db.Save(archived)
 
+	behaviorMod := createTestAnimal(t, db, group.ID, "Buddy", "Dog")
+	behaviorMod.Status = "under_behavior_mod"
+	db.Save(behaviorMod)
+
 	c, w := setupAnimalTestContext(user.ID, false)
 	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
 	c.Request = httptest.NewRequest("GET", fmt.Sprintf("/api/v1/groups/%d/animals", group.ID), nil)
@@ -198,7 +211,7 @@ func TestGetAnimals_DefaultFilterExcludesFosterAndArchived(t *testing.T) {
 		names[a.Name] = true
 	}
 
-	for _, expectedIncluded := range []string{"Rex", "Max", "Bella"} {
+	for _, expectedIncluded := range []string{"Rex", "Max", "Bella", "Buddy"} {
 		if !names[expectedIncluded] {
 			t.Errorf("Expected %q to be included in the default filter, but it was missing", expectedIncluded)
 		}
@@ -561,6 +574,13 @@ func TestCreateAnimal_StatusSpecificDates(t *testing.T) {
 				return a.Status == "under_vet_care"
 			},
 		},
+		{
+			name:   "under_behavior_mod status sets no special date field",
+			status: "under_behavior_mod",
+			checkDateFunc: func(a *models.Animal) bool {
+				return a.Status == "under_behavior_mod"
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -868,6 +888,18 @@ func TestUpdateAnimal_StatusTransition(t *testing.T) {
 			},
 			checkClearedField: func(a *models.Animal) bool {
 				return a.FosterStartDate == nil && a.ArchivedDate == nil
+			},
+		},
+		{
+			name:      "transition to under_behavior_mod",
+			newStatus: "under_behavior_mod",
+			checkDateField: func(a *models.Animal) bool {
+				return true // under_behavior_mod has no status-specific date field
+			},
+			checkClearedField: func(a *models.Animal) bool {
+				return a.FosterStartDate == nil && a.QuarantineStartDate == nil &&
+					a.QuarantineApprovalStatus == "" && a.QuarantineApprovalDate == nil &&
+					a.ArchivedDate == nil
 			},
 		},
 		{

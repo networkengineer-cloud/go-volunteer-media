@@ -274,6 +274,63 @@ func TestUpdateAnimalAdmin_UnderVetCareTransition(t *testing.T) {
 	}
 }
 
+// TestUpdateAnimalAdmin_UnderBehaviorModTransition tests transitioning out of bite_quarantine
+// into under_behavior_mod clears the stale quarantine fields
+func TestUpdateAnimalAdmin_UnderBehaviorModTransition(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+
+	animal := createTestAnimal(t, db, group.ID, "Rex", "Dog")
+	now := time.Now()
+	animal.Status = "bite_quarantine"
+	animal.QuarantineStartDate = &now
+	animal.QuarantineEndDate = &now
+	animal.QuarantineApprovalStatus = "granted"
+	animal.QuarantineApprovalDate = &now
+	animal.QuarantineIncidentDetails = "Bit a volunteer"
+	db.Save(animal)
+
+	updateReq := AnimalRequest{
+		Name:   "Rex",
+		Status: "under_behavior_mod",
+	}
+
+	jsonData, _ := json.Marshal(updateReq)
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "animalId", Value: fmt.Sprintf("%d", animal.ID)}}
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/animals/%d", animal.ID), bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := UpdateAnimalAdmin(db, nil, &embedding.StubEmbedder{})
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var updatedAnimal models.Animal
+	if err := json.Unmarshal(w.Body.Bytes(), &updatedAnimal); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if updatedAnimal.Status != "under_behavior_mod" {
+		t.Errorf("Expected status 'under_behavior_mod', got '%s'", updatedAnimal.Status)
+	}
+	if updatedAnimal.QuarantineStartDate != nil {
+		t.Error("Expected QuarantineStartDate to be cleared when transitioning to under_behavior_mod")
+	}
+	if updatedAnimal.QuarantineEndDate != nil {
+		t.Error("Expected QuarantineEndDate to be cleared when transitioning to under_behavior_mod")
+	}
+	if updatedAnimal.QuarantineApprovalStatus != "" {
+		t.Error("Expected QuarantineApprovalStatus to be cleared when transitioning to under_behavior_mod")
+	}
+	if updatedAnimal.QuarantineIncidentDetails != "" {
+		t.Error("Expected QuarantineIncidentDetails to be cleared when transitioning to under_behavior_mod")
+	}
+}
+
 // TestUpdateAnimalAdmin_MoveGroup tests moving animal to different group
 func TestUpdateAnimalAdmin_MoveGroup(t *testing.T) {
 	db := setupAnimalTestDB(t)

@@ -153,6 +153,15 @@ func UpdateAnimalAdmin(db *gorm.DB, emailService *email.Service, embedder embedd
 				updates["quarantine_approval_date"] = nil
 				updates["archived_date"] = nil
 				updates["quarantine_incident_details"] = ""
+			case "under_behavior_mod":
+				// No dedicated date field for behavior mod, so clear the same fields as "available"
+				updates["foster_start_date"] = nil
+				updates["quarantine_start_date"] = nil
+				updates["quarantine_end_date"] = nil
+				updates["quarantine_approval_status"] = ""
+				updates["quarantine_approval_date"] = nil
+				updates["archived_date"] = nil
+				updates["quarantine_incident_details"] = ""
 			}
 		} else if animal.Status == "bite_quarantine" {
 			// Update approval status only when explicitly provided (nil = not sent = no change)

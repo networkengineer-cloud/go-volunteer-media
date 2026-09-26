@@ -207,16 +207,17 @@ func ImportAnimalsCSV(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc 
 			if idx, ok := headerMap["status"]; ok && idx < len(record) {
 				status := strings.TrimSpace(record[idx])
 				validStatuses := map[string]bool{
-					"available":       true,
-					"foster":          true,
-					"bite_quarantine": true,
-					"under_vet_care":  true,
-					"archived":        true,
+					"available":          true,
+					"foster":             true,
+					"bite_quarantine":    true,
+					"under_vet_care":     true,
+					"under_behavior_mod": true,
+					"archived":           true,
 				}
 				if status != "" && validStatuses[status] {
 					animal.Status = status
 				} else if status != "" {
-					errors = append(errors, fmt.Sprintf("Line %d: Invalid status '%s' (must be available, foster, bite_quarantine, under_vet_care, or archived)", lineNum, status))
+					errors = append(errors, fmt.Sprintf("Line %d: Invalid status '%s' (must be available, foster, bite_quarantine, under_vet_care, under_behavior_mod, or archived)", lineNum, status))
 					continue
 				} else {
 					animal.Status = "available"
