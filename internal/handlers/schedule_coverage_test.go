@@ -913,6 +913,24 @@ func TestCancelCoverageRequest(t *testing.T) {
 	})
 }
 
+// performReopenCoverageRequestWithEmail is performReopenCoverageRequest with
+// a real email service wired in, for tests that need the announcement to
+// actually attempt a send.
+func performReopenCoverageRequestWithEmail(db *gorm.DB, emailSvc *email.Service, callerID uint, isAdmin bool, groupID, requestID uint) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", callerID)
+		c.Set("is_admin", isAdmin)
+		c.Next()
+	})
+	router.POST("/groups/:id/schedule/coverage-requests/:requestId/reopen", ReopenCoverageRequest(db, emailSvc, nil))
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/groups/%d/schedule/coverage-requests/%d/reopen", groupID, requestID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
 func performReopenCoverageRequest(db *gorm.DB, callerID uint, isAdmin bool, groupID, requestID uint) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

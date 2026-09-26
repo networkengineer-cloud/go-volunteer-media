@@ -1082,8 +1082,13 @@ const coverageDigestBackfillMarker = models.InternalSettingPrefix + "coverage_di
 // moved under InternalSettingPrefix. Honored so a database that already ran
 // the backfill under the old key does not run it a second time - which would
 // stamp whatever is pending at that moment and silently discard those
-// announcements. The key never shipped outside this branch, so this can be
-// dropped once no unmerged environment is carrying it.
+// announcements.
+//
+// Seeing this key also migrates the marker forward to the prefixed one, so
+// dropping this constant later is safe: by then every database that had the
+// legacy key carries the new one too. Do not drop it without confirming
+// that - removing the check while a database still holds only the legacy key
+// re-opens the backfill on that database.
 const legacyCoverageDigestBackfillMarker = "coverage_digest_notified_at_backfilled"
 
 // claimCoverageDigestBackfill atomically reserves the right to run the
@@ -1100,6 +1105,16 @@ func claimCoverageDigestBackfill(db *gorm.DB) (bool, error) {
 		return false, fmt.Errorf("failed to check legacy coverage digest backfill marker: %w", err)
 	}
 	if legacy > 0 {
+		// Migrate the marker forward rather than just skipping. Leaving the
+		// database on the legacy key alone would mean that dropping the
+		// legacy constant - which the comment on it invites - silently
+		// removes the gate on every database that took this path, re-running
+		// the backfill and discarding whatever was pending. Writing the new
+		// key here is what makes that cleanup safe.
+		if err := db.Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&models.SiteSetting{Key: coverageDigestBackfillMarker, Value: "true"}).Error; err != nil {
+			return false, fmt.Errorf("failed to migrate coverage digest backfill marker: %w", err)
+		}
 		return false, nil
 	}
 

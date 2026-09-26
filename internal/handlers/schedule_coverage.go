@@ -1673,6 +1673,10 @@ type sendCoverageReminderResponse struct {
 // something can't wait for the digest's quiet period.
 func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// rawDB is captured before the shadow below so the detached sends
+		// use the unscoped handle rather than one bound to this request's
+		// context, which is canceled the instant the handler returns.
+		rawDB := db
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
@@ -1740,25 +1744,49 @@ func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeServi
 		resp := sendCoverageReminderResponse{RequestCount: len(openRequests)}
 
 		// Mirrors notifyGroupOfOpenCoverageRequests: email is gated by the
-		// same beta flag (GroupMe posts are not), and both run in the
-		// background since this handler shouldn't block on delivery.
+		// same beta flag (GroupMe posts are not), and both run off-request
+		// since this handler shouldn't block on delivery.
+		//
+		// Stamp before sending, for the same reason the reopen path does:
+		// this broadcast covers every open request in the group, which
+		// includes any still waiting in the digest queue. Leaving those
+		// unstamped means the sweep announces the same shifts again a few
+		// minutes later - the duplicate the digest exists to prevent. The
+		// scope is group-wide rather than per-requester because that is what
+		// the reminder itself covers.
+		//
+		// The sends are tracked so shutdown drains them: the rows are
+		// already stamped, so a send cut short by a closing DB pool is lost
+		// for good.
+		willSend := (emailService != nil && emailService.IsConfigured() && scheduleEmailNotificationsEnabled()) ||
+			(groupMeService != nil && grp.GroupMeEnabled && grp.GroupMeBotID != "")
+		if willSend {
+			if err := rawDB.Model(&models.ShiftCoverageRequest{}).
+				Where("group_id = ? AND status = ? AND date >= ? AND notified_at IS NULL",
+					groupIDUint, models.CoverageRequestOpen, today).
+				Update("notified_at", time.Now()).Error; err != nil {
+				logging.WithField("group_id", groupIDUint).
+					Error("Failed to stamp coverage requests covered by the reminder; the digest sweep may re-announce them", err)
+			}
+		}
+
 		if emailService != nil && emailService.IsConfigured() && scheduleEmailNotificationsEnabled() {
 			resp.EmailQueued = true
-			go func() {
+			trackCoverageNotification(func() {
 				bgCtx := context.Background()
-				if err := sendGroupAnnouncementEmails(bgCtx, db, emailService, groupIDUint, title, content); err != nil {
+				if err := sendGroupAnnouncementEmails(bgCtx, rawDB, emailService, groupIDUint, title, content); err != nil {
 					logging.WithContext(bgCtx).Error("Error sending coverage reminder emails", err)
 				}
-			}()
+			})
 		}
 		if groupMeService != nil && grp.GroupMeEnabled && grp.GroupMeBotID != "" {
 			resp.GroupMeQueued = true
-			go func() {
+			trackCoverageNotification(func() {
 				bgCtx := context.Background()
-				if err := sendUpdateToGroupMe(bgCtx, db, groupMeService, groupIDUint, title, content); err != nil {
+				if err := sendUpdateToGroupMe(bgCtx, rawDB, groupMeService, groupIDUint, title, content); err != nil {
 					logging.WithContext(bgCtx).Error("Error sending coverage reminder to GroupMe", err)
 				}
-			}()
+			})
 		}
 
 		if resp.EmailQueued || resp.GroupMeQueued {

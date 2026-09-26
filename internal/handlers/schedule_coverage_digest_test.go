@@ -568,3 +568,158 @@ func TestWaitForPendingCoverageNotifications_DrainsInFlightSends(t *testing.T) {
 		t.Fatal("WaitForPendingCoverageNotifications never returned")
 	}
 }
+
+// Round-3 finding 1. The reminder broadcasts every open request in the
+// group, which includes rows still waiting in the digest queue. If it
+// doesn't stamp them, the sweep announces the same shifts again minutes
+// later. Same rule as the reopen path: whatever an announcement covered
+// must be marked as told.
+func TestSendCoverageReminder_StampsThePendingShiftsItAnnounced(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	admin := CreateTestUser(t, db, "reminder-admin", "reminder-admin@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, admin.ID, group.ID, true)
+
+	// Two shifts the volunteer just flagged: announced by nobody yet.
+	future := time.Now().UTC().AddDate(0, 0, 7).Truncate(24 * time.Hour)
+	for _, hour := range []int{10, 11} {
+		req := &models.ShiftCoverageRequest{
+			GroupID: group.ID, RequestedByUserID: requester.ID,
+			Date: future, Hour: hour, Status: models.CoverageRequestOpen,
+		}
+		if err := db.Create(req).Error; err != nil {
+			t.Fatalf("Failed to create request: %v", err)
+		}
+	}
+
+	provider := &mockEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+	if w := performSendCoverageReminder(db, emailSvc, admin.ID, false, group.ID); w.Code != 200 {
+		t.Fatalf("Expected reminder to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+	WaitForPendingCoverageNotifications()
+
+	var pending int64
+	db.Model(&models.ShiftCoverageRequest{}).Where("notified_at IS NULL").Count(&pending)
+	if pending != 0 {
+		t.Errorf("the reminder announced these shifts; expected them stamped, %d left pending", pending)
+	}
+
+	// Age them past the quiet period: the sweep must stay quiet.
+	if err := db.Model(&models.ShiftCoverageRequest{}).Where("1 = 1").
+		UpdateColumn("created_at", time.Now().Add(-10*time.Minute)).Error; err != nil {
+		t.Fatalf("Failed to backdate: %v", err)
+	}
+	rec := &notifyRecorder{}
+	sweepCoverageDigests(db, rec.record)
+	if got := rec.count(); got != 0 {
+		t.Errorf("the reminder already told the group; expected no digest announcement, got %d", got)
+	}
+}
+
+// Round-3 finding 3. TestWaitForPendingCoverageNotifications_DrainsInFlightSends
+// calls trackCoverageNotification directly, which proves the helper works but
+// not that the reopen path actually uses it - swapping that call for a bare
+// `go` left the whole suite green. This drives the real handler.
+func TestReopenCoverageRequest_ItsAnnouncementIsDrainedAtShutdown(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, claimant, group := setupCoverageTestGroup(t, db)
+	if err := db.Model(claimant).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+	if err := db.Model(reqRow).Updates(map[string]interface{}{
+		"status":             models.CoverageRequestClaimed,
+		"claimed_by_user_id": claimant.ID,
+		"claimed_at":         time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("Failed to claim: %v", err)
+	}
+
+	provider := &blockingEmailProvider{started: make(chan struct{}), release: make(chan struct{})}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+
+	if w := performReopenCoverageRequestWithEmail(db, emailSvc, claimant.ID, false, group.ID, reqRow.ID); w.Code != 200 {
+		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	select {
+	case <-provider.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the reopen never attempted its announcement")
+	}
+
+	drained := make(chan struct{})
+	go func() {
+		WaitForPendingCoverageNotifications()
+		close(drained)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-drained:
+		t.Fatal("shutdown drain returned while the reopen's announcement was still in flight - the send is untracked, so the DB pool could close underneath it")
+	default:
+	}
+
+	close(provider.release)
+	select {
+	case <-drained:
+	case <-time.After(coverageNotifyDrainTimeout + 2*time.Second):
+		t.Fatal("drain never returned")
+	}
+}
+
+// Round-3 finding 4. startCoverageDigestSweepWithNotify exists so a test can
+// assert stop() waits for an in-flight ANNOUNCEMENT, not merely for the tick
+// loop - removing the wait entirely left the suite green, because the only
+// other stop() test runs with nil services and no pending rows, so no tick
+// ever has a body to be in flight.
+func TestStartCoverageDigestSweep_StopWaitsForTheAnnouncement(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	notifyDone := make(chan struct{})
+	slowNotify := func(coverageDigestTarget) {
+		close(started)
+		<-release
+		close(notifyDone)
+	}
+
+	stop := startCoverageDigestSweepWithNotify(db, slowNotify, 5*time.Millisecond)
+
+	// Only call stop() once an announcement is genuinely in flight, or stop()
+	// can win the race against the first tick and the test proves nothing.
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the sweep never started an announcement")
+	}
+
+	stopReturned := make(chan struct{})
+	go func() {
+		stop()
+		close(stopReturned)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-stopReturned:
+		t.Fatal("stop() returned while an announcement was still in flight - the DB pool could be closed underneath it")
+	default:
+	}
+
+	close(release)
+	<-notifyDone
+	select {
+	case <-stopReturned:
+	case <-time.After(coverageDigestStopTimeout + 2*time.Second):
+		t.Fatal("stop() did not return after the announcement finished")
+	}
+}

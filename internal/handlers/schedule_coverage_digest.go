@@ -54,8 +54,16 @@ var coverageNotifyWG sync.WaitGroup
 const coverageNotifyDrainTimeout = 30 * time.Second
 
 // trackCoverageNotification runs fn in a goroutine that shutdown knows about.
-// Every detached coverage announcement must go through here rather than a
-// bare `go`, or it is invisible to WaitForPendingCoverageNotifications.
+// A detached send that uses a bare `go` instead is invisible to
+// WaitForPendingCoverageNotifications and can be cut off by the closing DB
+// pool.
+//
+// That matters most where the send's rows have ALREADY been stamped as
+// announced - the reopen and reminder paths - because there a lost send is
+// never retried by the sweep. The per-recipient sends elsewhere in
+// schedule_coverage.go (claim, claim-batch, reassignment) are still bare
+// `go` and predate this; they lose at most one notification with no
+// database state claiming otherwise, so they have not been converted.
 func trackCoverageNotification(fn func()) {
 	coverageNotifyWG.Add(1)
 	go func() {
@@ -168,9 +176,12 @@ func coverageDigestNotifier(db *gorm.DB, emailService *email.Service, groupMeSer
 	}
 }
 
-// pendingCoverageDigestTargets lists the (group, requester) pairs that have
-// gone quiet - every one of their unannounced requests predates the cutoff,
-// which is what HAVING MAX(created_at) tests.
+// pendingCoverageDigestTargets lists the (group, requester) pairs that are
+// due: either they have gone quiet - every unannounced request of theirs
+// predates the cutoff, which is what HAVING MAX(created_at) tests - or their
+// oldest unannounced request has passed the hard cap, which MIN(created_at)
+// tests and which ships the burst even though a fresh request is still in
+// it.
 //
 // Keying on the NEWEST pending request rather than each row's own age is
 // the whole point. A volunteer flagging shifts over a few minutes would

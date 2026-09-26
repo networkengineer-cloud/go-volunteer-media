@@ -466,4 +466,12 @@ func TestBackfillCoverageRequestNotifiedAt_HonorsTheLegacyMarker(t *testing.T) {
 	if unstamped != 1 {
 		t.Error("the backfill re-ran under the new key and discarded a pending announcement")
 	}
+
+	// The marker must also be migrated forward, or dropping the legacy
+	// constant later would silently re-open the backfill on this database.
+	var migrated int64
+	db.Model(&models.SiteSetting{}).Where("key = ?", coverageDigestBackfillMarker).Count(&migrated)
+	if migrated != 1 {
+		t.Error("expected the legacy marker to be migrated to the prefixed key, so the legacy check can eventually be removed safely")
+	}
 }
