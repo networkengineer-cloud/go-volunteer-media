@@ -10,13 +10,14 @@ jobs:
 
     # Real Postgres for the *_postgres_test.go tests (pgvector, full-text,
     # concurrency). Without it they skip themselves and pass silently.
+    # Throwaway per-job container, so trust auth rather than a password.
     services:
       postgres:
         image: pgvector/pgvector:pg15
         env:
           POSTGRES_DB: volunteer_media_test
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -53,7 +54,6 @@ jobs:
         DB_HOST: localhost
         DB_PORT: 5432
         DB_USER: postgres
-        DB_PASSWORD: postgres
         DB_NAME: volunteer_media_test
         DB_SSLMODE: disable
       run: go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
