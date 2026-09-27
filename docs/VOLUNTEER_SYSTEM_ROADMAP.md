@@ -68,7 +68,9 @@ A baseline so work items build on the code rather than around it.
 | Frontend data | Hand-rolled axios calls in `useEffect`; no query cache. Largest pages: `GroupPage.tsx` 1,934 lines, `UsersPage.tsx` 1,839, `AnimalForm.tsx` 1,612 | `frontend/src/api/client.ts`, `pages/` |
 | Frontend styling | Global, unscoped CSS per page; known cascade hazards | `frontend-styling` skill |
 | Sessions | JWT in `localStorage`, 24h expiry | `internal/auth/auth.go`, `api/client.ts` |
-| Tests | Handler tests mostly SQLite; `_postgres_test.go` suffix for real-Postgres tests | `internal/handlers/` |
+| Tests | Handler tests mostly SQLite; `_postgres_test.go` suffix for real-Postgres tests (31 today; they skip when no DB is reachable) | `internal/handlers/` |
+| CI | `test.yml` is `workflow_dispatch` only — nothing runs automatically on pull requests. Until #325 its backend job had no Postgres, so the Postgres tests always skipped | `.github/workflows/test.yml` |
+| Agent skills | 9 skills in `.claude/skills/`; `add-api-endpoint`, `group-auth-pattern`, `image-upload` and `run-tests` corrected against the code in #325 | `.claude/skills/` |
 
 ---
 
@@ -153,6 +155,38 @@ them; AR-6 – AR-9 are conventions for *new* code, not rewrites of old code.
   (`_postgres_test.go`), not SQLite.
 - [ ] **AR-12** Record AR-6 – AR-11 in `CLAUDE.md`, the relevant skills,
   and `.github/copilot-instructions.md` so every contributor follows them.
+  Update `add-api-endpoint` (AR-1, AR-6, AR-7), `group-auth-pattern` (AR-2),
+  `add-frontend-page` and `frontend-styling` (AR-8, AR-9) as each lands.
+- [~] **AR-15** Run the `_postgres_test.go` tests in CI: Postgres (pgvector)
+  service added to the backend test job (#325). Verified locally: all 31
+  pass in ~25s.
+- [ ] **AR-16** Run `test.yml` automatically on pull requests (it is manual
+  only today). **(blocked: AR-Q5)**
+
+### New agent skills
+
+Write each skill in the same PR as the pattern it documents — not before,
+or it describes code that doesn't exist.
+
+- [ ] **AR-17** `schema-migration` skill — with AR-1: writing a versioned
+  migration, backfills, Postgres testing, what is safe on a live database.
+- [ ] **AR-18** `background-job` skill — with AR-3: replica-safe jobs
+  modelled on the coverage digest (atomic claim, heartbeat metric, stop
+  func that waits, tests).
+- [ ] **AR-19** `time-and-timezones` skill — with AR-5: shelter zone,
+  wall-clock shift hours vs UTC storage, date-only fields, DST tests.
+- [ ] **AR-20** `sensitive-data` skill — before FD-5: which fields are
+  sensitive, per-audience response DTOs (the `adminGroupResponse` pattern),
+  audit logging, keeping PII out of logs and telemetry.
+- [ ] **AR-21** `add-domain` skill — with AR-6/AR-7: scaffold an
+  `internal/<domain>` package with service, thin handlers,
+  `RegisterXRoutes`, and a models file.
+- [ ] **AR-22** `notifications` skill — before CM work: email / GroupMe /
+  SMS sends, digest coalescing (#323), per-type preferences, no-op when
+  unconfigured.
+- [ ] **AR-23** `feature-flag-rollout` skill — before the first large
+  feature: backend flag, Terraform wiring, and the frontend gate (avoids the
+  #315 second-gate bug).
 
 ### Worth deciding (not blocking)
 
@@ -173,6 +207,8 @@ them; AR-6 – AR-9 are conventions for *new* code, not rewrites of old code.
 - **AR-Q4** Should production stay at up to 3 replicas, or is a single
   replica acceptable (simplifies jobs and rate limiting, reduces
   availability)?
+- **AR-Q5** Should `test.yml` run on every pull request? (Costs Actions
+  minutes; it was presumably made manual deliberately.)
 
 ---
 

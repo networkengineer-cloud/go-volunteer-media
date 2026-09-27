@@ -119,8 +119,11 @@ cd frontend && npx tsc --noEmit && npx vitest run
 cd frontend && npm run test:e2e      # Playwright, specs in frontend/tests/
 ```
 
-CI (`.github/workflows/test.yml`) runs backend tests + coverage thresholds,
-`go vet`, golangci-lint, ESLint, `tsc`, and the frontend build.
+CI (`.github/workflows/test.yml`) runs backend tests (with a pgvector
+Postgres service, so `_postgres_test.go` tests run) + coverage thresholds,
+`go vet`, golangci-lint, ESLint, `tsc`, the frontend build, and E2E. It is
+triggered manually (`workflow_dispatch`) — it does **not** run on pull
+requests, so run the checks above locally before pushing.
 
 ## Test baseline — read before claiming a regression
 
