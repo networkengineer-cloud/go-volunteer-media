@@ -29,6 +29,7 @@ ships, report it through the `roadmap-update` skill as usual.
 |---|---|---|---|
 | 0 | [Discovery](#0-discovery) | Not started | — |
 | A | [Architecture prerequisites](#a-architecture-prerequisites) | Not started | AR-Q1, AR-Q2 |
+| S | [Agent skills](#s-agent-skills) | In progress (#325) | — |
 | 1 | [Foundations](#1-foundations) | Not started | FD-Q1, FD-Q2 |
 | 2 | [Programs (volunteer types)](#2-programs-volunteer-types) | Not started | PR-Q1 |
 | 3 | [Time tracking & check-in](#3-time-tracking--check-in) | Not started | TT-Q1, TT-Q2 |
@@ -70,7 +71,7 @@ A baseline so work items build on the code rather than around it.
 | Sessions | JWT in `localStorage`, 24h expiry | `internal/auth/auth.go`, `api/client.ts` |
 | Tests | Handler tests mostly SQLite; `_postgres_test.go` suffix for real-Postgres tests (31 today; they skip when no DB is reachable) | `internal/handlers/` |
 | CI | `test.yml` is `workflow_dispatch` only — nothing runs automatically on pull requests. Until #325 its backend job had no Postgres, so the Postgres tests always skipped | `.github/workflows/test.yml` |
-| Agent skills | 9 skills in `.claude/skills/`; `add-api-endpoint`, `group-auth-pattern`, `image-upload` and `run-tests` corrected against the code in #325 | `.claude/skills/` |
+| Agent skills | 9 skills in `.claude/skills/`; 4 corrected against the code in #325 — see [workstream S](#s-agent-skills) | `.claude/skills/` |
 
 ---
 
@@ -153,10 +154,10 @@ them; AR-6 – AR-9 are conventions for *new* code, not rewrites of old code.
 - [ ] **AR-11** Concurrency-sensitive features (capacity sign-ups,
   simultaneous check-ins) are tested against real Postgres
   (`_postgres_test.go`), not SQLite.
-- [ ] **AR-12** Record AR-6 – AR-11 in `CLAUDE.md`, the relevant skills,
-  and `.github/copilot-instructions.md` so every contributor follows them.
-  Update `add-api-endpoint` (AR-1, AR-6, AR-7), `group-auth-pattern` (AR-2),
-  `add-frontend-page` and `frontend-styling` (AR-8, AR-9) as each lands.
+- [ ] **AR-12** Record AR-6 – AR-11 in `CLAUDE.md` and
+  `.github/copilot-instructions.md` so every contributor follows them.
+  Skill updates for each convention are tracked in
+  [workstream S](#s-agent-skills) (SK-5 – SK-9).
 - [~] **AR-15** Run the `_postgres_test.go` tests in CI: Postgres (pgvector)
   service added to the backend test job (#325). Verified locally: all 31
   pass in ~25s.
@@ -165,28 +166,9 @@ them; AR-6 – AR-9 are conventions for *new* code, not rewrites of old code.
 
 ### New agent skills
 
-Write each skill in the same PR as the pattern it documents — not before,
-or it describes code that doesn't exist.
-
-- [ ] **AR-17** `schema-migration` skill — with AR-1: writing a versioned
-  migration, backfills, Postgres testing, what is safe on a live database.
-- [ ] **AR-18** `background-job` skill — with AR-3: replica-safe jobs
-  modelled on the coverage digest (atomic claim, heartbeat metric, stop
-  func that waits, tests).
-- [ ] **AR-19** `time-and-timezones` skill — with AR-5: shelter zone,
-  wall-clock shift hours vs UTC storage, date-only fields, DST tests.
-- [ ] **AR-20** `sensitive-data` skill — before FD-5: which fields are
-  sensitive, per-audience response DTOs (the `adminGroupResponse` pattern),
-  audit logging, keeping PII out of logs and telemetry.
-- [ ] **AR-21** `add-domain` skill — with AR-6/AR-7: scaffold an
-  `internal/<domain>` package with service, thin handlers,
-  `RegisterXRoutes`, and a models file.
-- [ ] **AR-22** `notifications` skill — before CM work: email / GroupMe /
-  SMS sends, digest coalescing (#323), per-type preferences, no-op when
-  unconfigured.
-- [ ] **AR-23** `feature-flag-rollout` skill — before the first large
-  feature: backend flag, Terraform wiring, and the frontend gate (avoids the
-  #315 second-gate bug).
+*Moved to [workstream S](#s-agent-skills): AR-17 → SK-10, AR-18 → SK-11,
+AR-19 → SK-12, AR-20 → SK-13, AR-21 → SK-14, AR-22 → SK-15,
+AR-23 → SK-16.*
 
 ### Worth deciding (not blocking)
 
@@ -209,6 +191,113 @@ or it describes code that doesn't exist.
   availability)?
 - **AR-Q5** Should `test.yml` run on every pull request? (Costs Actions
   minutes; it was presumably made manual deliberately.)
+
+---
+
+## S. Agent skills
+
+Skills in `.claude/skills/` are how Claude Code (and, via
+`.github/copilot-instructions.md`, Copilot) learn this codebase's patterns.
+Every feature in this roadmap will be built through them, so a wrong skill
+spreads a wrong pattern into every new endpoint. This workstream keeps the
+existing skills accurate and adds new ones as the architecture changes.
+
+**Rule:** write or update a skill in the same PR as the pattern it
+documents — not before, or it describes code that doesn't exist.
+
+### Skill inventory
+
+| Skill | Reviewed against code | Status | Needs updating when |
+|---|---|---|---|
+| `add-api-endpoint` (+ `handler-template.go`) | 2026-09-27 | Corrected in #325 | AR-1 (migrations), AR-6 (domain packages), AR-7 (route split) |
+| `group-auth-pattern` | 2026-09-27 | Corrected in #325 | AR-2 (central policy) — rewrite |
+| `image-upload` | 2026-09-27 | Rewritten in #325 | New private file types (waivers, incident attachments) |
+| `run-tests` | 2026-09-27 | Extended in #325 | AR-16 (CI on PRs) |
+| `add-frontend-page` | 2026-09-27 | Accurate | AR-8 (data layer), AR-9 (CSS Modules), AR-10 (new pages) |
+| `frontend-styling` | 2026-09-27 | Accurate | AR-9 (CSS Modules) |
+| `playwright-e2e-test` | 2026-09-27 | Accurate | Kiosk flows (TT-2) |
+| `dev-environment` | 2026-09-27 | Accurate | AR-1 (migration commands), new env vars |
+| `roadmap-update` | 2026-09-27 | Accurate | SK-9 |
+
+### Corrections to existing skills
+
+- [~] **SK-1** `add-api-endpoint` (#325): models declare base fields
+  explicitly (none embed `gorm.Model`); handlers start with
+  `db := middleware.GetDB(c, db)`; use `middleware.GetUserID`; log real
+  errors and return generic messages; fixed `respondUnauthorized` arity;
+  guidance on `_postgres_test.go`. Template compile-checked.
+- [~] **SK-2** `group-auth-pattern` (#325): fixed `respondUnauthorized`
+  arity, added `/videos/:uuid` to public routes, aligned tier count,
+  pointer to AR-2.
+- [~] **SK-3** `image-upload` (#325): rewritten around the real providers
+  (`postgres` default, `azure`). The Postgres provider stores no bytes, so
+  handlers must persist them in the row; `group_document.go` is the
+  reference; auth requirements for serve routes.
+- [~] **SK-4** `run-tests` (#325): running Postgres-backed tests, `-race`
+  timeout, known-failure baseline. Also fixed the
+  `user-invokable` → `user-invocable` frontmatter key on two skills.
+
+### Updates to existing skills (as architecture lands)
+
+- [ ] **SK-5** `add-api-endpoint`: replace the AutoMigrate step with
+  versioned migrations (AR-1); per-domain packages and `RegisterXRoutes`
+  (AR-6, AR-7) — or hand off to `add-domain` (SK-14).
+- [ ] **SK-6** `group-auth-pattern`: rewrite around the central policy
+  helper and the new roles (AR-2, FD-2, AR-14).
+- [ ] **SK-7** `add-frontend-page` + `frontend-styling`: query/cache library
+  (AR-8), CSS Modules (AR-9), new-pages-not-tabs (AR-10).
+- [ ] **SK-8** `dev-environment` + `run-tests`: migration commands (AR-1),
+  CI-on-PR behaviour (AR-16), any new env vars (SMS, kiosk).
+- [ ] **SK-9** `roadmap-update`: also tick items and update the decision log
+  in this doc when a roadmap item ships.
+
+### New skills
+
+- [ ] **SK-10** `schema-migration` — with AR-1: writing a versioned
+  migration, backfills (FD-1 statuses, ON-4 levels), Postgres testing, what
+  is safe on a live database.
+- [ ] **SK-11** `background-job` — with AR-3: replica-safe jobs modelled on
+  the coverage digest (atomic claim, heartbeat metric, stop func that
+  waits, tests). Used by TT-5, ON-10, SC-5, CM-2.
+- [ ] **SK-12** `time-and-timezones` — with AR-5: shelter zone, wall-clock
+  shift hours vs UTC storage, date-only fields
+  (`ShiftCoverageRequest.Date`), DST tests.
+- [ ] **SK-13** `sensitive-data` — before FD-5: which fields are sensitive,
+  per-audience response DTOs (the `adminGroupResponse` pattern), audit
+  logging (FD-4), keeping PII out of logs and telemetry.
+- [ ] **SK-14** `add-domain` — with AR-6/AR-7: scaffold an
+  `internal/<domain>` package with service, thin handlers,
+  `RegisterXRoutes`, and a models file.
+- [ ] **SK-15** `notifications` — before CM work: email / GroupMe / SMS
+  sends, digest coalescing (#323), per-type preferences (CM-1), no-op when
+  unconfigured.
+- [ ] **SK-16** `feature-flag-rollout` — before the first large feature:
+  backend flag, Terraform wiring, and the frontend gate (avoids the #315
+  second-gate bug).
+
+### Keeping skills accurate
+
+- [ ] **SK-17** Compile-check `add-api-endpoint/handler-template.go` in CI
+  so the template can't drift from the real helpers again (it is
+  `//go:build ignore` today). **(blocked: SK-Q2)**
+- [ ] **SK-18** Re-review every skill against the code at each workstream
+  boundary; update the "Reviewed against code" column above.
+
+### Found during the skills review
+
+- [ ] **SK-F1** `animal_image.go` (`UploadAnimalImage`) sets
+  `ImageData = nil` whenever the provider call succeeds — including with the
+  `postgres` provider, which never fails — so gallery uploads under
+  `STORAGE_PROVIDER=postgres` (the local-dev default) appear to be served as
+  404. Needs a `fix/` PR; `group_document.go` shows the correct branch.
+
+### Open questions
+
+- **SK-Q1** Should `.github/copilot-instructions.md` and
+  `.github/instructions/` be kept in step with the skills, or should the
+  skills become the single source?
+- **SK-Q2** Is a CI compile check for skill templates worth it, given
+  `test.yml` is manual-only (AR-Q5)?
 
 ---
 
