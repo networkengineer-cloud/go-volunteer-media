@@ -29,10 +29,9 @@ env:
   ZIZMOR_VERSION: 1.30.1
   TRIVY_VERSION: 0.74.0
   TRIVY_SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
-  # Current golangci-lint/govulncheck/etc. need Go >= 1.26 to build, while
-  # go.mod pins 1.25 (setup-go sets GOTOOLCHAIN=local). Tool installs use
-  # this toolchain; the code itself is still analysed with go.mod's Go.
-  TOOLS_GOTOOLCHAIN: go1.26.8
+  # Tool installs use GOTOOLCHAIN=auto: each tool's own go.mod decides the
+  # Go it needs (golangci-lint 1.26, osv-scanner 1.27), while setup-go pins
+  # this repo's code to go.mod's version (GOTOOLCHAIN=local).
 
 jobs:
   go-lint:
@@ -52,7 +51,7 @@ jobs:
       - name: Placeholder frontend/dist for go:embed
         run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
       - name: Install golangci-lint
-        run: GOTOOLCHAIN="$TOOLS_GOTOOLCHAIN" go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+        run: GOTOOLCHAIN=auto go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
       - name: golangci-lint (issues introduced by this PR)
         # HEAD is the PR merged onto the current base; HEAD^1 is that base.
         # (pull_request.base.sha goes stale when the base branch moves.)
@@ -134,11 +133,11 @@ jobs:
         run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
       - name: govulncheck (reachable Go vulnerabilities)
         run: |
-          GOTOOLCHAIN="$TOOLS_GOTOOLCHAIN" go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+          GOTOOLCHAIN=auto go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
           govulncheck -format sarif ./... > govulncheck.sarif
       - name: OSV-Scanner (Go + npm lockfiles)
         run: |
-          GOTOOLCHAIN="$TOOLS_GOTOOLCHAIN" go install "github.com/google/osv-scanner/v2/cmd/osv-scanner@${OSV_SCANNER_VERSION}"
+          GOTOOLCHAIN=auto go install "github.com/google/osv-scanner/v2/cmd/osv-scanner@${OSV_SCANNER_VERSION}"
           # Lockfiles are listed explicitly: a recursive scan skips
           # frontend/package-lock.json. Exit 1 means "vulnerabilities found",
           # which code scanning reports; anything else is a real error.
@@ -201,7 +200,7 @@ jobs:
         env:
           SHELLCHECK_OPTS: --severity=warning # info/style notes don't fail the job
         run: |
-          GOTOOLCHAIN="$TOOLS_GOTOOLCHAIN" go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
+          GOTOOLCHAIN=auto go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
           actionlint
       - name: zizmor
         env:
