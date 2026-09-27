@@ -1,6 +1,12 @@
 name: Test Suite
 
 on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -15,7 +21,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version: '1.25'
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -33,7 +39,7 @@ jobs:
     - name: Run Go tests
       env:
         JWT_SECRET: ${{ secrets.TEST_JWT_SECRET || 'L5WTt6D+6R55YfKzwqPRAEX5bR0bkNo4i58jYKL0wsk=' }}
-      run: go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
+      run: go test -tags dev ./... -v -race -coverprofile=coverage.out -covermode=atomic
 
     - name: Generate coverage report
       run: go tool cover -html=coverage.out -o coverage.html
@@ -73,7 +79,7 @@ jobs:
   backend-lint:
     name: Backend Lint
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -81,16 +87,16 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version: '1.25'
 
     - name: Run go vet
-      run: go vet ./...
+      run: go vet -tags dev ./...
 
     - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v6
+      uses: golangci/golangci-lint-action@v8
       with:
         version: latest
-        args: --timeout=5m
+        args: --timeout=5m --build-tags=dev
 
   frontend-lint:
     name: Frontend Lint
@@ -170,12 +176,22 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
-    
+        go-version: '1.25'
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
     - name: Start backend API
       env:
         DB_HOST: localhost
@@ -192,16 +208,16 @@ jobs:
         SMTP_FROM_EMAIL: test@example.com
         SMTP_FROM_NAME: Test
       run: |
-        go run cmd/api/main.go &
+        go run -tags dev cmd/api/main.go &
         echo $! > backend.pid
         
         # Wait for backend to be ready
-        for i in {1..30}; do
+        for i in {1..60}; do
           if curl -f http://localhost:8080/api/health 2>/dev/null; then
             echo "Backend is ready!"
             break
           fi
-          echo "Waiting for backend... ($i/30)"
+          echo "Waiting for backend... ($i/60)"
           sleep 2
         done
         
@@ -255,7 +271,7 @@ jobs:
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -263,7 +279,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version: '1.25'
 
     - name: Run govulncheck
       run: |
