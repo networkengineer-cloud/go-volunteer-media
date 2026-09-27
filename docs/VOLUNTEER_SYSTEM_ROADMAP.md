@@ -179,12 +179,13 @@ upload SARIF to code scanning (free: the repo is public).
 | Go lint | golangci-lint v2 (`.golangci.yml`: standard + gosec, errorlint, bodyclose, rowserrcheck, sqlclosecheck, noctx) | New issues only (`--new-from-rev`) | 105 (hidden) |
 | Frontend lint & types | ESLint on changed files; `tsc -b` | Changed files; tsc report-only | ESLint 69 errors repo-wide; `tsc -b` 8 errors |
 | Semgrep | Custom rules in `tools/semgrep/` + `p/golang`, `p/react`, `p/typescript` | New findings only (`--baseline-commit`) | Custom rules: 3 (pre-login axios calls) |
-| Dependency vulns | govulncheck, OSV-Scanner (go.mod + package-lock) | Code scanning | Unknown — couldn't reach vuln DBs from the dev sandbox; first CI run will tell |
+| Dependency vulns | govulncheck, OSV-Scanner (go.mod + package-lock) | Code scanning | govulncheck: 17 vulnerability IDs in the Go dependency graph (level breakdown in the job summary). npm: 23 advisories (3 critical, 12 high, 6 moderate, 2 low) per `npm ci`. Full list: Security → Code scanning |
 | IaC & Dockerfile | Trivy config (HIGH/CRITICAL) | Code scanning | 5 (see AR-29, AR-30) |
 | GitHub Actions | actionlint (fails on errors), zizmor | actionlint in log; zizmor to code scanning | actionlint 0 (after #325 fixes); zizmor 103 |
 
 - [~] **AR-24** Add `pr-checks.yml`, `.golangci.yml`, `.semgrepignore` and
-  the Semgrep rules (#325). Verified locally: actionlint clean, zero zizmor
+  the Semgrep rules (#325). All jobs green on #325; results uploading to
+  code scanning. Verified locally: actionlint clean, zero zizmor
   findings on the new workflow, `--new-from-rev` and `--baseline-commit`
   each report only a deliberately introduced issue, rule tests 5/5, zero
   false positives on current code.
@@ -219,6 +220,11 @@ upload SARIF to code scanning (free: the repo is public).
   and `test.yml` had an unquoted `kill $(cat backend.pid)`. All fixed in
   #325; the job fails on shellcheck warnings and errors, not info/style
   (78 notes remain in existing workflows).
+- [ ] **AR-34** Triage the existing dependency vulnerabilities in code
+  scanning (govulncheck: 17 Go vulnerability IDs; OSV/npm: 23 advisories,
+  3 critical). Start with govulncheck `error`-level findings — vulnerable
+  code the app actually calls — and the critical npm advisories. Renovate
+  can raise most of the bumps.
 - [ ] **AR-32** Add `eslint-plugin-jsx-a11y` (the page skills require
   accessibility; nothing checks it). Needs a `package.json` change and a
   baseline.
