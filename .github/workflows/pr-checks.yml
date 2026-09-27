@@ -29,6 +29,10 @@ env:
   ZIZMOR_VERSION: 1.30.1
   TRIVY_VERSION: 0.74.0
   TRIVY_SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+  # Current golangci-lint/govulncheck/etc. need Go >= 1.26 to build, while
+  # go.mod pins 1.25 (setup-go sets GOTOOLCHAIN=local). Tool installs use
+  # this toolchain; the code itself is still analysed with go.mod's Go.
+  TOOLS_GOTOOLCHAIN: go1.26.8
 
 jobs:
   go-lint:
@@ -48,11 +52,11 @@ jobs:
       - name: Placeholder frontend/dist for go:embed
         run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
       - name: Install golangci-lint
-        run: go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+        run: GOTOOLCHAIN="$TOOLS_GOTOOLCHAIN" go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
       - name: golangci-lint (issues introduced by this PR)
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: golangci-lint run --new-from-rev="$BASE_SHA" ./...
+        # HEAD is the PR merged onto the current base; HEAD^1 is that base.
+        # (pull_request.base.sha goes stale when the base branch moves.)
+        run: golangci-lint run --new-from-rev="$(git rev-parse HEAD^1)" ./...
 
   frontend-lint:
     name: Frontend lint & types
@@ -75,10 +79,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - name: ESLint (files changed in this PR)
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD -- 'src/*.ts' 'src/*.tsx' | sed 's#^frontend/##')
+          # HEAD^1 = current base tip (HEAD is the PR merge commit).
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR HEAD^1...HEAD -- 'src/*.ts' 'src/*.tsx' | sed 's#^frontend/##')
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No frontend source files changed."
             exit 0
@@ -108,13 +111,11 @@ jobs:
       - name: Test custom rules
         run: semgrep --test --metrics=off tools/semgrep/
       - name: Scan (custom rules + Go/React/TypeScript rulesets)
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           semgrep scan --metrics=off --error \
             --config tools/semgrep/ \
             --config p/golang --config p/react --config p/typescript \
-            --baseline-commit "$BASE_SHA"
+            --baseline-commit "$(git rev-parse HEAD^1)"
 
   dependency-vulns:
     name: Dependency vulnerabilities
@@ -133,11 +134,11 @@ jobs:
         run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
       - name: govulncheck (reachable Go vulnerabilities)
         run: |
-          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+          GOTOOLCHAIN="$TOOLS_GOTOOLCHAIN" go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
           govulncheck -format sarif ./... > govulncheck.sarif
       - name: OSV-Scanner (Go + npm lockfiles)
         run: |
-          go install "github.com/google/osv-scanner/v2/cmd/osv-scanner@${OSV_SCANNER_VERSION}"
+          GOTOOLCHAIN="$TOOLS_GOTOOLCHAIN" go install "github.com/google/osv-scanner/v2/cmd/osv-scanner@${OSV_SCANNER_VERSION}"
           # Lockfiles are listed explicitly: a recursive scan skips
           # frontend/package-lock.json. Exit 1 means "vulnerabilities found",
           # which code scanning reports; anything else is a real error.
@@ -197,8 +198,10 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: actionlint
+        env:
+          SHELLCHECK_OPTS: --severity=warning # info/style notes don't fail the job
         run: |
-          go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
+          GOTOOLCHAIN="$TOOLS_GOTOOLCHAIN" go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
           actionlint
       - name: zizmor
         env:

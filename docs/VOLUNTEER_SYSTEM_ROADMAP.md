@@ -214,7 +214,11 @@ upload SARIF to code scanning (free: the repo is public).
   workflows.
 - [x] **AR-31** actionlint: the Terraform deploy workflows referenced step
   IDs (`fmt`, `init`, `validate`) that didn't exist, so their plan
-  summaries always showed empty outcomes. Fixed in #325.
+  summaries always showed empty outcomes. Also via actionlint's shellcheck:
+  the dev deploy summary printed "Budget: 0/month" (`$20` expanded as `$2`)
+  and `test.yml` had an unquoted `kill $(cat backend.pid)`. All fixed in
+  #325; the job fails on shellcheck warnings and errors, not info/style
+  (78 notes remain in existing workflows).
 - [ ] **AR-32** Add `eslint-plugin-jsx-a11y` (the page skills require
   accessibility; nothing checks it). Needs a `package.json` change and a
   baseline.
