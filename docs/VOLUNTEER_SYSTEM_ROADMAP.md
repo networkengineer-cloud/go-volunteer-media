@@ -70,7 +70,8 @@ A baseline so work items build on the code rather than around it.
 | Frontend styling | Global, unscoped CSS per page; known cascade hazards | `frontend-styling` skill |
 | Sessions | JWT in `localStorage`, 24h expiry | `internal/auth/auth.go`, `api/client.ts` |
 | Tests | Handler tests mostly SQLite; `_postgres_test.go` suffix for real-Postgres tests (31 today; they skip when no DB is reachable) | `internal/handlers/` |
-| CI | `test.yml` is `workflow_dispatch` only — nothing runs automatically on pull requests. Until #325 its backend job had no Postgres, so the Postgres tests always skipped | `.github/workflows/test.yml` |
+| CI | `test.yml` (full suite) is `workflow_dispatch` only. Until #325 its backend job had no Postgres, so the Postgres tests always skipped. #325 adds `pr-checks.yml`, the first checks that run automatically on PRs | `.github/workflows/` |
+| Code/security review tooling | CodeQL (GitHub default setup) and GitGuardian run on PRs; Renovate for updates. #325 adds golangci-lint (new issues), ESLint + `tsc -b`, Semgrep (custom + registry rules), govulncheck, OSV-Scanner, Trivy, actionlint, zizmor | `.github/workflows/pr-checks.yml`, `tools/semgrep/`, `.golangci.yml` |
 | Agent skills | 9 skills in `.claude/skills/`; 4 corrected against the code in #325 — see [workstream S](#s-agent-skills) | `.claude/skills/` |
 
 ---
@@ -164,6 +165,63 @@ them; AR-6 – AR-9 are conventions for *new* code, not rewrites of old code.
 - [ ] **AR-16** Run `test.yml` automatically on pull requests (it is manual
   only today). **(blocked: AR-Q5)**
 
+### PR review tooling
+
+`pr-checks.yml` runs on every PR, on pushes to `main` (so code scanning has a
+baseline to compare PRs against) and weekly (new CVEs in unchanged
+dependencies). Every tool is free and open source, installed at a pinned
+version; the only actions used are GitHub's own, pinned to commit SHAs.
+Diff-aware jobs report only what the PR introduces; security scanners
+upload SARIF to code scanning (free: the repo is public).
+
+| Job | Tools | Reports | Existing findings on `main` |
+|---|---|---|---|
+| Go lint | golangci-lint v2 (`.golangci.yml`: standard + gosec, errorlint, bodyclose, rowserrcheck, sqlclosecheck, noctx) | New issues only (`--new-from-rev`) | 105 (hidden) |
+| Frontend lint & types | ESLint on changed files; `tsc -b` | Changed files; tsc report-only | ESLint 69 errors repo-wide; `tsc -b` 8 errors |
+| Semgrep | Custom rules in `tools/semgrep/` + `p/golang`, `p/react`, `p/typescript` | New findings only (`--baseline-commit`) | Custom rules: 3 (pre-login axios calls) |
+| Dependency vulns | govulncheck, OSV-Scanner (go.mod + package-lock) | Code scanning | Unknown — couldn't reach vuln DBs from the dev sandbox; first CI run will tell |
+| IaC & Dockerfile | Trivy config (HIGH/CRITICAL) | Code scanning | 5 (see AR-29, AR-30) |
+| GitHub Actions | actionlint (fails on errors), zizmor | actionlint in log; zizmor to code scanning | actionlint 0 (after #325 fixes); zizmor 103 |
+
+- [~] **AR-24** Add `pr-checks.yml`, `.golangci.yml`, `.semgrepignore` and
+  the Semgrep rules (#325). Verified locally: actionlint clean, zero zizmor
+  findings on the new workflow, `--new-from-rev` and `--baseline-commit`
+  each report only a deliberately introduced issue, rule tests 5/5, zero
+  false positives on current code.
+- [~] **AR-25** Custom Semgrep rules (`tools/semgrep/`, with tests):
+  `handler-reassigns-shared-db`, `handler-missing-request-scoped-db`,
+  `internal-error-leaks-to-client`, `handler-writes-local-filesystem`,
+  `raw-axios-http-call`. Add a rule whenever a review comment would
+  otherwise repeat a CLAUDE.md convention.
+- [ ] **AR-26** Fix the 8 `tsc -b` errors (4 in `AnimalForm.tsx`, 1 in
+  `PhotoGallery.tsx`, 3 in tests), then remove `continue-on-error` from the
+  type-check step. (CLAUDE.md and `frontend-styling` said `npx tsc --noEmit`,
+  which checks nothing because the root `tsconfig.json` only holds project
+  references; corrected to `tsc -b` in #325.)
+- [ ] **AR-27** After a trial period, mark the checks that should block as
+  required status checks in branch protection. **(blocked: AR-Q6)**
+- [ ] **AR-28** Decide on the 3 pre-login `axios.post` calls
+  (`Login.tsx`, `ResetPassword.tsx`, `SetupPassword.tsx`): route through
+  `client.ts` or annotate with `nosemgrep` and the reason.
+- [ ] **AR-29** Trivy: Azure storage account and Key Vault have no network
+  rules / default-allow ACLs in both dev and prod (AZU-0012, AZU-0013).
+  Decide whether to restrict them (private endpoints or IP rules) or
+  accept and suppress with a reason.
+- [ ] **AR-30** zizmor: pin the ~57 unpinned action references in existing
+  workflows to SHAs (Renovate can keep them updated), add
+  `persist-credentials: false` to checkouts, and review the
+  `template-injection` findings in `build-image.yml` and the Terraform
+  workflows.
+- [x] **AR-31** actionlint: the Terraform deploy workflows referenced step
+  IDs (`fmt`, `init`, `validate`) that didn't exist, so their plan
+  summaries always showed empty outcomes. Fixed in #325.
+- [ ] **AR-32** Add `eslint-plugin-jsx-a11y` (the page skills require
+  accessibility; nothing checks it). Needs a `package.json` change and a
+  baseline.
+- [ ] **AR-33** Later additions: Squawk (migration linting) with AR-1; an
+  OWASP ZAP baseline scan against dev once public pages exist (ON-1,
+  TT-2); OpenSSF Scorecard; Gitleaks as a pre-commit hook.
+
 ### New agent skills
 
 *Moved to [workstream S](#s-agent-skills): AR-17 → SK-10, AR-18 → SK-11,
@@ -191,6 +249,12 @@ AR-23 → SK-16.*
   availability)?
 - **AR-Q5** Should `test.yml` run on every pull request? (Costs Actions
   minutes; it was presumably made manual deliberately.)
+- **AR-Q6** Which PR checks should be required (blocking)? Suggested after a
+  two-week trial: Go lint, Semgrep, actionlint, and code scanning at
+  HIGH/CRITICAL for new alerts. Who owns triaging code scanning alerts?
+- **AR-Q7** Keep ESLint scoped to changed files (touching a file means
+  fixing its existing errors), or fix the 69 existing errors once and lint
+  everything?
 
 ---
 
@@ -214,7 +278,7 @@ documents — not before, or it describes code that doesn't exist.
 | `image-upload` | 2026-09-27 | Rewritten in #325 | New private file types (waivers, incident attachments) |
 | `run-tests` | 2026-09-27 | Extended in #325 | AR-16 (CI on PRs) |
 | `add-frontend-page` | 2026-09-27 | Accurate | AR-8 (data layer), AR-9 (CSS Modules), AR-10 (new pages) |
-| `frontend-styling` | 2026-09-27 | Accurate | AR-9 (CSS Modules) |
+| `frontend-styling` | 2026-09-27 | Type-check command corrected in #325 | AR-9 (CSS Modules) |
 | `playwright-e2e-test` | 2026-09-27 | Accurate | Kiosk flows (TT-2) |
 | `dev-environment` | 2026-09-27 | Accurate | AR-1 (migration commands), new env vars |
 | `roadmap-update` | 2026-09-27 | Accurate | SK-9 |

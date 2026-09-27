@@ -114,6 +114,7 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       
       - name: Terraform Format Check
+        id: fmt
         run: terraform fmt -check -recursive
         working-directory: terraform/environments/dev
         continue-on-error: true
@@ -123,6 +124,7 @@ jobs:
         working-directory: ${{ env.WORKING_DIRECTORY }}
       
       - name: Terraform Validate
+        id: validate
         run: terraform validate
         working-directory: ${{ env.WORKING_DIRECTORY }}
       

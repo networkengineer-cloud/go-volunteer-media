@@ -115,15 +115,24 @@ make docker-run                      # full stack (see dev-environment skill)
 make dev-backend / make dev-frontend # local-only iteration
 make seed / make db-reseed           # demo data (creds in cmd/seed/main.go)
 go build ./... && go vet ./... && gofmt -l internal/
-cd frontend && npx tsc --noEmit && npx vitest run
+cd frontend && npx tsc -b && npx vitest run   # not `tsc --noEmit`: the root tsconfig only holds references, so it checks nothing
 cd frontend && npm run test:e2e      # Playwright, specs in frontend/tests/
 ```
 
-CI (`.github/workflows/test.yml`) runs backend tests (with a pgvector
-Postgres service, so `_postgres_test.go` tests run) + coverage thresholds,
-`go vet`, golangci-lint, ESLint, `tsc`, the frontend build, and E2E. It is
-triggered manually (`workflow_dispatch`) — it does **not** run on pull
-requests, so run the checks above locally before pushing.
+CI has two workflows:
+
+- `.github/workflows/pr-checks.yml` runs **automatically on every PR**:
+  golangci-lint (`.golangci.yml`, new issues only), ESLint on changed files,
+  `tsc -b` (report-only until main's 8 type errors are fixed), Semgrep
+  (custom rules in `tools/semgrep/` + registry rulesets, new findings only),
+  govulncheck, OSV-Scanner, Trivy (Terraform/Dockerfiles), actionlint and
+  zizmor. Security results land in code scanning. When a review comment
+  would repeat a convention from this file, add a Semgrep rule (with a test
+  in `tools/semgrep/`) instead.
+- `.github/workflows/test.yml` runs the full suite — backend tests (with a
+  pgvector Postgres service, so `_postgres_test.go` tests run) + coverage
+  thresholds, the frontend build, and E2E. It is triggered manually
+  (`workflow_dispatch`), so run the tests above locally before pushing.
 
 ## Test baseline — read before claiming a regression
 

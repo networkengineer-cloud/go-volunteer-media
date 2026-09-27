@@ -1,0 +1,36 @@
+version: "2"
+
+# Used by the PR Checks workflow (.github/workflows/pr-checks.yml), which runs
+# with --new-from-rev so only issues introduced by the PR are reported.
+# Existing code has ~105 findings; see
+# docs/VOLUNTEER_SYSTEM_ROADMAP.md (AR-24) before tightening this.
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - gosec # security: subprocess/file inclusion/weak crypto/etc.
+    - errorlint # errors.Is/As instead of == and type assertions
+    - bodyclose # unclosed HTTP response bodies
+    - rowserrcheck # sql.Rows.Err() checked
+    - sqlclosecheck # sql.Rows/Stmt closed
+    - noctx # outbound HTTP requests carry a context
+  settings:
+    gosec:
+      excludes:
+        - G104 # unhandled errors — duplicate of errcheck
+  exclusions:
+    rules:
+      # Test-only noise: fixtures use literal "passwords", fire requests
+      # without contexts, and ignore errors on setup calls.
+      - path: _test\.go
+        linters:
+          - noctx
+          - errcheck
+      - path: _test\.go
+        text: "G101:"
+        linters:
+          - gosec

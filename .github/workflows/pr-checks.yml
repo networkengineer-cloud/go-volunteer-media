@@ -1,0 +1,212 @@
+name: PR Checks
+
+# Fast, automatic checks for every pull request. test.yml (full test suite)
+# stays manual. Lint/Semgrep jobs only report issues the PR introduces;
+# security scanners upload SARIF to code scanning, which compares against
+# main. Nothing here blocks merging until it is marked as a required status
+# check in branch protection — see docs/VOLUNTEER_SYSTEM_ROADMAP.md (AR-24+).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1" # weekly: new CVEs land in unchanged dependencies
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOLANGCI_LINT_VERSION: v2.14.0
+  GOVULNCHECK_VERSION: v1.8.0
+  OSV_SCANNER_VERSION: v2.6.0
+  ACTIONLINT_VERSION: v1.7.12
+  SEMGREP_VERSION: 1.178.0
+  ZIZMOR_VERSION: 1.30.1
+  TRIVY_VERSION: 0.74.0
+  TRIVY_SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+
+jobs:
+  go-lint:
+    name: Go lint (new issues)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Placeholder frontend/dist for go:embed
+        run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
+      - name: Install golangci-lint
+        run: go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+      - name: golangci-lint (issues introduced by this PR)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: golangci-lint run --new-from-rev="$BASE_SHA" ./...
+
+  frontend-lint:
+    name: Frontend lint & types
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: ESLint (files changed in this PR)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD -- 'src/*.ts' 'src/*.tsx' | sed 's#^frontend/##')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No frontend source files changed."
+            exit 0
+          fi
+          npx eslint --no-warn-ignored "${files[@]}"
+      - name: Type check (tsc -b)
+        # `tsc --noEmit` on the root tsconfig checks nothing (it only holds
+        # project references); `tsc -b` checks the app. Main currently has
+        # 8 type errors, so this step reports without failing until they are
+        # fixed (AR-26). Remove continue-on-error then.
+        continue-on-error: true
+        run: npx tsc -b
+
+  semgrep:
+    name: Semgrep (new findings)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Semgrep
+        run: pipx install "semgrep==${SEMGREP_VERSION}"
+      - name: Test custom rules
+        run: semgrep --test --metrics=off tools/semgrep/
+      - name: Scan (custom rules + Go/React/TypeScript rulesets)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          semgrep scan --metrics=off --error \
+            --config tools/semgrep/ \
+            --config p/golang --config p/react --config p/typescript \
+            --baseline-commit "$BASE_SHA"
+
+  dependency-vulns:
+    name: Dependency vulnerabilities
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Placeholder frontend/dist for go:embed
+        run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
+      - name: govulncheck (reachable Go vulnerabilities)
+        run: |
+          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+          govulncheck -format sarif ./... > govulncheck.sarif
+      - name: OSV-Scanner (Go + npm lockfiles)
+        run: |
+          go install "github.com/google/osv-scanner/v2/cmd/osv-scanner@${OSV_SCANNER_VERSION}"
+          # Lockfiles are listed explicitly: a recursive scan skips
+          # frontend/package-lock.json. Exit 1 means "vulnerabilities found",
+          # which code scanning reports; anything else is a real error.
+          status=0
+          osv-scanner scan source -L go.mod -L frontend/package-lock.json \
+            --format sarif --output osv.sarif || status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then exit "$status"; fi
+      - name: Upload govulncheck results
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: govulncheck.sarif
+          category: govulncheck
+      - name: Upload OSV-Scanner results
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: osv.sarif
+          category: osv-scanner
+
+  iac-scan:
+    name: IaC & Dockerfile (Trivy)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Trivy (checksum-verified)
+        run: |
+          curl -sSfL -o trivy.tgz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tgz" | sha256sum -c -
+          tar xzf trivy.tgz trivy
+      - name: Scan Terraform and Dockerfiles
+        run: ./trivy config --severity HIGH,CRITICAL --format sarif --output trivy.sarif .
+      - name: Upload Trivy results
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-config
+
+  workflow-security:
+    name: GitHub Actions workflows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: actionlint
+        run: |
+          go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
+          actionlint
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pipx run "zizmor==${ZIZMOR_VERSION}" --format sarif --no-exit-codes .github/workflows > zizmor.sarif
+      - name: Upload zizmor results
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor

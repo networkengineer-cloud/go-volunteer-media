@@ -1,0 +1,84 @@
+# Custom Semgrep rules enforcing the backend conventions in CLAUDE.md and the
+# add-api-endpoint / group-auth-pattern skills. Tests live beside this file
+# (go-handler-conventions.go); run `semgrep --test .semgrep/`.
+rules:
+  - id: handler-reassigns-shared-db
+    languages: [go]
+    severity: ERROR
+    message: >-
+      Handler assigns to its closure's `db` with `=`. Handlers are closures
+      over a *gorm.DB shared by every request, so this leaks state across
+      requests. Shadow it instead: `db := middleware.GetDB(c, db)`.
+    paths:
+      include: ["/internal/handlers/"]
+    patterns:
+      - pattern-inside: |
+          func $HANDLER(..., db *gorm.DB, ...) gin.HandlerFunc {
+            ...
+          }
+      - pattern-not-inside: |
+          db := $X
+          ...
+      - pattern: db = $VALUE
+
+  - id: handler-missing-request-scoped-db
+    languages: [go]
+    severity: WARNING
+    message: >-
+      Handler uses `db` without first calling `db := middleware.GetDB(c, db)`.
+      GetDB returns the request-scoped DB bound by DBMiddleware with the
+      request context applied (tracing, cancellation).
+    paths:
+      include: ["/internal/handlers/"]
+      exclude: ["*_test.go"]
+    patterns:
+      - pattern-inside: |
+          func $HANDLER(..., db *gorm.DB, ...) gin.HandlerFunc {
+            ...
+          }
+      - pattern: |
+          func($C *gin.Context) {
+            $...BODY
+          }
+      # Any variable name is fine: animal_admin.go deliberately keeps the
+      # unscoped db for a detached goroutine and uses dbCtx for the request.
+      - pattern-not: |
+          func($C *gin.Context) {
+            ...
+            $SCOPED := middleware.GetDB($C, db)
+            ...
+          }
+      - metavariable-pattern:
+          metavariable: $...BODY
+          pattern: db
+
+  - id: internal-error-leaks-to-client
+    languages: [go]
+    severity: WARNING
+    message: >-
+      500 response includes `err.Error()`, which can leak SQL and internal
+      details. Log the error with middleware.GetLogger(c).Error(msg, err) and
+      return a generic message.
+    paths:
+      include: ["/internal/handlers/"]
+      exclude: ["*_test.go"]
+    pattern-either:
+      - pattern: respondInternalError($C, $ERR.Error())
+      - pattern: '$C.JSON(http.StatusInternalServerError, gin.H{"error": $ERR.Error()})'
+      - pattern: '$C.JSON(500, gin.H{"error": $ERR.Error()})'
+
+  - id: handler-writes-local-filesystem
+    languages: [go]
+    severity: ERROR
+    message: >-
+      Handlers must not write uploads to the local filesystem — containers are
+      ephemeral and replicated. Use the storage.Provider (see the image-upload
+      skill).
+    paths:
+      include: ["/internal/handlers/"]
+      exclude: ["*_test.go"]
+    pattern-either:
+      - pattern: os.Create(...)
+      - pattern: os.WriteFile(...)
+      - pattern: os.OpenFile(...)
+      - pattern: $C.SaveUploadedFile(...)
