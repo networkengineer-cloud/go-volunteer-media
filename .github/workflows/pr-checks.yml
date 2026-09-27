@@ -134,7 +134,17 @@ jobs:
       - name: govulncheck (reachable Go vulnerabilities)
         run: |
           GOTOOLCHAIN=auto go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
-          govulncheck -format sarif ./... > govulncheck.sarif
+          govulncheck -format sarif ./... > govulncheck.raw.sarif
+          # govulncheck emits duplicate rule tags, which code scanning rejects.
+          jq '(.runs[].tool.driver.rules[]?.properties.tags) |= (if . then unique else . end)' \
+            govulncheck.raw.sarif > govulncheck.sarif
+          {
+            echo "### govulncheck"
+            echo "Findings by level (error = vulnerable code is called; warning = imported, not called; note = module only):"
+            jq -r '[.runs[].results[]?.level] | group_by(.) | map("- \(.[0]): \(length)") | .[]' govulncheck.sarif
+            echo
+            jq -r '.runs[].tool.driver.rules[]? | "- \(.id): \(.shortDescription.text // "")"' govulncheck.sarif
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: OSV-Scanner (Go + npm lockfiles)
         run: |
           GOTOOLCHAIN=auto go install "github.com/google/osv-scanner/v2/cmd/osv-scanner@${OSV_SCANNER_VERSION}"
