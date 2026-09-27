@@ -95,11 +95,11 @@ func GetAnimals(db *gorm.DB) gin.HandlerFunc {
 		// Build query with filters
 		query := db.Where("group_id = ?", groupID)
 
-		// Status filter (default to "available", "bite_quarantine", and "under_vet_care" if not specified)
+		// Status filter (default to "available", "bite_quarantine", "under_vet_care", and "under_behavior_mod" if not specified)
 		status := c.Query("status")
 		if status == "" {
-			// Default: show available, bite_quarantine, and under_vet_care animals
-			query = query.Where("status IN ?", []string{"available", "bite_quarantine", "under_vet_care"})
+			// Default: show available, bite_quarantine, under_vet_care, and under_behavior_mod animals
+			query = query.Where("status IN ?", []string{"available", "bite_quarantine", "under_vet_care", "under_behavior_mod"})
 		} else if status != "all" {
 			// Support comma-separated statuses for multiple filters
 			if strings.Contains(status, ",") {
@@ -293,6 +293,8 @@ func CreateAnimal(db *gorm.DB, emailService *email.Service, embedder embedding.E
 			animal.ArchivedDate = &now
 		case "under_vet_care":
 			// No dedicated date field for vet care; LastStatusChange (set elsewhere) is sufficient.
+		case "under_behavior_mod":
+			// No dedicated date field for behavior mod; LastStatusChange (set elsewhere) is sufficient.
 		}
 
 		if req.IsReturned != nil {
@@ -477,6 +479,15 @@ func UpdateAnimal(db *gorm.DB, emailService *email.Service, embedder embedding.E
 				animal.QuarantineIncidentDetails = ""
 			case "under_vet_care":
 				// No dedicated date field for vet care, so clear the same fields as "available"
+				animal.FosterStartDate = nil
+				animal.QuarantineStartDate = nil
+				animal.QuarantineEndDate = nil
+				animal.QuarantineApprovalStatus = ""
+				animal.QuarantineApprovalDate = nil
+				animal.ArchivedDate = nil
+				animal.QuarantineIncidentDetails = ""
+			case "under_behavior_mod":
+				// No dedicated date field for behavior mod, so clear the same fields as "available"
 				animal.FosterStartDate = nil
 				animal.QuarantineStartDate = nil
 				animal.QuarantineEndDate = nil

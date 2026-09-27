@@ -634,6 +634,12 @@
   border: 1px solid #ca8a04;
 }
 
+.status.under_behavior_mod {
+  background: color-mix(in srgb, var(--purple) 10%, transparent);
+  color: var(--purple-600);
+  border: 1px solid var(--purple);
+}
+
 .quarantine-block {
   display: flex;
   flex-direction: column;

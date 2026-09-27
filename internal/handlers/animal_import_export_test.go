@@ -191,6 +191,44 @@ func TestImportAnimalsCSV_UnderVetCareStatus(t *testing.T) {
 	}
 }
 
+// TestImportAnimalsCSV_UnderBehaviorModStatus tests importing an animal with the under_behavior_mod status
+func TestImportAnimalsCSV_UnderBehaviorModStatus(t *testing.T) {
+	db := setupAnimalTestDB(t)
+	user, group := createAnimalTestUser(t, db, "admin", "admin@example.com", true)
+
+	csvContent := fmt.Sprintf(`group_id,name,species,breed,age,description,status,image_url
+%d,Rex,Dog,Golden Retriever,3,Working with the behavior team,under_behavior_mod,/uploads/rex.jpg`, group.ID)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "animals.csv")
+	if err != nil {
+		t.Fatalf("Failed to create form file: %v", err)
+	}
+	part.Write([]byte(csvContent))
+	writer.Close()
+
+	c, w := setupAnimalTestContext(user.ID, true)
+	c.Request = httptest.NewRequest("POST", "/api/v1/admin/animals/import-csv", body)
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	handler := ImportAnimalsCSV(db, &embedding.StubEmbedder{})
+	handler(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var animal models.Animal
+	if err := db.Where("group_id = ? AND name = ?", group.ID, "Rex").First(&animal).Error; err != nil {
+		t.Fatalf("Failed to find imported animal: %v", err)
+	}
+
+	if animal.Status != "under_behavior_mod" {
+		t.Errorf("Expected status 'under_behavior_mod', got '%s'", animal.Status)
+	}
+}
+
 // TestImportAnimalsCSV_InvalidFile tests importing non-CSV file
 func TestImportAnimalsCSV_InvalidFile(t *testing.T) {
 	db := setupAnimalTestDB(t)
