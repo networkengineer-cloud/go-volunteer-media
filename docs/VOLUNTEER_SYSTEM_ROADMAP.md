@@ -28,6 +28,7 @@ ships, report it through the `roadmap-update` skill as usual.
 | # | Workstream | Status | Blocking questions |
 |---|---|---|---|
 | 0 | [Discovery](#0-discovery) | Not started | — |
+| A | [Architecture prerequisites](#a-architecture-prerequisites) | Not started | AR-Q1, AR-Q2 |
 | 1 | [Foundations](#1-foundations) | Not started | FD-Q1, FD-Q2 |
 | 2 | [Programs (volunteer types)](#2-programs-volunteer-types) | Not started | PR-Q1 |
 | 3 | [Time tracking & check-in](#3-time-tracking--check-in) | Not started | TT-Q1, TT-Q2 |
@@ -59,6 +60,15 @@ A baseline so work items build on the code rather than around it.
 | Reporting | Admin dashboard counts; group/user/comment-tag statistics | `handlers/admin_dashboard.go`, `statistics.go` |
 | Time | App forces `time.Local` to UTC; `ShiftSlot.Hour` is shelter wall-clock | `internal/database` |
 | Login rate limit | 5/min **per IP**, in-memory per container | `cmd/api/main.go` (`authLimiter`), `middleware/ratelimit.go` |
+| Replicas | Prod scales 1–3 container replicas (`max_replicas = 3`) | `terraform/environments/prod/` |
+| Schema changes | GORM AutoMigrate + ~39 raw SQL statements on startup. No versions, no rename/drop, no rollback | `internal/database/database.go` |
+| Authorization | ~66 inline group-membership / group-admin checks across handlers; no central policy | `internal/handlers/`, `group-auth-pattern` skill |
+| Background jobs | In-process goroutine tickers per replica (embedding sweep, coverage digest). The digest claims rows atomically, so it is replica-safe | `internal/embedding/sweep.go`, `handlers/schedule_coverage_digest.go` |
+| Backend structure | One flat `handlers` package (83 files, ~42k lines) holding business logic; one `models.go`; one 638-line route table | `internal/handlers/`, `cmd/api/main.go` |
+| Frontend data | Hand-rolled axios calls in `useEffect`; no query cache. Largest pages: `GroupPage.tsx` 1,934 lines, `UsersPage.tsx` 1,839, `AnimalForm.tsx` 1,612 | `frontend/src/api/client.ts`, `pages/` |
+| Frontend styling | Global, unscoped CSS per page; known cascade hazards | `frontend-styling` skill |
+| Sessions | JWT in `localStorage`, 24h expiry | `internal/auth/auth.go`, `api/client.ts` |
+| Tests | Handler tests mostly SQLite; `_postgres_test.go` suffix for real-Postgres tests | `internal/handlers/` |
 
 ---
 
@@ -88,6 +98,84 @@ Answers here unblock design in every other workstream.
 
 ---
 
+## A. Architecture prerequisites
+
+The stack (Go/Gin, Postgres/GORM, React/TS/Vite, single container on Azure
+Container Apps) is suitable for this scale — no rewrite or language change.
+These are targeted changes that make the expansion safe to build. Items
+AR-1 – AR-5 should land **before** the feature workstreams that depend on
+them; AR-6 – AR-9 are conventions for *new* code, not rewrites of old code.
+
+### Before feature work
+
+- [ ] **AR-1** Versioned schema migrations. Adopt a migration tool with
+  numbered up/down files, baseline it from the current schema, and keep
+  AutoMigrate only until the baseline is in place. Required for the
+  status backfill (FD-1) and the `UserSkillTag` → levels conversion (ON-4).
+  **(blocked: AR-Q1)**
+- [ ] **AR-2** Central authorization policy: one helper (e.g.
+  `authz.Can(user, action, group)`) that replaces the inline checks, with
+  tests per role. Do this *before* adding the coordinator role (FD-2), kiosk
+  scope (TT-2), applicants (ON-1) or mentors (ON-6). Update the
+  `group-auth-pattern` skill to match.
+- [ ] **AR-3** Replica-safe background jobs: a Postgres-backed job runner (or
+  a shared locking helper) with retries, used by every new job — auto-close
+  check-outs (TT-5), expiry reminders (ON-10), shift reminders (SC-5), SMS
+  (CM-2). Follow the coverage digest's atomic-claim pattern at minimum.
+  **(blocked: AR-Q2)**
+- [ ] **AR-4** Login rate limiting that works behind a shared shelter IP and
+  across replicas: key on username + IP, store limiter state in Postgres or
+  another shared store; kiosk traffic on its own path.
+  *(moved from FD-7)*
+- [ ] **AR-5** Shelter time zone setting; all shift / check-in / "late" /
+  "no-show" logic evaluates in that zone. *(moved from FD-3)*
+
+### Conventions for new code
+
+- [ ] **AR-6** Backend: new domains get their own package (e.g.
+  `internal/timeclock`, `internal/training`) with business logic in a
+  service layer and thin handlers. New models go in per-domain files inside
+  `internal/models` (same package). Existing handlers are not moved.
+- [ ] **AR-7** Split the route table in `cmd/api/main.go` into per-domain
+  `RegisterXRoutes(router, deps)` functions. Mechanical, low risk; do it
+  before the route count grows further.
+- [ ] **AR-8** Frontend data layer: adopt a query/cache library (e.g.
+  TanStack Query) for new pages, wrapping the existing `client.ts` methods
+  rather than replacing them. Needed for the kiosk, live roster (TT-6) and
+  dashboards (RP-8).
+- [ ] **AR-9** Frontend styling: CSS Modules for new pages to avoid the
+  global cascade. Update the `frontend-styling` skill.
+- [ ] **AR-10** New volunteer features ship as new pages (Volunteer Hub,
+  Coordinator, Kiosk), not tabs in `GroupPage.tsx`. Split the large existing
+  pages only when they are touched; `UsersPage.tsx` gets rebuilt under FD-9.
+- [ ] **AR-11** Concurrency-sensitive features (capacity sign-ups,
+  simultaneous check-ins) are tested against real Postgres
+  (`_postgres_test.go`), not SQLite.
+- [ ] **AR-12** Record AR-6 – AR-11 in `CLAUDE.md`, the relevant skills,
+  and `.github/copilot-instructions.md` so every contributor follows them.
+
+### Worth deciding (not blocking)
+
+- [ ] **AR-13** Session storage: evaluate httpOnly cookie sessions instead
+  of `localStorage` JWTs once the app holds DOB, emergency contacts and
+  background-check status. **(AR-Q3)**
+- [ ] **AR-14** Kiosk device authentication: a scoped, revocable device
+  credential, separate from user sessions (prerequisite for TT-2).
+
+### Open questions
+
+- **AR-Q1** Which migration tool (e.g. goose vs golang-migrate), and should
+  migrations run on startup or as a separate deploy step?
+- **AR-Q2** Adopt a Postgres job queue library (e.g. River) or hand-roll
+  advisory-lock-based jobs?
+- **AR-Q3** Move to httpOnly cookie sessions, or keep bearer tokens and
+  harden (shorter expiry, refresh tokens)?
+- **AR-Q4** Should production stay at up to 3 replicas, or is a single
+  replica acceptable (simplifies jobs and rate limiting, reduces
+  availability)?
+
+---
+
 ## 1. Foundations
 
 Cross-cutting changes most later workstreams depend on.
@@ -98,9 +186,8 @@ Cross-cutting changes most later workstreams depend on.
   active → inactive → do-not-return, with start/end dates and status history.
 - [ ] **FD-2** Volunteer coordinator role: cross-group visibility and
   management without site-admin powers (API tokens, site settings).
-  **(blocked: FD-Q1)**
-- [ ] **FD-3** Shelter time zone setting; all shift/check-in/"late"/"no-show"
-  logic evaluates in that zone.
+  Depends on AR-2. **(blocked: FD-Q1)**
+- **FD-3** *Moved to AR-5.*
 - [ ] **FD-4** General audit log (who changed what, when, old → new) for
   hours, qualifications, status, and waiver records. Generalise the
   `CommentHistory` pattern.
@@ -109,9 +196,7 @@ Cross-cutting changes most later workstreams depend on.
   needed). **(blocked: FD-Q2)**
 - [ ] **FD-6** Field-level visibility for sensitive data (DOB, emergency
   contact, background-check status) — coordinator/admin only.
-- [ ] **FD-7** Login rate limiting that works when many volunteers share the
-  shelter's IP: key on username + IP, and move limiter state out of process
-  memory if the app runs more than one replica.
+- **FD-7** *Moved to AR-4.*
 - [ ] **FD-8** Bulk account creation (CSV → invites) for onboarding cohorts.
 - [ ] **FD-9** Users page scaled for 600 users: server-side pagination, search,
   filter by status/program/level.
@@ -121,8 +206,8 @@ Cross-cutting changes most later workstreams depend on.
 - **FD-Q1** What roles does the shelter actually have? (e.g. staff
   coordinator, program lead, shift lead, mentor, volunteer.) What can each do?
 - **FD-Q2** Which profile fields are required, and who may see each one?
-- **FD-Q3** Does the app run more than one container replica in prod (affects
-  in-memory rate limiting and background sweeps)?
+- ~~**FD-Q3** Does the app run more than one container replica in prod?~~
+  Answered: yes, up to 3 (see decision log). Follow-up is AR-Q4.
 - **FD-Q4** Data retention: how long are inactive volunteers' records kept?
   What is deleted vs. anonymised?
 
@@ -170,8 +255,8 @@ Replaces Galaxy's kiosk and hours tracking.
   edited-by.
 - [ ] **TT-2** iPad kiosk mode (`/kiosk`): authenticated with a scoped device
   token (check-in/out and name lookup only), volunteer search by first name +
-  last initial, PIN or QR confirmation, program picker.
-  **(blocked: TT-Q1)**
+  last initial, PIN or QR confirmation, program picker. Depends on AR-4,
+  AR-14. **(blocked: TT-Q1)**
 - [ ] **TT-3** Kiosk resilience: tolerate brief Wi-Fi loss (queue locally,
   sync on reconnect); works under iPad Guided Access.
 - [ ] **TT-4** Self check-in from a phone (fallback / offsite), optionally
@@ -413,4 +498,6 @@ Record answers to open questions here, newest first.
 
 | Date | Question | Decision | Decided by |
 |---|---|---|---|
+| 2026-09-27 | Is the current stack suitable, or does it need a rewrite? | Keep the stack; do targeted prerequisites (workstream A) | Project owner |
+| 2026-09-27 | FD-Q3: more than one prod replica? | Yes — prod `max_replicas = 3` (from Terraform) | Code |
 | 2026-09-27 | Integrate with or replace Galaxy Digital? | Replace | Project owner |
