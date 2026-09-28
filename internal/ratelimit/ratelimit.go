@@ -20,10 +20,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -91,6 +93,13 @@ func (l *Limiter) Hit(ctx context.Context, rule Rule, subject string) (allowed b
 	if retryAfter < time.Second {
 		retryAfter = time.Second
 	}
+	// A replica with a skewed clock can have written a window_start in the
+	// future (see the upsertSQL comment above); without this cap that skew
+	// leaks straight into the client-facing Retry-After header as a wait far
+	// longer than the rule's own window.
+	if retryAfter > rule.Window {
+		retryAfter = rule.Window
+	}
 	return false, retryAfter, nil
 }
 
@@ -147,6 +156,12 @@ type Check struct {
 	Field string
 }
 
+// bodyPeekCap is the largest body Middleware accepts on routes with a
+// Check.Field; larger bodies get 413. The whole body must be parsed to find
+// the field the handler will see, and reading the global 10MB cap for every
+// unauthenticated request would be an amplification path.
+const bodyPeekCap = 64 * 1024 // 64 KiB
+
 // Middleware applies every check to the request and rejects it with 429 and
 // a Retry-After header when any is over its limit. All checks are counted,
 // even after one fails, so a client cannot probe which limit it tripped.
@@ -166,17 +181,24 @@ func Middleware(l *Limiter, checks ...Check) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		ip := c.ClientIP()
 
-		var fields map[string]json.RawMessage
+		var prefix []byte
 		if needsBody && c.Request.Body != nil {
-			body, err := io.ReadAll(c.Request.Body)
-			if err != nil {
-				// Most likely the body-size cap; let the handler report it.
-				c.Request.Body = io.NopCloser(bytes.NewReader(body))
-				c.Next()
+			// Read one byte past the cap so an oversized body is detected.
+			// A body over the cap is rejected outright: a truncated prefix
+			// can't be parsed, so the per-account check would silently
+			// drop to IP-only while the handler still read the full body.
+			// The auth bodies this guards are a few hundred bytes. Read
+			// errors (e.g. an upstream MaxBytesReader) are treated the same
+			// way - no check is ever skipped because of the body.
+			var err error
+			prefix, err = io.ReadAll(io.LimitReader(c.Request.Body, bodyPeekCap+1))
+			if err != nil || len(prefix) > bodyPeekCap {
+				c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{
+					"error": "Request body too large",
+				})
 				return
 			}
-			c.Request.Body = io.NopCloser(bytes.NewReader(body))
-			_ = json.Unmarshal(body, &fields)
+			c.Request.Body = io.NopCloser(bytes.NewReader(prefix))
 		}
 
 		var longestWait time.Duration
@@ -184,7 +206,7 @@ func Middleware(l *Limiter, checks ...Check) gin.HandlerFunc {
 		for _, ch := range checks {
 			subject := ip
 			if ch.Field != "" {
-				value := stringField(fields, ch.Field)
+				value := extractField(prefix, ch.Field)
 				if value == "" {
 					continue
 				}
@@ -192,7 +214,13 @@ func Middleware(l *Limiter, checks ...Check) gin.HandlerFunc {
 			}
 			allowed, wait, err := l.Hit(ctx, ch.Rule, subject)
 			if err != nil {
-				middleware.GetLogger(c).Error("Rate limit check failed; allowing request", err)
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					// The client went away or its deadline passed; this is
+					// not a limiter or database problem worth paging on.
+					middleware.GetLogger(c).Debug("Rate limit check skipped: request context ended")
+				} else {
+					middleware.GetLogger(c).Error("Rate limit check failed; allowing request", err)
+				}
 				continue
 			}
 			if !allowed {
@@ -220,16 +248,29 @@ func Middleware(l *Limiter, checks ...Check) gin.HandlerFunc {
 	}
 }
 
-// stringField returns fields[name] as a trimmed, lower-cased string, or ""
-// when it is missing or not a string.
-func stringField(fields map[string]json.RawMessage, name string) string {
-	raw, ok := fields[name]
-	if !ok {
+// extractField returns body's JSON field named name as a trimmed, lower-cased
+// string, or "" when it is missing, not a string, or the body doesn't parse.
+//
+// It decodes into a struct with a single field tagged `json:"name"`, rather
+// than doing an exact-key lookup against map[string]json.RawMessage, because
+// handlers bind the same body into a struct and encoding/json matches struct
+// fields case-insensitively, with the last occurrence of a duplicate key
+// winning. An exact-match map lookup let both of those slip past the
+// per-account check: {"USERNAME":"victim"} matched no "username" key at all,
+// and {"username":"decoy","Username":"victim"} charged the decoy instead of
+// the account the handler actually resolves to. Decoding with the same
+// semantics the handler uses closes both bypasses.
+func extractField(body []byte, name string) string {
+	fieldType := reflect.StructOf([]reflect.StructField{
+		{
+			Name: "Value",
+			Type: reflect.TypeOf(""),
+			Tag:  reflect.StructTag(fmt.Sprintf(`json:%q`, name)),
+		},
+	})
+	target := reflect.New(fieldType)
+	if err := json.Unmarshal(body, target.Interface()); err != nil {
 		return ""
 	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return ""
-	}
-	return strings.ToLower(strings.TrimSpace(s))
+	return strings.ToLower(strings.TrimSpace(target.Elem().Field(0).String()))
 }
