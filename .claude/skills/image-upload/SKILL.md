@@ -1,159 +1,147 @@
 ---
 name: image-upload
-description: Handle image and document uploads in go-volunteer-media. Explains the storageProvider abstraction that supports both local filesystem and Azure Blob Storage, the correct handler patterns for gallery images, profile pictures, and protocol documents, and how to read/delete stored files. Use when adding any file upload or media-management feature.
-user-invokable: false
+description: Handle image and document uploads in go-volunteer-media. Explains the storage.Provider abstraction (Postgres bytea by default, Azure Blob Storage in deployed environments), where the bytes actually live for each provider, the upload/serve/delete handler patterns, and the upload validators. Use when adding any file upload or media-management feature.
+user-invocable: false
 ---
 
 # Image and Document Upload Pattern
 
-**Never write files directly to the filesystem.** All uploads must go through the `storageProvider` interface so they work in both local dev (filesystem) and production (Azure Blob Storage).
+**Never write files to the local filesystem.** All uploads go through the
+`storage.Provider` interface (`internal/storage/storage.go`) so they work with
+either backend.
 
-## The Storage Abstraction
+## The two providers
 
-The storage interface is defined in `internal/storage/`. Two implementations exist:
-- **Local**: writes to `public/uploads/` and serves via `/uploads` static route
-- **Azure Blob**: stores in Azure Blob Storage; images are served via `GET /api/images/:uuid`
+Selected at startup by `STORAGE_PROVIDER` (`storage.LoadConfig`) and injected
+into handlers as `storageProvider storage.Provider`.
 
-The active provider is injected into handlers at startup. Handlers receive it as a parameter.
+| Provider | Used by | Where the bytes live |
+|---|---|---|
+| `postgres` (`storage.ProviderPostgres`, the **default**) | Local dev (`.env.example`) | **In the model's own row** — a `bytea` column such as `ImageData`, `FileData`, `ProtocolDocumentData`. The provider stores nothing: `UploadImage`/`UploadDocument` only mint a UUID + URL, and `Delete*` are no-ops. |
+| `azure` (`storage.ProviderAzure`) | dev/prod via Terraform | In Azure Blob Storage, keyed by `<uuid><ext>`. The row stores the identifier; the `bytea` column stays `nil`. |
 
-## Handler Pattern — Image Upload
+**The consequence:** after calling the provider, the handler must decide what
+to persist. If `storageProvider.Name() == storage.ProviderPostgres`, write the
+bytes into the row; otherwise store `nil` and the blob identifier. Forgetting
+this silently loses the file in local dev.
+
+## Reference handler
+
+`internal/handlers/group_document.go` (`UploadGroupDocument`) is the pattern
+to copy — it handles both providers and the fallback correctly:
 
 ```go
-func UploadFooImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        ctx := c.Request.Context()
-        groupID := c.Param("id")
-        userID, _ := c.Get("user_id")
-        isAdmin, _ := c.Get("is_admin")
-        isAdminBool, _ := isAdmin.(bool)
+_, blobUUID, blobExt, uploadErr := storageProvider.UploadDocument(ctx, fileData, mimeType, file.Filename)
+var fileURL, blobIdentifier, fileProvider string
+var fileDataForDB []byte
 
-        // 1. Auth check
-        if !checkGroupAccess(db, userID, isAdminBool, groupID) {
-            respondForbidden(c, "forbidden")
-            return
-        }
-
-        // 1b. Parse the entity ID
-        parsedAnimalID, err := strconv.ParseUint(c.Param("animalId"), 10, 64)
-        if err != nil {
-            respondBadRequest(c, "invalid animal id")
-            return
-        }
-
-        // 2. Parse the multipart file header
-        file, err := c.FormFile("image")
-        if err != nil {
-            respondBadRequest(c, "no file uploaded")
-            return
-        }
-
-        // 3. Validate MIME type and size
-        if err := upload.ValidateImageUpload(file, upload.MaxImageSize); err != nil {
-            respondBadRequest(c, err.Error())
-            return
-        }
-
-        // 4. Open and read file bytes
-        src, err := file.Open()
-        if err != nil {
-            respondInternalError(c, err.Error())
-            return
-        }
-        defer src.Close()
-        data, err := io.ReadAll(src)
-        if err != nil {
-            respondInternalError(c, err.Error())
-            return
-        }
-
-        // 5. Upload via the provider
-        // UploadImage returns (publicURL, identifier, extension, error)
-        imageURL, identifier, _, err := storageProvider.UploadImage(ctx, data, file.Header.Get("Content-Type"), map[string]string{})
-        if err != nil {
-            respondInternalError(c, err.Error())
-            return
-        }
-
-        // 6. Persist the reference in the DB
-        img := models.AnimalImage{
-            AnimalID:       uint(parsedAnimalID),
-            ImageURL:       imageURL,
-            BlobIdentifier: identifier,
-        }
-        if err := db.WithContext(ctx).Create(&img).Error; err != nil {
-            respondInternalError(c, err.Error())
-            return
-        }
-        respondCreated(c, img)
+if uploadErr != nil {
+    // Provider failed: fall back to storing the bytes in Postgres.
+    logger.WithFields(map[string]interface{}{"error": uploadErr.Error()}).
+        Warn("Failed to upload document to storage provider, falling back to PostgreSQL")
+    fileURL = fmt.Sprintf("/api/group-documents/%s", docUUID)
+    blobIdentifier = docUUID
+    fileProvider = storage.ProviderPostgres
+    fileDataForDB = fileData
+} else {
+    blobIdentifier = blobUUID + blobExt
+    fileURL = fmt.Sprintf("/api/group-documents/%s", blobIdentifier)
+    fileProvider = storageProvider.Name()
+    if fileProvider == storage.ProviderPostgres {
+        fileDataForDB = fileData // postgres provider stores nothing itself
+    } else {
+        fileDataForDB = nil
     }
 }
+
+doc := models.GroupDocument{
+    // ...
+    FileURL:            fileURL,
+    FileProvider:       fileProvider,
+    FileBlobIdentifier: blobIdentifier,
+    FileBlobExtension:  blobExt,
+    FileData:           fileDataForDB,
+}
 ```
 
-## Handler Pattern — Reading an Image
+A new model that stores a file needs the same column set:
+`<X>Provider`, `<X>BlobIdentifier`, `<X>BlobExtension`, and
+`<X>Data []byte \`gorm:"type:bytea" json:"-"\``. Never expose the bytes in
+JSON.
 
-Images stored by the provider are served through the UUID endpoint, not by exposing filesystem paths:
+> **Known inconsistency:** `animal_image.go` (`UploadAnimalImage`) sets
+> `ImageData = nil` whenever the provider call succeeds — including with the
+> `postgres` provider, which never fails — so gallery images uploaded under
+> `STORAGE_PROVIDER=postgres` are served as 404 by `ServeImage`. Don't copy
+> that branch; follow `group_document.go`.
 
-```
-GET /api/images/:uuid  →  handlers in cmd/api/main.go, served directly from storage provider
-```
+## Serving files
 
-In the frontend, always reference images via `/api/images/<uuid>`, not with `/uploads/<filename>`.
+Files are always served through an API route that looks up the row, checks
+the provider, and returns either the row's bytes or the blob:
 
-## Handler Pattern — Deleting an Image
+| Route | Handler | Auth |
+|---|---|---|
+| `GET /api/images/:uuid` | `ServeImage` (`animal_upload.go`) | Public |
+| `GET /api/videos/:uuid` | `ServeVideo` (`animal_upload.go`) | Public |
+| `GET /api/documents/:uuid` | `ServeAnimalProtocolDocument` (`animal_document.go`) | Authenticated |
+| `GET /api/group-documents/:uuid` | `ServeGroupDocument` (`group_document.go`) | Authenticated + group check |
+
+Anything private (waivers, incident attachments, background-check
+documents) must be served through an **authenticated** route with an access
+check, like `ServeGroupDocument` — never through the public image route, and
+never by handing out a direct blob URL. `group_document.go` discards the
+provider's URL for exactly this reason.
+
+In the frontend, reference files by the URL stored on the record
+(`/api/images/<uuid>` etc.), never a filesystem path.
+
+## Deleting files
+
+Look up the row scoped to the authorized group, delete the blob only when the
+provider is not Postgres, then delete the row:
 
 ```go
-// Retrieve the record first, then delete from storage, then delete the DB row.
-// Always scope the lookup to the authorized group to prevent cross-group deletes.
-// Trade-off: if DeleteImage succeeds but db.Delete fails, the blob is gone but the
-// DB row remains pointing to a missing file. This is acceptable because the next
-// delete attempt will simply return a storage 404. For strict atomicity, soft-delete
-// the DB row first, then clean up storage asynchronously.
-var img models.AnimalImage
-if err := db.WithContext(ctx).Where("id = ? AND group_id = ?", id, groupID).First(&img).Error; err != nil {
-    respondNotFound(c, "not found")
-    return
+if doc.FileProvider != storage.ProviderPostgres && doc.FileBlobIdentifier != "" {
+    if err := storageProvider.DeleteDocument(ctx, doc.FileBlobIdentifier); err != nil {
+        // log; decide whether to continue
+    }
 }
-if err := storageProvider.DeleteImage(ctx, img.BlobIdentifier); err != nil {
-    respondInternalError(c, err.Error())
-    return
-}
-if err := db.WithContext(ctx).Delete(&img).Error; err != nil {
-    respondInternalError(c, err.Error())
-    return
-}
+if err := db.Delete(&doc).Error; err != nil { ... }
 ```
 
-## File Validation (use `internal/upload/`)
+For Postgres-stored files, deleting (or soft-deleting) the row is the delete.
 
-The `upload` package provides shared validation:
+## Validation (`internal/upload/validation.go`)
 
-```go
-import "github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
+Always use the shared validators — never hand-roll MIME or size checks:
 
-// Images: validates MIME (image/jpeg, image/png, image/gif) and size (max 10MB)
-if err := upload.ValidateImageUpload(file, upload.MaxImageSize); err != nil { ... }
+| Function | Accepts | Size constant |
+|---|---|---|
+| `upload.ValidateImageUpload(file, max)` | jpg/jpeg, png, gif, webp, heic/heif | `MaxImageSize` (10 MB), `MaxHeroImageSize` (5 MB) |
+| `upload.ValidateImageContent(data)` | Checks decoded bytes really are an image | — |
+| `upload.ValidateDocumentUpload(file, max)` | pdf, docx, xlsx | `MaxDocumentSize` (20 MB) |
+| `upload.ValidateVideoUpload(file, max)` | Video types | `MaxVideoSize` (200 MB) |
 
-// Documents: validates MIME (application/pdf) and size (max 20MB)
-if err := upload.ValidateDocumentUpload(file, upload.MaxDocumentSize); err != nil { ... }
-```
+Also useful: `upload.SanitizeFilename`, `upload.MimeTypeFromFilename`.
+Routes accepting large bodies raise the per-route body limit in
+`cmd/api/main.go` (see the document routes).
 
-Never write your own MIME or size validation — always use `upload.ValidateImageUpload` / `upload.ValidateDocumentUpload`.
-
-## Existing Upload Handlers (Reference)
+## Existing upload handlers
 
 | File | What it handles |
 |---|---|
-| `internal/handlers/animal_image.go` | Gallery images: upload, delete, set profile picture |
-| `internal/handlers/animal_document.go` | Protocol documents: upload, serve, delete |
-| `internal/handlers/animal_upload.go` | Simple single image upload (not gallery) |
-| `internal/handlers/settings.go` | Hero image upload for site settings |
-| `internal/handlers/group.go` | Group avatar/image upload |
+| `internal/handlers/group_document.go` | Group documents — **reference pattern** |
+| `internal/handlers/script.go` | Script files (same column set as group documents) |
+| `internal/handlers/animal_document.go` | Per-animal protocol documents |
+| `internal/handlers/animal_image.go` | Gallery images: resize, upload, delete, profile picture (see inconsistency above) |
+| `internal/handlers/animal_video.go` | Videos + thumbnails (Azure only) |
+| `internal/handlers/animal_upload.go` | `ServeImage` / `ServeVideo` |
+| `internal/handlers/settings.go` | Site hero image |
 
-Read these existing handlers before writing a new one — they show the exact pattern used in production.
+## Key files
 
-## Key Files
-
-- `internal/storage/` — `Provider` interface + local/Azure implementations
-- `internal/upload/` — `ValidateImageUpload`, `ValidateDocumentUpload` helpers
-- `internal/models/models.go` — `AnimalImage`, `AnimalDocument` model structs
-- `cmd/api/main.go` — where `storageProvider` is initialized and injected
+- `internal/storage/storage.go` — `Provider` interface, `LoadConfig`, `NewProvider`
+- `internal/storage/postgres.go`, `azure.go` — the two implementations
+- `internal/upload/validation.go` — validators and size limits
+- `cmd/api/main.go` — provider construction and the serve routes

@@ -114,6 +114,7 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       
       - name: Terraform Format Check
+        id: fmt
         run: terraform fmt -check -recursive
         working-directory: terraform/environments/dev
         continue-on-error: true
@@ -123,6 +124,7 @@ jobs:
         working-directory: ${{ env.WORKING_DIRECTORY }}
       
       - name: Terraform Validate
+        id: validate
         run: terraform validate
         working-directory: ${{ env.WORKING_DIRECTORY }}
       
@@ -224,7 +226,7 @@ jobs:
           echo "### Cost Optimization Features" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Container Apps: Scale to zero when not in use" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ PostgreSQL: Auto-pause after 60 minutes of inactivity" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Budget: $20/month with alerts at 80% and 100%" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Budget: \$20/month with alerts at 80% and 100%" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "1. Test application at the URL above" >> $GITHUB_STEP_SUMMARY

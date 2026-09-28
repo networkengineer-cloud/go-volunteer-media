@@ -1,0 +1,24 @@
+# Custom Semgrep rules enforcing the frontend conventions in CLAUDE.md and the
+# add-api-endpoint skill. Tests: ts-frontend-conventions.tsx.
+rules:
+  - id: raw-axios-http-call
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      Direct axios HTTP call outside frontend/src/api/client.ts. Add a typed
+      method to client.ts instead so auth headers, the 401 redirect and
+      response types stay consistent. (axios.isCancel / isAxiosError are
+      fine.) If a pre-login page must bypass the client's 401 redirect,
+      say so with `// nosemgrep: raw-axios-http-call` and a reason.
+    paths:
+      include: ["/frontend/src/"]
+      exclude: ["/frontend/src/api/client.ts", "*.test.ts", "*.test.tsx"]
+    pattern-either:
+      - pattern: axios.get(...)
+      - pattern: axios.post(...)
+      - pattern: axios.put(...)
+      - pattern: axios.patch(...)
+      - pattern: axios.delete(...)
+      - pattern: axios.head(...)
+      - pattern: axios.request(...)
+      - pattern: axios(...)

@@ -7,7 +7,25 @@ jobs:
   backend-test:
     name: Backend Tests
     runs-on: ubuntu-latest
-    
+
+    # Real Postgres for the *_postgres_test.go tests (pgvector, full-text,
+    # concurrency). Without it they skip themselves and pass silently.
+    # Throwaway per-job container, so trust auth rather than a password.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_DB: volunteer_media_test
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -33,6 +51,11 @@ jobs:
     - name: Run Go tests
       env:
         JWT_SECRET: ${{ secrets.TEST_JWT_SECRET || 'L5WTt6D+6R55YfKzwqPRAEX5bR0bkNo4i58jYKL0wsk=' }}
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USER: postgres
+        DB_NAME: volunteer_media_test
+        DB_SSLMODE: disable
       run: go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
 
     - name: Generate coverage report
@@ -249,7 +272,7 @@ jobs:
       if: always()
       run: |
         if [ -f backend.pid ]; then
-          kill $(cat backend.pid) || true
+          kill "$(cat backend.pid)" || true
         fi
 
   security-scan:

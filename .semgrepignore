@@ -1,0 +1,6 @@
+# Semgrep scan exclusions (pr-checks.yml). Rule fixtures in tools/semgrep/
+# are intentionally bad code; `semgrep --test` still runs them.
+:include .gitignore
+tools/semgrep/
+node_modules/
+frontend/dist/

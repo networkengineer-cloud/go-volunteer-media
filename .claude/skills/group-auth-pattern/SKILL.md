@@ -1,19 +1,25 @@
 ---
 name: group-auth-pattern
-description: Background knowledge for implementing authorization in go-volunteer-media Gin handlers. Explains the three-tier permission model (public, group member, group admin/site admin), how to read identity from context, when to use AdminRequired middleware vs inline group checks, and common security anti-patterns to avoid. Automatically loaded when writing or reviewing handler code.
-user-invokable: false
+description: Background knowledge for implementing authorization in go-volunteer-media Gin handlers. Explains the four authorization tiers (public, group member, group admin, site admin), how to read identity from context, when to use AdminRequired middleware vs inline group checks, and common security anti-patterns to avoid. Automatically loaded when writing or reviewing handler code.
+user-invocable: false
 ---
 
 # Group Authorization Pattern
 
 This app has four authorization tiers. Choose the right one for every handler.
 
+> **Planned change:** the volunteer-system roadmap
+> (`docs/VOLUNTEER_SYSTEM_ROADMAP.md`, item AR-2) replaces these inline
+> checks with a central policy helper before new roles (coordinator, kiosk
+> device, applicant) are added. Until that lands, use the helpers below and
+> do not invent new role checks inline.
+
 ## Tier 1 — Public (no auth required)
 
 Routes outside the `authRequired` middleware group. Only a handful:
 - `POST /api/login`
 - `POST /api/request-password-reset`, `/reset-password`, `/setup-password`
-- `GET /api/settings`, `GET /api/images/:uuid`
+- `GET /api/settings`, `GET /api/images/:uuid`, `GET /api/videos/:uuid`
 - Health check endpoints
 
 **Do not** add new routes here unless they genuinely need no authentication.
@@ -32,13 +38,13 @@ For group-scoped resources, **always** call `checkGroupAccess()` from `animal_he
 ```go
 func GetFoos(db *gorm.DB) gin.HandlerFunc {
     return func(c *gin.Context) {
+        db := middleware.GetDB(c, db) // request-scoped DB; never reassign the closure's db
         groupID := c.Param("id")
         userID, _ := c.Get("user_id")
         isAdmin, _ := c.Get("is_admin")
-        isAdminBool, _ := isAdmin.(bool)
 
         // This returns true for: site admins OR members of the group OR group admins
-        if !checkGroupAccess(db, userID, isAdminBool, groupID) {
+        if !checkGroupAccess(db, userID, isAdmin, groupID) {
             respondForbidden(c, "forbidden")  // 403, not 404 — do not leak resource existence
             return
         }
@@ -100,18 +106,14 @@ Always validate group access before running any GORM query on group-scoped data.
 `checkGroupAccess()` and `checkGroupAdminAccess()` accept `interface{}` for `userID` and `isAdmin`, so you can pass them directly from `c.Get()`. However, if you need to pass `userID` to a model-layer function that requires a typed `uint` (e.g., `models.IsGroupAdmin`), assert it explicitly:
 
 ```go
-userID, exists := c.Get("user_id")
-if !exists {
-    respondUnauthorized(c)
-    return
-}
-// Pass directly to checkGroupAccess — it accepts interface{}.
-// For model functions requiring uint, assert with the two-value form:
-uid, ok := userID.(uint)
+// Pass the raw c.Get values directly to checkGroupAccess — it accepts interface{}.
+// For code that needs a typed uint, use the middleware helper:
+uid, ok := middleware.GetUserID(c)
 if !ok {
-    respondUnauthorized(c)
+    respondUnauthorized(c, "unauthorized")
     return
 }
+isSiteAdmin := middleware.IsSiteAdmin(c)
 ```
 
 ## Auth Flow Summary
@@ -130,7 +132,7 @@ Request
 
 ## Key Files
 
-- `internal/middleware/middleware.go` — `AuthRequired()`, `AdminRequired()`
+- `internal/middleware/middleware.go` — `AuthRequired()`, `AdminRequired()`, `GetUserID()`, `IsSiteAdmin()`
 - `internal/handlers/animal_helpers.go` — `checkGroupAccess()`, `checkGroupAdminAccess()`
 - `internal/models/models.go` — `UserGroup` struct (has `IsGroupAdmin bool`)
 - `cmd/api/main.go` — route groups showing which middleware applies to which routes

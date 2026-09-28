@@ -124,7 +124,7 @@ Leave a comment saying which global rule you are beating, as that file does.
 
 ## Before opening a styling PR
 
-1. `cd frontend && npx tsc --noEmit`
+1. `cd frontend && npx tsc -b` (not `--noEmit`, which checks nothing here)
 2. `npx vitest run <the touched component>.test.tsx` — CSS changes don't break
    these, but class-name changes in TSX do.
 3. **Look at it in dark mode.** Four of the six styling PRs in this window
