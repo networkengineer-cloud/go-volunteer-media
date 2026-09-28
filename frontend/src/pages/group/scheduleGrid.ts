@@ -1,4 +1,5 @@
 import type { ScheduleCadence } from '../../api/client';
+import { DEFAULT_SHELTER_TIMEZONE, todayInZone, weekStartOfIso } from '../../utils/shelterTime';
 
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
@@ -137,23 +138,21 @@ export function weekParity(weekStartIso: string): 'a' | 'b' {
 }
 
 // currentWeekStart returns the ISO date (YYYY-MM-DD) of the Sunday that
-// starts "this week" in the viewer's local timezone. Shared by ScheduleTab
-// (for the cadence legend) and ScheduleOverview (for both the legend and
-// its own week-navigation default).
-export function currentWeekStart(): string {
-  const now = new Date();
-  const utcToday = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-  utcToday.setUTCDate(utcToday.getUTCDate() - utcToday.getUTCDay());
-  return utcToday.toISOString().slice(0, 10);
+// starts "this week" on the shelter's calendar (timeZone is the
+// shelter_timezone site setting - see useShelterTimeZone), matching the
+// backend's default week. Shared by the cadence legend and ScheduleOverview
+// (for its week-navigation default).
+export function currentWeekStart(timeZone: string = DEFAULT_SHELTER_TIMEZONE, now: Date = new Date()): string {
+  return weekStartOfIso(todayInZone(timeZone, now));
 }
 
 // upcomingDatesForParity returns `count` Sundays, starting from the current
 // week (or the next matching week if the current week doesn't match), each
 // 2 weeks apart, all classifying as the given parity - for the "Week A: ..."
 // / "Week B: ..." legend.
-export function upcomingDatesForParity(parity: 'a' | 'b', count: number): string[] {
+export function upcomingDatesForParity(parity: 'a' | 'b', count: number, timeZone: string = DEFAULT_SHELTER_TIMEZONE): string[] {
   const dates: string[] = [];
-  let cursor = currentWeekStart();
+  let cursor = currentWeekStart(timeZone);
   if (weekParity(cursor) !== parity) {
     cursor = addWeeksIso(cursor, 1);
   }

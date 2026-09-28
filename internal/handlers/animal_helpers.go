@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -209,61 +210,15 @@ func quarantineEndBeforeStart(end, start time.Time) bool {
 	return endDay.Before(startDay)
 }
 
-// checkGroupAccess verifies if the user has access to a specific group
-func checkGroupAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, groupID string) bool {
-	adminBool, ok := isAdmin.(bool)
-	if !ok {
-		return false
-	}
-	if adminBool {
-		return true
-	}
-
-	var user models.User
-	if err := db.Preload("Groups", "id = ?", groupID).First(&user, userID).Error; err != nil {
-		return false
-	}
-	return len(user.Groups) > 0
-}
-
-// checkGroupAdminAccess verifies if the user has admin access to a specific group
-// Returns true if:
-// - User is a site-wide admin, OR
-// - User is a group admin for the specified group
-func checkGroupAdminAccess(db *gorm.DB, userID interface{}, isAdmin interface{}, groupID string) bool {
-	// Site admins have access to all groups
-	adminBool, ok := isAdmin.(bool)
-	if !ok {
-		return false
-	}
-	if adminBool {
-		return true
-	}
-
-	// Check if user is a group admin for this specific group
-	userIDUint, ok := userID.(uint)
-	if !ok {
-		return false
-	}
-
-	var userGroup models.UserGroup
-	if err := db.Where("user_id = ? AND group_id = ?", userIDUint, groupID).First(&userGroup).Error; err != nil {
-		return false
-	}
-	return userGroup.IsGroupAdmin
-}
-
 // CheckDuplicateNames checks if any animals in a group have duplicate names
 func CheckDuplicateNames(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		name := c.Query("name")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}

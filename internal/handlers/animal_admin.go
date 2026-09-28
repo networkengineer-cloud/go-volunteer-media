@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
@@ -282,19 +283,21 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 
-		// Check if user is site admin or group admin
-		userIDUint, ok := middleware.GetUserID(c)
+		subject, ok := authz.SubjectFromContext(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context"})
 			return
 		}
 
-		// Check if user is a group admin for any group
-		isSiteAdmin := middleware.GetIsAdmin(c)
-		isGroupAdmin := IsGroupAdminForAnyGroup(db, userIDUint)
-
-		// Only site admins and group admins can access this endpoint
-		if !isSiteAdmin && !isGroupAdmin {
+		// Only callers who can manage animals in at least one group (site
+		// admins, group admins) can access this endpoint.
+		scope, err := authz.GroupsWhere(c.Request.Context(), db, subject, authz.ManageAnimals)
+		if err != nil {
+			middleware.GetLogger(c).Error("Failed to resolve animal management scope", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+			return
+		}
+		if scope.Empty() {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin or group admin access required"})
 			return
 		}
@@ -310,22 +313,22 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// If user is not a site admin, verify they can only update animals from groups they admin
-		if !isSiteAdmin && isGroupAdmin {
-			// Get the groups this user is an admin of
-			var userGroups []models.UserGroup
-			db.Where("user_id = ? AND is_group_admin = ?", userIDUint, true).Find(&userGroups)
-
-			groupIDs := make([]uint, len(userGroups))
-			for i, ug := range userGroups {
-				groupIDs[i] = ug.GroupID
+		// Unless the caller can manage animals everywhere, every animal must
+		// be in - and any destination group must be - a group they manage.
+		if !scope.All {
+			if req.GroupID != nil && !scope.Contains(*req.GroupID) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "You can only move animals into groups you administer"})
+				return
 			}
 
-			// Verify all animals belong to groups the user administers
 			var animalCount int64
-			db.Model(&models.Animal{}).
-				Where("id IN ? AND group_id IN ?", req.AnimalIDs, groupIDs).
-				Count(&animalCount)
+			if err := db.Model(&models.Animal{}).
+				Where("id IN ? AND group_id IN ?", req.AnimalIDs, scope.GroupIDs).
+				Count(&animalCount).Error; err != nil {
+				logger.Error("Failed to verify animal ownership", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+				return
+			}
 
 			if int(animalCount) != len(req.AnimalIDs) {
 				c.JSON(http.StatusForbidden, gin.H{"error": "You can only update animals in groups you administer"})
@@ -371,19 +374,21 @@ func BulkUpdateAnimals(db *gorm.DB) gin.HandlerFunc {
 func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
-		// Check if user is site admin or group admin
-		userIDUint, ok := middleware.GetUserID(c)
+		subject, ok := authz.SubjectFromContext(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context"})
 			return
 		}
 
-		// Check if user is a group admin for any group
-		isSiteAdmin := middleware.GetIsAdmin(c)
-		isGroupAdmin := IsGroupAdminForAnyGroup(db, userIDUint)
-
-		// Only site admins and group admins can access this endpoint
-		if !isSiteAdmin && !isGroupAdmin {
+		// Only callers who can manage animals in at least one group (site
+		// admins, group admins) can access this endpoint.
+		scope, err := authz.GroupsWhere(c.Request.Context(), db, subject, authz.ManageAnimals)
+		if err != nil {
+			middleware.GetLogger(c).Error("Failed to resolve animal management scope", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+			return
+		}
+		if scope.Empty() {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin or group admin access required"})
 			return
 		}
@@ -391,20 +396,10 @@ func GetAllAnimals(db *gorm.DB) gin.HandlerFunc {
 		// Build query with filters
 		query := db.Model(&models.Animal{})
 
-		// If user is not a site admin, only show animals from groups they admin
-		if !isSiteAdmin && isGroupAdmin {
-			// Get the groups this user is an admin of
-			var userGroups []models.UserGroup
-			db.Where("user_id = ? AND is_group_admin = ?", userIDUint, true).Find(&userGroups)
-
-			groupIDs := make([]uint, len(userGroups))
-			for i, ug := range userGroups {
-				groupIDs[i] = ug.GroupID
-			}
-
-			if len(groupIDs) > 0 {
-				query = query.Where("group_id IN ?", groupIDs)
-			}
+		// Unless the caller can manage animals everywhere, only show animals
+		// from groups they manage
+		if !scope.All {
+			query = query.Where("group_id IN ?", scope.GroupIDs)
 		}
 
 		// Status filter

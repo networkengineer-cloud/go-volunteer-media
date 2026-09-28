@@ -12,11 +12,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/shelterclock"
 	"gorm.io/gorm"
 )
 
@@ -206,13 +208,13 @@ func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCo
 // actually active that week (a biweekly slot on its off-week does not match),
 // and there must not already be an active (non-cancelled) request for that
 // exact date/hour. Returns the created row, or one of the sentinel errors
-// errPastDate / errNoMatchingSlot / errDuplicateRequest. Runs its own
+// errPastDate / errNoMatchingSlot / errDuplicateRequest. today is the
+// shelter's current date (shelterclock.Today). Runs its own
 // transaction - a caller creating several requests (see
 // CreateCoverageRequestsBatch) calls this once per item rather than
 // wrapping the whole batch in one transaction, so one item's failure
 // doesn't roll back the others.
-func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date time.Time, hour int, priority string) (models.ShiftCoverageRequest, error) {
-	today := time.Now().UTC().Truncate(24 * time.Hour)
+func createOneCoverageRequest(db *gorm.DB, today time.Time, groupIDUint, targetUserID uint, date time.Time, hour int, priority string) (models.ShiftCoverageRequest, error) {
 	if date.Before(today) {
 		return models.ShiftCoverageRequest{}, errPastDate
 	}
@@ -334,10 +336,7 @@ func CreateCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -359,7 +358,7 @@ func CreateCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 
 		targetUserID := callerUserID
 		if req.UserID != nil && *req.UserID != callerUserID {
-			if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+			if !callerCan(c, db, authz.ManageSchedule, groupIDParam) {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required to request coverage for another member"})
 				return
 			}
@@ -390,7 +389,7 @@ func CreateCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 		}
 		groupIDUint := uint(groupIDUint64)
 
-		created, err := createOneCoverageRequest(db, groupIDUint, targetUserID, date, req.Hour, priority)
+		created, err := createOneCoverageRequest(db, shelterclock.Today(shelterclock.Location(db)), groupIDUint, targetUserID, date, req.Hour, priority)
 		switch {
 		case errors.Is(err, errPastDate):
 			c.JSON(http.StatusBadRequest, gin.H{"error": errPastDate.Error()})
@@ -429,10 +428,7 @@ func ClaimCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServi
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -602,10 +598,7 @@ func ReassignShiftsBatch(db *gorm.DB, emailService *email.Service, groupMeServic
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -636,7 +629,7 @@ func ReassignShiftsBatch(db *gorm.DB, emailService *email.Service, groupMeServic
 			c.JSON(http.StatusBadRequest, gin.H{"error": "date must be in YYYY-MM-DD format"})
 			return
 		}
-		today := time.Now().UTC().Truncate(24 * time.Hour)
+		today := shelterclock.Today(shelterclock.Location(db))
 		if date.Before(today) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": errPastDate.Error()})
 			return
@@ -861,10 +854,7 @@ func ListCoverageRequests(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ViewGroup, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -878,7 +868,7 @@ func ListCoverageRequests(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		today := time.Now().UTC().Truncate(24 * time.Hour)
+		today := shelterclock.Today(shelterclock.Location(db))
 		var requests []models.ShiftCoverageRequest
 		if err := db.Preload("RequestedByUser").
 			Where("group_id = ? AND status = ? AND date >= ?", groupIDParam, models.CoverageRequestOpen, today).
@@ -921,10 +911,7 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -962,7 +949,7 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
+		isAdminCaller := callerCan(c, db, authz.ManageSchedule, groupIDParam)
 		isOwnOpenRequest := reqRow.RequestedByUserID == callerUserID && reqRow.Status == models.CoverageRequestOpen
 		// isOwnClaim: the volunteer currently covering this shift backing out
 		// of their own claim (e.g. something came up and they can no longer
@@ -1035,10 +1022,7 @@ func UpdateCoverageRequestPriority(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -1134,10 +1118,7 @@ func CreateCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -1210,8 +1191,9 @@ func CreateCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
 			Created: make([]coverageRequestResponse, 0, len(parsedItems)),
 			Skipped: make([]coverageRequestBatchSkipped, 0),
 		}
+		today := shelterclock.Today(shelterclock.Location(db))
 		for _, item := range parsedItems {
-			created, err := createOneCoverageRequest(db, groupIDUint, callerUserID, item.date, item.hour, item.priority)
+			created, err := createOneCoverageRequest(db, today, groupIDUint, callerUserID, item.date, item.hour, item.priority)
 			switch {
 			case errors.Is(err, errPastDate), errors.Is(err, errNoMatchingSlot), errors.Is(err, errDuplicateRequest):
 				response.Skipped = append(response.Skipped, coverageRequestBatchSkipped{
@@ -1270,10 +1252,7 @@ func CancelCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -1302,7 +1281,7 @@ func CancelCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
+		isAdminCaller := callerCan(c, db, authz.ManageSchedule, groupIDParam)
 
 		response := coverageRequestCancelBatchResponse{
 			Cancelled: make([]coverageRequestResponse, 0, len(req.RequestIDs)),
@@ -1392,10 +1371,7 @@ func ClaimCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, groupM
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -1577,10 +1553,7 @@ func ReopenCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -1615,7 +1588,7 @@ func ReopenCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 			return
 		}
 
-		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
+		isAdminCaller := callerCan(c, db, authz.ManageSchedule, groupIDParam)
 		isOwnClaim := reqRow.ClaimedByUserID != nil && *reqRow.ClaimedByUserID == callerUserID
 		if !isOwnClaim && !isAdminCaller {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot reopen this coverage request"})
@@ -1733,10 +1706,7 @@ func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeServi
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -1751,7 +1721,7 @@ func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeServi
 		}
 		groupIDUint := uint(groupIDUint64)
 
-		today := time.Now().UTC().Truncate(24 * time.Hour)
+		today := shelterclock.Today(shelterclock.Location(db))
 		var openRequests []models.ShiftCoverageRequest
 		if err := db.Preload("RequestedByUser").
 			Where("group_id = ? AND status = ? AND date >= ?", groupIDUint, models.CoverageRequestOpen, today).

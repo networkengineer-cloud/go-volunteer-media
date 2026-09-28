@@ -48,7 +48,7 @@ This application implements multiple layers of security to protect user data and
 ### Network Security
 
 - **CORS Configuration**: Strict origin whitelisting (no wildcards in production)
-- **Rate Limiting**: Protection against brute force attacks on authentication endpoints
+- **Rate Limiting**: Protection against brute force attacks on authentication endpoints. Counters are stored in Postgres (`internal/ratelimit`), so limits hold across replicas. Login is limited per username + client IP (`AUTH_RATE_LIMIT_PER_MINUTE`, default 5) so volunteers sharing the shelter's IP don't throttle each other, with a per-IP ceiling on top (`AUTH_IP_RATE_LIMIT_PER_MINUTE`, default 60). Per-account lockout after repeated failures still applies.
 - **Security Headers**:
   - `X-Content-Type-Options: nosniff`
   - `X-Frame-Options: DENY`
@@ -260,8 +260,6 @@ services:
 
 4. **Session Revocation**: JWT tokens cannot be revoked before expiration without implementing a token blacklist.
 
-5. **Distributed Rate Limiting**: Rate limiting is per-instance. For scaled deployments, implement distributed rate limiting with Redis.
-
 ### Future Enhancements
 
 - Implement JWT refresh token mechanism
@@ -272,7 +270,6 @@ services:
 - Add support for external identity providers (OAuth 2.0, SAML)
 - Implement token revocation mechanism
 - Add support for API key authentication
-- Implement distributed rate limiting with Redis
 - Add support for IP whitelisting/blacklisting
 
 ## Compliance

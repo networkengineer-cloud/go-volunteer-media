@@ -9,6 +9,7 @@ import {
   nextCadence,
   weekParity,
   upcomingDatesForParity,
+  currentWeekStart,
 } from './scheduleGrid';
 
 describe('day-aware hour rules', () => {
@@ -88,5 +89,15 @@ describe('upcomingDatesForParity', () => {
     // consecutive entries are exactly 14 days apart
     const toUtcDays = (iso: string) => Date.UTC(...(iso.split('-').map(Number) as [number, number, number]).map((v, i) => i === 1 ? v - 1 : v) as [number, number, number]) / 86400000;
     expect(toUtcDays(datesA[1]) - toUtcDays(datesA[0])).toBe(14);
+  });
+});
+
+describe('currentWeekStart', () => {
+  it("uses the shelter's calendar, not UTC's", () => {
+    // Sunday 2026-09-27 03:00 UTC is still Saturday 09-26 in Chicago, so the
+    // shelter is in the week starting 09-20 while UTC has started 09-27.
+    const instant = new Date(Date.UTC(2026, 8, 27, 3, 0));
+    expect(currentWeekStart('America/Chicago', instant)).toBe('2026-09-20');
+    expect(currentWeekStart('UTC', instant)).toBe('2026-09-27');
   });
 });

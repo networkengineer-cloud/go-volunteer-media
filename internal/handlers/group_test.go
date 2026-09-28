@@ -183,24 +183,6 @@ func TestGetGroupsErrorPaths(t *testing.T) {
 			expectedStatus: http.StatusInternalServerError,
 			expectedError:  "User context not found",
 		},
-		{
-			name: "missing is_admin context",
-			setupContext: func(c *gin.Context) {
-				c.Set("user_id", uint(1))
-				// Don't set is_admin
-			},
-			expectedStatus: http.StatusInternalServerError,
-			expectedError:  "Admin context not found",
-		},
-		{
-			name: "invalid admin flag type",
-			setupContext: func(c *gin.Context) {
-				c.Set("user_id", uint(1))
-				c.Set("is_admin", "not_a_bool") // Invalid type
-			},
-			expectedStatus: http.StatusInternalServerError,
-			expectedError:  "Invalid admin flag",
-		},
 	}
 
 	for _, tt := range tests {
@@ -232,6 +214,46 @@ func TestGetGroupsErrorPaths(t *testing.T) {
 				}
 			} else {
 				t.Error("Expected error in response")
+			}
+		})
+	}
+}
+
+// TestGetGroups_MalformedAdminFlagFailsClosed checks that a missing or
+// non-bool is_admin context value is treated as "not a site admin": the
+// caller sees only their own groups, never the admin listing.
+func TestGetGroups_MalformedAdminFlagFailsClosed(t *testing.T) {
+	for name, setAdmin := range map[string]func(*gin.Context){
+		"missing":  func(*gin.Context) {},
+		"non-bool": func(c *gin.Context) { c.Set("is_admin", "true") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := setupGroupTestDB(t)
+			user := createGroupTestUser(t, db, "member", "member@example.com", false)
+			mine := createTestGroup(t, db, "Mine", "")
+			createTestGroup(t, db, "Not Mine", "")
+			if err := db.Create(&models.UserGroup{UserID: user.ID, GroupID: mine.ID}).Error; err != nil {
+				t.Fatalf("add membership: %v", err)
+			}
+
+			gin.SetMode(gin.TestMode)
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest("GET", "/api/groups", nil)
+			c.Set("user_id", user.ID)
+			setAdmin(c)
+
+			GetGroups(db)(c)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+			var groups []map[string]interface{}
+			if err := json.Unmarshal(w.Body.Bytes(), &groups); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if len(groups) != 1 || groups[0]["name"] != "Mine" {
+				t.Fatalf("expected only the caller's own group, got %v", groups)
 			}
 		})
 	}
@@ -1187,41 +1209,6 @@ func TestGetGroupMembers(t *testing.T) {
 				tt.checkFunc(t, w)
 			}
 		})
-	}
-}
-
-// TestIsGroupAdmin tests the IsGroupAdmin helper function
-func TestIsGroupAdmin(t *testing.T) {
-	db := setupGroupTestDB(t)
-
-	// Create a user and group
-	user := createGroupTestUser(t, db, "member", "member@example.com", false)
-	group := createTestGroup(t, db, "Test Group", "Description")
-
-	// Initially user is not a group admin
-	if IsGroupAdmin(db, user.ID, group.ID) {
-		t.Error("Expected user to not be a group admin initially")
-	}
-
-	// Add user as regular member
-	userGroup := &models.UserGroup{
-		UserID:       user.ID,
-		GroupID:      group.ID,
-		IsGroupAdmin: false,
-	}
-	db.Create(userGroup)
-
-	// Still not a group admin
-	if IsGroupAdmin(db, user.ID, group.ID) {
-		t.Error("Expected user to not be a group admin")
-	}
-
-	// Promote to group admin
-	db.Model(userGroup).Update("is_group_admin", true)
-
-	// Now should be a group admin
-	if !IsGroupAdmin(db, user.ID, group.ID) {
-		t.Error("Expected user to be a group admin")
 	}
 }
 

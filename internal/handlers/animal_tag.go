@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -23,11 +24,9 @@ func GetAnimalTags(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check access - user must be member of the group
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -49,11 +48,9 @@ func CreateAnimalTag(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can create tags"})
 			return
 		}
@@ -101,11 +98,9 @@ func UpdateAnimalTag(db *gorm.DB) gin.HandlerFunc {
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can update tags"})
 			return
 		}
@@ -151,11 +146,9 @@ func DeleteAnimalTag(db *gorm.DB) gin.HandlerFunc {
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can delete tags"})
 			return
 		}
@@ -189,11 +182,9 @@ func AssignTagsToAnimal(db *gorm.DB) gin.HandlerFunc {
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageAnimals, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can assign tags"})
 			return
 		}

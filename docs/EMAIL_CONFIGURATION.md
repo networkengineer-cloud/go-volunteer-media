@@ -259,9 +259,11 @@ provider, err := email.NewProvider()
 - Newlines converted to `<br>` tags safely
 
 ### Rate Limiting
-- Authentication endpoints rate-limited (5 requests/minute default)
+- Password reset requests are limited per email address + client IP
+  (`AUTH_RATE_LIMIT_PER_MINUTE`, default 5/minute) and per client IP
+  (`AUTH_IP_RATE_LIMIT_PER_MINUTE`, default 60/minute)
+- Limits are shared across replicas (counters are stored in Postgres)
 - Prevents password reset email abuse
-- Configurable via `AUTH_RATE_LIMIT_PER_MINUTE`
 
 ### Token Security
 - Password reset tokens are cryptographically secure (32 bytes)

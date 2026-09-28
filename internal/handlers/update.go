@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
@@ -29,11 +30,9 @@ func GetUpdates(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -59,11 +58,9 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 		rawDB := db
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.PostContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -80,7 +77,7 @@ func CreateUpdate(db *gorm.DB, emailService *email.Service, groupMeService *grou
 			return
 		}
 
-		if req.SendEmail && !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if req.SendEmail && !callerCan(c, db, authz.Announce, groupID) {
 			req.SendEmail = false
 		}
 
@@ -153,12 +150,11 @@ func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 
-		userIDUint, ok := middleware.GetUserID(c)
+		_, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
-		isAdmin, _ := c.Get("is_admin")
 
 		// Parse and validate path parameters before authorization
 		updateID, err := strconv.ParseUint(c.Param("updateId"), 10, 32)
@@ -174,7 +170,7 @@ func DeleteUpdate(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Only group admins or site admins can delete updates
-		if !checkGroupAdminAccess(db, userIDUint, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ModerateContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can delete group announcements"})
 			return
 		}

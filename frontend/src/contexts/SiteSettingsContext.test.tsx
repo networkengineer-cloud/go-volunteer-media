@@ -13,6 +13,13 @@ vi.mock('../api/client', () => ({
   },
 }));
 
+type SettingsResponse = Awaited<ReturnType<typeof settingsApi.getAll>>;
+
+// The provider only reads `data`, so the rest of the axios response is omitted.
+function settingsResponse(data: Record<string, string>): SettingsResponse {
+  return { data } as SettingsResponse;
+}
+
 describe('SiteSettingsContext', () => {
   beforeEach(() => {
     // Clear all mocks before each test
@@ -26,9 +33,10 @@ describe('SiteSettingsContext', () => {
         site_short_name: 'TestSite',
         site_description: 'Test Description',
         hero_image_url: '/test-hero.jpg',
+        shelter_timezone: 'America/Chicago',
       };
 
-      vi.mocked(settingsApi.getAll).mockResolvedValue({ data: mockSettings } as any);
+      vi.mocked(settingsApi.getAll).mockResolvedValue(settingsResponse(mockSettings));
 
       const { result } = renderHook(() => useSiteSettings(), {
         wrapper: SiteSettingsProvider,
@@ -76,7 +84,7 @@ describe('SiteSettingsContext', () => {
         // Missing other fields
       };
 
-      vi.mocked(settingsApi.getAll).mockResolvedValue({ data: partialSettings } as any);
+      vi.mocked(settingsApi.getAll).mockResolvedValue(settingsResponse(partialSettings));
 
       const { result } = renderHook(() => useSiteSettings(), {
         wrapper: SiteSettingsProvider,
@@ -90,6 +98,7 @@ describe('SiteSettingsContext', () => {
       expect(result.current.settings.site_name).toBe('Custom Name');
       expect(result.current.settings.site_short_name).toBe('MyHAWS'); // Default
       expect(result.current.settings.site_description).toBe('MyHAWS Volunteer Portal - Internal volunteer management system');
+      expect(result.current.settings.shelter_timezone).toBe('UTC'); // Default, matching the backend
     });
   });
 
@@ -100,9 +109,10 @@ describe('SiteSettingsContext', () => {
         site_short_name: 'Shared',
         site_description: 'Shared Description',
         hero_image_url: '/shared.jpg',
+        shelter_timezone: 'America/Chicago',
       };
 
-      vi.mocked(settingsApi.getAll).mockResolvedValue({ data: mockSettings } as any);
+      vi.mocked(settingsApi.getAll).mockResolvedValue(settingsResponse(mockSettings));
 
       // Create a single provider instance and render multiple hooks within it
       const Wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -150,6 +160,7 @@ describe('SiteSettingsContext', () => {
         site_short_name: 'Initial',
         site_description: 'Initial Description',
         hero_image_url: '/initial.jpg',
+        shelter_timezone: 'America/Chicago',
       };
 
       const updatedSettings = {
@@ -157,10 +168,11 @@ describe('SiteSettingsContext', () => {
         site_short_name: 'Updated',
         site_description: 'Updated Description',
         hero_image_url: '/updated.jpg',
+        shelter_timezone: 'America/Chicago',
       };
 
       // First call returns initial settings
-      vi.mocked(settingsApi.getAll).mockResolvedValueOnce({ data: initialSettings } as any);
+      vi.mocked(settingsApi.getAll).mockResolvedValueOnce(settingsResponse(initialSettings));
 
       const { result } = renderHook(() => useSiteSettings(), {
         wrapper: SiteSettingsProvider,
@@ -174,7 +186,7 @@ describe('SiteSettingsContext', () => {
       expect(settingsApi.getAll).toHaveBeenCalledTimes(1);
 
       // Second call returns updated settings
-      vi.mocked(settingsApi.getAll).mockResolvedValueOnce({ data: updatedSettings } as any);
+      vi.mocked(settingsApi.getAll).mockResolvedValueOnce(settingsResponse(updatedSettings));
 
       // Call refetch
       await waitFor(async () => {
@@ -197,9 +209,10 @@ describe('SiteSettingsContext', () => {
         site_short_name: 'Initial',
         site_description: 'Initial Description',
         hero_image_url: '/initial.jpg',
+        shelter_timezone: 'America/Chicago',
       };
 
-      vi.mocked(settingsApi.getAll).mockResolvedValueOnce({ data: initialSettings } as any);
+      vi.mocked(settingsApi.getAll).mockResolvedValueOnce(settingsResponse(initialSettings));
 
       const { result } = renderHook(() => useSiteSettings(), {
         wrapper: SiteSettingsProvider,

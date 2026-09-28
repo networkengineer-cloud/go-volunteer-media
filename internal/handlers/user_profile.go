@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -86,9 +87,10 @@ type AnimalInteraction struct {
 	LastCommentAt string `json:"last_comment_at"`
 }
 
-// fetchSkillTagsForUser returns all skill tags assigned to targetUserID, optionally
-// restricted to groups where currentUserID is a group admin.
-func fetchSkillTagsForUser(db *gorm.DB, targetUserID uint, restrictToGroupAdminOf uint) []SkillTagEntry {
+// fetchSkillTagsForUser returns all skill tags assigned to targetUserID. A
+// non-nil onlyGroups restricts them to those groups (e.g. the groups where
+// the caller may view member details).
+func fetchSkillTagsForUser(db *gorm.DB, targetUserID uint, onlyGroups []uint) []SkillTagEntry {
 	type row struct {
 		GroupID   uint
 		GroupName string
@@ -104,9 +106,11 @@ func fetchSkillTagsForUser(db *gorm.DB, targetUserID uint, restrictToGroupAdminO
 		Joins("JOIN groups g ON g.id = t.group_id AND g.deleted_at IS NULL").
 		Where("a.user_id = ?", targetUserID)
 
-	if restrictToGroupAdminOf != 0 {
-		// Restrict to groups where the caller is a group admin
-		q = q.Joins("JOIN user_groups ug ON ug.group_id = t.group_id AND ug.user_id = ? AND ug.is_group_admin = ? AND ug.deleted_at IS NULL", restrictToGroupAdminOf, true)
+	if onlyGroups != nil {
+		if len(onlyGroups) == 0 {
+			return []SkillTagEntry{}
+		}
+		q = q.Where("t.group_id IN ?", onlyGroups)
 	}
 
 	if err := q.Scan(&rows).Error; err != nil {
@@ -143,40 +147,8 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get current user's ID and admin status
-		currentUserID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		// Determine access level
-		currentUserIDUint, _ := currentUserID.(uint)
-		isOwnProfile := currentUserIDUint == uint(targetUserID)
-		isSiteAdmin, _ := isAdmin.(bool)
-
-		// Check if current user is a group admin for any shared group with target user
-		var isGroupAdminForSharedGroup bool
-		if !isSiteAdmin && !isOwnProfile {
-			// Check if current user is admin of any shared group
-			type SharedGroupInfo struct {
-				GroupID      uint
-				IsGroupAdmin bool
-			}
-			var sharedGroups []SharedGroupInfo
-			err := db.Raw(`
-				SELECT ug1.group_id, ug1.is_group_admin
-				FROM user_groups ug1
-				JOIN user_groups ug2 ON ug1.group_id = ug2.group_id
-				WHERE ug1.user_id = ? AND ug2.user_id = ?
-			`, currentUserID, targetUserID).Scan(&sharedGroups).Error
-
-			if err == nil && len(sharedGroups) > 0 {
-				for _, sg := range sharedGroups {
-					if sg.IsGroupAdmin {
-						isGroupAdminForSharedGroup = true
-						break
-					}
-				}
-			}
-		}
+		currentUserID, _ := middleware.GetUserID(c)
+		isOwnProfile := currentUserID == uint(targetUserID)
 
 		// Fetch user details
 		var user models.User
@@ -187,6 +159,26 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
 			return
+		}
+
+		// Site admins see everything. Group admins of any group the target
+		// belongs to see extended info (ViewMemberDetails).
+		subject, _ := authz.SubjectFromContext(c)
+		isSiteAdmin := subject.IsSiteAdmin
+		var isGroupAdminForSharedGroup bool
+		var detailGroups []uint
+		if !isSiteAdmin && !isOwnProfile {
+			scope, err := authz.GroupsWhere(c.Request.Context(), db, subject, authz.ViewMemberDetails)
+			if err != nil {
+				middleware.GetLogger(c).Error("Failed to resolve member details scope", err)
+			}
+			detailGroups = scope.GroupIDs
+			for _, g := range user.Groups {
+				if scope.Contains(g.ID) {
+					isGroupAdminForSharedGroup = true
+					break
+				}
+			}
 		}
 
 		// For regular users viewing another user's profile - return info respecting privacy settings
@@ -248,7 +240,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 				PhoneNumber: user.PhoneNumber,
 				CreatedAt:   user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 				Groups:      user.Groups,
-				SkillTags:   fetchSkillTagsForUser(db, user.ID, currentUserIDUint),
+				SkillTags:   fetchSkillTagsForUser(db, user.ID, detailGroups),
 			})
 			return
 		} // Build full profile response for own profile or admin viewing
@@ -263,7 +255,7 @@ func GetUserProfile(db *gorm.DB) gin.HandlerFunc {
 			CreatedAt:      user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			DefaultGroupID: user.DefaultGroupID,
 			Groups:         user.Groups,
-			SkillTags:      fetchSkillTagsForUser(db, user.ID, 0),
+			SkillTags:      fetchSkillTagsForUser(db, user.ID, nil),
 		}
 
 		// Calculate statistics

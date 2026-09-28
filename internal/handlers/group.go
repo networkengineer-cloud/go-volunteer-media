@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
@@ -129,26 +130,15 @@ func UploadGroupImage(storageProvider storage.Provider) gin.HandlerFunc {
 func GetGroups(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
-		userID, exists := c.Get("user_id")
-		if !exists {
+		subject, ok := authz.SubjectFromContext(c)
+		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
-			return
-		}
-
-		isAdmin, exists := c.Get("is_admin")
-		if !exists {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Admin context not found"})
 			return
 		}
 
 		var groups []models.Group
 
-		adminFlag, ok := isAdmin.(bool)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid admin flag"})
-			return
-		}
-		if adminFlag {
+		if subject.IsSiteAdmin {
 			// Admins can see all groups (with bot ID included)
 			if err := db.Find(&groups).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch groups"})
@@ -160,7 +150,7 @@ func GetGroups(db *gorm.DB) gin.HandlerFunc {
 
 		// Regular users see only their groups (bot ID omitted)
 		var user models.User
-		if err := db.Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
+		if err := db.Preload("Groups", activeGroupsPreload).First(&user, subject.UserID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user groups"})
 			return
 		}
@@ -175,8 +165,7 @@ func GetGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userIDUint, ok := middleware.GetUserID(c)
-		if !ok {
+		if _, ok := middleware.GetUserID(c); !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
@@ -187,17 +176,12 @@ func GetGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Check if user has access to this group
-		if !middleware.GetIsAdmin(c) {
-			var user models.User
-			if err := db.Preload("Groups", "id = ?", groupID).First(&user, userIDUint).Error; err != nil {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-				return
-			}
-			if len(user.Groups) == 0 {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-				return
-			}
+		role := authz.CallerRole(c, db, group.ID)
+		if !authz.Allows(role, authz.ViewGroup) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		if role != authz.RoleSiteAdmin {
 			// Regular group members do not see the bot ID
 			c.JSON(http.StatusOK, group)
 			return
@@ -401,46 +385,6 @@ func RemoveUserFromGroup(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// IsGroupAdmin checks if a user is an admin for a specific group
-// Returns true if user is a site admin OR a group admin for the specified group
-func IsGroupAdmin(db *gorm.DB, userID uint, groupID uint) bool {
-	var userGroup models.UserGroup
-	if err := db.Where("user_id = ? AND group_id = ?", userID, groupID).First(&userGroup).Error; err != nil {
-		return false
-	}
-	return userGroup.IsGroupAdmin
-}
-
-// IsGroupAdminOrSiteAdmin checks if a user is a site admin OR a group admin for the specified group
-func IsGroupAdminOrSiteAdmin(c *gin.Context, db *gorm.DB, groupID uint) bool {
-	// Check if site admin
-	if middleware.IsSiteAdmin(c) {
-		return true
-	}
-
-	// Check if group admin
-	userID, exists := c.Get("user_id")
-	if !exists {
-		return false
-	}
-
-	uid, ok := userID.(uint)
-	if !ok {
-		return false
-	}
-	return IsGroupAdmin(db, uid, groupID)
-}
-
-// IsGroupAdminForAnyGroup checks if a user is a group admin for any group
-func IsGroupAdminForAnyGroup(db *gorm.DB, userID uint) bool {
-	var count int64
-	db.Model(&models.UserGroup{}).
-		Where("user_id = ? AND is_group_admin = ?", userID, true).
-		Count(&count)
-	return count > 0
-}
-
-// PromoteGroupAdmin promotes a user to group admin status for a specific group
 // Accessible by site admins or group admins of the specific group
 func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -466,13 +410,7 @@ func PromoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Check authorization: must be site admin OR group admin of this group
-		var currentUser models.User
-		if err := db.First(&currentUser, currentUserID).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
-			return
-		}
-
-		if !currentUser.IsAdmin && !IsGroupAdmin(db, currentUserID.(uint), uint(groupID)) {
+		if !authz.CallerCan(c, db, authz.ManageMembers, uint(groupID)) {
 			logger.WithFields(map[string]interface{}{
 				"current_user_id": currentUserID,
 				"group_id":        groupID,
@@ -544,13 +482,7 @@ func DemoteGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Check authorization: must be site admin OR group admin of this group
-		var currentUser models.User
-		if err := db.First(&currentUser, currentUserID).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
-			return
-		}
-
-		if !currentUser.IsAdmin && !IsGroupAdmin(db, currentUserID.(uint), uint(groupID)) {
+		if !authz.CallerCan(c, db, authz.ManageMembers, uint(groupID)) {
 			logger.WithFields(map[string]interface{}{
 				"current_user_id": currentUserID,
 				"group_id":        groupID,
@@ -607,18 +539,13 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Check if user has access to this group (is member or site admin)
-		currentUserID, _ := c.Get("user_id")
-		isSiteAdmin := middleware.IsSiteAdmin(c)
-
-		var currentUserGroupAdmin bool
-		if !isSiteAdmin {
-			var userGroup models.UserGroup
-			if err := db.Where("user_id = ? AND group_id = ?", currentUserID, groupID).First(&userGroup).Error; err != nil {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-				return
-			}
-			currentUserGroupAdmin = userGroup.IsGroupAdmin
+		currentUserID, _ := middleware.GetUserID(c)
+		role := authz.CallerRole(c, db, uint(groupID))
+		if !authz.Allows(role, authz.ViewGroup) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
 		}
+		canViewDetails := authz.Allows(role, authz.ViewMemberDetails)
 
 		// Get all members with their group admin status
 		var userGroups []models.UserGroup
@@ -676,7 +603,7 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 			email := ""
 			phoneNumber := ""
 
-			if isSiteAdmin || currentUserGroupAdmin || currentUserID.(uint) == ug.UserID {
+			if canViewDetails || currentUserID == ug.UserID {
 				// Site admins, group admins, and users viewing their own profile always see all contact info
 				email = ug.User.Email
 				phoneNumber = ug.User.PhoneNumber
@@ -708,7 +635,7 @@ func GetGroupMembers(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			// Expose admin-only fields to site admins and group admins
-			if isSiteAdmin || currentUserGroupAdmin {
+			if canViewDetails {
 				member.LastLogin = ug.User.LastLogin
 				member.RequiresPasswordSetup = ug.User.RequiresPasswordSetup
 			}
@@ -737,7 +664,9 @@ func GetGroupMembership(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		isSiteAdmin := middleware.IsSiteAdmin(c)
+		// This endpoint reports the caller's flags rather than gating an
+		// action, so it reads them directly.
+		isSiteAdmin := middleware.IsSiteAdmin(c) // nosemgrep: handler-inline-role-check
 
 		// Get user's membership in this group
 		var userGroup models.UserGroup
@@ -780,11 +709,8 @@ func AddMemberToGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageMembers, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -832,11 +758,8 @@ func RemoveMemberFromGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageMembers, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -882,11 +805,8 @@ func PromoteMemberToGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageMembers, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -939,11 +859,8 @@ func DemoteMemberFromGroupAdmin(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageMembers, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -991,11 +908,9 @@ func UpdateGroupSettings(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageGroupSettings, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}

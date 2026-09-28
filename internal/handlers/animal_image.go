@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
@@ -29,15 +30,14 @@ func GetAnimalImages(db *gorm.DB) gin.HandlerFunc {
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
-		userIDUint, ok := middleware.GetUserID(c)
+		_, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -80,10 +80,9 @@ func UploadAnimalImageToGallery(db *gorm.DB, storageProvider storage.Provider) g
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
+		if !callerCan(c, db, authz.PostContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -265,10 +264,9 @@ func DeleteAnimalImage(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
+		if !callerCan(c, db, authz.PostContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -281,7 +279,7 @@ func DeleteAnimalImage(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 		}
 
 		// Check if user owns the image or is admin
-		if animalImage.UserID != userIDUint && !middleware.GetIsAdmin(c) {
+		if animalImage.UserID != userIDUint && !callerCan(c, db, authz.ModerateMedia, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own images"})
 			return
 		}
@@ -408,10 +406,9 @@ func SetAnimalProfilePictureGroupScoped(db *gorm.DB) gin.HandlerFunc {
 
 		// Get user context
 		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check if user is a member of this group
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.PostContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -502,11 +499,9 @@ func GetDeletedImages(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ModerateContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}

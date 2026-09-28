@@ -3,6 +3,8 @@ import axios from 'axios';
 import { scheduleApi } from '../../api/client';
 import type { ScheduleOverviewMember, ScheduleSlot, GroupMember } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
+import { useShelterTimeZone } from '../../hooks/useShelterTimeZone';
+import { todayInZone } from '../../utils/shelterTime';
 import { DAYS, HOURS, slotKey, formatSlotRangeLabel, formatHourLabel, maxHourFor, currentWeekStart, rowHeaderFor } from './scheduleGrid';
 import CadenceLegend from './CadenceLegend';
 import Modal from '../../components/Modal';
@@ -151,17 +153,23 @@ function formatWeekLabel(weekStart: string): string {
   return `Week of ${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
 }
 
-// todayIso returns "today" (UTC calendar date, matching the backend's
-// same-day-or-later check in CreateCoverageRequestsBatch) as an ISO
-// YYYY-MM-DD string, for hiding the Request coverage popover action on a
-// past date whose form would just come up empty.
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembers, currentUserId, canManageMembers = false, groupMembers = [] }) => {
   const toast = useToast();
-  const [weekStart, setWeekStart] = useState<string>(currentWeekStart());
+  // The shelter's calendar decides "today" and "this week", matching the
+  // backend's same-day-or-later check in CreateCoverageRequestsBatch.
+  const shelterTimeZone = useShelterTimeZone();
+  const [weekStart, setWeekStart] = useState<string>(() => currentWeekStart(shelterTimeZone));
+  // useShelterTimeZone starts at the default ('UTC') until SiteSettingsProvider's
+  // async fetch resolves, so the weekStart computed above on first render can be
+  // wrong (e.g. a US shelter reloading on a Saturday evening lands on next
+  // week). Once the real zone arrives, recompute weekStart from it - but only
+  // if the volunteer hasn't already navigated away from "this week", so a
+  // later settings refresh never yanks them back to today's week.
+  const userNavigatedWeekRef = useRef(false);
+  useEffect(() => {
+    if (userNavigatedWeekRef.current) return;
+    setWeekStart(currentWeekStart(shelterTimeZone));
+  }, [shelterTimeZone]);
   const [membersBySlot, setMembersBySlot] = useState<Map<string, ScheduleOverviewMember[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -361,7 +369,9 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   // from the fetched slot data itself rather than trusting `totalMembers`
   // blindly - otherwise every cell renders as tier-0 ("nobody available")
   // even when real availability data exists.
-  const today = todayIso();
+  // Hides the Request coverage popover action on a past date whose form
+  // would just come up empty.
+  const today = todayInZone(shelterTimeZone);
   const effectiveTotal = totalMembers > 0
     ? totalMembers
     : Math.max(0, ...Array.from(membersBySlot.values()).map(m => m.length));
@@ -371,11 +381,11 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
       <CadenceLegend referenceWeekStart={weekStart} />
 
       <div className="schedule-overview__week-nav">
-        <button type="button" className="schedule-overview__week-nav-btn" onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Previous week">
+        <button type="button" className="schedule-overview__week-nav-btn" onClick={() => { userNavigatedWeekRef.current = true; setWeekStart(addDays(weekStart, -7)); }} aria-label="Previous week">
           ◀
         </button>
         <span>{formatWeekLabel(weekStart)}</span>
-        <button type="button" className="schedule-overview__week-nav-btn" onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="Next week">
+        <button type="button" className="schedule-overview__week-nav-btn" onClick={() => { userNavigatedWeekRef.current = true; setWeekStart(addDays(weekStart, 7)); }} aria-label="Next week">
           ▶
         </button>
       </div>

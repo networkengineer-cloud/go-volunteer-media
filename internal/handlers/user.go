@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -108,26 +109,14 @@ func SetDefaultGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Verify user has access to the group
 		var user models.User
-		if err := db.Preload("Groups", activeGroupsPreload).First(&user, userID).Error; err != nil {
+		if err := db.First(&user, userID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
-		// Check if user belongs to the group (unless admin)
-		isAdmin, _ := c.Get("is_admin")
-		hasAccess, _ := isAdmin.(bool)
-		if !hasAccess {
-			for _, group := range user.Groups {
-				if group.ID == req.GroupID {
-					hasAccess = true
-					break
-				}
-			}
-		}
-
-		if !hasAccess {
+		// Verify user has access to the group (member, or site admin)
+		if !authz.CallerCan(c, db, authz.ViewGroup, req.GroupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You do not have access to this group"})
 			return
 		}

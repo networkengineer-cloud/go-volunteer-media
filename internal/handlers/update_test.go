@@ -45,6 +45,7 @@ func setupUpdateTestDB(t *testing.T) *gorm.DB {
 	err = db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
+		&models.UserGroup{},
 		&models.Update{},
 	)
 	if err != nil {

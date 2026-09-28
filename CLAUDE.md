@@ -43,8 +43,10 @@ dropping is not automatic.
 | Package | What lives there |
 | --- | --- |
 | `handlers` | ~40 handler files, one per feature area, each with a `_test.go`. All business logic. |
-| `middleware` | Auth, DB-per-request, CORS, security headers, rate limit, request ID, body-size caps, Cloudflare IP handling. |
+| `middleware` | Auth, DB-per-request, CORS, security headers, request ID, body-size caps, Cloudflare IP handling. |
+| `ratelimit` | Replica-safe fixed-window rate limiter; counters in Postgres. Used by the auth endpoints (per account + IP, and per IP). |
 | `auth` | JWT issue/verify, bcrypt, `JWT_SECRET` entropy validation. |
+| `authz` | The authorization policy: roles, actions, `CallerCan`, `GroupsWhere`, `CheckManageUser`. |
 | `database` | Connection setup, migrations, pgvector readiness check. Forces `time.Local` to UTC in `init()`. |
 | `storage` | `storageProvider` abstraction: `postgres` (default) or `azure` blob. See the `image-upload` skill. |
 | `email` | Provider abstraction: Resend or SMTP. No-ops cleanly when unconfigured. |
@@ -74,10 +76,13 @@ request → core middleware → SecurityHeaders → RequestID → Logging
 `AuthRequired` sets context keys `user_id` (uint) and `is_admin` (bool); read
 them with `middleware.GetUserID(c)` / `middleware.IsSiteAdmin(c)`.
 
-Three permission tiers — public, group member, group admin/site admin. Only the
-first and third are enforced by middleware; group membership and group-admin
-checks live in handler bodies. Read the `group-auth-pattern` skill before
-touching authorization.
+Route-level tiers (public, authenticated, `/admin/**` site admin) are
+middleware. Everything group-scoped is decided by the central policy in
+`internal/authz` (roadmap AR-2): handlers call
+`callerCan(c, db, authz.<Action>, groupID)` and the policy table maps each
+action to a minimum role (member < group admin < site admin). Never check
+`is_admin` / `is_group_admin` inline. Read the `group-auth-pattern` skill
+before touching authorization.
 
 ## Frontend layout (`frontend/src/`)
 
@@ -101,7 +106,7 @@ Vite dev server proxies `/api` and `/uploads` to `localhost:8080`.
 - `dev-environment` — running the stack, seed credentials, DB reset.
 - `add-api-endpoint` — the full model → handler → route → client → test loop.
 - `add-frontend-page` — page + CSS + route + nav + E2E test.
-- `group-auth-pattern` — the three-tier permission model. Read before any
+- `group-auth-pattern` — the central authz policy (roles × actions). Read before any
   handler authorization change.
 - `image-upload` — the storage-provider abstraction.
 - `frontend-styling` — **read before touching any `.css` file.**
@@ -156,9 +161,10 @@ git stash && go test ./internal/handlers/... ; cd frontend && npx vitest run ; c
 - **Never reassign a handler's `db` parameter with `=`.** Handlers are closures
   over `db *gorm.DB`; assigning to it mutates shared state across requests. Use
   `db := middleware.GetDB(c, db)` inside the handler body (150+ call sites).
-- Group-admin authorization is enforced *inside* handlers, not by middleware.
-  Read the handler before changing route protection. See the
-  `group-auth-pattern` skill.
+- Group authorization is enforced *inside* handlers through `internal/authz`,
+  not by middleware. Read the handler before changing route protection. New
+  permissions are a new `authz.Action` in the policy table (with a row in
+  `TestPolicyMatrix`), not an inline check. See the `group-auth-pattern` skill.
 - Routes are registered in `cmd/api/main.go`; typed client methods go in
   `frontend/src/api/client.ts`.
 - Handler tests live beside handlers; a `_postgres_test.go` suffix means the

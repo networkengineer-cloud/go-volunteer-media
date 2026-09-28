@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/auth"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
@@ -143,26 +144,12 @@ func AdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// isGroupAdminOfAnySharedGroup returns true if requesterID is a group admin in any group
-// that targetUserID also belongs to. A DB error is returned to the caller rather than
-// silently treated as a denied check.
-func isGroupAdminOfAnySharedGroup(ctx context.Context, db *gorm.DB, requesterID, targetUserID uint) (bool, error) {
-	var count int64
-	err := db.WithContext(ctx).Table("user_groups AS req").
-		Joins("JOIN user_groups AS tgt ON tgt.group_id = req.group_id AND tgt.user_id = ?", targetUserID).
-		Where("req.user_id = ? AND req.is_group_admin = true AND req.deleted_at IS NULL AND tgt.deleted_at IS NULL", requesterID).
-		Count(&count).Error
-	return count > 0, err
-}
-
 // GroupAdminDeleteUser allows a group admin to soft-delete a user in their group.
 // Site admins can also use this endpoint.
 func GroupAdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
 		requesterID := c.GetUint("user_id")
-		isAdmin := c.GetBool("is_admin")
 		userId := c.Param("userId")
 
 		var target models.User
@@ -177,22 +164,14 @@ func GroupAdminDeleteUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Site admins can delete anyone
-		if !isAdmin {
-			// Group admin: check that target is not a site admin and is in one of requester's groups
-			if target.IsAdmin {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete a site admin"})
-				return
-			}
-			ok, err := isGroupAdminOfAnySharedGroup(ctx, db, requesterID, target.ID)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify group admin access"})
-				return
-			}
-			if !ok {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-				return
-			}
+		// Site admins can delete anyone; group admins only non-admin members
+		// of a group they administer
+		if !callerCanManageUser(c, db, &target, manageUserDenials{
+			targetIsSiteAdmin: "Cannot delete a site admin",
+			targetHasNoGroups: "Access denied",
+			noSharedGroup:     "Access denied",
+		}) {
+			return
 		}
 
 		if err := db.Delete(&target).Error; err != nil {
@@ -428,25 +407,16 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 			return
 		}
 
-		// Get current user to check admin status
-		var currentUser models.User
-		if err := db.First(&currentUser, currentUserID).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch current user"})
-			return
-		}
-
-		// Verify that the current user is a group admin of ALL specified groups
-		// (or is a site admin, in which case they can create users for any group)
-		if !currentUser.IsAdmin {
-			for _, groupID := range req.GroupIDs {
-				if !IsGroupAdmin(db, currentUserID.(uint), groupID) {
-					logger.WithFields(map[string]interface{}{
-						"current_user_id": currentUserID,
-						"group_id":        groupID,
-					}).Warn("Unauthorized attempt to create user for group")
-					c.JSON(http.StatusForbidden, gin.H{"error": "You can only create users for groups you administer"})
-					return
-				}
+		// Verify that the current user can manage members of ALL specified
+		// groups (site admins can create users for any group)
+		for _, groupID := range req.GroupIDs {
+			if !authz.CallerCan(c, db, authz.ManageMembers, groupID) {
+				logger.WithFields(map[string]interface{}{
+					"current_user_id": currentUserID,
+					"group_id":        groupID,
+				}).Warn("Unauthorized attempt to create user for group")
+				c.JSON(http.StatusForbidden, gin.H{"error": "You can only create users for groups you administer"})
+				return
 			}
 		}
 
@@ -609,7 +579,6 @@ func GroupAdminCreateUser(db *gorm.DB, emailService *email.Service) gin.HandlerF
 func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
-		logger := middleware.GetLogger(c)
 		userId := c.Param("userId")
 
 		userIdInt, err := strconv.ParseUint(userId, 10, 64)
@@ -658,34 +627,12 @@ func AdminResetUserPassword(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		if !isSelf && !middleware.IsSiteAdmin(c) {
-			// Group admin path: cannot reset password of site admins
-			if isTargetSiteAdmin(&user) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins cannot reset passwords for site admins"})
-				return
-			}
-
-			// Check if caller is group admin of any shared group.
-			// Regular (non-admin) members are excluded by the is_group_admin=true filter.
-			hasAccess := false
-			for _, targetGroup := range user.Groups {
-				var userGroup models.UserGroup
-				err := db.Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
-					currentUserID, targetGroup.ID, true).First(&userGroup).Error
-				if err == nil {
-					hasAccess = true
-					break
-				}
-			}
-
-			if !hasAccess {
-				logger.WithFields(map[string]interface{}{
-					"current_user_id": currentUserID,
-					"target_user_id":  userId,
-				}).Warn("Unauthorized attempt to reset password")
-				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to reset passwords"})
-				return
-			}
+		if !isSelf && !callerCanManageUser(c, db, &user, manageUserDenials{
+			targetIsSiteAdmin: "Group admins cannot reset passwords for site admins",
+			targetHasNoGroups: "You must be a site admin or group admin to reset passwords",
+			noSharedGroup:     "You must be a site admin or group admin to reset passwords",
+		}) {
+			return
 		}
 
 		// Hash the new password
@@ -834,7 +781,6 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		db := middleware.GetDB(c, db)
-		logger := middleware.GetLogger(c)
 		userId := c.Param("userId")
 
 		// Parse and validate userId
@@ -845,7 +791,7 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Get current user ID from auth context
-		currentUserID, exists := c.Get("user_id")
+		_, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
@@ -874,41 +820,12 @@ func GroupAdminUpdateUser(db *gorm.DB) gin.HandlerFunc {
 		// permissive because the user already exists in those groups — the group admin
 		// is only modifying profile fields, not group assignments.
 		// Users without groups can only be managed by site admins.
-		if !middleware.IsSiteAdmin(c) {
-			if len(user.Groups) == 0 {
-				logger.WithFields(map[string]interface{}{
-					"current_user_id": currentUserID,
-					"target_user_id":  userId,
-				}).Warn("Group admin attempted to update user with no groups")
-				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot update users with no group assignments. Please contact a site administrator."})
-				return
-			}
-
-			// Group admins cannot modify site admins
-			if isTargetSiteAdmin(&user) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins cannot modify site admins"})
-				return
-			}
-
-			hasAccess := false
-			for _, targetGroup := range user.Groups {
-				var userGroup models.UserGroup
-				err := db.Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
-					currentUserID, targetGroup.ID, true).First(&userGroup).Error
-				if err == nil {
-					hasAccess = true
-					break
-				}
-			}
-
-			if !hasAccess {
-				logger.WithFields(map[string]interface{}{
-					"current_user_id": currentUserID,
-					"target_user_id":  userId,
-				}).Warn("Unauthorized attempt to update user")
-				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to update user information"})
-				return
-			}
+		if !callerCanManageUser(c, db, &user, manageUserDenials{
+			targetIsSiteAdmin: "Group admins cannot modify site admins",
+			targetHasNoGroups: "Cannot update users with no group assignments. Please contact a site administrator.",
+			noSharedGroup:     "You must be a site admin or group admin to update user information",
+		}) {
+			return
 		}
 
 		applyUserUpdate(ctx, db, c, &user, req)
@@ -949,36 +866,12 @@ func ResendInvitation(db *gorm.DB, emailService *email.Service) gin.HandlerFunc 
 		}
 
 		// Authorization first: site admins can resend for anyone, group admins can resend for their group members
-		if !middleware.IsSiteAdmin(c) {
-			if len(user.Groups) == 0 {
-				logger.WithFields(map[string]interface{}{
-					"current_user_id": currentUserID,
-					"target_user_id":  userIDParam,
-				}).Warn("Group admin attempted to resend invitation for user with no groups")
-				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot resend invitation for users with no group assignments. Please contact a site administrator."})
-				return
-			}
-
-			// Check if caller is group admin of any shared group
-			hasAccess := false
-			for _, targetGroup := range user.Groups {
-				var userGroup models.UserGroup
-				err := db.Where("user_id = ? AND group_id = ? AND is_group_admin = ?",
-					currentUserID, targetGroup.ID, true).First(&userGroup).Error
-				if err == nil {
-					hasAccess = true
-					break
-				}
-			}
-
-			if !hasAccess {
-				logger.WithFields(map[string]interface{}{
-					"current_user_id": currentUserID,
-					"target_user_id":  userIDParam,
-				}).Warn("Unauthorized attempt to resend invitation")
-				c.JSON(http.StatusForbidden, gin.H{"error": "You must be a site admin or group admin to resend invitations"})
-				return
-			}
+		if !callerCanManageUser(c, db, &user, manageUserDenials{
+			targetIsSiteAdmin: "Group admins cannot resend invitations for site admins",
+			targetHasNoGroups: "Cannot resend invitation for users with no group assignments. Please contact a site administrator.",
+			noSharedGroup:     "You must be a site admin or group admin to resend invitations",
+		}) {
+			return
 		}
 
 		// Check if user has already completed setup (after auth to avoid leaking setup state)
@@ -1094,47 +987,12 @@ func UnlockUserAccount(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Authorization
-		if !middleware.IsSiteAdmin(c) {
-			// Group admins cannot unlock site admins
-			if isTargetSiteAdmin(&user) {
-				logger.WithFields(map[string]interface{}{
-					"current_user_id": currentUserID,
-					"target_user_id":  userIDParam,
-				}).Warn("Group admin attempted to unlock site admin account")
-				c.JSON(http.StatusForbidden, gin.H{"error": "Group admins cannot unlock site admin accounts"})
-				return
-			}
-
-			if len(user.Groups) == 0 {
-				logger.WithFields(map[string]interface{}{
-					"current_user_id": currentUserID,
-					"target_user_id":  userIDParam,
-				}).Warn("Group admin attempted to unlock user with no groups")
-				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot unlock users with no group assignments. Please contact a site administrator."})
-				return
-			}
-
-			// Check that the acting user is a group admin of at least one shared group.
-			// Use a single COUNT with an IN clause to avoid N+1 queries.
-			groupIDs := make([]uint, len(user.Groups))
-			for i, g := range user.Groups {
-				groupIDs[i] = g.ID
-			}
-			var sharedGroupCount int64
-			if err := db.Model(&models.UserGroup{}).
-				Where("user_id = ? AND group_id IN ? AND is_group_admin = ?", currentUserID, groupIDs, true).
-				Count(&sharedGroupCount).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify group membership"})
-				return
-			}
-			if sharedGroupCount == 0 {
-				logger.WithFields(map[string]interface{}{
-					"current_user_id": currentUserID,
-					"target_user_id":  userIDParam,
-				}).Warn("Unauthorized attempt to unlock user account")
-				c.JSON(http.StatusForbidden, gin.H{"error": "You can only unlock accounts of volunteers in your groups"})
-				return
-			}
+		if !callerCanManageUser(c, db, &user, manageUserDenials{
+			targetIsSiteAdmin: "Group admins cannot unlock site admin accounts",
+			targetHasNoGroups: "Cannot unlock users with no group assignments. Please contact a site administrator.",
+			noSharedGroup:     "You can only unlock accounts of volunteers in your groups",
+		}) {
+			return
 		}
 
 		// Clear the lockout fields

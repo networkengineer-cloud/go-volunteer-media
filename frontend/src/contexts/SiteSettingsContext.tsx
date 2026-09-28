@@ -7,6 +7,8 @@ export interface SiteSettings {
   site_short_name: string;
   site_description: string;
   hero_image_url: string;
+  // IANA zone for the shelter's calendar (AR-5); see utils/shelterTime.ts
+  shelter_timezone: string;
 }
 
 // IMPORTANT: These defaults must match the constants in internal/models/models.go
@@ -17,6 +19,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
   site_short_name: 'MyHAWS',
   site_description: 'MyHAWS Volunteer Portal - Internal volunteer management system',
   hero_image_url: '',
+  shelter_timezone: 'UTC',
 };
 
 interface SiteSettingsContextType {
@@ -52,6 +55,7 @@ export const SiteSettingsProvider: React.FC<{ children: ReactNode }> = ({ childr
         site_short_name: data.site_short_name || DEFAULT_SETTINGS.site_short_name,
         site_description: data.site_description || DEFAULT_SETTINGS.site_description,
         hero_image_url: data.hero_image_url || DEFAULT_SETTINGS.hero_image_url,
+        shelter_timezone: data.shelter_timezone || DEFAULT_SETTINGS.shelter_timezone,
       });
       setError(null);
     } catch (err) {

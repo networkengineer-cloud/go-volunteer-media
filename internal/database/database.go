@@ -9,6 +9,7 @@ import (
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/shelterclock"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"gorm.io/driver/postgres"
@@ -236,6 +237,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.APIToken{},
 		&models.ShiftSlot{},
 		&models.ShiftCoverageRequest{},
+		&models.RateLimitCounter{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -1038,6 +1040,12 @@ func createDefaultSiteSettings(db *gorm.DB) error {
 		{
 			Key:   "hero_image_url",
 			Value: "", // Empty by default - admin should upload an image
+		},
+		{
+			// Admins set the shelter's real zone (internal/shelterclock);
+			// UTC matches the behavior from before the setting existed.
+			Key:   shelterclock.SettingKey,
+			Value: shelterclock.DefaultZone,
 		},
 	}
 

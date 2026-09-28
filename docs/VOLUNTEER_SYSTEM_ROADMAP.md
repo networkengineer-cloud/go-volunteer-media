@@ -28,7 +28,7 @@ ships, report it through the `roadmap-update` skill as usual.
 | # | Workstream | Status | Blocking questions |
 |---|---|---|---|
 | 0 | [Discovery](#0-discovery) | Not started | — |
-| A | [Architecture prerequisites](#a-architecture-prerequisites) | Not started | AR-Q1, AR-Q2 |
+| A | [Architecture prerequisites](#a-architecture-prerequisites) | In progress (#326: AR-2, AR-4, AR-5) | AR-Q5, AR-Q6 |
 | S | [Agent skills](#s-agent-skills) | In progress (#325) | — |
 | 1 | [Foundations](#1-foundations) | Not started | FD-Q1, FD-Q2 |
 | 2 | [Programs (volunteer types)](#2-programs-volunteer-types) | Not started | PR-Q1 |
@@ -116,23 +116,39 @@ them; AR-6 – AR-9 are conventions for *new* code, not rewrites of old code.
   numbered up/down files, baseline it from the current schema, and keep
   AutoMigrate only until the baseline is in place. Required for the
   status backfill (FD-1) and the `UserSkillTag` → levels conversion (ON-4).
-  **(blocked: AR-Q1)**
-- [ ] **AR-2** Central authorization policy: one helper (e.g.
+  Decided (AR-Q1): goose, with SQL files embedded in the binary and run on
+  startup under a Postgres advisory lock so concurrent replicas are safe.
+- [~] **AR-2** Central authorization policy: one helper (e.g.
   `authz.Can(user, action, group)`) that replaces the inline checks, with
   tests per role. Do this *before* adding the coordinator role (FD-2), kiosk
   scope (TT-2), applicants (ON-1) or mentors (ON-6). Update the
-  `group-auth-pattern` skill to match.
+  `group-auth-pattern` skill to match. *(#326: `internal/authz` — roles,
+  actions and one policy table; every handler check migrated; policy matrix
+  test plus Postgres tests; Semgrep rule `handler-inline-role-check`; skill
+  rewritten. Fixed while migrating: bulk animal edit let a group admin move
+  animals into a group they don't administer; group-admin user deletion and
+  the group-admin profile's skill tags queried a nonexistent
+  `user_groups.deleted_at` column. New roles still to add: FD-2, TT-2,
+  ON-1, ON-6.)*
 - [ ] **AR-3** Replica-safe background jobs: a Postgres-backed job runner (or
   a shared locking helper) with retries, used by every new job — auto-close
   check-outs (TT-5), expiry reminders (ON-10), shift reminders (SC-5), SMS
   (CM-2). Follow the coverage digest's atomic-claim pattern at minimum.
-  **(blocked: AR-Q2)**
-- [ ] **AR-4** Login rate limiting that works behind a shared shelter IP and
+  Decided (AR-Q2): River.
+- [~] **AR-4** Login rate limiting that works behind a shared shelter IP and
   across replicas: key on username + IP, store limiter state in Postgres or
   another shared store; kiosk traffic on its own path.
-  *(moved from FD-7)*
-- [ ] **AR-5** Shelter time zone setting; all shift / check-in / "late" /
-  "no-show" logic evaluates in that zone. *(moved from FD-3)*
+  *(moved from FD-7)* *(#326: `internal/ratelimit`, counters in
+  Postgres; login per username + IP (`AUTH_RATE_LIMIT_PER_MINUTE`) plus a
+  per-IP ceiling (`AUTH_IP_RATE_LIMIT_PER_MINUTE`, default 60). Rules are
+  named scopes; the kiosk (TT-2) adds its own rather than sharing login's.)*
+- [~] **AR-5** Shelter time zone setting; all shift / check-in / "late" /
+  "no-show" logic evaluates in that zone. *(moved from FD-3)* *(#326:
+  `shelter_timezone` site setting (defaults to UTC — **set it in Admin →
+  Site Settings after deploy**), `internal/shelterclock` on the backend,
+  `useShelterTimeZone` / `utils/shelterTime` on the frontend. Existing
+  scheduling now uses it; check-in, "late" and "no-show" must use it when
+  they are built.)*
 
 ### Conventions for new code
 
@@ -245,13 +261,19 @@ AR-23 → SK-16.*
   background-check status. **(AR-Q3)**
 - [ ] **AR-14** Kiosk device authentication: a scoped, revocable device
   credential, separate from user sessions (prerequisite for TT-2).
+- [ ] **AR-35** Should group admins be able to delete other members' photos
+  and videos in their group? They can delete others' comments
+  (`ModerateContent`), but media deletion (`ModerateMedia`) is site-admin
+  only. AR-2 kept the existing behaviour; changing it is one line in the
+  policy table.
 
 ### Open questions
 
-- **AR-Q1** Which migration tool (e.g. goose vs golang-migrate), and should
-  migrations run on startup or as a separate deploy step?
-- **AR-Q2** Adopt a Postgres job queue library (e.g. River) or hand-roll
-  advisory-lock-based jobs?
+- ~~**AR-Q1** Which migration tool (e.g. goose vs golang-migrate), and should
+  migrations run on startup or as a separate deploy step?~~ Answered: goose,
+  on startup (see decision log).
+- ~~**AR-Q2** Adopt a Postgres job queue library (e.g. River) or hand-roll
+  advisory-lock-based jobs?~~ Answered: River (see decision log).
 - **AR-Q3** Move to httpOnly cookie sessions, or keep bearer tokens and
   harden (shorter expiry, refresh tokens)?
 - **AR-Q4** Should production stay at up to 3 replicas, or is a single
@@ -283,14 +305,14 @@ documents — not before, or it describes code that doesn't exist.
 
 | Skill | Reviewed against code | Status | Needs updating when |
 |---|---|---|---|
-| `add-api-endpoint` (+ `handler-template.go`) | 2026-09-27 | Corrected in #325 | AR-1 (migrations), AR-6 (domain packages), AR-7 (route split) |
-| `group-auth-pattern` | 2026-09-27 | Corrected in #325 | AR-2 (central policy) — rewrite |
+| `add-api-endpoint` (+ `handler-template.go`) | 2026-09-28 | Authorization updated for AR-2 in #326 | AR-1 (migrations), AR-6 (domain packages), AR-7 (route split) |
+| `group-auth-pattern` | 2026-09-28 | Rewritten for AR-2 in #326 | New roles (FD-2, TT-2, ON-1, ON-6) |
 | `image-upload` | 2026-09-27 | Rewritten in #325 | New private file types (waivers, incident attachments) |
 | `run-tests` | 2026-09-27 | Extended in #325 | AR-16 (CI on PRs) |
 | `add-frontend-page` | 2026-09-27 | Accurate | AR-8 (data layer), AR-9 (CSS Modules), AR-10 (new pages) |
 | `frontend-styling` | 2026-09-27 | Type-check command corrected in #325 | AR-9 (CSS Modules) |
 | `playwright-e2e-test` | 2026-09-27 | Accurate | Kiosk flows (TT-2) |
-| `dev-environment` | 2026-09-27 | Accurate | AR-1 (migration commands), new env vars |
+| `dev-environment` | 2026-09-28 | `AUTH_IP_RATE_LIMIT_PER_MINUTE` added in #326 | AR-1 (migration commands), new env vars |
 | `roadmap-update` | 2026-09-27 | Accurate | SK-9 |
 
 ### Corrections to existing skills
@@ -316,8 +338,9 @@ documents — not before, or it describes code that doesn't exist.
 - [ ] **SK-5** `add-api-endpoint`: replace the AutoMigrate step with
   versioned migrations (AR-1); per-domain packages and `RegisterXRoutes`
   (AR-6, AR-7) — or hand off to `add-domain` (SK-14).
-- [ ] **SK-6** `group-auth-pattern`: rewrite around the central policy
-  helper and the new roles (AR-2, FD-2, AR-14).
+- [~] **SK-6** `group-auth-pattern`: rewrite around the central policy
+  helper and the new roles (AR-2, FD-2, AR-14). *(Central policy: #326.
+  New roles: when they land.)*
 - [ ] **SK-7** `add-frontend-page` + `frontend-styling`: query/cache library
   (AR-8), CSS Modules (AR-9), new-pages-not-tabs (AR-10).
 - [ ] **SK-8** `dev-environment` + `run-tests`: migration commands (AR-1),
@@ -697,6 +720,8 @@ Record answers to open questions here, newest first.
 
 | Date | Question | Decision | Decided by |
 |---|---|---|---|
+| 2026-09-28 | AR-Q1: migration tool; on startup or a deploy step? | goose; migrations run on startup under a Postgres advisory lock | Project owner |
+| 2026-09-28 | AR-Q2: job queue library or hand-rolled? | River | Project owner |
 | 2026-09-27 | Is the current stack suitable, or does it need a rewrite? | Keep the stack; do targeted prerequisites (workstream A) | Project owner |
 | 2026-09-27 | FD-Q3: more than one prod replica? | Yes — prod `max_replicas = 3` (from Terraform) | Code |
 | 2026-09-27 | Integrate with or replace Galaxy Digital? | Replace | Project owner |

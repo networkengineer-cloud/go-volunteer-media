@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 )
 
@@ -46,7 +47,7 @@ func MissingGetDB(db *gorm.DB) gin.HandlerFunc {
 func MissingGetDBPassesDB(db *gorm.DB) gin.HandlerFunc {
 	// ruleid: handler-missing-request-scoped-db
 	return func(c *gin.Context) {
-		if !checkGroupAccess(db, nil, nil, "1") {
+		if !callerCan(c, db, authz.ViewGroup, "1") {
 			return
 		}
 	}
@@ -93,5 +94,38 @@ func WritesFiles(db *gorm.DB) gin.HandlerFunc {
 		_ = c.SaveUploadedFile(file, "/tmp/x")
 		// ruleid: handler-writes-local-filesystem
 		_ = os.WriteFile("/tmp/y", nil, 0o600)
+	}
+}
+
+func InlineRoleChecks(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		// ruleid: handler-inline-role-check
+		isAdmin, _ := c.Get("is_admin")
+		// ruleid: handler-inline-role-check
+		_ = c.GetBool("is_admin")
+		// ruleid: handler-inline-role-check
+		_ = c.MustGet("is_admin")
+		// ruleid: handler-inline-role-check
+		_ = c.Value("is_admin")
+		// ruleid: handler-inline-role-check
+		if middleware.IsSiteAdmin(c) || middleware.GetIsAdmin(c) {
+			_ = isAdmin
+		}
+		var userGroups []int
+		// ruleid: handler-inline-role-check
+		db.Where("user_id = ? AND is_group_admin = ?", 1, true).Find(&userGroups)
+		// ruleid: handler-inline-role-check
+		db.Joins("JOIN user_groups ON user_groups.user_id = users.id AND is_group_admin = true")
+		// ok: handler-inline-role-check
+		if !callerCan(c, db, authz.ManageAnimals, c.Param("id")) {
+			c.Status(http.StatusForbidden)
+		}
+		// ok: handler-inline-role-check
+		_ = authz.CallerRole(c, db, 1)
+		// ok: handler-inline-role-check
+		db.Where("group_id = ?", 1).Find(&userGroups)
+		// ok: handler-inline-role-check
+		db.Model(nil).Update("is_group_admin", true)
 	}
 }

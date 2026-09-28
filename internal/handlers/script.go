@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
@@ -22,10 +23,8 @@ func GetScripts(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -63,10 +62,8 @@ func GetScript(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		scriptID := c.Param("scriptId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -100,9 +97,8 @@ func CreateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 
 		groupIDStr := c.Param("id")
 		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDStr) {
+		if !callerCan(c, db, authz.ManageContent, groupIDStr) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -243,9 +239,8 @@ func UpdateScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 		groupIDStr := c.Param("id")
 		scriptIDStr := c.Param("scriptId")
 		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDStr) {
+		if !callerCan(c, db, authz.ManageContent, groupIDStr) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -380,10 +375,8 @@ func DeleteScript(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc
 
 		groupIDStr := c.Param("id")
 		scriptIDStr := c.Param("scriptId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDStr) {
+		if !callerCan(c, db, authz.ManageContent, groupIDStr) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -441,14 +434,10 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 		db := middleware.GetDB(c, db)
 		uuidOrID := c.Param("uuid")
 
-		userIDValue, exists := c.Get("user_id")
-		if !exists {
+		if _, ok := middleware.GetUserID(c); !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
-		userID := userIDValue.(uint)
-		isAdminValue, _ := c.Get("is_admin")
-		isAdmin, _ := isAdminValue.(bool)
 
 		// Try to look up script by blob identifier (UUID string set at upload time)
 		var script models.Script
@@ -458,19 +447,9 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 		}
 
 		// Authorization: verify user is a member of the script's group or is a site admin
-		if !isAdmin {
-			var count int64
-			if err := db.
-				Model(&models.UserGroup{}).
-				Where("user_id = ? AND group_id = ?", userID, script.GroupID).
-				Count(&count).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
-				return
-			}
-			if count == 0 {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: You must be a member of this group to view this script"})
-				return
-			}
+		if !authz.CallerCan(c, db, authz.ViewGroup, script.GroupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: You must be a member of this group to view this script"})
+			return
 		}
 
 		// Verify the feature is still enabled for this group
@@ -520,10 +499,8 @@ func SetAnimalScripts(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDStr := c.Param("id")
 		animalIDStr := c.Param("animalId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDStr) {
+		if !callerCan(c, db, authz.ManageAnimals, groupIDStr) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}

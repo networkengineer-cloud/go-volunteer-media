@@ -6,8 +6,10 @@
 // Conventions shown here (match internal/handlers/schedule.go):
 //   - Shadow the closure's db with middleware.GetDB(c, db) as the first line.
 //     Never assign to the outer db with "=" — it is shared across requests.
-//   - Read identity from context (middleware.GetUserID / c.Get("is_admin")),
-//     never from the request body.
+//   - Authorize with callerCan(c, db, authz.<Action>, groupID) - the central
+//     policy in internal/authz. Pick the Action that names what the endpoint
+//     does; never check is_admin or group-admin flags inline. Identity comes
+//     from the auth context, never from the request body.
 //   - Return generic error messages to the client and log the real error.
 package handlers
 
@@ -18,19 +20,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 )
 
-// GetFoos returns all Foos for a group. Requires group membership (or site admin).
+// GetFoos returns all Foos for a group. Requires authz.ViewGroup (group member or site admin).
 func GetFoos(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			respondForbidden(c, "forbidden")
 			return
 		}
@@ -45,15 +46,13 @@ func GetFoos(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// GetFooByID returns a single Foo by ID. Requires group membership (or site admin).
+// GetFooByID returns a single Foo by ID. Requires authz.ViewGroup (group member or site admin).
 func GetFooByID(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			respondForbidden(c, "forbidden")
 			return
 		}
@@ -78,15 +77,13 @@ func GetFooByID(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// CreateFoo creates a new Foo in the given group. Requires group admin (or site admin).
+// CreateFoo creates a new Foo in the given group. Requires authz.ManageContent (group admin or site admin).
 func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageContent, groupID) {
 			respondForbidden(c, "forbidden")
 			return
 		}
@@ -120,15 +117,13 @@ func CreateFoo(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// UpdateFoo updates an existing Foo by ID. Requires group admin (or site admin).
+// UpdateFoo updates an existing Foo by ID. Requires authz.ManageContent (group admin or site admin).
 func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageContent, groupID) {
 			respondForbidden(c, "forbidden")
 			return
 		}
@@ -183,15 +178,13 @@ func UpdateFoo(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// DeleteFoo soft-deletes a Foo by ID. Requires group admin (or site admin).
+// DeleteFoo soft-deletes a Foo by ID. Requires authz.ManageContent (group admin or site admin).
 func DeleteFoo(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageContent, groupID) {
 			respondForbidden(c, "forbidden")
 			return
 		}

@@ -60,19 +60,18 @@ import (
     "github.com/gin-gonic/gin"
     "gorm.io/gorm"
 
+    "github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
     "github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
     "github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 )
 
-// GetFoos returns all Foos for a group. Requires group membership (or site admin).
+// GetFoos returns all Foos for a group. Requires authz.ViewGroup (member or site admin).
 func GetFoos(db *gorm.DB) gin.HandlerFunc {
     return func(c *gin.Context) {
         db := middleware.GetDB(c, db)
         groupID := c.Param("id")
 
-        userID, _ := c.Get("user_id")
-        isAdmin, _ := c.Get("is_admin")
-        if !checkGroupAccess(db, userID, isAdmin, groupID) {
+        if !callerCan(c, db, authz.ViewGroup, groupID) {
             respondForbidden(c, "forbidden")
             return
         }
@@ -94,11 +93,16 @@ Key rules for handlers:
   already applied, so no separate `WithContext` call is needed. Shadow with
   `:=`; never assign to the closure's `db` with `=` — that mutates state
   shared by every request (150+ call sites follow this)
+- Authorize before any group-scoped query with
+  `callerCan(c, db, authz.<Action>, groupID)` — the central policy in
+  `internal/authz` (roadmap AR-2). Pick the Action that names what the
+  endpoint does (`ViewGroup`, `PostContent`, `ManageContent`, …); if none
+  fits, add one to the policy table with a test rather than checking roles
+  inline. Never read `is_admin` or `is_group_admin` in a handler — the
+  `handler-inline-role-check` Semgrep rule flags it. See the
+  `group-auth-pattern` skill
 - Read identity from context, never from the request body:
-  `middleware.GetUserID(c)` returns a typed `(uint, bool)`;
-  `middleware.IsSiteAdmin(c)` returns a `bool`. The `checkGroup*Access`
-  helpers take the raw `c.Get("user_id")` / `c.Get("is_admin")` values
-- Call `checkGroupAccess()` (in `animal_helpers.go`) before any group-scoped query — despite the filename, these helpers are used by all group-scoped handlers, not just animal handlers
+  `middleware.GetUserID(c)` returns a typed `(uint, bool)`
 - Return a generic message to the client and log the real error with
   `middleware.GetLogger(c).Error(msg, err)` — don't send `err.Error()`,
   which can leak SQL and internals
