@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
@@ -84,10 +85,8 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}

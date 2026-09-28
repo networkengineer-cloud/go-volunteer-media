@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -200,10 +201,7 @@ func GetMySchedule(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -236,10 +234,7 @@ func UpdateMySchedule(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -298,7 +293,7 @@ func UpdateGroupScheduling(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		if !middleware.GetIsAdmin(c) {
+		if !callerCan(c, db, authz.ConfigureGroupFeatures, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Site admin access required"})
 			return
 		}
@@ -337,10 +332,7 @@ func GetMemberSchedule(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -380,10 +372,7 @@ func UpdateMemberSchedule(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -494,10 +483,7 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ViewGroup, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}

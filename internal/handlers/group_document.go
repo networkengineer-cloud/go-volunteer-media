@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/convert"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -25,10 +26,8 @@ func GetGroupDocuments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -57,9 +56,8 @@ func UploadGroupDocument(db *gorm.DB, storageProvider storage.Provider, converte
 
 		groupIDStr := c.Param("id")
 		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDStr) {
+		if !callerCan(c, db, authz.ManageContent, groupIDStr) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -216,10 +214,8 @@ func DeleteGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 
 		groupIDStr := c.Param("id")
 		docIDStr := c.Param("docId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDStr) {
+		if !callerCan(c, db, authz.ManageContent, groupIDStr) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -267,18 +263,10 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 		db := middleware.GetDB(c, db)
 		uuidParam := c.Param("uuid")
 
-		userIDValue, exists := c.Get("user_id")
-		if !exists {
+		if _, ok := middleware.GetUserID(c); !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
-		userID, ok := userIDValue.(uint)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user identity"})
-			return
-		}
-		isAdminValue, _ := c.Get("is_admin")
-		isAdmin, _ := isAdminValue.(bool)
 
 		// Look up document by blob identifier
 		var doc models.GroupDocument
@@ -288,19 +276,9 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 		}
 
 		// Authorization: verify user is a member of the document's group or is a site admin
-		if !isAdmin {
-			var count int64
-			if err := db.
-				Model(&models.UserGroup{}).
-				Where("user_id = ? AND group_id = ?", userID, doc.GroupID).
-				Count(&count).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
-				return
-			}
-			if count == 0 {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: You must be a member of this group to view this document"})
-				return
-			}
+		if !authz.CallerCan(c, db, authz.ViewGroup, doc.GroupID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: You must be a member of this group to view this document"})
+			return
 		}
 
 		if doc.FileProvider != storage.ProviderPostgres && doc.FileBlobIdentifier != "" {

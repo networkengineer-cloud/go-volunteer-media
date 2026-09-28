@@ -17,7 +17,7 @@
 - JWT auth is required for most `/api/**` routes; clients send `Authorization: Bearer <token>`.
 - Middleware stores auth context keys: `user_id` (uint) and `is_admin` (bool) (see [internal/middleware/middleware.go](../internal/middleware/middleware.go)).
 - Site-admin-only routes live under `/api/admin/**` and use `AdminRequired()`.
-- “Group admin” authorization is commonly enforced inside handlers (not a separate middleware), so check handler logic before changing route protection.
+- Group authorization (member / group admin / site admin) is enforced inside handlers through the central policy in [internal/authz](../internal/authz/authz.go): `callerCan(c, db, authz.<Action>, groupID)`. Never check `is_admin` or `is_group_admin` inline; add an `authz.Action` to the policy table instead. Check handler logic before changing route protection.
 - Registration is intentionally disabled (invite-only); admins create users via `POST /api/admin/users` (see comment in [cmd/api/main.go](../cmd/api/main.go)).
 
 ## Data + migrations

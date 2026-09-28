@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
@@ -104,11 +105,9 @@ func GetAnimalComments(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -216,10 +215,8 @@ func GetAnimalCommentPosition(db *gorm.DB) gin.HandlerFunc {
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -313,11 +310,9 @@ func CreateAnimalComment(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFu
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.PostContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -407,11 +402,9 @@ func UpdateAnimalComment(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFu
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.PostContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -534,11 +527,9 @@ func GetCommentHistory(db *gorm.DB) gin.HandlerFunc {
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ModerateContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -573,11 +564,9 @@ func GetGroupLatestComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -656,11 +645,9 @@ func DeleteAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
 		commentID := c.Param("commentId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.PostContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -680,7 +667,7 @@ func DeleteAnimalComment(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Check if user owns the comment, is group admin, or is site admin
-		isGroupAdmin := checkGroupAdminAccess(db, userID, isAdmin, groupID)
+		isGroupAdmin := callerCan(c, db, authz.ModerateContent, groupID)
 		userIDUint, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -706,11 +693,9 @@ func GetDeletedComments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ModerateContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}

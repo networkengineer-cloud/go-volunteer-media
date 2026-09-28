@@ -82,3 +82,21 @@ rules:
       - pattern: os.WriteFile(...)
       - pattern: os.OpenFile(...)
       - pattern: $C.SaveUploadedFile(...)
+
+  - id: handler-inline-role-check
+    languages: [go]
+    severity: WARNING
+    message: >-
+      Inline role check in a handler. Authorization decisions go through the
+      central policy in internal/authz - callerCan(c, db, authz.<Action>,
+      groupID), authz.CallerRole, or authz.GroupsWhere for cross-group
+      endpoints - so each role's permissions are decided in one table
+      (roadmap AR-2). See the group-auth-pattern skill.
+    paths:
+      include: ["/internal/handlers/"]
+      exclude: ["*_test.go"]
+    pattern-either:
+      - pattern: $C.Get("is_admin")
+      - pattern: $C.GetBool("is_admin")
+      - pattern: middleware.IsSiteAdmin($C)
+      - pattern: middleware.GetIsAdmin($C)

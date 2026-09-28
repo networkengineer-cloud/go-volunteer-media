@@ -24,6 +24,7 @@ func setupActivityFeedTestDB(t *testing.T) *gorm.DB {
 	err = db.AutoMigrate(
 		&models.User{},
 		&models.Group{},
+		&models.UserGroup{},
 		&models.Animal{},
 		&models.AnimalComment{},
 		&models.Update{},

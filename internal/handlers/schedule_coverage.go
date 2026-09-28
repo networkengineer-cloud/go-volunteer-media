@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
@@ -334,10 +335,7 @@ func CreateCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -359,7 +357,7 @@ func CreateCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 
 		targetUserID := callerUserID
 		if req.UserID != nil && *req.UserID != callerUserID {
-			if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+			if !callerCan(c, db, authz.ManageSchedule, groupIDParam) {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required to request coverage for another member"})
 				return
 			}
@@ -429,10 +427,7 @@ func ClaimCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServi
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -602,10 +597,7 @@ func ReassignShiftsBatch(db *gorm.DB, emailService *email.Service, groupMeServic
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -861,10 +853,7 @@ func ListCoverageRequests(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ViewGroup, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -921,10 +910,7 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -962,7 +948,7 @@ func CancelCoverageRequest(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
+		isAdminCaller := callerCan(c, db, authz.ManageSchedule, groupIDParam)
 		isOwnOpenRequest := reqRow.RequestedByUserID == callerUserID && reqRow.Status == models.CoverageRequestOpen
 		// isOwnClaim: the volunteer currently covering this shift backing out
 		// of their own claim (e.g. something came up and they can no longer
@@ -1035,10 +1021,7 @@ func UpdateCoverageRequestPriority(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -1134,10 +1117,7 @@ func CreateCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -1270,10 +1250,7 @@ func CancelCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -1302,7 +1279,7 @@ func CancelCoverageRequestsBatch(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
+		isAdminCaller := callerCan(c, db, authz.ManageSchedule, groupIDParam)
 
 		response := coverageRequestCancelBatchResponse{
 			Cancelled: make([]coverageRequestResponse, 0, len(req.RequestIDs)),
@@ -1392,10 +1369,7 @@ func ClaimCoverageRequestsBatch(db *gorm.DB, emailService *email.Service, groupM
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -1577,10 +1551,7 @@ func ReopenCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageOwnSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -1615,7 +1586,7 @@ func ReopenCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 			return
 		}
 
-		isAdminCaller := checkGroupAdminAccess(db, userID, isAdmin, groupIDParam)
+		isAdminCaller := callerCan(c, db, authz.ManageSchedule, groupIDParam)
 		isOwnClaim := reqRow.ClaimedByUserID != nil && *reqRow.ClaimedByUserID == callerUserID
 		if !isOwnClaim && !isAdminCaller {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot reopen this coverage request"})
@@ -1733,10 +1704,7 @@ func SendCoverageReminder(db *gorm.DB, emailService *email.Service, groupMeServi
 		db := middleware.GetDB(c, db)
 		groupIDParam := c.Param("id")
 
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
-
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupIDParam) {
+		if !callerCan(c, db, authz.ManageSchedule, groupIDParam) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}

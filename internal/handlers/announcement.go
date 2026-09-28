@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/groupme"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
@@ -180,16 +181,14 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, exists := c.Get("user_id")
+		_, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
 
-		isAdmin, _ := c.Get("is_admin")
-
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.Announce, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}

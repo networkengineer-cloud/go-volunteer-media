@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
@@ -29,11 +30,9 @@ func UploadProtocolImage(db *gorm.DB, storageProvider storage.Provider) gin.Hand
 		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -96,11 +95,9 @@ func GetProtocols(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -136,11 +133,9 @@ func GetProtocol(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		protocolID := c.Param("protocolId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check group access
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -160,11 +155,9 @@ func CreateProtocol(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -216,11 +209,9 @@ func UpdateProtocol(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		protocolID := c.Param("protocolId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -257,11 +248,9 @@ func DeleteProtocol(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		protocolID := c.Param("protocolId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
 		// Check for group admin or site admin access
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}

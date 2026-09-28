@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -25,10 +26,8 @@ func GetUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -50,10 +49,8 @@ func CreateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageMembers, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can create skill tags"})
 			return
 		}
@@ -97,10 +94,8 @@ func UpdateUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageMembers, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can update skill tags"})
 			return
 		}
@@ -144,10 +139,8 @@ func DeleteUserSkillTag(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		tagID := c.Param("tagId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageMembers, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can delete skill tags"})
 			return
 		}
@@ -186,10 +179,8 @@ func AssignUserSkillTags(db *gorm.DB) gin.HandlerFunc {
 		db := middleware.GetDB(c, db)
 		groupID := c.Param("id")
 		targetUserID := c.Param("userId")
-		userID, _ := c.Get("user_id")
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAdminAccess(db, userID, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ManageMembers, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Only group admins can assign skill tags"})
 			return
 		}

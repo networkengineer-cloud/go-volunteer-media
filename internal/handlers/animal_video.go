@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
@@ -30,14 +31,13 @@ func GetAnimalMedia(db *gorm.DB) gin.HandlerFunc {
 		logger := middleware.GetLogger(c)
 		groupID := c.Param("id")
 		animalID := c.Param("animalId")
-		userIDUint, ok := middleware.GetUserID(c)
+		_, ok := middleware.GetUserID(c)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
+		if !callerCan(c, db, authz.ViewGroup, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -88,9 +88,8 @@ func UploadAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
+		if !callerCan(c, db, authz.PostContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -286,9 +285,8 @@ func DeleteAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
 			return
 		}
-		isAdmin, _ := c.Get("is_admin")
 
-		if !checkGroupAccess(db, userIDUint, isAdmin, groupID) {
+		if !callerCan(c, db, authz.PostContent, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
@@ -305,8 +303,7 @@ func DeleteAnimalVideo(db *gorm.DB, storageProvider storage.Provider) gin.Handle
 			return
 		}
 
-		isAdminBool, _ := isAdmin.(bool)
-		if video.UserID != userIDUint && !isAdminBool {
+		if video.UserID != userIDUint && !callerCan(c, db, authz.ModerateMedia, groupID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own videos"})
 			return
 		}
