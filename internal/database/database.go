@@ -9,6 +9,7 @@ import (
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/shelterclock"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"gorm.io/driver/postgres"
@@ -1039,6 +1040,12 @@ func createDefaultSiteSettings(db *gorm.DB) error {
 		{
 			Key:   "hero_image_url",
 			Value: "", // Empty by default - admin should upload an image
+		},
+		{
+			// Admins set the shelter's real zone (internal/shelterclock);
+			// UTC matches the behavior from before the setting existed.
+			Key:   shelterclock.SettingKey,
+			Value: shelterclock.DefaultZone,
 		},
 	}
 

@@ -11,6 +11,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/authz"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/shelterclock"
 	"gorm.io/gorm"
 )
 
@@ -456,10 +457,10 @@ type dateHourUserKey struct {
 }
 
 // parseWeekStart parses an optional "2006-01-02" week_start query param and
-// snaps it back to that week's Sunday. An empty string defaults to the
-// current week's Sunday (UTC).
-func parseWeekStart(raw string) (time.Time, error) {
-	ref := time.Now().UTC()
+// snaps it back to that week's Sunday. An empty string defaults to the week
+// containing today, the shelter's current date (shelterclock.Today).
+func parseWeekStart(raw string, today time.Time) (time.Time, error) {
+	ref := today
 	if raw != "" {
 		parsed, err := time.Parse("2006-01-02", raw)
 		if err != nil {
@@ -467,8 +468,7 @@ func parseWeekStart(raw string) (time.Time, error) {
 		}
 		ref = parsed
 	}
-	ref = ref.Truncate(24 * time.Hour)
-	return ref.AddDate(0, 0, -int(ref.Weekday())), nil
+	return shelterclock.WeekStart(ref), nil
 }
 
 // GetGroupScheduleOverview returns the effective roster for every (date,
@@ -497,7 +497,7 @@ func GetGroupScheduleOverview(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		weekStart, err := parseWeekStart(c.Query("week_start"))
+		weekStart, err := parseWeekStart(c.Query("week_start"), shelterclock.Today(shelterclock.Location(db)))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "week_start must be in YYYY-MM-DD format"})
 			return

@@ -3,6 +3,8 @@ import axios from 'axios';
 import { scheduleApi } from '../../api/client';
 import type { ScheduleOverviewMember, ScheduleSlot, GroupMember } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
+import { useShelterTimeZone } from '../../hooks/useShelterTimeZone';
+import { todayInZone } from '../../utils/shelterTime';
 import { DAYS, HOURS, slotKey, formatSlotRangeLabel, formatHourLabel, maxHourFor, currentWeekStart, rowHeaderFor } from './scheduleGrid';
 import CadenceLegend from './CadenceLegend';
 import Modal from '../../components/Modal';
@@ -151,17 +153,12 @@ function formatWeekLabel(weekStart: string): string {
   return `Week of ${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
 }
 
-// todayIso returns "today" (UTC calendar date, matching the backend's
-// same-day-or-later check in CreateCoverageRequestsBatch) as an ISO
-// YYYY-MM-DD string, for hiding the Request coverage popover action on a
-// past date whose form would just come up empty.
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembers, currentUserId, canManageMembers = false, groupMembers = [] }) => {
   const toast = useToast();
-  const [weekStart, setWeekStart] = useState<string>(currentWeekStart());
+  // The shelter's calendar decides "today" and "this week", matching the
+  // backend's same-day-or-later check in CreateCoverageRequestsBatch.
+  const shelterTimeZone = useShelterTimeZone();
+  const [weekStart, setWeekStart] = useState<string>(() => currentWeekStart(shelterTimeZone));
   const [membersBySlot, setMembersBySlot] = useState<Map<string, ScheduleOverviewMember[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -361,7 +358,9 @@ const ScheduleOverview: React.FC<ScheduleOverviewProps> = ({ groupId, totalMembe
   // from the fetched slot data itself rather than trusting `totalMembers`
   // blindly - otherwise every cell renders as tier-0 ("nobody available")
   // even when real availability data exists.
-  const today = todayIso();
+  // Hides the Request coverage popover action on a past date whose form
+  // would just come up empty.
+  const today = todayInZone(shelterTimeZone);
   const effectiveTotal = totalMembers > 0
     ? totalMembers
     : Math.max(0, ...Array.from(membersBySlot.values()).map(m => m.length));

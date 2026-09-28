@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { settingsApi } from '../../api/client';
 import { useSiteSettings } from '../../hooks/useSiteSettings';
+import { DEFAULT_SHELTER_TIMEZONE, isValidTimeZone, listTimeZones, todayInZone } from '../../utils/shelterTime';
 import '../../pages/SettingsPage.css';
 import '../../pages/Home.css'; // Import Home.css to reuse hero styles
 
@@ -18,6 +19,14 @@ const SiteSettingsTab: React.FC = () => {
   const [siteShortName, setSiteShortName] = useState('');
   const [siteDescription, setSiteDescription] = useState('');
   const [savingText, setSavingText] = useState(false);
+
+  // Shelter time zone (AR-5): decides "today" and "this week" for scheduling
+  const [shelterTimeZone, setShelterTimeZone] = useState(DEFAULT_SHELTER_TIMEZONE);
+  const [savingTimeZone, setSavingTimeZone] = useState(false);
+  const timeZones = React.useMemo(() => {
+    const zones = listTimeZones();
+    return zones.includes(shelterTimeZone) ? zones : [shelterTimeZone, ...zones];
+  }, [shelterTimeZone]);
 
   useEffect(() => {
     loadSettings();
@@ -44,6 +53,7 @@ const SiteSettingsTab: React.FC = () => {
       setSiteName(settings.site_name || 'MyHAWS');
       setSiteShortName(settings.site_short_name || 'MyHAWS');
       setSiteDescription(settings.site_description || 'MyHAWS Volunteer Portal - Internal volunteer management system');
+      setShelterTimeZone(settings.shelter_timezone || DEFAULT_SHELTER_TIMEZONE);
     } catch (error) {
       console.error('Failed to load settings:', error);
       setMessage('Failed to load settings');
@@ -171,6 +181,28 @@ const SiteSettingsTab: React.FC = () => {
     }
   };
 
+  const handleSaveTimeZone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isValidTimeZone(shelterTimeZone)) {
+      setMessage('Choose a valid time zone');
+      return;
+    }
+
+    setSavingTimeZone(true);
+    setMessage('');
+    try {
+      await settingsApi.update('shelter_timezone', shelterTimeZone);
+      await refetch();
+      setMessage('Time zone updated successfully!');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      console.error('Failed to save time zone:', error);
+      setMessage('Failed to update time zone');
+    } finally {
+      setSavingTimeZone(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading settings...</div>;
   }
@@ -239,6 +271,38 @@ const SiteSettingsTab: React.FC = () => {
         <div className="form-actions">
           <button type="submit" className="btn-save" disabled={savingText}>
             {savingText ? 'Saving...' : 'Save Branding Settings'}
+          </button>
+        </div>
+      </form>
+
+      {/* Shelter Time Zone */}
+      <form onSubmit={handleSaveTimeZone} className="settings-form" style={{ marginBottom: '2rem' }}>
+        <h3>Shelter Time Zone</h3>
+        <div className="form-group">
+          <label htmlFor="shelterTimeZone">
+            Time Zone
+            <span className="label-hint">The shelter's local time</span>
+          </label>
+          <select
+            id="shelterTimeZone"
+            value={shelterTimeZone}
+            onChange={(e) => setShelterTimeZone(e.target.value)}
+          >
+            {timeZones.map((zone) => (
+              <option key={zone} value={zone}>
+                {zone}
+              </option>
+            ))}
+          </select>
+          <p className="field-help">
+            Decides what counts as "today" and "this week" for shifts and coverage requests.
+            Today at the shelter: {todayInZone(shelterTimeZone)}
+          </p>
+        </div>
+
+        <div className="form-actions">
+          <button type="submit" className="btn-save" disabled={savingTimeZone}>
+            {savingTimeZone ? 'Saving...' : 'Save Time Zone'}
           </button>
         </div>
       </form>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { weekParity, upcomingDatesForParity } from './scheduleGrid';
+import { useShelterTimeZone } from '../../hooks/useShelterTimeZone';
 import './ScheduleTab.css';
 
 export interface CadenceLegendProps {
@@ -49,8 +50,9 @@ const LegendEntry: React.FC<LegendEntryProps> = ({ letter, dates, isCurrent }) =
 
 const CadenceLegend: React.FC<CadenceLegendProps> = ({ referenceWeekStart }) => {
   const currentParity = referenceWeekStart ? weekParity(referenceWeekStart) : null;
-  const datesA = upcomingDatesForParity('a', UPCOMING_COUNT);
-  const datesB = upcomingDatesForParity('b', UPCOMING_COUNT);
+  const timeZone = useShelterTimeZone();
+  const datesA = upcomingDatesForParity('a', UPCOMING_COUNT, timeZone);
+  const datesB = upcomingDatesForParity('b', UPCOMING_COUNT, timeZone);
 
   return (
     <div className="cadence-legend">

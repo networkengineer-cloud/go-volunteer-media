@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import RequestCoverageRangeForm, { computeCandidateOccurrences } from './RequestCoverageRangeForm';
+import RequestCoverageRangeForm from './RequestCoverageRangeForm';
+import { computeCandidateOccurrences } from './coverageOccurrences';
 import Modal from '../../components/Modal';
 import { scheduleApi } from '../../api/client';
 import { weekParity } from './scheduleGrid';
@@ -35,6 +36,16 @@ vi.mock('../../components/DateRangePicker', () => ({
 }));
 
 describe('computeCandidateOccurrences', () => {
+  it("excludes dates before the given shelter date, not UTC's", () => {
+    // A Monday slot; the shelter's today is Monday 2026-08-10 even if UTC
+    // has already rolled over to Tuesday.
+    const slots = [{ day_of_week: 1, hour: 10, cadence: 'weekly' }] as ScheduleSlot[];
+    expect(computeCandidateOccurrences(slots, '2026-08-10', '2026-08-10', '2026-08-10')).toEqual([
+      { date: '2026-08-10', hour: 10 },
+    ]);
+    expect(computeCandidateOccurrences(slots, '2026-08-10', '2026-08-10', '2026-08-11')).toEqual([]);
+  });
+
   it('finds every occurrence of the recurring slots within the range', () => {
     // Pin "now" safely before the fixture range so the past-date exclusion
     // in computeCandidateOccurrences never drops 2026-08-11 depending on

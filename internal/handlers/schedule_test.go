@@ -1466,7 +1466,7 @@ func TestGetGroupScheduleOverview_SurfacesRequestPriority(t *testing.T) {
 func TestParseWeekStart(t *testing.T) {
 	t.Run("a non-Sunday input snaps back to that week's Sunday", func(t *testing.T) {
 		// 2026-08-12 is a Wednesday; that week's Sunday is 2026-08-09.
-		got, err := parseWeekStart("2026-08-12")
+		got, err := parseWeekStart("2026-08-12", time.Time{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1480,7 +1480,7 @@ func TestParseWeekStart(t *testing.T) {
 	})
 
 	t.Run("a Sunday input is returned unchanged", func(t *testing.T) {
-		got, err := parseWeekStart("2026-08-09")
+		got, err := parseWeekStart("2026-08-09", time.Time{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1490,23 +1490,21 @@ func TestParseWeekStart(t *testing.T) {
 		}
 	})
 
-	t.Run("an empty string defaults to the current week's Sunday", func(t *testing.T) {
-		got, err := parseWeekStart("")
+	t.Run("an empty string defaults to the week containing today", func(t *testing.T) {
+		// today is the shelter's date (shelterclock.Today); Thursday 2026-08-13.
+		today := time.Date(2026, 8, 13, 0, 0, 0, 0, time.UTC)
+		got, err := parseWeekStart("", today)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got.Weekday() != time.Sunday {
-			t.Fatalf("expected result to be a Sunday, got %s", got.Weekday())
-		}
-		now := time.Now().UTC()
-		wantWeekStart := now.Truncate(24*time.Hour).AddDate(0, 0, -int(now.Weekday()))
-		if !got.Equal(wantWeekStart) {
-			t.Fatalf("expected %s (this week's Sunday), got %s", wantWeekStart.Format("2006-01-02"), got.Format("2006-01-02"))
+		want := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Fatalf("expected %s (that week's Sunday), got %s", want.Format("2006-01-02"), got.Format("2006-01-02"))
 		}
 	})
 
 	t.Run("an invalid date string is rejected", func(t *testing.T) {
-		if _, err := parseWeekStart("not-a-date"); err == nil {
+		if _, err := parseWeekStart("not-a-date", time.Time{}); err == nil {
 			t.Fatal("expected an error for an invalid date string")
 		}
 	})

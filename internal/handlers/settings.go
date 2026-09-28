@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/shelterclock"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/upload"
 	"gorm.io/gorm"
@@ -24,6 +25,7 @@ var settingValidationRules = map[string]struct {
 	"site_short_name":  {required: true, maxLen: 50},
 	"site_description": {required: false, maxLen: 500},
 	"hero_image_url":   {required: false, maxLen: 500},
+	"shelter_timezone": {required: true, maxLen: 64},
 }
 
 // GetSiteSettings returns all site settings (public endpoint)
@@ -81,6 +83,17 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s must be %d characters or less", key, rules.maxLen)})
 				return
 			}
+		}
+
+		// The shelter time zone drives every "today"/"this week" decision in
+		// scheduling (see internal/shelterclock), so reject anything that
+		// isn't a real IANA zone rather than silently falling back to UTC.
+		if key == shelterclock.SettingKey {
+			if _, err := shelterclock.ParseZone(req.Value); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			req.Value = strings.TrimSpace(req.Value)
 		}
 
 		var setting models.SiteSetting
