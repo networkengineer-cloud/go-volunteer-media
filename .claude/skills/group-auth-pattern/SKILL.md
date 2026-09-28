@@ -117,7 +117,19 @@ Updating, resetting the password of, resending the invitation for,
 unlocking, or deleting another user goes through `authz.CheckManageUser`
 (via `callerCanManageUser` in handlers). Site admins may manage anyone; a
 group admin may manage a non-site-admin who belongs to a group where the
-caller has `ManageMembers`.
+caller has `ManageMembers` - **and** who is not a group admin of any other
+(non-soft-deleted) group the caller does not also administer.
+
+That second clause blocks a lateral privilege escalation: without it, a
+dogs admin could reset the password of a volunteer who happens to also
+share the dogs group but is a group admin of cats, log in as them, and
+walk away with cats admin rights - despite never having administered cats.
+The caller still doesn't need to administer *every* group the target
+merely belongs to as a plain member (a dogs admin can still reset a
+volunteer who is in both dogs and cats) - only every group the target is
+themselves a group admin of. This denial is `authz.DenyTargetAdminsOtherGroup`;
+`callerCanManageUser` gives it one fixed 403 message rather than a
+per-endpoint one, since the escalation it blocks is the same everywhere.
 
 ## Route-level tiers (middleware)
 

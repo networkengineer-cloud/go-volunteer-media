@@ -105,14 +105,27 @@ func InlineRoleChecks(db *gorm.DB) gin.HandlerFunc {
 		// ruleid: handler-inline-role-check
 		_ = c.GetBool("is_admin")
 		// ruleid: handler-inline-role-check
+		_ = c.MustGet("is_admin")
+		// ruleid: handler-inline-role-check
+		_ = c.Value("is_admin")
+		// ruleid: handler-inline-role-check
 		if middleware.IsSiteAdmin(c) || middleware.GetIsAdmin(c) {
 			_ = isAdmin
 		}
+		var userGroups []int
+		// ruleid: handler-inline-role-check
+		db.Where("user_id = ? AND is_group_admin = ?", 1, true).Find(&userGroups)
+		// ruleid: handler-inline-role-check
+		db.Joins("JOIN user_groups ON user_groups.user_id = users.id AND is_group_admin = true")
 		// ok: handler-inline-role-check
 		if !callerCan(c, db, authz.ManageAnimals, c.Param("id")) {
 			c.Status(http.StatusForbidden)
 		}
 		// ok: handler-inline-role-check
 		_ = authz.CallerRole(c, db, 1)
+		// ok: handler-inline-role-check
+		db.Where("group_id = ?", 1).Find(&userGroups)
+		// ok: handler-inline-role-check
+		db.Model(nil).Update("is_group_admin", true)
 	}
 }

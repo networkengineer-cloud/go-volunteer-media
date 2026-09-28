@@ -55,6 +55,14 @@ func callerCanManageUser(c *gin.Context, db *gorm.DB, target *models.User, msgs 
 		msg = msgs.targetIsSiteAdmin
 	case authz.DenyTargetHasNoGroups:
 		msg = msgs.targetHasNoGroups
+	case authz.DenyTargetAdminsOtherGroup:
+		// One message for every caller: the escalation this blocks (picking
+		// up admin rights in a group the caller doesn't administer, via an
+		// account that happens to share a different group with the caller)
+		// is the same regardless of which endpoint triggered it, so callers
+		// don't need their own wording here the way they do for the other
+		// denials.
+		msg = "Group admins cannot manage an admin of a group they don't administer"
 	default:
 		msg = msgs.noSharedGroup
 	}

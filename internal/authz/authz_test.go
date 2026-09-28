@@ -59,11 +59,12 @@ func TestAllowsUnknownActionDenied(t *testing.T) {
 }
 
 type fixture struct {
-	db                                  *gorm.DB
-	groupA, groupB, deletedGroup        models.Group
-	member, groupAdmin, siteAdmin       models.User
-	outsider, deletedUser, adminOfBoth  models.User
-	memberOfDeleted, orphan, peerMember models.User
+	db                                   *gorm.DB
+	groupA, groupB, groupC, deletedGroup models.Group
+	member, groupAdmin, siteAdmin        models.User
+	outsider, deletedUser, adminOfBoth   models.User
+	memberOfDeleted, orphan, peerMember  models.User
+	adminOfC, memberOfTwoGroups          models.User
 }
 
 func setup(t *testing.T) *fixture {
@@ -84,15 +85,18 @@ func setupWith(t *testing.T, db *gorm.DB) *fixture {
 	}
 	f := &fixture{db: db}
 
+	// Names are prefixed so the fixture can't collide with the default
+	// groups and seed users already in a shared Postgres test database
+	// (authz_postgres_test.go runs this inside a rolled-back transaction).
 	mkGroup := func(name string) models.Group {
-		g := models.Group{Name: name}
+		g := models.Group{Name: "authz-test-" + name}
 		if err := db.Create(&g).Error; err != nil {
 			t.Fatalf("create group: %v", err)
 		}
 		return g
 	}
 	mkUser := func(name string, siteAdmin bool) models.User {
-		u := models.User{Username: name, Email: name + "@example.com", Password: "x", IsAdmin: siteAdmin}
+		u := models.User{Username: "authz-test-" + name, Email: "authz-test-" + name + "@example.com", Password: "x", IsAdmin: siteAdmin}
 		if err := db.Create(&u).Error; err != nil {
 			t.Fatalf("create user: %v", err)
 		}
@@ -106,6 +110,7 @@ func setupWith(t *testing.T, db *gorm.DB) *fixture {
 
 	f.groupA = mkGroup("dogs")
 	f.groupB = mkGroup("cats")
+	f.groupC = mkGroup("modsquad")
 	f.deletedGroup = mkGroup("retired")
 
 	f.member = mkUser("member", false)
@@ -117,6 +122,14 @@ func setupWith(t *testing.T, db *gorm.DB) *fixture {
 	f.memberOfDeleted = mkUser("memberofdeleted", false)
 	f.orphan = mkUser("orphan", false)
 	f.peerMember = mkUser("peer", false)
+	// adminOfC shares group A with groupAdmin (a plain member there) but is a
+	// group admin of group C, which groupAdmin does not administer - the
+	// lateral-escalation shape TestCheckManageUser guards against.
+	f.adminOfC = mkUser("adminofc", false)
+	// memberOfTwoGroups is a plain member (never a group admin anywhere) of
+	// both group A and group B, to confirm the new rule only looks at the
+	// target's *admin* groups, not every group the target merely belongs to.
+	f.memberOfTwoGroups = mkUser("memberoftwogroups", false)
 
 	join(f.member, f.groupA, false)
 	join(f.peerMember, f.groupB, false)
@@ -128,6 +141,10 @@ func setupWith(t *testing.T, db *gorm.DB) *fixture {
 	join(f.adminOfBoth, f.groupB, true)
 	join(f.memberOfDeleted, f.deletedGroup, false)
 	join(f.siteAdmin, f.groupB, false)
+	join(f.adminOfC, f.groupA, false)
+	join(f.adminOfC, f.groupC, true)
+	join(f.memberOfTwoGroups, f.groupA, false)
+	join(f.memberOfTwoGroups, f.groupB, false)
 
 	if err := db.Delete(&f.deletedGroup).Error; err != nil {
 		t.Fatalf("soft-delete group: %v", err)
@@ -341,6 +358,25 @@ func TestCheckManageUser(t *testing.T) {
 		{"plain member cannot manage a fellow member", f.member, f.groupAdmin, DenyNoSharedAdminGroup},
 		{"admin of a soft-deleted group gets nothing from it", f.groupAdmin, f.memberOfDeleted, DenyTargetHasNoGroups},
 		{"admin of two groups manages a member of the second", f.adminOfBoth, f.peerMember, UserAllowed},
+
+		// Lateral privilege escalation (the vulnerability this table now
+		// guards against): groupAdmin shares group A with adminOfC (a plain
+		// member there), but adminOfC is a group admin of group C, which
+		// groupAdmin does not administer. Taking over adminOfC's account
+		// (password reset, etc.) would hand groupAdmin admin rights in group
+		// C, so this must be denied even though the two share a group.
+		{"blocked: caller cannot manage a target who admins a group the caller doesn't", f.groupAdmin, f.adminOfC, DenyTargetAdminsOtherGroup},
+		// Still allowed: a plain volunteer who happens to belong to two
+		// groups is manageable by an admin of just one of them - the new
+		// rule only restricts targets who are themselves group admins
+		// elsewhere, not targets who are merely members elsewhere.
+		{"still allowed: volunteer who is a plain member of two groups", f.groupAdmin, f.memberOfTwoGroups, UserAllowed},
+		// Allowed: adminOfBoth administers every group adminOfC administers
+		// admin rights in (group C is not one of them, group A is shared,
+		// and the only group adminOfC administers is group C - so use a
+		// target whose sole admin group, group A, is one adminOfBoth also
+		// administers).
+		{"allowed: caller administers every group the target administers", f.adminOfBoth, f.groupAdmin, UserAllowed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

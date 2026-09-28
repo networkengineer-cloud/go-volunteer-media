@@ -280,6 +280,13 @@ const (
 	// DenyNoSharedAdminGroup: the caller administers none of the target's
 	// groups.
 	DenyNoSharedAdminGroup
+	// DenyTargetAdminsOtherGroup: the target is a group admin of at least one
+	// (non-soft-deleted) group the caller does not administer. Without this,
+	// a group admin could reset the password (or otherwise take over the
+	// account) of a user who happens to share one group with them, then use
+	// that account's admin rights in a different group the original caller
+	// never administered - a lateral privilege escalation.
+	DenyTargetAdminsOtherGroup
 )
 
 // ErrNoSubject is returned when there is no authenticated caller.
@@ -288,8 +295,11 @@ var ErrNoSubject = errors.New("authz: no authenticated caller")
 // CheckManageUser decides whether s may manage target's account (update
 // profile, reset password, resend invitation, unlock). Site admins may
 // manage anyone. Otherwise the caller needs ManageMembers in at least one of
-// the target's groups, and the target must not be a site admin.
-// target.Groups must be loaded.
+// the target's groups, the target must not be a site admin, and the target
+// must not be a group admin of any (non-soft-deleted) group the caller does
+// not also administer - a group admin managing an account is not allowed to
+// pick up admin rights in a group they don't administer by way of that
+// account. target.Groups must be loaded.
 func CheckManageUser(ctx context.Context, db *gorm.DB, s Subject, target *models.User) (UserDenial, error) {
 	if s.IsSiteAdmin {
 		return UserAllowed, nil
@@ -308,12 +318,42 @@ func CheckManageUser(ctx context.Context, db *gorm.DB, s Subject, target *models
 	if err != nil {
 		return DenyNoSharedAdminGroup, err
 	}
+	shared := false
 	for _, g := range target.Groups {
 		if scope.Contains(g.ID) {
-			return UserAllowed, nil
+			shared = true
+			break
 		}
 	}
-	return DenyNoSharedAdminGroup, nil
+	if !shared {
+		return DenyNoSharedAdminGroup, nil
+	}
+
+	targetAdminGroupIDs, err := groupAdminGroupIDs(ctx, db, target.ID)
+	if err != nil {
+		return DenyNoSharedAdminGroup, err
+	}
+	for _, gid := range targetAdminGroupIDs {
+		if !scope.Contains(gid) {
+			return DenyTargetAdminsOtherGroup, nil
+		}
+	}
+	return UserAllowed, nil
+}
+
+// groupAdminGroupIDs returns the IDs of the (non-soft-deleted) groups in
+// which userID is recorded as a group admin. Unlike User.Groups (a plain
+// many2many preload), this carries the UserGroup.IsGroupAdmin flag, which
+// CheckManageUser needs but the target's preloaded Groups association does
+// not expose.
+func groupAdminGroupIDs(ctx context.Context, db *gorm.DB, userID uint) ([]uint, error) {
+	var ids []uint
+	err := db.WithContext(ctx).
+		Model(&models.UserGroup{}).
+		Joins(`JOIN "groups" ON "groups".id = user_groups.group_id AND "groups".deleted_at IS NULL`).
+		Where("user_groups.user_id = ? AND user_groups.is_group_admin = ?", userID, true).
+		Pluck("user_groups.group_id", &ids).Error
+	return ids, err
 }
 
 // GroupScope is the set of groups in which a caller may perform an action.

@@ -249,8 +249,13 @@ func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Check if user is a group admin of any group
+		// Check if user is a group admin of any group. This reports the flag
+		// to the authenticated caller's own profile response (like
+		// GetGroupMembership) and never gates access to another user's data,
+		// so it isn't the authorization anti-pattern handler-inline-role-check
+		// targets.
 		var userGroups []models.UserGroup
+		// nosemgrep: handler-inline-role-check
 		db.Where("user_id = ? AND is_group_admin = ?", userID, true).Find(&userGroups)
 
 		// Add is_group_admin flag to response

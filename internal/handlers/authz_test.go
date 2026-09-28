@@ -92,6 +92,60 @@ func TestGroupAdminDeleteUser_GroupAdminDeletesMemberOfTheirGroup(t *testing.T) 
 	}
 }
 
+// TestAdminResetUserPassword_GroupAdminCannotEscalateViaSharedGroup guards
+// against the lateral privilege escalation fixed alongside
+// authz.DenyTargetAdminsOtherGroup: a group admin of group A resetting the
+// password of a user who happens to also be in group A but is a group admin
+// of group C must not succeed, even though the two callers share group A -
+// that reset would otherwise hand the caller a path to admin rights in
+// group C.
+func TestAdminResetUserPassword_GroupAdminCannotEscalateViaSharedGroup(t *testing.T) {
+	db := SetupTestDB(t)
+	admin := CreateTestUser(t, db, "groupadmin", "ga@example.com", "password123", false)
+	target := CreateTestUser(t, db, "adminofc", "aoc@example.com", "password123", false)
+	member := CreateTestUser(t, db, "member", "m@example.com", "password123", false)
+	groupA := CreateTestGroup(t, db, "Dogs", "")
+	groupC := CreateTestGroup(t, db, "ModSquad", "")
+	AddUserToGroupWithAdmin(t, db, admin.ID, groupA.ID, true)
+	// target shares group A with admin (as a plain member there) but
+	// administers group C, which admin does not administer.
+	AddUserToGroupWithAdmin(t, db, target.ID, groupA.ID, false)
+	AddUserToGroupWithAdmin(t, db, target.ID, groupC.ID, true)
+	// Sanity check: a target who is merely a plain member of a second group
+	// (no admin rights anywhere) is still manageable - the rule only blocks
+	// targets who are themselves group admins elsewhere.
+	AddUserToGroupWithAdmin(t, db, member.ID, groupA.ID, false)
+
+	reset := func(userID uint) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("user_id", admin.ID)
+		c.Set("is_admin", false)
+		c.Params = gin.Params{{Key: "userId", Value: itoa(userID)}}
+		body := `{"new_password":"newpassword123"}`
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/users/"+itoa(userID)+"/reset-password", bytes.NewBufferString(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		AdminResetUserPassword(db)(c)
+		return w
+	}
+
+	if w := reset(target.ID); w.Code != http.StatusForbidden {
+		t.Fatalf("resetting a target who admins a group the caller doesn't: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]string
+	if err := json.Unmarshal(reset(target.ID).Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp["error"] != "Group admins cannot manage an admin of a group they don't administer" {
+		t.Fatalf("unexpected error message: %q", resp["error"])
+	}
+
+	if w := reset(member.ID); w.Code != http.StatusOK {
+		t.Fatalf("resetting a plain member of a shared group: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestDeleteAnimalImage_GroupAdminCannotDeleteOthersImage(t *testing.T) {
 	// ModerateMedia is site-admin only (unchanged from before the central
 	// policy): group admins moderate comments, not photos.

@@ -98,5 +98,18 @@ rules:
     pattern-either:
       - pattern: $C.Get("is_admin")
       - pattern: $C.GetBool("is_admin")
+      - pattern: $C.MustGet("is_admin")
+      - pattern: $C.Value("is_admin")
       - pattern: middleware.IsSiteAdmin($C)
       - pattern: middleware.GetIsAdmin($C)
+      # A raw `is_group_admin` query built by hand instead of going through
+      # authz.GroupRole/CallerCan. Scoped to .Where(/.Joins( so it never
+      # catches the legitimate `Update("is_group_admin", ...)` writes in
+      # group.go's promote/demote handlers.
+      - patterns:
+          - pattern-either:
+              - pattern: $DB.Where($QUERY, ...)
+              - pattern: $DB.Joins($QUERY, ...)
+          - metavariable-regex:
+              metavariable: $QUERY
+              regex: (?i).*is_group_admin.*

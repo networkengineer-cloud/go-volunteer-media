@@ -91,4 +91,17 @@ func TestGroupsWhereAndCheckManageUser_Postgres(t *testing.T) {
 	if err != nil || denial != UserAllowed {
 		t.Errorf("CheckManageUser = %d, %v; want allowed", denial, err)
 	}
+
+	// Lateral privilege escalation: groupAdmin shares group A with adminOfC,
+	// but adminOfC is a group admin of group C, which groupAdmin does not
+	// administer. Real Postgres joins ("groups" is a reserved word there)
+	// must deny this the same way SQLite does in authz_test.go.
+	escalationTarget := f.adminOfC
+	if err := f.db.Preload("Groups").First(&escalationTarget, f.adminOfC.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	denial, err = CheckManageUser(ctx, f.db, subj(f.groupAdmin), &escalationTarget)
+	if err != nil || denial != DenyTargetAdminsOtherGroup {
+		t.Errorf("CheckManageUser(escalation) = %d, %v; want DenyTargetAdminsOtherGroup", denial, err)
+	}
 }
