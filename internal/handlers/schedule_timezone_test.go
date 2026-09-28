@@ -34,6 +34,8 @@ func TestCreateCoverageRequest_UsesShelterDateNotUTC(t *testing.T) {
 		}
 		ran = true
 
+		shelterWasBeforeUTC := shelterToday.Before(utcToday)
+
 		t.Run(zone, func(t *testing.T) {
 			db := SetupTestDB(t)
 			requester := CreateTestUser(t, db, "requester", "requester@example.com", "password123", false)
@@ -42,20 +44,35 @@ func TestCreateCoverageRequest_UsesShelterDateNotUTC(t *testing.T) {
 			db.Model(group).Update("scheduling_enabled", true)
 			db.Create(&models.SiteSetting{Key: shelterclock.SettingKey, Value: zone})
 
-			if shelterToday.Before(utcToday) {
+			var w *httptest.ResponseRecorder
+			var wantCode int
+			if shelterWasBeforeUTC {
 				// Shelter is still on "yesterday" by UTC: its today is not past.
 				db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: int(shelterToday.Weekday()), Hour: 10})
 				body := fmt.Sprintf(`{"date":"%s","hour":10}`, shelterToday.Format("2006-01-02"))
-				if w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body); w.Code != http.StatusCreated {
-					t.Fatalf("coverage for the shelter's today: expected 201, got %d: %s", w.Code, w.Body.String())
-				}
+				w = performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+				wantCode = http.StatusCreated
 			} else {
 				// Shelter is already on "tomorrow" by UTC: UTC's today is past.
 				db.Create(&models.ShiftSlot{UserID: requester.ID, GroupID: group.ID, DayOfWeek: int(utcToday.Weekday()), Hour: 10})
 				body := fmt.Sprintf(`{"date":"%s","hour":10}`, utcToday.Format("2006-01-02"))
-				if w := performCreateCoverageRequest(db, requester.ID, false, group.ID, body); w.Code != http.StatusBadRequest {
-					t.Fatalf("coverage for the shelter's yesterday: expected 400, got %d: %s", w.Code, w.Body.String())
-				}
+				w = performCreateCoverageRequest(db, requester.ID, false, group.ID, body)
+				wantCode = http.StatusBadRequest
+			}
+
+			// shelterToday/utcToday were captured before the request ran; if
+			// either calendar date rolled over in the meantime (the handler
+			// calls shelterclock.Today() itself, at whatever instant it
+			// actually executes), the fixture built above no longer matches
+			// reality and the assertion would be testing the wrong thing.
+			// That's a timing coincidence, not a regression, so skip rather
+			// than flake.
+			if !shelterclock.Today(loc).Equal(shelterToday) || !shelterclock.Today(time.UTC).Equal(utcToday) {
+				t.Skip("calendar date rolled over mid-test; not a regression")
+			}
+
+			if w.Code != wantCode {
+				t.Fatalf("expected %d, got %d: %s", wantCode, w.Code, w.Body.String())
 			}
 		})
 	}
@@ -76,6 +93,13 @@ func TestUpdateSiteSetting_ValidatesShelterTimezone(t *testing.T) {
 		{"Local", http.StatusBadRequest},
 		{"", http.StatusBadRequest},
 		{" America/Denver ", http.StatusOK},
+		// Legacy zone name accepted by Go's time.LoadLocation but never
+		// offered by the frontend's Intl-backed picker.
+		{"EST5EDT", http.StatusBadRequest},
+		// Padding alone pushes the raw value past the 64-char maxLen, but
+		// the trimmed value is a valid, well-under-limit zone name - the
+		// maxLen check must measure the trimmed value, not the raw one.
+		{strings.Repeat(" ", 60) + "America/Chicago", http.StatusOK},
 	}
 	for _, tc := range cases {
 		w := httptest.NewRecorder()
@@ -91,7 +115,7 @@ func TestUpdateSiteSetting_ValidatesShelterTimezone(t *testing.T) {
 
 	var s models.SiteSetting
 	db.Where("key = ?", shelterclock.SettingKey).First(&s)
-	if s.Value != "America/Denver" {
+	if s.Value != "America/Chicago" {
 		t.Errorf("stored value = %q, want the last valid value, trimmed", s.Value)
 	}
 }

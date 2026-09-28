@@ -35,10 +35,27 @@ const DefaultZone = "UTC"
 
 // ParseZone validates an IANA zone name for the setting. It rejects the
 // empty string and "Local", whose meaning depends on the server.
+//
+// It also rejects names Go's time.LoadLocation accepts but the frontend's
+// picker (built from the browser's Intl.supportedValuesOf("timeZone")) never
+// offers: single-word legacy zones ("EST5EDT", "WET", "CET", "MST", ...) and
+// the "Etc/*" fixed-offset zones. Node/browser Intl accepts those names
+// without throwing, but Intl.supportedValuesOf omits them, so they never
+// appear as options in the admin picker; accepting them here would let a
+// value into storage the frontend has no way to produce or display back
+// correctly. Requiring a "/" (and rejecting "Etc/") rejects those cases;
+// it does not attempt to also catch every other legacy backward-compat
+// alias (e.g. "US/Central") that happens to contain a "/" - those are rare
+// enough, and Go and Intl agree closely enough on them, not to be worth the
+// extra complexity of embedding IANA's backward-links table just to reject
+// them too.
 func ParseZone(name string) (*time.Location, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "Local" {
 		return nil, errors.New("time zone must be an IANA name such as America/Chicago")
+	}
+	if name != "UTC" && (!strings.Contains(name, "/") || strings.HasPrefix(name, "Etc/")) {
+		return nil, errors.New("unknown time zone " + name + "; use an IANA name such as America/Chicago")
 	}
 	loc, err := time.LoadLocation(name)
 	if err != nil {

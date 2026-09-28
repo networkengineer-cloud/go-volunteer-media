@@ -70,6 +70,11 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// The time zone is stored trimmed, so validate the trimmed value.
+		if key == shelterclock.SettingKey {
+			req.Value = strings.TrimSpace(req.Value)
+		}
+
 		// Validate setting value if validation rules exist for this key
 		if rules, ok := settingValidationRules[key]; ok {
 			trimmedValue := strings.TrimSpace(req.Value)
@@ -93,7 +98,6 @@ func UpdateSiteSetting(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-			req.Value = strings.TrimSpace(req.Value)
 		}
 
 		var setting models.SiteSetting

@@ -19,6 +19,13 @@ func TestParseZone(t *testing.T) {
 		"Local":            false,
 		"Mars/Olympus":     false,
 		"../../etc/passwd": false,
+		// Go's time.LoadLocation accepts these, but the frontend picker
+		// (Intl.supportedValuesOf("timeZone")) never offers them - reject
+		// so the two never disagree about what's a valid value.
+		"EST5EDT":   false,
+		"WET":       false,
+		"Etc/GMT+5": false,
+		"Etc/UTC":   false,
 	} {
 		_, err := ParseZone(name)
 		if (err == nil) != ok {

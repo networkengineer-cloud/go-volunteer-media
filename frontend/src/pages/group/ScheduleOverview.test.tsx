@@ -4,6 +4,9 @@ import ScheduleOverview from './ScheduleOverview';
 import { scheduleApi } from '../../api/client';
 import type { AxiosResponse } from 'axios';
 import type { ScheduleOverviewResponse, CoverageRequest, GroupMember, ReassignShiftsBatchResult, CoverageRequestBatchResult } from '../../api/client';
+import { SiteSettingsContext } from '../../contexts/SiteSettingsContext';
+import type { SiteSettings } from '../../contexts/SiteSettingsContext';
+import { currentWeekStart } from './scheduleGrid';
 
 vi.mock('../../api/client', () => ({
   scheduleApi: {
@@ -1112,5 +1115,112 @@ describe('ScheduleOverview', () => {
       expect(await screen.findByRole('button', { name: /give back shift/i })).toBeInTheDocument();
       expect(await screen.findByRole('button', { name: /request coverage/i })).toBeInTheDocument();
     });
+  });
+});
+
+// SiteSettingsProvider renders children with shelter_timezone defaulted to
+// 'UTC' while its settings fetch is in flight, then re-renders with the real
+// zone once it resolves. ScheduleOverview's initial weekStart is computed
+// once via useState's lazy initializer, so without the fix in place it would
+// stay pinned to the UTC-computed week even after the real zone arrives.
+describe('ScheduleOverview shelter time zone week default', () => {
+  const baseSettings: SiteSettings = {
+    site_name: 'MyHAWS',
+    site_short_name: 'MyHAWS',
+    site_description: '',
+    hero_image_url: '',
+    shelter_timezone: 'UTC',
+  };
+
+  function renderWithZone(zone: string) {
+    return render(
+      <SiteSettingsContext.Provider
+        value={{ settings: { ...baseSettings, shelter_timezone: zone }, loading: false, error: null, refetch: async () => {} }}
+      >
+        <ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />
+      </SiteSettingsContext.Provider>
+    );
+  }
+
+  beforeEach(() => {
+    mockOverview({ week_start: '2026-08-09', slots: [] });
+  });
+
+  it('recomputes the initial week once the real shelter time zone loads, replacing the UTC default', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    // Saturday 10pm in Los Angeles is already Sunday 5am UTC: UTC has
+    // rolled to next week while Los Angeles is still on the current one.
+    vi.setSystemTime(new Date('2026-09-27T05:00:00Z'));
+    try {
+      const utcWeek = currentWeekStart('UTC');
+      const laWeek = currentWeekStart('America/Los_Angeles');
+      expect(utcWeek).not.toBe(laWeek);
+
+      const callsBefore = vi.mocked(scheduleApi.getOverview).mock.calls.length;
+      const { rerender } = render(
+        <SiteSettingsContext.Provider value={{ settings: baseSettings, loading: true, error: null, refetch: async () => {} }}>
+          <ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />
+        </SiteSettingsContext.Provider>
+      );
+
+      await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalledTimes(callsBefore + 1));
+      expect(vi.mocked(scheduleApi.getOverview).mock.calls[callsBefore][1]).toMatchObject({ weekStart: utcWeek });
+
+      rerender(
+        <SiteSettingsContext.Provider
+          value={{ settings: { ...baseSettings, shelter_timezone: 'America/Los_Angeles' }, loading: false, error: null, refetch: async () => {} }}
+        >
+          <ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />
+        </SiteSettingsContext.Provider>
+      );
+
+      await waitFor(() => {
+        const lastCall = vi.mocked(scheduleApi.getOverview).mock.calls.at(-1);
+        expect(lastCall?.[1]).toMatchObject({ weekStart: laWeek });
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a week the volunteer already navigated to, even after the zone changes underneath it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-27T05:00:00Z'));
+    try {
+      const utcWeek = currentWeekStart('UTC');
+      const laWeek = currentWeekStart('America/Los_Angeles');
+      expect(utcWeek).not.toBe(laWeek);
+
+      const { rerender } = renderWithZone('UTC');
+      await waitFor(() => expect(scheduleApi.getOverview).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByLabelText('Next week'));
+      const navigatedWeek = new Date(`${utcWeek}T00:00:00Z`);
+      navigatedWeek.setUTCDate(navigatedWeek.getUTCDate() + 7);
+      const navigatedWeekIso = navigatedWeek.toISOString().slice(0, 10);
+
+      await waitFor(() => {
+        const lastCall = vi.mocked(scheduleApi.getOverview).mock.calls.at(-1);
+        expect(lastCall?.[1]).toMatchObject({ weekStart: navigatedWeekIso });
+      });
+
+      // Simulate the settings fetch resolving with the real zone after
+      // navigation, on the SAME mounted instance - the already-navigated
+      // week must not be clobbered back to either zone's "current" week.
+      rerender(
+        <SiteSettingsContext.Provider
+          value={{ settings: { ...baseSettings, shelter_timezone: 'America/Los_Angeles' }, loading: false, error: null, refetch: async () => {} }}
+        >
+          <ScheduleOverview groupId={1} totalMembers={1} currentUserId={1} />
+        </SiteSettingsContext.Provider>
+      );
+
+      expect(navigatedWeekIso).not.toBe(laWeek);
+      await new Promise(r => setTimeout(r, 0));
+      const lastCall = vi.mocked(scheduleApi.getOverview).mock.calls.at(-1);
+      expect(lastCall?.[1]).toMatchObject({ weekStart: navigatedWeekIso });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
