@@ -29,6 +29,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/lifecycle"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/ratelimit"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/version"
@@ -184,6 +185,11 @@ func main() {
 	// database before it is sent.
 	stopCoverageDigestSweep := handlers.StartCoverageDigestSweep(db, emailService, groupMeService, 60*time.Second)
 
+	// Shared auth rate limiter; its sweep deletes expired counters. Safe
+	// with multiple replicas - the delete is idempotent.
+	authRateLimiter := ratelimit.New(db)
+	stopRateLimitSweep := authRateLimiter.StartSweep(10*time.Minute, time.Hour)
+
 	// Load embedded frontend assets at startup
 	distFS, err := fs.Sub(frontend.DistFS, "dist")
 	if err != nil {
@@ -248,20 +254,28 @@ func main() {
 	// Serve video blobs through the backend proxy (public, no auth required)
 	api.GET("/videos/:uuid", handlers.ServeVideo(db, storageProvider))
 
-	// Public routes (with rate limiting for auth endpoints)
-	authRateLimit := 5
-	if v := os.Getenv("AUTH_RATE_LIMIT_PER_MINUTE"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
-			authRateLimit = parsed
-		}
-	}
-	authLimiter := middleware.RateLimit(authRateLimit, 1*time.Minute)
-	api.POST("/login", authLimiter, handlers.Login(db))
+	// Public routes (with rate limiting for auth endpoints). Counters are
+	// shared across replicas (internal/ratelimit). Limits are per account +
+	// IP, so volunteers sharing the shelter's public IP don't throttle each
+	// other, with a looser per-IP ceiling on top.
+	perAccount := ratelimit.Rule{Limit: envPositiveInt("AUTH_RATE_LIMIT_PER_MINUTE", 5), Window: time.Minute}
+	perIP := ratelimit.Rule{Limit: envPositiveInt("AUTH_IP_RATE_LIMIT_PER_MINUTE", 60), Window: time.Minute}
+	named := func(r ratelimit.Rule, name string) ratelimit.Rule { r.Name = name; return r }
+	api.POST("/login", ratelimit.Middleware(authRateLimiter,
+		ratelimit.Check{Rule: named(perAccount, "login:user_ip"), Field: "username"},
+		ratelimit.Check{Rule: named(perIP, "login:ip")},
+	), handlers.Login(db))
 	// Registration disabled - invite-only system. Admins can create users via /api/admin/users
-	// api.POST("/register", authLimiter, handlers.Register(db))
-	api.POST("/request-password-reset", authLimiter, handlers.RequestPasswordReset(db, emailService))
-	api.POST("/reset-password", authLimiter, handlers.ResetPassword(db))
-	api.POST("/setup-password", authLimiter, handlers.SetupPassword(db)) // New user password setup (invite flow)
+	api.POST("/request-password-reset", ratelimit.Middleware(authRateLimiter,
+		ratelimit.Check{Rule: named(perAccount, "password_reset_request:email_ip"), Field: "email"},
+		ratelimit.Check{Rule: named(perIP, "password_reset_request:ip")},
+	), handlers.RequestPasswordReset(db, emailService))
+	api.POST("/reset-password", ratelimit.Middleware(authRateLimiter,
+		ratelimit.Check{Rule: named(perIP, "password_reset:ip")},
+	), handlers.ResetPassword(db))
+	api.POST("/setup-password", ratelimit.Middleware(authRateLimiter,
+		ratelimit.Check{Rule: named(perIP, "password_setup:ip")},
+	), handlers.SetupPassword(db)) // New user password setup (invite flow)
 
 	// Site settings (public read)
 	api.GET("/settings", handlers.GetSiteSettings(db))
@@ -606,6 +620,7 @@ func main() {
 
 	stopEmbeddingSweep()
 	stopCoverageDigestSweep()
+	stopRateLimitSweep()
 
 	// srv.Shutdown only waits for in-flight HTTP handlers, not the detached
 	// write-path embed goroutines those handlers spawn (see embedAsync in
@@ -652,4 +667,15 @@ func registerCoreMiddleware(router *gin.Engine, serviceName string) {
 	router.Use(gin.Recovery())
 	router.Use(otelgin.Middleware(serviceName))
 	router.Use(gin.Recovery())
+}
+
+// envPositiveInt returns the env var key as a positive int, or def when it
+// is unset or not a positive integer.
+func envPositiveInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return def
 }

@@ -74,7 +74,8 @@ Copy `.env.example` to `.env` before first run.
 | `DB_SSLMODE` | No | `disable` | SSL mode |
 | `JWT_SECRET` | **Yes** | — | Min 32 chars; validated on startup |
 | `ALLOWED_ORIGINS` | No | `http://localhost:5173` | CORS allowed origins |
-| `AUTH_RATE_LIMIT_PER_MINUTE` | No | `5` | Auth endpoint rate limit |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | No | `5` | Auth rate limit per account (username/email) + client IP |
+| `AUTH_IP_RATE_LIMIT_PER_MINUTE` | No | `60` | Auth rate limit per client IP, across accounts |
 | `FRONTEND_URL` | No | `http://localhost:5173` | Used in emails |
 | `SMTP_HOST/PORT/USERNAME/PASSWORD/FROM_EMAIL/FROM_NAME` | No | — | Email sending (optional in dev) |
 

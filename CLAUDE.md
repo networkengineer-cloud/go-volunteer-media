@@ -43,7 +43,8 @@ dropping is not automatic.
 | Package | What lives there |
 | --- | --- |
 | `handlers` | ~40 handler files, one per feature area, each with a `_test.go`. All business logic. |
-| `middleware` | Auth, DB-per-request, CORS, security headers, rate limit, request ID, body-size caps, Cloudflare IP handling. |
+| `middleware` | Auth, DB-per-request, CORS, security headers, request ID, body-size caps, Cloudflare IP handling. |
+| `ratelimit` | Replica-safe fixed-window rate limiter; counters in Postgres. Used by the auth endpoints (per account + IP, and per IP). |
 | `auth` | JWT issue/verify, bcrypt, `JWT_SECRET` entropy validation. |
 | `authz` | The authorization policy: roles, actions, `CallerCan`, `GroupsWhere`, `CheckManageUser`. |
 | `database` | Connection setup, migrations, pgvector readiness check. Forces `time.Local` to UTC in `init()`. |

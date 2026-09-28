@@ -27,7 +27,7 @@
 ## Runtime config (common env vars)
 - API listens on `PORT` (default 8080).
 - DB: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSLMODE`.
-- Auth/security: `JWT_SECRET` (required; validated for length/entropy in [internal/auth/auth.go](../internal/auth/auth.go)), `ALLOWED_ORIGINS` (CORS), `AUTH_RATE_LIMIT_PER_MINUTE`.
+- Auth/security: `JWT_SECRET` (required; validated for length/entropy in [internal/auth/auth.go](../internal/auth/auth.go)), `ALLOWED_ORIGINS` (CORS), `AUTH_RATE_LIMIT_PER_MINUTE` (per account + IP), `AUTH_IP_RATE_LIMIT_PER_MINUTE` (per IP). Auth rate limits are stored in Postgres via [internal/ratelimit](../internal/ratelimit/ratelimit.go) so they hold across replicas.
 
 ## Media/document handling (important integration points)
 - Images can be served from DB via `GET /api/images/:uuid`; legacy/static uploads are also served from `/uploads` mapped to `public/uploads` (see [cmd/api/main.go](../cmd/api/main.go)).
