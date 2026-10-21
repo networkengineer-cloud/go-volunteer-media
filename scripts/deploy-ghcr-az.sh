@@ -146,6 +146,26 @@ if [[ "${LIST_REVISIONS}" == true ]]; then
   exit 0
 fi
 
+# Retry a docker push a few times. ghcr.io pushes occasionally fail on the
+# final blob-commit request with "timeout awaiting response headers" even
+# though all bytes already uploaded - a transient hiccup in the local Docker
+# network path, not a real failure. A retry is cheap: Docker skips layers
+# that already landed and only redoes the one that timed out.
+push_with_retry() {
+  local image="$1"
+  local attempt=1
+  local max_attempts=3
+  until docker push "${image}"; do
+    if [[ "${attempt}" -ge "${max_attempts}" ]]; then
+      echo "Error: docker push ${image} failed after ${max_attempts} attempts"
+      return 1
+    fi
+    echo "Push failed (attempt ${attempt}/${max_attempts}), retrying ${image} in 10s..."
+    sleep 10
+    attempt=$((attempt + 1))
+  done
+}
+
 # Generate revision tag (date + git SHA)
 if [[ -z "${ROLLBACK_REVISION}" ]]; then
   DATE=$(date +%Y%m%d)
@@ -176,10 +196,10 @@ if [[ "${SKIP_BUILD}" == false ]]; then
     .
   
   echo "Pushing revision image to registry..."
-  docker push "${FULL_IMAGE_TAG}"
+  push_with_retry "${FULL_IMAGE_TAG}"
 
   echo "Pushing base tag to registry..."
-  docker push "${REPO}:${IMAGE_TAG}"
+  push_with_retry "${REPO}:${IMAGE_TAG}"
 else
   echo "Skipping build (--skip-build or --rollback specified)"
 
