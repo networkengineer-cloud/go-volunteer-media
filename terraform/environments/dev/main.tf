@@ -403,6 +403,11 @@ resource "azurerm_container_app" "main" {
         value = var.schedule_email_notifications_enabled ? "true" : "false"
       }
 
+      env {
+        name  = "COVERAGE_REQUESTS_FEED_ENABLED"
+        value = var.coverage_requests_feed_enabled ? "true" : "false"
+      }
+
       # Azure Storage Configuration
       env {
         name  = "STORAGE_PROVIDER"

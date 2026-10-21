@@ -216,6 +216,12 @@ variable "schedule_email_notifications_enabled" {
   default     = false
 }
 
+variable "coverage_requests_feed_enabled" {
+  type        = bool
+  description = "Whether open shift-coverage requests are surfaced as entries in the group activity feed. Defaults to true in dev so the feature is testable without a separate flag flip."
+  default     = true
+}
+
 # Axiom / OpenTelemetry Configuration
 variable "axiom_api_token" {
   type        = string
