@@ -272,14 +272,22 @@ func (s *Service) SendPasswordSetupEmail(ctx context.Context, to, username, setu
 
 // SendAnnouncementEmail sends an announcement email
 func (s *Service) SendAnnouncementEmail(ctx context.Context, to, title, content string) error {
+	subject, body := s.buildAnnouncementEmail(title, content)
+	return s.SendEmail(ctx, to, subject, body)
+}
+
+// buildAnnouncementEmail renders the subject/HTML body shared by
+// SendAnnouncementEmail and SendAnnouncementEmailBatch, so the two single-
+// vs-batch send paths can't drift into sending different-looking emails.
+func (s *Service) buildAnnouncementEmail(title, content string) (subject, body string) {
 	siteName := s.getSiteName()
-	subject := fmt.Sprintf("Announcement: %s - %s", title, siteName)
+	subject = fmt.Sprintf("Announcement: %s - %s", title, siteName)
 
 	// Escape HTML in title and convert newlines to HTML line breaks in content
 	escapedTitle := html.EscapeString(title)
 	htmlContent := strings.ReplaceAll(html.EscapeString(content), "\n", "<br>")
 
-	body := fmt.Sprintf(`
+	body = fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
 <head>
@@ -308,5 +316,102 @@ func (s *Service) SendAnnouncementEmail(ctx context.Context, to, title, content 
 </html>
 `, escapedTitle, htmlContent, siteName)
 
-	return s.SendEmail(ctx, to, subject, body)
+	return subject, body
+}
+
+// nonBatchSendMaxAttempts/nonBatchSendRetryDelay bound the fallback retry
+// SendAnnouncementEmailBatch uses for a provider with no batch endpoint of
+// its own (SMTP, or a test double). The base Provider interface exposes a
+// failure as a plain error with no status code, so this can't single out a
+// rate limit the way ResendProvider's own batch retry does - it treats any
+// failure as possibly transient, bounded by a small retry count so one
+// permanently bad address doesn't loop for long.
+const (
+	nonBatchSendMaxAttempts = 3
+	nonBatchSendRetryDelay  = 500 * time.Millisecond
+)
+
+// batchSendTimeout bounds a whole SendAnnouncementEmailBatch call - longer
+// than SendEmail's own 30s single-send timeout because a batch covers many
+// recipients and may retry several of Resend's own chunked calls.
+const batchSendTimeout = 2 * time.Minute
+
+// SendAnnouncementEmailBatch sends the same announcement to every address
+// in to, preferring the provider's batch endpoint (currently only Resend,
+// via BatchEmailProvider) when it has one - turning what would be one HTTP
+// call per recipient into one call per up-to-100 recipients, which is what
+// actually keeps a group-wide announcement under Resend's per-second rate
+// limit instead of just retrying around hitting it. A provider without a
+// batch endpoint (SMTP) falls back to sending one at a time, each with a
+// short retry.
+//
+// Returns one error per recipient, in the same order as to (nil for a
+// recipient whose send succeeded), mirroring BatchEmailProvider.SendBatch.
+func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, title, content string) []error {
+	errs := make([]error, len(to))
+	if !s.IsConfigured() {
+		err := fmt.Errorf("email service is not configured")
+		for i := range errs {
+			errs[i] = err
+		}
+		return errs
+	}
+
+	subject, body := s.buildAnnouncementEmail(title, content)
+
+	valid := make([]string, 0, len(to))
+	validIdx := make([]int, 0, len(to))
+	for i, addr := range to {
+		if !isValidEmail(addr) {
+			errs[i] = fmt.Errorf("invalid email address: %s", addr)
+			continue
+		}
+		valid = append(valid, addr)
+		validIdx = append(validIdx, i)
+	}
+	if len(valid) == 0 {
+		return errs
+	}
+
+	// Mirrors SendEmail's own context.WithoutCancel reasoning: this is
+	// always called off the request path already (see
+	// sendGroupAnnouncementEmails), but detaching here too means a caller
+	// that ever stops doing so doesn't silently abort a group's worth of
+	// sends on client disconnect.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), batchSendTimeout)
+	defer cancel()
+
+	if batchProvider, ok := s.provider.(BatchEmailProvider); ok {
+		results := batchProvider.SendBatch(ctx, valid, subject, body)
+		for i, err := range results {
+			errs[validIdx[i]] = err
+		}
+		return errs
+	}
+
+	for i, addr := range valid {
+		errs[validIdx[i]] = sendWithRetry(ctx, s.provider, addr, subject, body)
+	}
+	return errs
+}
+
+// sendWithRetry retries a single-recipient send a couple of times for a
+// provider with no batch endpoint of its own. See nonBatchSendMaxAttempts.
+func sendWithRetry(ctx context.Context, provider Provider, to, subject, htmlBody string) error {
+	var err error
+	for attempt := 0; attempt < nonBatchSendMaxAttempts; attempt++ {
+		err = provider.SendEmail(ctx, to, subject, htmlBody)
+		if err == nil {
+			return nil
+		}
+		if attempt == nonBatchSendMaxAttempts-1 {
+			break
+		}
+		select {
+		case <-time.After(nonBatchSendRetryDelay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return err
 }

@@ -286,9 +286,20 @@ func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService 
 		"group_id":   groupID,
 	}).Info("Sending group announcement emails to members")
 
+	// SendAnnouncementEmailBatch prefers the provider's batch endpoint when
+	// it has one (Resend), which is what actually keeps a group-wide send
+	// under the provider's per-recipient-call rate limit - sending the
+	// whole group as a handful of batch calls instead of one call per
+	// member, with retry/backoff as a fallback. See internal/email.
+	emails := make([]string, len(users))
+	for i, user := range users {
+		emails[i] = user.Email
+	}
+	errs := emailService.SendAnnouncementEmailBatch(ctx, emails, title, content)
+
 	successCount := 0
-	for _, user := range users {
-		if err := emailService.SendAnnouncementEmail(ctx, user.Email, title, content); err != nil {
+	for _, err := range errs {
+		if err != nil {
 			// Don't log email addresses to prevent PII leakage - just log the error
 			logger.Error("Failed to send announcement email to user", err)
 		} else {

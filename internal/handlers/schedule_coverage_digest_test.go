@@ -35,6 +35,17 @@ func (r *notifyRecorder) count() int {
 	return len(r.calls)
 }
 
+// withShortReopenDebounceWindow shrinks reopenDebounceWindow for the
+// duration of a test, so it doesn't have to sleep out the real few-second
+// window (or race its own 5-second "did it even try" timeout against it)
+// to see a reopen's announcement actually fire.
+func withShortReopenDebounceWindow(t *testing.T) {
+	t.Helper()
+	orig := reopenDebounceWindow
+	reopenDebounceWindow = time.Millisecond
+	t.Cleanup(func() { reopenDebounceWindow = orig })
+}
+
 // createDigestRequest inserts an open, unnotified coverage request whose
 // created_at is backdated by age, so a test can place it inside or outside
 // the quiet period without sleeping.
@@ -443,6 +454,7 @@ func TestNotifyGroupOfOpenCoverageRequests_SendsSynchronously(t *testing.T) {
 // second time about a shift it was just told about - the exact double-send
 // this sweep exists to prevent.
 func TestReopenCoverageRequest_DoesNotLeaveWorkForTheDigestSweep(t *testing.T) {
+	withShortReopenDebounceWindow(t)
 	db := SetupTestDB(t)
 	requester, claimant, group := setupCoverageTestGroup(t, db)
 	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
@@ -467,6 +479,7 @@ func TestReopenCoverageRequest_DoesNotLeaveWorkForTheDigestSweep(t *testing.T) {
 	if w := performReopenCoverageRequest(db, claimant.ID, false, group.ID, reqRow.ID); w.Code != 200 {
 		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
 	}
+	WaitForPendingCoverageNotifications()
 
 	// Backdate so the row is past the quiet period and would be picked up.
 	if err := db.Model(&models.ShiftCoverageRequest{}).Where("id = ?", reqRow.ID).
@@ -489,6 +502,7 @@ func TestReopenCoverageRequest_DoesNotLeaveWorkForTheDigestSweep(t *testing.T) {
 // announced a second time, byte-identical, a few minutes later. The stamp
 // has to cover what the announcement actually covered.
 func TestReopenCoverageRequest_StampsEveryShiftItsAnnouncementCovered(t *testing.T) {
+	withShortReopenDebounceWindow(t)
 	db := SetupTestDB(t)
 	requester, claimant, group := setupCoverageTestGroup(t, db)
 	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
@@ -509,6 +523,7 @@ func TestReopenCoverageRequest_StampsEveryShiftItsAnnouncementCovered(t *testing
 	if w := performReopenCoverageRequest(db, claimant.ID, false, group.ID, reopened.ID); w.Code != 200 {
 		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
 	}
+	WaitForPendingCoverageNotifications()
 
 	// The reopen's announcement listed both shifts, so both are now told.
 	var stillPending int64
@@ -626,6 +641,7 @@ func TestSendCoverageReminder_StampsThePendingShiftsItAnnounced(t *testing.T) {
 // not that the reopen path actually uses it - swapping that call for a bare
 // `go` left the whole suite green. This drives the real handler.
 func TestReopenCoverageRequest_ItsAnnouncementIsDrainedAtShutdown(t *testing.T) {
+	withShortReopenDebounceWindow(t)
 	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
 	db := SetupTestDB(t)
 	requester, claimant, group := setupCoverageTestGroup(t, db)

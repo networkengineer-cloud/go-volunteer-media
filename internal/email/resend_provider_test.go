@@ -7,7 +7,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestNewResendProvider(t *testing.T) {
@@ -188,6 +190,225 @@ func TestResendProvider_SendEmail_APIError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Invalid email address") {
 		t.Errorf("Expected error message to contain 'Invalid email address', got: %v", err)
+	}
+}
+
+func TestResendProvider_SendBatch_Success(t *testing.T) {
+	var gotPayload []ResendEmailRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/batch" {
+			t.Errorf("Expected batch request to POST /batch, got %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotPayload); err != nil {
+			t.Errorf("Failed to decode batch request body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"data": []map[string]string{{"id": "1"}, {"id": "2"}}})
+	}))
+	defer server.Close()
+
+	provider := &ResendProvider{
+		APIKey:    "test-api-key",
+		FromEmail: "test@example.com",
+		FromName:  "Test User",
+		apiURL:    server.URL,
+		client:    server.Client(),
+	}
+
+	to := []string{"a@example.com", "b@example.com"}
+	errs := provider.SendBatch(context.Background(), to, "Subject", "<p>Body</p>")
+
+	if len(errs) != len(to) {
+		t.Fatalf("Expected %d results, got %d", len(to), len(errs))
+	}
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("Expected no error for recipient %d, got: %v", i, err)
+		}
+	}
+	if len(gotPayload) != 2 {
+		t.Fatalf("Expected batch payload with 2 messages, got %d", len(gotPayload))
+	}
+	if gotPayload[0].To[0] != "a@example.com" || gotPayload[1].To[0] != "b@example.com" {
+		t.Errorf("Expected each message addressed to one recipient, got %v", gotPayload)
+	}
+}
+
+func TestResendProvider_SendBatch_ChunksAtRecipientCap(t *testing.T) {
+	var callCount atomic.Int32
+	var chunkSizes []int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		var payload []ResendEmailRequest
+		json.NewDecoder(r.Body).Decode(&payload)
+		chunkSizes = append(chunkSizes, len(payload))
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"data": []map[string]string{}})
+	}))
+	defer server.Close()
+
+	provider := &ResendProvider{
+		APIKey: "test-api-key", FromEmail: "test@example.com",
+		apiURL: server.URL, client: server.Client(),
+	}
+
+	to := make([]string, 150)
+	for i := range to {
+		to[i] = "recipient@example.com"
+	}
+
+	errs := provider.SendBatch(context.Background(), to, "Subject", "<p>Body</p>")
+	for _, err := range errs {
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+	}
+	if callCount.Load() != 2 {
+		t.Fatalf("Expected 150 recipients to need 2 batch calls, got %d", callCount.Load())
+	}
+	if len(chunkSizes) != 2 || chunkSizes[0] != 100 || chunkSizes[1] != 50 {
+		t.Fatalf("Expected chunk sizes [100, 50], got %v", chunkSizes)
+	}
+}
+
+func TestResendProvider_SendBatch_RetriesOn429ThenSucceeds(t *testing.T) {
+	var callCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if callCount.Add(1) == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			json.NewEncoder(w).Encode(ResendBatchEmailResponse{Error: struct {
+				Message string `json:"message"`
+			}{Message: "rate limited"}})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"data": []map[string]string{{"id": "1"}}})
+	}))
+	defer server.Close()
+
+	provider := &ResendProvider{
+		APIKey: "test-api-key", FromEmail: "test@example.com",
+		apiURL: server.URL, client: server.Client(),
+	}
+
+	errs := provider.SendBatch(context.Background(), []string{"a@example.com"}, "Subject", "<p>Body</p>")
+	if errs[0] != nil {
+		t.Fatalf("Expected the retry to succeed, got: %v", errs[0])
+	}
+	if callCount.Load() != 2 {
+		t.Fatalf("Expected exactly one retry (2 calls total), got %d", callCount.Load())
+	}
+}
+
+func TestResendProvider_SendBatch_GivesUpAfterMaxAttemptsOn429(t *testing.T) {
+	var callCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(ResendBatchEmailResponse{Error: struct {
+			Message string `json:"message"`
+		}{Message: "rate limited"}})
+	}))
+	defer server.Close()
+
+	provider := &ResendProvider{
+		APIKey: "test-api-key", FromEmail: "test@example.com",
+		apiURL: server.URL, client: server.Client(),
+	}
+
+	errs := provider.SendBatch(context.Background(), []string{"a@example.com", "b@example.com"}, "Subject", "<p>Body</p>")
+	if callCount.Load() != resendBatchMaxAttempts {
+		t.Fatalf("Expected exactly %d attempts, got %d", resendBatchMaxAttempts, callCount.Load())
+	}
+	for i, err := range errs {
+		if err == nil || !strings.Contains(err.Error(), "rate limited") {
+			t.Errorf("Expected recipient %d to carry the rate-limit error, got: %v", i, err)
+		}
+	}
+}
+
+func TestResendProvider_SendBatch_DoesNotRetryOnBadRequest(t *testing.T) {
+	var callCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ResendBatchEmailResponse{Error: struct {
+			Message string `json:"message"`
+		}{Message: "invalid recipient"}})
+	}))
+	defer server.Close()
+
+	provider := &ResendProvider{
+		APIKey: "test-api-key", FromEmail: "test@example.com",
+		apiURL: server.URL, client: server.Client(),
+	}
+
+	errs := provider.SendBatch(context.Background(), []string{"a@example.com"}, "Subject", "<p>Body</p>")
+	if callCount.Load() != 1 {
+		t.Fatalf("Expected a non-transient 400 to be tried only once, got %d calls", callCount.Load())
+	}
+	if errs[0] == nil {
+		t.Fatal("Expected an error for the bad request")
+	}
+}
+
+func TestResendProvider_SendBatch_HonorsRetryAfterHeader(t *testing.T) {
+	var callCount atomic.Int32
+	var secondCallAt time.Time
+	firstCallAt := time.Now()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if callCount.Add(1) == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			json.NewEncoder(w).Encode(ResendBatchEmailResponse{})
+			return
+		}
+		secondCallAt = time.Now()
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"data": []map[string]string{{"id": "1"}}})
+	}))
+	defer server.Close()
+
+	provider := &ResendProvider{
+		APIKey: "test-api-key", FromEmail: "test@example.com",
+		apiURL: server.URL, client: server.Client(),
+	}
+
+	errs := provider.SendBatch(context.Background(), []string{"a@example.com"}, "Subject", "<p>Body</p>")
+	if errs[0] != nil {
+		t.Fatalf("Expected eventual success, got: %v", errs[0])
+	}
+	if secondCallAt.Sub(firstCallAt) < 900*time.Millisecond {
+		t.Fatalf("Expected the retry to wait for the Retry-After header's 1s, only waited %s", secondCallAt.Sub(firstCallAt))
+	}
+}
+
+func TestResendProvider_SendBatch_NotConfigured(t *testing.T) {
+	provider := &ResendProvider{}
+	errs := provider.SendBatch(context.Background(), []string{"a@example.com", "b@example.com"}, "Subject", "<p>Body</p>")
+	for i, err := range errs {
+		if err == nil {
+			t.Errorf("Expected an error for recipient %d when unconfigured", i)
+		}
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	tests := []struct {
+		header string
+		want   time.Duration
+	}{
+		{"", 0},
+		{"2", 2 * time.Second},
+		{"0", 0},
+		{"-1", 0},
+		{"not-a-number", 0},
+	}
+	for _, tt := range tests {
+		if got := parseRetryAfter(tt.header); got != tt.want {
+			t.Errorf("parseRetryAfter(%q) = %v, want %v", tt.header, got, tt.want)
+		}
 	}
 }
 
