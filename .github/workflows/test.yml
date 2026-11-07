@@ -48,6 +48,11 @@ jobs:
     - name: Install dependencies
       run: go mod download
 
+    - name: Placeholder frontend/dist for go:embed
+      # frontend/embed.go embeds dist/; without it the Go build fails with
+      # "pattern dist: no matching files found" (same step as pr-checks.yml).
+      run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
+
     - name: Run Go tests
       env:
         JWT_SECRET: ${{ secrets.TEST_JWT_SECRET || 'L5WTt6D+6R55YfKzwqPRAEX5bR0bkNo4i58jYKL0wsk=' }}
@@ -105,6 +110,11 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.24'
+
+    - name: Placeholder frontend/dist for go:embed
+      # frontend/embed.go embeds dist/; without it the Go build fails with
+      # "pattern dist: no matching files found" (same step as pr-checks.yml).
+      run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
 
     - name: Run go vet
       run: go vet ./...
@@ -198,7 +208,12 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.24'
-    
+
+    - name: Placeholder frontend/dist for go:embed
+      # frontend/embed.go embeds dist/; without it the Go build fails with
+      # "pattern dist: no matching files found" (same step as pr-checks.yml).
+      run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
+
     - name: Start backend API
       env:
         DB_HOST: localhost
