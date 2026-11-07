@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -49,9 +50,16 @@ func mapBlobError(err error) error {
 // already-deleted image) — callers translate it into a plain 404, so it is
 // not recorded as a span error, which is reserved for the mapped error
 // cases that represent a real storage problem (auth, network, throttling).
+//
+// A context.Canceled error means the caller (in practice: the HTTP client
+// that hung up mid-download) abandoned the request — not a storage fault —
+// so it is likewise returned without being recorded as a span error. The
+// %w wrapping in mapBlobError keeps errors.Is(err, context.Canceled) true
+// for callers. context.DeadlineExceeded is still recorded: a timeout is a
+// real failure.
 func failBlob(span trace.Span, err error, msg string) error {
 	mapped := mapBlobError(err)
-	if mapped == ErrNotFound {
+	if mapped == ErrNotFound || errors.Is(mapped, context.Canceled) {
 		return mapped
 	}
 	telemetry.RecordError(span, mapped, msg)
@@ -272,7 +280,12 @@ func (a *AzureBlobProvider) getBlob(ctx context.Context, spanName, pathPrefix, i
 	// Read all data
 	data, err = io.ReadAll(downloadResponse.Body)
 	if err != nil {
-		return nil, "", telemetry.Fail(span, fmt.Errorf("failed to read blob data: %w", err), "read failed")
+		wrapped := fmt.Errorf("failed to read blob data: %w", err)
+		if errors.Is(err, context.Canceled) {
+			// Caller went away mid-body; see failBlob.
+			return nil, "", wrapped
+		}
+		return nil, "", telemetry.Fail(span, wrapped, "read failed")
 	}
 
 	// Get content type
