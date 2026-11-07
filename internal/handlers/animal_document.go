@@ -207,7 +207,7 @@ func ServeAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) 
 				Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id = ?", userID, animal.GroupID).
 				Count(&count).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to verify permissions")
 				return
 			}
 			if count == 0 {
@@ -221,11 +221,7 @@ func ServeAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) 
 			// Retrieve from Azure Blob Storage
 			data, mimeType, err := storageProvider.GetDocument(ctx, animal.ProtocolDocumentBlobIdentifier)
 			if err != nil {
-				if err == storage.ErrNotFound {
-					c.JSON(http.StatusNotFound, gin.H{"error": "Document not found in storage"})
-				} else {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve document"})
-				}
+				respondBlobFetchError(c, err, "Document not found in storage", "Failed to retrieve document")
 				return
 			}
 

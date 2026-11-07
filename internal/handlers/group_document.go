@@ -294,7 +294,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 				Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id = ?", userID, doc.GroupID).
 				Count(&count).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to verify permissions")
 				return
 			}
 			if count == 0 {
@@ -306,11 +306,7 @@ func ServeGroupDocument(db *gorm.DB, storageProvider storage.Provider) gin.Handl
 		if doc.FileProvider != storage.ProviderPostgres && doc.FileBlobIdentifier != "" {
 			data, mimeType, err := storageProvider.GetDocument(ctx, doc.FileBlobIdentifier)
 			if err != nil {
-				if err == storage.ErrNotFound {
-					c.JSON(http.StatusNotFound, gin.H{"error": "Document file not found in storage"})
-				} else {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve document file"})
-				}
+				respondBlobFetchError(c, err, "Document file not found in storage", "Failed to retrieve document file")
 				return
 			}
 			c.Header("Content-Type", mimeType)
