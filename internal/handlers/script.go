@@ -464,7 +464,7 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 				Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id = ?", userID, script.GroupID).
 				Count(&count).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to verify permissions")
 				return
 			}
 			if count == 0 {

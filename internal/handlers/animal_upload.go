@@ -167,7 +167,7 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 		var animalImage models.AnimalImage
 		if err := db.Where("image_url = ?", imageURL).First(&animalImage).Error; err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve image"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to retrieve image")
 				return
 			}
 			// Backward compat: videos uploaded before the /api/videos/ route existed have
@@ -182,7 +182,7 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 			var thumbVideo models.AnimalVideo
 			thumbErr := db.Where("thumbnail_url = ?", imageURL).First(&thumbVideo).Error
 			if thumbErr != nil && !errors.Is(thumbErr, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve thumbnail"})
+				respondInternalErrorUnlessCanceled(c, thumbErr, "Failed to retrieve thumbnail")
 				return
 			}
 			if thumbErr == nil {
@@ -248,7 +248,7 @@ func ServeVideo(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"})
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve video"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to retrieve video")
 			}
 			return
 		}

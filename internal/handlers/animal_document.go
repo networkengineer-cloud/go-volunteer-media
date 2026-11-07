@@ -207,7 +207,7 @@ func ServeAnimalProtocolDocument(db *gorm.DB, storageProvider storage.Provider) 
 				Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id = ?", userID, animal.GroupID).
 				Count(&count).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to verify permissions")
 				return
 			}
 			if count == 0 {
