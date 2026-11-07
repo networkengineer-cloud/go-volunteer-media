@@ -428,7 +428,7 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
 			{Date: date, Hour: 10},
-		})
+		}, nil)
 		want := fmt.Sprintf("Jane Doe needs coverage for their 10:00 AM shift on %s.", date.Format("Monday, January 2"))
 		if summary != want {
 			t.Fatalf("Expected %q, got %q", want, summary)
@@ -441,7 +441,7 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
 			{Date: tue, Hour: 10},
 			{Date: thu, Hour: 14},
-		})
+		}, nil)
 		want := fmt.Sprintf("Jane Doe needs coverage for 2 shifts:\n- %s at 10:00 AM\n- %s at 2:00 PM",
 			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
 		if summary != want {
@@ -457,7 +457,7 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
 			{Date: date, Hour: 17},
-		})
+		}, nil)
 		want := fmt.Sprintf("Jane Doe needs coverage for their 5:00–6:30 PM shift on %s.", date.Format("Monday, January 2"))
 		if summary != want {
 			t.Fatalf("Expected %q, got %q", want, summary)
@@ -468,7 +468,7 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
 			{Date: date, Hour: 10, Priority: "optional"},
-		})
+		}, nil)
 		want := fmt.Sprintf("Jane Doe could use coverage for their 10:00 AM shift on %s (optional), if anyone's available.", date.Format("Monday, January 2"))
 		if summary != want {
 			t.Fatalf("Expected %q, got %q", want, summary)
@@ -481,7 +481,7 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
 			{Date: tue, Hour: 10, Priority: "normal"},
 			{Date: thu, Hour: 14, Priority: "optional"},
-		})
+		}, nil)
 		want := fmt.Sprintf("Jane Doe needs coverage for 2 shifts:\n- %s at 10:00 AM\n- %s at 2:00 PM (optional)",
 			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
 		if summary != want {
@@ -495,11 +495,104 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
 			{Date: tue, Hour: 10, Priority: "optional"},
 			{Date: thu, Hour: 14, Priority: "optional"},
-		})
+		}, nil)
 		want := fmt.Sprintf("Jane Doe could use coverage for 2 shifts, if anyone's available:\n- %s at 10:00 AM (optional)\n- %s at 2:00 PM (optional)",
 			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
 		if summary != want {
 			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("a single reopened request says it is open again, not the fresh-request wording", func(t *testing.T) {
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{ID: 42, Date: date, Hour: 10},
+		}, map[uint]bool{42: true})
+		want := fmt.Sprintf("Jane Doe's 10:00 AM shift on %s is open again and needs coverage.", date.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("a single reopened optional request keeps the optional tag and softer phrasing", func(t *testing.T) {
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{ID: 42, Date: date, Hour: 10, Priority: "optional"},
+		}, map[uint]bool{42: true})
+		want := fmt.Sprintf("Jane Doe's 10:00 AM shift on %s is open again and could use coverage (optional), if anyone's available.", date.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("in a multi-shift list, only the reopened request's line is tagged", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{ID: 1, Date: tue, Hour: 10},
+			{ID: 2, Date: thu, Hour: 14},
+		}, map[uint]bool{2: true})
+		want := fmt.Sprintf("Jane Doe needs coverage for 2 shifts:\n- %s at 10:00 AM\n- %s at 2:00 PM (reopened)",
+			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("a reopened optional line in a list carries both tags", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{ID: 1, Date: tue, Hour: 10},
+			{ID: 2, Date: thu, Hour: 14, Priority: "optional"},
+		}, map[uint]bool{2: true})
+		want := fmt.Sprintf("Jane Doe needs coverage for 2 shifts:\n- %s at 10:00 AM\n- %s at 2:00 PM (optional, reopened)",
+			tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("nil reopenedIDs behaves exactly like no reopened requests", func(t *testing.T) {
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{ID: 42, Date: date, Hour: 10},
+		}, nil)
+		want := fmt.Sprintf("Jane Doe needs coverage for their 10:00 AM shift on %s.", date.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+}
+
+func TestBuildMultiRequesterCoverageContent(t *testing.T) {
+	t.Run("groups by requester in first-seen order and joins with a blank line", func(t *testing.T) {
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		jane := models.User{FirstName: "Jane", LastName: "Doe"}
+		bob := models.User{FirstName: "Bob", LastName: "Smith"}
+		content := buildMultiRequesterCoverageContent([]models.ShiftCoverageRequest{
+			{ID: 1, RequestedByUserID: 2, RequestedByUser: bob, Date: date, Hour: 14},
+			{ID: 2, RequestedByUserID: 1, RequestedByUser: jane, Date: date, Hour: 10},
+		}, nil)
+		want := fmt.Sprintf("Bob Smith needs coverage for their 2:00 PM shift on %s.\n\nJane Doe needs coverage for their 10:00 AM shift on %s.",
+			date.Format("Monday, January 2"), date.Format("Monday, January 2"))
+		if content != want {
+			t.Fatalf("Expected %q, got %q", want, content)
+		}
+	})
+
+	t.Run("marks only the reopened request across several requesters", func(t *testing.T) {
+		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		jane := models.User{FirstName: "Jane", LastName: "Doe"}
+		bob := models.User{FirstName: "Bob", LastName: "Smith"}
+		content := buildMultiRequesterCoverageContent([]models.ShiftCoverageRequest{
+			{ID: 1, RequestedByUserID: 1, RequestedByUser: jane, Date: date, Hour: 10},
+			{ID: 2, RequestedByUserID: 2, RequestedByUser: bob, Date: date, Hour: 14},
+		}, map[uint]bool{2: true})
+		want := fmt.Sprintf("Jane Doe needs coverage for their 10:00 AM shift on %s.\n\nBob Smith's 2:00 PM shift on %s is open again and needs coverage.",
+			date.Format("Monday, January 2"), date.Format("Monday, January 2"))
+		if content != want {
+			t.Fatalf("Expected %q, got %q", want, content)
 		}
 	})
 }

@@ -33,7 +33,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version-file: go.mod
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -47,6 +47,11 @@ jobs:
 
     - name: Install dependencies
       run: go mod download
+
+    - name: Placeholder frontend/dist for go:embed
+      # frontend/embed.go embeds dist/; without it the Go build fails with
+      # "pattern dist: no matching files found" (same step as pr-checks.yml).
+      run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
 
     - name: Run Go tests
       env:
@@ -104,7 +109,12 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version-file: go.mod
+
+    - name: Placeholder frontend/dist for go:embed
+      # frontend/embed.go embeds dist/; without it the Go build fails with
+      # "pattern dist: no matching files found" (same step as pr-checks.yml).
+      run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
 
     - name: Run go vet
       run: go vet ./...
@@ -173,7 +183,9 @@ jobs:
 
   e2e-tests:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest is now 26.04, which this repo's Playwright
+    # version can't install browsers on. Unpin after upgrading Playwright.
+    runs-on: ubuntu-24.04
     
     services:
       postgres:
@@ -197,8 +209,13 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
-    
+        go-version-file: go.mod
+
+    - name: Placeholder frontend/dist for go:embed
+      # frontend/embed.go embeds dist/; without it the Go build fails with
+      # "pattern dist: no matching files found" (same step as pr-checks.yml).
+      run: mkdir -p frontend/dist && echo '<!doctype html>' > frontend/dist/index.html
+
     - name: Start backend API
       env:
         DB_HOST: localhost
@@ -214,13 +231,17 @@ jobs:
         SMTP_PORT: 1025
         SMTP_FROM_EMAIL: test@example.com
         SMTP_FROM_NAME: Test
+      # Build first, then start the binary: a cold `go run` compiles the
+      # whole API inside the 60s readiness wait below and can miss it.
       run: |
-        go run cmd/api/main.go &
+        go build -o api-server ./cmd/api
+        ./api-server &
         echo $! > backend.pid
         
-        # Wait for backend to be ready
+        # Wait for backend to be ready. The health route is /health (not
+        # under /api); see cmd/api/main.go.
         for i in {1..30}; do
-          if curl -f http://localhost:8080/api/health 2>/dev/null; then
+          if curl -f http://localhost:8080/health 2>/dev/null; then
             echo "Backend is ready!"
             break
           fi
@@ -229,7 +250,11 @@ jobs:
         done
         
         # Verify backend is running
-        curl -f http://localhost:8080/api/health || exit 1
+        curl -f http://localhost:8080/health || exit 1
+
+        # The specs log in as the demo users (admin/terry/sophia), so seed
+        # them. Runs after startup so migrations have already been applied.
+        go run ./cmd/seed
     
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -286,7 +311,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version-file: go.mod
 
     - name: Run govulncheck
       run: |

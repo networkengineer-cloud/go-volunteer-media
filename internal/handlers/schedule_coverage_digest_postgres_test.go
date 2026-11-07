@@ -94,7 +94,7 @@ func TestSweepCoverageDigests_ConcurrentReplicasClaimOnce(t *testing.T) {
 	}
 
 	type claimResult struct {
-		claimed bool
+		claimed []uint
 		err     error
 	}
 	bDone := make(chan claimResult, 1)
@@ -128,10 +128,10 @@ func TestSweepCoverageDigests_ConcurrentReplicasClaimOnce(t *testing.T) {
 		t.Fatalf("replica B commit: %v", err)
 	}
 
-	if !claimedA {
+	if len(claimedA) == 0 {
 		t.Error("replica A should have won the claim")
 	}
-	if rb.claimed {
+	if len(rb.claimed) != 0 {
 		t.Error("replica B claimed rows A had already stamped - the group would be told twice")
 	}
 

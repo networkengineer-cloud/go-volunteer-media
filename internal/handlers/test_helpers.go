@@ -22,6 +22,12 @@ func SetupTestDB(t *testing.T) *gorm.DB {
 	// Set JWT_SECRET for testing - must be random and secure for validation to pass
 	os.Setenv("JWT_SECRET", "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1fG3hI5jK7lM9nO1pQ3")
 
+	// coverageReopenDebouncer is a single process-wide instance shared by
+	// every test in this package; reset it so a timer another test left
+	// pending (same group id, different db - see reset's own comment)
+	// can't bleed into this one.
+	coverageReopenDebouncer.reset()
+
 	// IMPORTANT: SQLite in-memory databases are per-connection.
 	// GORM's connection pool may open multiple connections, which can lead to
 	// flaky "no such table" errors if migrations run on one connection and

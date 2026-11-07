@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -309,6 +310,150 @@ func (m *mockEmailProvider) IsConfigured() bool {
 
 func (m *mockEmailProvider) GetProviderName() string {
 	return "mock"
+}
+
+// mockBatchEmailProvider additionally implements BatchEmailProvider, so
+// tests can assert SendAnnouncementEmailBatch prefers it over sending one
+// at a time.
+type mockBatchEmailProvider struct {
+	mockEmailProvider
+	batchCalls [][]string
+	batchErrs  []error // returned verbatim from the next SendBatch call, if set
+}
+
+func (m *mockBatchEmailProvider) SendBatch(ctx context.Context, to []string, subject, htmlBody string) []error {
+	m.batchCalls = append(m.batchCalls, to)
+	if m.batchErrs != nil {
+		return m.batchErrs
+	}
+	return make([]error, len(to))
+}
+
+// flakyEmailProvider fails each recipient a configured number of times
+// before succeeding, for testing SendAnnouncementEmailBatch's per-recipient
+// retry fallback for a provider with no batch endpoint.
+type flakyEmailProvider struct {
+	mu         sync.Mutex
+	failsLeft  map[string]int
+	attempts   map[string]int
+	configured bool
+}
+
+func (m *flakyEmailProvider) SendEmail(_ context.Context, to, _, _ string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.attempts == nil {
+		m.attempts = make(map[string]int)
+	}
+	m.attempts[to]++
+	if m.failsLeft[to] > 0 {
+		m.failsLeft[to]--
+		return fmt.Errorf("transient failure for %s", to)
+	}
+	return nil
+}
+
+func (m *flakyEmailProvider) IsConfigured() bool      { return m.configured }
+func (m *flakyEmailProvider) GetProviderName() string { return "flaky" }
+
+func (m *flakyEmailProvider) attemptsFor(to string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.attempts[to]
+}
+
+func TestService_SendAnnouncementEmailBatch_PrefersBatchProvider(t *testing.T) {
+	provider := &mockBatchEmailProvider{mockEmailProvider: mockEmailProvider{configured: true}}
+	service := &Service{provider: provider}
+
+	to := []string{"a@example.com", "b@example.com", "c@example.com"}
+	errs := service.SendAnnouncementEmailBatch(context.Background(), to, "Title", "Content")
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("Expected no error for recipient %d, got: %v", i, err)
+		}
+	}
+	if len(provider.batchCalls) != 1 {
+		t.Fatalf("Expected exactly one SendBatch call, got %d", len(provider.batchCalls))
+	}
+	if len(provider.batchCalls[0]) != 3 {
+		t.Fatalf("Expected the batch call to cover all 3 recipients, got %d", len(provider.batchCalls[0]))
+	}
+	if len(provider.sentEmails) != 0 {
+		t.Errorf("Expected no per-recipient SendEmail calls when a batch provider is available, got %d", len(provider.sentEmails))
+	}
+}
+
+func TestService_SendAnnouncementEmailBatch_FallsBackToPerRecipientForNonBatchProvider(t *testing.T) {
+	provider := &mockEmailProvider{configured: true}
+	service := &Service{provider: provider}
+
+	to := []string{"a@example.com", "b@example.com"}
+	errs := service.SendAnnouncementEmailBatch(context.Background(), to, "Title", "Content")
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("Expected no error for recipient %d, got: %v", i, err)
+		}
+	}
+	if len(provider.sentEmails) != 2 {
+		t.Fatalf("Expected one SendEmail call per recipient, got %d", len(provider.sentEmails))
+	}
+}
+
+func TestService_SendAnnouncementEmailBatch_RetriesNonBatchProviderOnFailure(t *testing.T) {
+	provider := &flakyEmailProvider{configured: true, failsLeft: map[string]int{"a@example.com": 2}}
+	service := &Service{provider: provider}
+
+	errs := service.SendAnnouncementEmailBatch(context.Background(), []string{"a@example.com"}, "Title", "Content")
+	if errs[0] != nil {
+		t.Fatalf("Expected the retry to eventually succeed, got: %v", errs[0])
+	}
+	if got := provider.attemptsFor("a@example.com"); got != 3 {
+		t.Fatalf("Expected 2 failures + 1 success = 3 attempts, got %d", got)
+	}
+}
+
+func TestService_SendAnnouncementEmailBatch_GivesUpAfterMaxAttempts(t *testing.T) {
+	provider := &flakyEmailProvider{configured: true, failsLeft: map[string]int{"a@example.com": nonBatchSendMaxAttempts}}
+	service := &Service{provider: provider}
+
+	errs := service.SendAnnouncementEmailBatch(context.Background(), []string{"a@example.com"}, "Title", "Content")
+	if errs[0] == nil {
+		t.Fatal("Expected an error once every attempt has failed")
+	}
+	if got := provider.attemptsFor("a@example.com"); got != nonBatchSendMaxAttempts {
+		t.Fatalf("Expected exactly %d attempts, got %d", nonBatchSendMaxAttempts, got)
+	}
+}
+
+func TestService_SendAnnouncementEmailBatch_SkipsInvalidAddressesWithoutCallingProvider(t *testing.T) {
+	provider := &mockEmailProvider{configured: true}
+	service := &Service{provider: provider}
+
+	to := []string{"not-an-email", "valid@example.com"}
+	errs := service.SendAnnouncementEmailBatch(context.Background(), to, "Title", "Content")
+
+	if errs[0] == nil {
+		t.Error("Expected an error for the invalid address")
+	}
+	if errs[1] != nil {
+		t.Errorf("Expected no error for the valid address, got: %v", errs[1])
+	}
+	if len(provider.sentEmails) != 1 || provider.sentEmails[0].to != "valid@example.com" {
+		t.Errorf("Expected the provider to be called only for the valid address, got %+v", provider.sentEmails)
+	}
+}
+
+func TestService_SendAnnouncementEmailBatch_NotConfigured(t *testing.T) {
+	service := &Service{provider: nil}
+	errs := service.SendAnnouncementEmailBatch(context.Background(), []string{"a@example.com", "b@example.com"}, "Title", "Content")
+	for i, err := range errs {
+		if err == nil {
+			t.Errorf("Expected an error for recipient %d when the service is unconfigured", i)
+		}
+	}
 }
 
 // setupTestDB creates an in-memory SQLite database for integration testing

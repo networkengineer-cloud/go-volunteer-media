@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +16,28 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
+
+// recordingEmailProvider implements email.Provider and keeps every send for
+// inspection (recipient, subject, body) - unlike mockEmailProvider's plain
+// counter (user_admin_test.go), which can't tell two combined announcements
+// apart from one. Used only by tests that need to assert on content.
+type recordingEmailProvider struct {
+	mu    sync.Mutex
+	sends []recordedEmail
+}
+
+type recordedEmail struct {
+	to, subject, body string
+}
+
+func (m *recordingEmailProvider) SendEmail(_ context.Context, to, subject, body string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sends = append(m.sends, recordedEmail{to: to, subject: subject, body: body})
+	return nil
+}
+func (m *recordingEmailProvider) IsConfigured() bool      { return true }
+func (m *recordingEmailProvider) GetProviderName() string { return "recording-mock" }
 
 // notifyRecorder captures the (group, user) pairs a sweep decided to
 // announce, standing in for the real email/GroupMe fan-out so these tests
@@ -33,6 +57,17 @@ func (r *notifyRecorder) count() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.calls)
+}
+
+// withShortReopenDebounceWindow shrinks reopenDebounceWindow for the
+// duration of a test, so it doesn't have to sleep out the real few-second
+// window (or race its own 5-second "did it even try" timeout against it)
+// to see a reopen's announcement actually fire.
+func withShortReopenDebounceWindow(t *testing.T) {
+	t.Helper()
+	orig := reopenDebounceWindow
+	reopenDebounceWindow = time.Millisecond
+	t.Cleanup(func() { reopenDebounceWindow = orig })
 }
 
 // createDigestRequest inserts an open, unnotified coverage request whose
@@ -355,7 +390,7 @@ func TestClaimCoverageDigest_RefusesWhenANewerRequestLandedAfterTheRead(t *testi
 	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}
-	if claimed {
+	if len(claimed) != 0 {
 		t.Error("expected the claim to be refused so the whole burst waits for the next tick")
 	}
 
@@ -405,14 +440,14 @@ func TestNotifyGroupOfOpenCoverageRequests_SendsSynchronously(t *testing.T) {
 	if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
 		t.Fatalf("Failed to enable recipient email: %v", err)
 	}
-	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
+	pending := createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
 
 	provider := &blockingEmailProvider{started: make(chan struct{}), release: make(chan struct{})}
 	emailSvc := email.NewServiceWithProvider(provider, db)
 
 	returned := make(chan struct{})
 	go func() {
-		notifyGroupOfOpenCoverageRequests(db, emailSvc, nil, group.ID, requester.ID)
+		notifyGroupOfOpenCoverageRequests(db, emailSvc, nil, group.ID, requester.ID, []uint{pending.ID})
 		close(returned)
 	}()
 
@@ -443,6 +478,7 @@ func TestNotifyGroupOfOpenCoverageRequests_SendsSynchronously(t *testing.T) {
 // second time about a shift it was just told about - the exact double-send
 // this sweep exists to prevent.
 func TestReopenCoverageRequest_DoesNotLeaveWorkForTheDigestSweep(t *testing.T) {
+	withShortReopenDebounceWindow(t)
 	db := SetupTestDB(t)
 	requester, claimant, group := setupCoverageTestGroup(t, db)
 	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
@@ -468,7 +504,12 @@ func TestReopenCoverageRequest_DoesNotLeaveWorkForTheDigestSweep(t *testing.T) {
 		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// Backdate so the row is past the quiet period and would be picked up.
+	// Backdate so the row is past the quiet period and would be picked up -
+	// and sweep immediately, WITHOUT waiting for the debounced flush to run
+	// first. The flush's own stamp alone cannot be what keeps the sweep
+	// quiet here; this is exactly the window in which it hasn't fired yet.
+	// What has to keep the sweep quiet is the reopen handler's own
+	// synchronous stamp, made before it ever enqueues into the debouncer.
 	if err := db.Model(&models.ShiftCoverageRequest{}).Where("id = ?", reqRow.ID).
 		UpdateColumn("created_at", time.Now().Add(-10*time.Minute)).Error; err != nil {
 		t.Fatalf("Failed to backdate: %v", err)
@@ -480,15 +521,17 @@ func TestReopenCoverageRequest_DoesNotLeaveWorkForTheDigestSweep(t *testing.T) {
 	if got := rec.count(); got != 0 {
 		t.Errorf("reopen already announced this request; expected the sweep to stay quiet, got %d notification(s)", got)
 	}
+
+	WaitForPendingCoverageNotifications()
 }
 
-// Round-2 finding 1. The reopen stamps rows so the digest sweep won't
-// re-announce what it just announced - but the announcement it fires sends
-// the requester's COMPLETE open list, not just the reopened shift. Stamping
-// only the reopened row leaves any sibling still in the digest queue to be
-// announced a second time, byte-identical, a few minutes later. The stamp
-// has to cover what the announcement actually covered.
+// Round-2 finding 1. The reopen announcement carries the requester's
+// never-announced siblings along with the reopened shift, so it must also
+// stamp those siblings - otherwise the digest sweep announces them a second
+// time a few minutes later. The stamp has to cover what the announcement
+// actually covered.
 func TestReopenCoverageRequest_StampsEveryShiftItsAnnouncementCovered(t *testing.T) {
+	withShortReopenDebounceWindow(t)
 	db := SetupTestDB(t)
 	requester, claimant, group := setupCoverageTestGroup(t, db)
 	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
@@ -509,6 +552,7 @@ func TestReopenCoverageRequest_StampsEveryShiftItsAnnouncementCovered(t *testing
 	if w := performReopenCoverageRequest(db, claimant.ID, false, group.ID, reopened.ID); w.Code != 200 {
 		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
 	}
+	WaitForPendingCoverageNotifications()
 
 	// The reopen's announcement listed both shifts, so both are now told.
 	var stillPending int64
@@ -626,6 +670,7 @@ func TestSendCoverageReminder_StampsThePendingShiftsItAnnounced(t *testing.T) {
 // not that the reopen path actually uses it - swapping that call for a bare
 // `go` left the whole suite green. This drives the real handler.
 func TestReopenCoverageRequest_ItsAnnouncementIsDrainedAtShutdown(t *testing.T) {
+	withShortReopenDebounceWindow(t)
 	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
 	db := SetupTestDB(t)
 	requester, claimant, group := setupCoverageTestGroup(t, db)
@@ -673,6 +718,326 @@ func TestReopenCoverageRequest_ItsAnnouncementIsDrainedAtShutdown(t *testing.T) 
 	case <-drained:
 	case <-time.After(coverageNotifyDrainTimeout + 2*time.Second):
 		t.Fatal("drain never returned")
+	}
+}
+
+// Independent-review finding: this is the incident's own scenario (two
+// reopens, different requesters, seconds apart) and had no committed test
+// at all - only a throwaway probe the reviewer wrote and deleted. Asserts
+// the actual recipient-facing outcome: one email, not two, with wording
+// that says a shift is available again.
+func TestReopenCoverageRequest_TwoReopensAcrossRequestersCoalesceIntoOneEmail(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, claimant, group := setupCoverageTestGroup(t, db)
+	otherRequester := CreateTestUser(t, db, "requester2", "requester2@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, otherRequester.ID, group.ID, false)
+	recipient := CreateTestUser(t, db, "recipient", "recipient@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, recipient.ID, group.ID, false)
+	if err := db.Model(recipient).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	reqA := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+	reqB := createOpenCoverageRequest(t, db, group.ID, otherRequester.ID, 2, 11, date)
+	// Both were announced to the group before being claimed, so handing
+	// them back really is "open again".
+	if err := db.Model(&models.ShiftCoverageRequest{}).Where("id IN ?", []uint{reqA.ID, reqB.ID}).
+		Update("notified_at", time.Now().Add(-time.Hour)).Error; err != nil {
+		t.Fatalf("Failed to mark announced: %v", err)
+	}
+	if w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqA.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected claim A to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqB.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected claim B to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	orig := reopenDebounceWindow
+	reopenDebounceWindow = 500 * time.Millisecond
+	t.Cleanup(func() { reopenDebounceWindow = orig })
+
+	provider := &recordingEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+
+	// Two reopens, different requesters, landing well inside the same
+	// debounce window - exactly the incident's "three seconds apart".
+	if w := performReopenCoverageRequestWithEmail(db, emailSvc, claimant.ID, false, group.ID, reqA.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected reopen A to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := performReopenCoverageRequestWithEmail(db, emailSvc, claimant.ID, false, group.ID, reqB.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected reopen B to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	WaitForPendingCoverageNotifications()
+
+	var toRecipient []recordedEmail
+	for _, e := range provider.sends {
+		if e.to == recipient.Email {
+			toRecipient = append(toRecipient, e)
+		}
+	}
+	if len(toRecipient) != 1 {
+		t.Fatalf("Expected exactly 1 combined email to the recipient, got %d", len(toRecipient))
+	}
+	if !strings.Contains(toRecipient[0].subject, "Coverage needed again") {
+		t.Errorf("Expected subject to read 'Coverage needed again', got %q", toRecipient[0].subject)
+	}
+	body := toRecipient[0].body
+	if strings.Count(body, "is open again") != 2 {
+		t.Errorf("Expected both reopened shifts worded as open again, got %q", body)
+	}
+	for _, u := range []*models.User{requester, otherRequester} {
+		if !strings.Contains(body, displayName(*u)) {
+			t.Errorf("Expected the combined email to include %s's shift, got %q", displayName(*u), body)
+		}
+	}
+}
+
+// A shift claimed before the group was ever told about it (inside the
+// digest's quiet period) is news when it's handed back, not "open again":
+// the email must read as a normal request, and exactly one email goes out.
+func TestReopenCoverageRequest_NeverAnnouncedShiftReadsAsNormalRequest(t *testing.T) {
+	withShortReopenDebounceWindow(t)
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, claimant, group := setupCoverageTestGroup(t, db)
+	if err := db.Model(claimant).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	reqRow := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+	if w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqRow.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected claim to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// The reopen UPDATE itself must mark the row announced: if it left
+	// notified_at NULL, a sweep tick on any replica landing between that
+	// UPDATE and the handler's next statement would announce the row too.
+	// Checked from inside the reopen UPDATE (the first update after this
+	// callback is registered), since the handler's later sibling claim
+	// would otherwise hide the gap.
+	checked := false
+	if err := db.Callback().Update().After("gorm:update").Register("test:check_reopen_stamp", func(tx *gorm.DB) {
+		if checked || tx.Statement.Table != "shift_coverage_requests" {
+			return
+		}
+		checked = true
+		var unannounced int
+		if err := tx.Statement.ConnPool.QueryRowContext(tx.Statement.Context,
+			"SELECT COUNT(*) FROM shift_coverage_requests WHERE id = ? AND notified_at IS NULL", reqRow.ID).Scan(&unannounced); err != nil {
+			t.Errorf("check stamp: %v", err)
+			return
+		}
+		if unannounced != 0 {
+			t.Error("the reopen UPDATE left notified_at NULL; a sweep tick before the handler's next statement could announce this row a second time")
+		}
+	}); err != nil {
+		t.Fatalf("register callback: %v", err)
+	}
+
+	provider := &recordingEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+	if w := performReopenCoverageRequestWithEmail(db, emailSvc, claimant.ID, false, group.ID, reqRow.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+	if !checked {
+		t.Fatal("test setup: the reopen UPDATE check never ran")
+	}
+
+	// And end to end: a sweep before the debounced flush stays quiet.
+	if err := db.Model(&models.ShiftCoverageRequest{}).Where("id = ?", reqRow.ID).
+		UpdateColumn("created_at", time.Now().Add(-10*time.Minute)).Error; err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	rec := &notifyRecorder{}
+	sweepCoverageDigests(db, rec.record)
+	if got := rec.count(); got != 0 {
+		t.Errorf("expected the sweep to leave the reopened row to the reopen email, got %d announcement(s)", got)
+	}
+
+	WaitForPendingCoverageNotifications()
+	if len(provider.sends) != 1 {
+		t.Fatalf("Expected exactly 1 email, got %d", len(provider.sends))
+	}
+	if strings.Contains(provider.sends[0].subject, "again") || strings.Contains(provider.sends[0].body, "again") {
+		t.Errorf("Expected normal-request wording for a shift the group never heard about, got %q / %q",
+			provider.sends[0].subject, provider.sends[0].body)
+	}
+}
+
+// claimUnannouncedCoverageRequests reads candidates, then claims each with
+// its own conditional update. A row the digest sweep (or another replica)
+// stamps in between must be dropped from the result - that row's email
+// belongs to whoever stamped it. Forces that interleaving with a GORM
+// callback that stamps the second candidate just before the first
+// candidate's update runs.
+func TestClaimUnannouncedCoverageRequests_DropsRowStampedBetweenReadAndClaim(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	tuesday, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	first := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tuesday)
+	second := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 11, tuesday)
+
+	fired := false
+	if err := db.Callback().Update().Before("gorm:update").Register("test:race_stamp", func(tx *gorm.DB) {
+		if fired || tx.Statement.Table != "shift_coverage_requests" {
+			return
+		}
+		fired = true
+		if _, err := tx.Statement.ConnPool.ExecContext(tx.Statement.Context,
+			"UPDATE shift_coverage_requests SET notified_at = ? WHERE id = ?", time.Now(), second.ID); err != nil {
+			t.Errorf("race stamp: %v", err)
+		}
+	}); err != nil {
+		t.Fatalf("register callback: %v", err)
+	}
+
+	got := claimUnannouncedCoverageRequests(db, group.ID, requester.ID)
+	if !fired {
+		t.Fatal("test setup: the race callback never ran")
+	}
+	if !reflect.DeepEqual(got, []uint{first.ID}) {
+		t.Errorf("Expected only %d (the second was stamped by someone else first), got %v", first.ID, got)
+	}
+}
+
+// Independent-review finding: notifyGroupOfOpenCoverageRequestsForReopens
+// falls back to the fresh-request subject when every reopened row got
+// re-claimed again before the debounce flush ran (so none of them are
+// still open) - sending "needs coverage again" over a body that reads as
+// an entirely fresh ask would recreate the exact mismatch this file exists
+// to fix.
+func TestNotifyGroupOfOpenCoverageRequestsForReopens_FallsBackToFreshSubjectWhenReopenedRowNoLongerOpen(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, claimant, group := setupCoverageTestGroup(t, db)
+	if err := db.Model(claimant).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+
+	// A never-announced sibling carried in the same batch, so allOpenRequests
+	// isn't empty even though the reopened row itself won't be in it.
+	sibling := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 11, date)
+
+	// This id never actually appears in allOpenRequests: no row with this
+	// id is open, simulating a reopened row that was re-claimed before the
+	// flush ran.
+	const longGoneReopenedID = 99999
+
+	provider := &recordingEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+
+	notifyGroupOfOpenCoverageRequestsForReopens(db, emailSvc, nil, group.ID,
+		map[uint]map[uint]bool{requester.ID: {longGoneReopenedID: true, sibling.ID: false}})
+
+	if len(provider.sends) != 1 {
+		t.Fatalf("Expected 1 email (to claimant, the only member with email enabled), got %d", len(provider.sends))
+	}
+	if strings.Contains(provider.sends[0].subject, "again") {
+		t.Errorf("Expected the fresh-request subject since nothing reopened is still open, got %q", provider.sends[0].subject)
+	}
+	if strings.Contains(provider.sends[0].body, "again") {
+		t.Errorf("Expected plain fresh-request body wording for the sibling, got %q", provider.sends[0].body)
+	}
+}
+
+// The reopen email lists only what's news to the group: the reopened
+// shift and any never-announced sibling. A sibling the group was already
+// told about is left out - repeating an unchanged list buried the one shift
+// that changed and made back-to-back reopen emails read as duplicates.
+func TestReopenCoverageRequest_EmailOmitsShiftsAlreadyAnnounced(t *testing.T) {
+	withShortReopenDebounceWindow(t)
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, claimant, group := setupCoverageTestGroup(t, db)
+	recipient := CreateTestUser(t, db, "recipient", "recipient@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, recipient.ID, group.ID, false)
+	if err := db.Model(recipient).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+
+	tuesday, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	wednesday, _ := time.Parse("2006-01-02", nextWeekday(time.Wednesday))
+	thursday, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+
+	// Already announced to the group earlier and still open: unchanged news.
+	announced := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tuesday)
+	if err := db.Model(announced).Update("notified_at", time.Now().Add(-time.Hour)).Error; err != nil {
+		t.Fatalf("Failed to mark sibling announced: %v", err)
+	}
+	// Flagged moments ago, never announced: should ride along.
+	fresh := createOpenCoverageRequest(t, db, group.ID, requester.ID, 4, 12, thursday)
+	// Announced, claimed, now handed back.
+	reopened := createOpenCoverageRequest(t, db, group.ID, requester.ID, 3, 11, wednesday)
+	if err := db.Model(reopened).Updates(map[string]interface{}{
+		"notified_at":        time.Now().Add(-time.Hour),
+		"status":             models.CoverageRequestClaimed,
+		"claimed_by_user_id": claimant.ID,
+		"claimed_at":         time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("Failed to claim: %v", err)
+	}
+
+	provider := &recordingEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+	if w := performReopenCoverageRequestWithEmail(db, emailSvc, claimant.ID, false, group.ID, reopened.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+	WaitForPendingCoverageNotifications()
+
+	var body string
+	for _, e := range provider.sends {
+		if e.to == recipient.Email {
+			body = e.body
+		}
+	}
+	if body == "" {
+		t.Fatal("Expected the recipient to get the reopen email")
+	}
+	if !strings.Contains(body, wednesday.Format("Monday, January 2")) {
+		t.Errorf("Expected the reopened shift in the email, got %q", body)
+	}
+	if !strings.Contains(body, thursday.Format("Monday, January 2")) {
+		t.Errorf("Expected the never-announced shift in the email, got %q", body)
+	}
+	if strings.Contains(body, tuesday.Format("Monday, January 2")) {
+		t.Errorf("Expected the already-announced shift to be left out, got %q", body)
+	}
+	if !strings.Contains(body, "2 shifts") {
+		t.Errorf("Expected the header to count only the 2 listed shifts, got %q", body)
+	}
+
+	var reloaded models.ShiftCoverageRequest
+	if err := db.First(&reloaded, fresh.ID).Error; err != nil {
+		t.Fatalf("Failed to reload: %v", err)
+	}
+	if reloaded.NotifiedAt == nil {
+		t.Error("Expected the never-announced shift to be stamped, so the digest sweep doesn't announce it again")
+	}
+}
+
+// claimUnannouncedCoverageRequests must not return a row someone else (the
+// digest sweep, possibly on another replica) already stamped - that row's
+// announcement belongs to them.
+func TestClaimUnannouncedCoverageRequests_SkipsRowsAlreadyStamped(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	tuesday, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	open := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tuesday)
+	stamped := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 11, tuesday)
+	if err := db.Model(stamped).Update("notified_at", time.Now()).Error; err != nil {
+		t.Fatalf("Failed to stamp: %v", err)
+	}
+
+	got := claimUnannouncedCoverageRequests(db, group.ID, requester.ID)
+	if !reflect.DeepEqual(got, []uint{open.ID}) {
+		t.Errorf("Expected to claim only %d, got %v", open.ID, got)
+	}
+	if again := claimUnannouncedCoverageRequests(db, group.ID, requester.ID); len(again) != 0 {
+		t.Errorf("Expected a second claim to find nothing, got %v", again)
 	}
 }
 
@@ -727,31 +1092,17 @@ func TestStartCoverageDigestSweep_StopWaitsForTheAnnouncement(t *testing.T) {
 	}
 }
 
-// Round-4 finding 1. sweepCoverageDigests's own use of the claim's return
-// value - "if !claimed, don't announce" - had no test of its own: the
-// Postgres replica test exercises claimCoverageDigest directly under real
-// concurrency, but nothing proved the sweep's LOOP actually honors what it
-// gets back. A stub claim that reports losing (as a slower replica would)
-// makes that assertion directly, without needing two real connections.
-// Round-5 finding. A fifth, minimally-directed review flagged that
-// ReopenCoverageRequest's stamp-then-notify has a race window: it stamps a
-// PREDICATE-selected set, then notifies via a detached goroutine whose own
-// read (inside notifyGroupOfOpenCoverageRequests) is unfiltered by
-// notified_at - a request created in that gap is included in the message
-// but never gets stamped. Investigating showed the SAME root cause also
-// reaches the digest sweep's own synchronous claim-then-notify call, not
-// just the reopen path: claimCoverageDigest's stamp only covers rows that
-// existed at claim time, but notifyGroupOfOpenCoverageRequests' own
-// "complete picture" read runs immediately after and has no notified_at
-// filter, so a request landing in that narrow gap is announced without
-// being marked told.
+// A request created in the gap between the sweep's claim and its notify
+// must not be swept into that announcement: the email lists exactly what
+// the claim stamped. The late arrival stays notified_at NULL and gets its
+// own announcement on a later tick - announced exactly once, never twice
+// and never silently.
 //
-// This test drives the sweep's real path, injecting the race at the exact
-// point it can occur - immediately after a real claim succeeds, before
-// notify's own read - by wrapping claimCoverageDigest rather than
-// stubbing it out, so the claim's actual DB effects are real and only the
-// timing is manufactured.
-func TestNotifyGroupOfOpenCoverageRequests_StampsWhatItActuallyAnnouncedEvenWhenClaimedByAnotherRow(t *testing.T) {
+// Drives the sweep's real path, injecting the race immediately after a
+// real claim succeeds by wrapping claimCoverageDigest rather than stubbing
+// it, so the claim's DB effects are real and only the timing is
+// manufactured.
+func TestNotifyGroupOfOpenCoverageRequests_LateArrivalGetsItsOwnAnnouncement(t *testing.T) {
 	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
 	db := SetupTestDB(t)
 	requester, other, group := setupCoverageTestGroup(t, db)
@@ -762,57 +1113,100 @@ func TestNotifyGroupOfOpenCoverageRequests_StampsWhatItActuallyAnnouncedEvenWhen
 	// Past the quiet period: the sweep will claim and announce this one.
 	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
 
-	provider := &mockEmailProvider{}
+	provider := &recordingEmailProvider{}
 	emailSvc := email.NewServiceWithProvider(provider, db)
 	notify := coverageDigestNotifier(db, emailSvc, nil)
 
 	var lateArrival *models.ShiftCoverageRequest
-	claimThenSimulateRace := func(db *gorm.DB, cutoff, hardCutoff time.Time, target coverageDigestTarget) (bool, error) {
+	claimThenSimulateRace := func(db *gorm.DB, cutoff, hardCutoff time.Time, target coverageDigestTarget) ([]uint, error) {
 		claimed, err := claimCoverageDigest(db, cutoff, hardCutoff, target)
-		if err != nil || !claimed {
+		if err != nil || len(claimed) == 0 {
 			return claimed, err
 		}
-		// A brand-new request for the same requester lands in the gap
-		// between this claim committing and the notify call the sweep is
-		// about to make next - the exact race this test targets.
 		lateArrival = createDigestRequest(t, db, group.ID, requester.ID, 11, 0)
 		return claimed, err
 	}
 
 	sweepCoverageDigestsWithClaim(db, claimThenSimulateRace, notify)
 
-	if got := provider.sendCount(); got != 1 {
-		t.Fatalf("expected exactly 1 email for this tick, got %d", got)
+	if len(provider.sends) != 1 {
+		t.Fatalf("expected exactly 1 email for this tick, got %d", len(provider.sends))
+	}
+	if strings.Contains(provider.sends[0].body, "shifts") {
+		t.Errorf("expected only the claimed shift in this email, not the late arrival, got %q", provider.sends[0].body)
 	}
 
 	var reloaded models.ShiftCoverageRequest
 	if err := db.First(&reloaded, lateArrival.ID).Error; err != nil {
 		t.Fatalf("reload late arrival: %v", err)
 	}
-	if reloaded.NotifiedAt == nil {
-		t.Error("the late arrival was included in this tick's announcement (notifyGroupOfOpenCoverageRequests has no notified_at filter on its own read) but was left unstamped - the sweep will announce it again once its own quiet period elapses, a duplicate of a shift already mentioned")
+	if reloaded.NotifiedAt != nil {
+		t.Fatal("the late arrival was stamped as announced but never appeared in an email - the group would never hear about it")
 	}
 
-	// Confirm that "again" actually happens without the fix: age it and
-	// sweep once more. With the fix, it's already stamped so nothing fires.
+	// Once it ages past the quiet period, it gets its own announcement.
 	if err := db.Model(&reloaded).UpdateColumn("created_at", time.Now().Add(-10*time.Minute)).Error; err != nil {
 		t.Fatalf("backdate: %v", err)
 	}
 	rec := &notifyRecorder{}
 	sweepCoverageDigests(db, rec.record)
-	if got := rec.count(); got != 0 {
-		t.Errorf("expected the late arrival to already be accounted for, got %d further notification(s)", got)
+	if got := rec.count(); got != 1 {
+		t.Errorf("expected the late arrival to get exactly 1 announcement of its own, got %d", got)
 	}
 }
 
+// The new-request email lists only shifts the group hasn't been told about.
+// A requester's earlier, already-announced open shift is not repeated when
+// they add another one later.
+func TestCoverageDigest_EmailOmitsShiftsAlreadyAnnounced(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, other, group := setupCoverageTestGroup(t, db)
+	if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+
+	tuesday, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	friday, _ := time.Parse("2006-01-02", nextWeekday(time.Friday))
+	announced := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tuesday)
+	if err := db.Model(announced).Update("notified_at", time.Now().Add(-time.Hour)).Error; err != nil {
+		t.Fatalf("Failed to mark announced: %v", err)
+	}
+	fresh := createOpenCoverageRequest(t, db, group.ID, requester.ID, 5, 10, friday)
+	if err := db.Model(fresh).UpdateColumn("created_at", time.Now().Add(-10*time.Minute)).Error; err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+
+	provider := &recordingEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+	sweepCoverageDigests(db, coverageDigestNotifier(db, emailSvc, nil))
+
+	if len(provider.sends) != 1 {
+		t.Fatalf("expected 1 email, got %d", len(provider.sends))
+	}
+	body := provider.sends[0].body
+	if !strings.Contains(body, friday.Format("Monday, January 2")) {
+		t.Errorf("expected the new Friday shift in the email, got %q", body)
+	}
+	if strings.Contains(body, tuesday.Format("Monday, January 2")) {
+		t.Errorf("expected the already-announced Tuesday shift to be left out, got %q", body)
+	}
+}
+
+// Round-4 finding 1. sweepCoverageDigests's own use of the claim's return
+// value - "if !claimed, don't announce" - had no test of its own: the
+// Postgres replica test exercises claimCoverageDigest directly under real
+// concurrency, but nothing proved the sweep's LOOP actually honors what it
+// gets back. A stub claim that reports losing (as a slower replica would)
+// makes that assertion directly, without needing two real connections.
 func TestSweepCoverageDigests_DoesNotNotifyWhenAnotherReplicaWinsTheClaim(t *testing.T) {
 	db := SetupTestDB(t)
 	requester, _, group := setupCoverageTestGroup(t, db)
 	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
 
 	rec := &notifyRecorder{}
-	lostClaim := func(*gorm.DB, time.Time, time.Time, coverageDigestTarget) (bool, error) {
-		return false, nil
+	lostClaim := func(*gorm.DB, time.Time, time.Time, coverageDigestTarget) ([]uint, error) {
+		return nil, nil
 	}
 	sweepCoverageDigestsWithClaim(db, lostClaim, rec.record)
 
@@ -830,8 +1224,8 @@ func TestSweepCoverageDigests_DoesNotNotifyWhenClaimErrors(t *testing.T) {
 	createDigestRequest(t, db, group.ID, requester.ID, 10, 10*time.Minute)
 
 	rec := &notifyRecorder{}
-	erroringClaim := func(*gorm.DB, time.Time, time.Time, coverageDigestTarget) (bool, error) {
-		return false, errors.New("boom")
+	erroringClaim := func(*gorm.DB, time.Time, time.Time, coverageDigestTarget) ([]uint, error) {
+		return nil, errors.New("boom")
 	}
 	sweepCoverageDigestsWithClaim(db, erroringClaim, rec.record)
 

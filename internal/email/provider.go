@@ -20,6 +20,19 @@ type Provider interface {
 	GetProviderName() string
 }
 
+// BatchEmailProvider is implemented by providers that can send the same
+// subject/body to many recipients in fewer round trips than one call per
+// recipient (currently only ResendProvider, via Resend's batch endpoint).
+// A caller fanning an announcement out to a whole group checks for this via
+// a type assertion on Provider, so a provider that doesn't implement it
+// (SMTPProvider, any test mock) falls back to sending one at a time.
+type BatchEmailProvider interface {
+	// SendBatch sends subject/htmlBody to every address in to. Returns one
+	// error per recipient, in the same order as to (nil for a recipient
+	// whose send succeeded).
+	SendBatch(ctx context.Context, to []string, subject, htmlBody string) []error
+}
+
 // ProviderType represents the type of email provider
 type ProviderType string
 
