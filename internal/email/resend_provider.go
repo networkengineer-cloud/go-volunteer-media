@@ -186,7 +186,7 @@ func (p *ResendProvider) SendEmail(ctx context.Context, to, subject, htmlBody st
 func (p *ResendProvider) SendBatch(ctx context.Context, to []string, subject, htmlBody string) []error {
 	errs := make([]error, len(to))
 	if !p.IsConfigured() {
-		err := fmt.Errorf("Resend provider is not configured")
+		err := fmt.Errorf("resend provider is not configured")
 		for i := range errs {
 			errs[i] = err
 		}
@@ -298,7 +298,7 @@ func (p *ResendProvider) sendBatchChunk(ctx context.Context, payload []ResendEma
 	if err != nil {
 		return 0, 0, telemetry.Fail(span, fmt.Errorf("failed to send batch request: %w", err), "batch request failed")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -312,12 +312,12 @@ func (p *ResendProvider) sendBatchChunk(ctx context.Context, payload []ResendEma
 	retryAfter = parseRetryAfter(resp.Header.Get("Retry-After"))
 	var resendResp ResendBatchEmailResponse
 	if err := json.Unmarshal(body, &resendResp); err != nil {
-		return resp.StatusCode, retryAfter, telemetry.Fail(span, fmt.Errorf("Resend batch API error: status %d, body: %s", resp.StatusCode, string(body)), "non-200 batch response")
+		return resp.StatusCode, retryAfter, telemetry.Fail(span, fmt.Errorf("resend batch API error: status %d, body: %s", resp.StatusCode, string(body)), "non-200 batch response")
 	}
 	if resendResp.Error.Message != "" {
-		return resp.StatusCode, retryAfter, telemetry.Fail(span, fmt.Errorf("Resend batch API error: %s", resendResp.Error.Message), "non-200 batch response")
+		return resp.StatusCode, retryAfter, telemetry.Fail(span, fmt.Errorf("resend batch API error: %s", resendResp.Error.Message), "non-200 batch response")
 	}
-	return resp.StatusCode, retryAfter, telemetry.Fail(span, fmt.Errorf("Resend batch API error: status %d", resp.StatusCode), "non-200 batch response")
+	return resp.StatusCode, retryAfter, telemetry.Fail(span, fmt.Errorf("resend batch API error: status %d", resp.StatusCode), "non-200 batch response")
 }
 
 // parseRetryAfter parses a Retry-After header's value as whole seconds,
