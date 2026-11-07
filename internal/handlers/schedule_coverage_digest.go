@@ -13,6 +13,7 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 	"go.opentelemetry.io/otel/metric"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // coverageDigestQuietPeriod is how long a new coverage request waits before
@@ -93,10 +94,14 @@ func WaitForPendingCoverageNotifications() {
 // coverageDigestTarget is one (group, requester) pair with at least one
 // coverage request due for announcement. Requests are grouped this way
 // because notifyGroupOfOpenCoverageRequests sends one summary per requester
-// per group - it lists every open request that person currently has there.
+// per group. RequestIDs is filled in by the sweep after a successful claim:
+// exactly the rows that claim stamped, which is exactly what the
+// announcement lists - shifts the group was already told about are not
+// repeated.
 type coverageDigestTarget struct {
 	GroupID           uint
 	RequestedByUserID uint
+	RequestIDs        []uint `gorm:"-"`
 }
 
 // StartCoverageDigestSweep runs the periodic pass that announces coverage
@@ -173,7 +178,7 @@ func startCoverageDigestSweepWithNotify(db *gorm.DB, notify func(coverageDigestT
 // notifyGroupOfOpenCoverageRequests included — without standing up a ticker.
 func coverageDigestNotifier(db *gorm.DB, emailService *email.Service, groupMeService *groupme.Service) func(coverageDigestTarget) {
 	return func(target coverageDigestTarget) {
-		notifyGroupOfOpenCoverageRequests(db, emailService, groupMeService, target.GroupID, target.RequestedByUserID)
+		notifyGroupOfOpenCoverageRequests(db, emailService, groupMeService, target.GroupID, target.RequestedByUserID, target.RequestIDs)
 	}
 }
 
@@ -215,9 +220,14 @@ func pendingCoverageDigestTargets(db *gorm.DB, cutoff, hardCutoff time.Time) ([]
 //
 // Claiming before announcing rather than after means a crash in between
 // drops an announcement instead of duplicating one. That is the better
-// failure here: notifyGroupOfOpenCoverageRequests always sends the
-// requester's *complete* open list, so their next request re-announces
-// whatever a dropped digest missed.
+// failure here: a lost "coverage needed" email is recoverable (the shifts
+// are still open on the schedule, and an admin can send a reminder),
+// whereas a duplicate is exactly the noise this sweep exists to prevent.
+//
+// Returns the ids this call stamped (empty when another replica won, or
+// the cutoff re-check refused the claim). RETURNING makes this exact even
+// under concurrency: a row another replica stamped first is not in the
+// result, so the announcement lists only what this caller claimed.
 //
 // KNOWN LIMITATION: the cutoff re-check closes the read-to-write gap only
 // for requests committed before this UPDATE takes its snapshot. Under READ
@@ -228,12 +238,14 @@ func pendingCoverageDigestTargets(db *gorm.DB, cutoff, hardCutoff time.Time) ([]
 // milliseconds. Closing it properly needs SERIALIZABLE or an explicit lock
 // on the requester's rows, which is a lot of machinery for an outcome no
 // worse than the pre-digest behavior. Left as a known edge.
-func claimCoverageDigest(db *gorm.DB, cutoff, hardCutoff time.Time, target coverageDigestTarget) (bool, error) {
+func claimCoverageDigest(db *gorm.DB, cutoff, hardCutoff time.Time, target coverageDigestTarget) ([]uint, error) {
 	// The cutoff is re-checked here, not just in the read above, so a
 	// request created in the gap between the two queries makes this claim
 	// find nothing and the whole burst waits for the next tick - rather
 	// than being announced without its newest shift.
-	result := db.Model(&models.ShiftCoverageRequest{}).
+	var claimed []models.ShiftCoverageRequest
+	result := db.Model(&claimed).
+		Clauses(clause.Returning{Columns: []clause.Column{{Name: "id"}}}).
 		Where(`status = ? AND notified_at IS NULL AND group_id = ? AND requested_by_user_id = ?
 			AND (
 				NOT EXISTS (
@@ -258,9 +270,13 @@ func claimCoverageDigest(db *gorm.DB, cutoff, hardCutoff time.Time, target cover
 			models.CoverageRequestOpen, hardCutoff).
 		Update("notified_at", time.Now())
 	if result.Error != nil {
-		return false, result.Error
+		return nil, result.Error
 	}
-	return result.RowsAffected > 0, nil
+	ids := make([]uint, 0, len(claimed))
+	for _, r := range claimed {
+		ids = append(ids, r.ID)
+	}
+	return ids, nil
 }
 
 // coverageDigestClaimFunc matches claimCoverageDigest's signature.
@@ -273,7 +289,7 @@ func claimCoverageDigest(db *gorm.DB, cutoff, hardCutoff time.Time, target cover
 // ignore its own claimed/err results - the one thing standing between "two
 // replicas" and "two identical group emails" - had no test that could catch
 // it.
-type coverageDigestClaimFunc func(db *gorm.DB, cutoff, hardCutoff time.Time, target coverageDigestTarget) (bool, error)
+type coverageDigestClaimFunc func(db *gorm.DB, cutoff, hardCutoff time.Time, target coverageDigestTarget) ([]uint, error)
 
 // sweepCoverageDigests announces every pair that is due, claiming each
 // before it announces. notify is injected so the claim-and-batch logic can
@@ -303,10 +319,11 @@ func sweepCoverageDigestsWithClaim(db *gorm.DB, claim coverageDigestClaimFunc, n
 			}).Error("Failed to claim coverage requests for digest", err)
 			continue
 		}
-		if !claimed {
+		if len(claimed) == 0 {
 			// Another replica got there first; it owns the announcement.
 			continue
 		}
+		target.RequestIDs = claimed
 		notify(target)
 	}
 }

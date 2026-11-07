@@ -303,14 +303,16 @@ func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date 
 	return created, err
 }
 
-// notifyGroupOfOpenCoverageRequests sends one bulk notification listing
-// every currently-open coverage request the given user has in the group -
-// not just whatever was just created - so the group always sees the
-// complete, accurate picture in a single email/GroupMe post rather than
-// one fragment per request. No-ops if the user currently has no open
-// requests. Runs on rawDB (the unscoped db captured before the handler's
-// middleware.GetDB shadow) since callers invoke this after their own
-// create(s) have already committed.
+// notifyGroupOfOpenCoverageRequests sends one bulk notification listing the
+// given user's newly-claimed coverage requests (requestIDs - exactly what
+// the digest sweep's claim stamped), so a burst of new shifts produces one
+// email/GroupMe post rather than one per shift. Shifts the group was
+// already told about are deliberately NOT repeated: re-sending a
+// requester's whole open list buried the new shifts among old ones. Rows
+// no longer open by now (claimed or cancelled since) are dropped; no-ops
+// if nothing is left. Runs on rawDB (the unscoped db captured before the
+// handler's middleware.GetDB shadow) since callers invoke this after their
+// own create(s) have already committed.
 //
 // Sends SYNCHRONOUSLY. Its only caller is the digest sweep, which is
 // already off the request path and whose stop() must be able to guarantee
@@ -321,39 +323,24 @@ func createOneCoverageRequest(db *gorm.DB, groupIDUint, targetUserID uint, date 
 // (a reopen batch, or every open request in the group), so each builds its
 // content with buildMultiRequesterCoverageContent and does its own
 // stamp-then-send instead of calling this single-requester function.
-func notifyGroupOfOpenCoverageRequests(rawDB *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, groupIDUint, targetUserID uint) {
+func notifyGroupOfOpenCoverageRequests(rawDB *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, groupIDUint, targetUserID uint, requestIDs []uint) {
+	if len(requestIDs) == 0 {
+		return
+	}
 	var requester models.User
 	var grp models.Group
 	var openRequests []models.ShiftCoverageRequest
 	rawDB.First(&requester, targetUserID)
 	rawDB.Select("name").First(&grp, groupIDUint)
-	rawDB.Where("group_id = ? AND requested_by_user_id = ? AND status = ?",
-		groupIDUint, targetUserID, models.CoverageRequestOpen).
+	// Filtered to the claimed ids, so a request created after the claim is
+	// not in this message - it stays notified_at NULL and gets its own
+	// announcement on a later tick. Nothing to stamp here: the claim
+	// already stamped every id in requestIDs.
+	rawDB.Where("group_id = ? AND requested_by_user_id = ? AND status = ? AND id IN ?",
+		groupIDUint, targetUserID, models.CoverageRequestOpen, requestIDs).
 		Order("date, hour").Find(&openRequests)
 	if len(openRequests) == 0 {
 		return
-	}
-
-	// Stamp exactly what is about to be announced, by id, before sending.
-	// This read is deliberately unfiltered by notified_at - it exists to
-	// show "every currently-open request," not just what triggered this
-	// call - so it can pick up a row that was never covered by
-	// claimCoverageDigest's own claim (its NOT EXISTS window - see that
-	// function): a request created in the gap between that claim and this
-	// read. Without stamping it here too, it would go out in this message
-	// and still be left with notified_at NULL, guaranteeing the sweep
-	// announces it again once its own quiet period elapses - a duplicate.
-	// What's left after this fix is the same class of residual as
-	// claimCoverageDigest's own documented KNOWN LIMITATION: a row created
-	// strictly after THIS read is correctly excluded from this message and
-	// left for the next tick.
-	ids := make([]uint, len(openRequests))
-	for i, r := range openRequests {
-		ids[i] = r.ID
-	}
-	if err := stampCoverageRequestsAsAnnouncedFunc(rawDB, ids); err != nil {
-		logging.WithField("group_id", groupIDUint).
-			Error("Failed to stamp coverage requests covered by this announcement; the digest sweep may re-announce them", err)
 	}
 
 	title := fmt.Sprintf("Coverage needed in %s", grp.Name)
