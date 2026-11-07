@@ -183,7 +183,9 @@ jobs:
 
   e2e-tests:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest is now 26.04, which this repo's Playwright
+    # version can't install browsers on. Unpin after upgrading Playwright.
+    runs-on: ubuntu-24.04
     
     services:
       postgres:
