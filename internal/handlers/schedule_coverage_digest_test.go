@@ -479,9 +479,13 @@ func TestReopenCoverageRequest_DoesNotLeaveWorkForTheDigestSweep(t *testing.T) {
 	if w := performReopenCoverageRequest(db, claimant.ID, false, group.ID, reqRow.ID); w.Code != 200 {
 		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
 	}
-	WaitForPendingCoverageNotifications()
 
-	// Backdate so the row is past the quiet period and would be picked up.
+	// Backdate so the row is past the quiet period and would be picked up -
+	// and sweep immediately, WITHOUT waiting for the debounced flush to run
+	// first. The flush's own stamp alone cannot be what keeps the sweep
+	// quiet here; this is exactly the window in which it hasn't fired yet.
+	// What has to keep the sweep quiet is the reopen handler's own
+	// synchronous stamp, made before it ever enqueues into the debouncer.
 	if err := db.Model(&models.ShiftCoverageRequest{}).Where("id = ?", reqRow.ID).
 		UpdateColumn("created_at", time.Now().Add(-10*time.Minute)).Error; err != nil {
 		t.Fatalf("Failed to backdate: %v", err)
@@ -493,6 +497,8 @@ func TestReopenCoverageRequest_DoesNotLeaveWorkForTheDigestSweep(t *testing.T) {
 	if got := rec.count(); got != 0 {
 		t.Errorf("reopen already announced this request; expected the sweep to stay quiet, got %d notification(s)", got)
 	}
+
+	WaitForPendingCoverageNotifications()
 }
 
 // Round-2 finding 1. The reopen stamps rows so the digest sweep won't

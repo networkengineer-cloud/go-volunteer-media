@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -381,6 +382,78 @@ func TestResendProvider_SendBatch_HonorsRetryAfterHeader(t *testing.T) {
 	}
 	if secondCallAt.Sub(firstCallAt) < 900*time.Millisecond {
 		t.Fatalf("Expected the retry to wait for the Retry-After header's 1s, only waited %s", secondCallAt.Sub(firstCallAt))
+	}
+}
+
+func TestResendProvider_SendBatch_SendsStableIdempotencyKeyAcrossRetries(t *testing.T) {
+	var callCount atomic.Int32
+	var keys []string
+	var mu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		mu.Unlock()
+		if callCount.Add(1) == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			json.NewEncoder(w).Encode(ResendBatchEmailResponse{})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"data": []map[string]string{{"id": "1"}}})
+	}))
+	defer server.Close()
+
+	provider := &ResendProvider{
+		APIKey: "test-api-key", FromEmail: "test@example.com",
+		apiURL: server.URL, client: server.Client(),
+	}
+
+	errs := provider.SendBatch(context.Background(), []string{"a@example.com"}, "Subject", "<p>Body</p>")
+	if errs[0] != nil {
+		t.Fatalf("Expected eventual success, got: %v", errs[0])
+	}
+	if len(keys) != 2 {
+		t.Fatalf("Expected 2 calls (1 retry), got %d", len(keys))
+	}
+	if keys[0] == "" {
+		t.Error("Expected a non-empty Idempotency-Key header")
+	}
+	if keys[0] != keys[1] {
+		t.Errorf("Expected the retry to reuse the same idempotency key, got %q then %q", keys[0], keys[1])
+	}
+}
+
+func TestResendProvider_SendBatch_UsesDifferentIdempotencyKeysPerChunk(t *testing.T) {
+	var keys []string
+	var mu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"data": []map[string]string{}})
+	}))
+	defer server.Close()
+
+	provider := &ResendProvider{
+		APIKey: "test-api-key", FromEmail: "test@example.com",
+		apiURL: server.URL, client: server.Client(),
+	}
+
+	to := make([]string, 150)
+	for i := range to {
+		to[i] = "recipient@example.com"
+	}
+	provider.SendBatch(context.Background(), to, "Subject", "<p>Body</p>")
+
+	if len(keys) != 2 {
+		t.Fatalf("Expected 2 chunk calls, got %d", len(keys))
+	}
+	if keys[0] == "" || keys[1] == "" {
+		t.Fatalf("Expected non-empty idempotency keys, got %q and %q", keys[0], keys[1])
+	}
+	if keys[0] == keys[1] {
+		t.Errorf("Expected each chunk to get its own idempotency key, both were %q", keys[0])
 	}
 }
 

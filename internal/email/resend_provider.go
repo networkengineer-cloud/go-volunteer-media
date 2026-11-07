@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -209,7 +210,15 @@ func (p *ResendProvider) SendBatch(ctx context.Context, to []string, subject, ht
 			payload[i] = ResendEmailRequest{From: from, To: []string{addr}, Subject: subject, HTML: htmlBody}
 		}
 
-		chunkErr := p.sendBatchChunkWithRetry(ctx, payload)
+		// One idempotency key per chunk, generated once and reused across
+		// every retry of that same chunk (see sendBatchChunkWithRetry): if a
+		// retry fires because the response to an already-accepted call was
+		// lost (a network error or timeout - isRetryableResendStatus(0) -
+		// not because Resend actually rejected it), Resend recognizes the
+		// repeated key within its 24h window and returns the original
+		// result instead of sending the chunk's recipients a second email.
+		idempotencyKey := uuid.NewString()
+		chunkErr := p.sendBatchChunkWithRetry(ctx, payload, idempotencyKey)
 		for i := range chunk {
 			errs[start+i] = chunkErr
 		}
@@ -221,13 +230,14 @@ func (p *ResendProvider) SendBatch(ctx context.Context, to []string, subject, ht
 // (429 or 5xx), honoring the response's Retry-After header when it sends
 // one and otherwise backing off by resendBatchRetryBaseDelay, doubled each
 // attempt. A non-transient failure (e.g. a malformed request) is returned
-// immediately without burning the remaining attempts.
-func (p *ResendProvider) sendBatchChunkWithRetry(ctx context.Context, payload []ResendEmailRequest) error {
+// immediately without burning the remaining attempts. idempotencyKey is
+// sent unchanged on every attempt - see SendBatch's comment on why.
+func (p *ResendProvider) sendBatchChunkWithRetry(ctx context.Context, payload []ResendEmailRequest, idempotencyKey string) error {
 	var err error
 	for attempt := 0; attempt < resendBatchMaxAttempts; attempt++ {
 		var statusCode int
 		var retryAfter time.Duration
-		statusCode, retryAfter, err = p.sendBatchChunk(ctx, payload)
+		statusCode, retryAfter, err = p.sendBatchChunk(ctx, payload, idempotencyKey)
 		if err == nil {
 			return nil
 		}
@@ -260,8 +270,12 @@ func isRetryableResendStatus(statusCode int) bool {
 // sendBatchChunk makes one call to Resend's batch endpoint. statusCode is
 // the HTTP response's status (0 if no response was received at all, e.g. a
 // network error); retryAfter is the delay the response asked for via its
-// Retry-After header (0 if absent or unparseable).
-func (p *ResendProvider) sendBatchChunk(ctx context.Context, payload []ResendEmailRequest) (statusCode int, retryAfter time.Duration, err error) {
+// Retry-After header (0 if absent or unparseable). idempotencyKey is sent
+// as the Idempotency-Key header, documented at
+// resend.com/docs/dashboard/emails/idempotency-keys: a retried call with
+// the same key and the same payload returns the original result instead of
+// sending again.
+func (p *ResendProvider) sendBatchChunk(ctx context.Context, payload []ResendEmailRequest, idempotencyKey string) (statusCode int, retryAfter time.Duration, err error) {
 	ctx, span := tracer.Start(ctx, "email.resend.send_batch", trace.WithAttributes(
 		attribute.Int("email.batch_size", len(payload)),
 	))
@@ -278,6 +292,7 @@ func (p *ResendProvider) sendBatchChunk(ctx context.Context, payload []ResendEma
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", p.APIKey))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", idempotencyKey)
 
 	resp, err := p.client.Do(req)
 	if err != nil {

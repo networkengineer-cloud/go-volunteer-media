@@ -433,7 +433,12 @@ func notifyGroupOfOpenCoverageRequestsForReopens(rawDB *gorm.DB, emailService *e
 			Error("Failed to stamp coverage requests covered by this reopen announcement; the digest sweep may re-announce them", err)
 	}
 
-	title := fmt.Sprintf("Coverage needed in %s", grp.Name)
+	// "...again", not the fresh-request title notifyGroupOfOpenCoverageRequests
+	// uses - every call here originates from at least one reopen, and a
+	// subject line identical to the original request's email is exactly
+	// what made the two look like duplicates in the incident this exists
+	// to fix, even with the body's wording now distinguishing them.
+	title := fmt.Sprintf("Coverage needed again in %s", grp.Name)
 	content := buildMultiRequesterCoverageContent(allOpenRequests, reopenedIDs)
 
 	bgCtx := context.Background()
@@ -1783,15 +1788,35 @@ func ReopenCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		reqRow.ClaimedAt = nil
 		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
 
-		// Enqueue into the group's reopen batch rather than stamping and
-		// announcing right here: a second reopen in the same group within
-		// reopenDebounceWindow joins this one's batch instead of firing its
-		// own overlapping announcement (the incident that prompted this -
-		// two reopens three seconds apart, two overlapping full-group
-		// emails). notifyGroupOfOpenCoverageRequestsForReopens does its own
-		// stamping, covering the requester's whole open set the same way
-		// this handler used to, so no sibling is left in the digest queue
-		// to be announced again by the next sweep.
+		// Stamp the requester's whole open-but-unannounced set right now,
+		// synchronously - NOT just the debounced flush's own stamp below -
+		// because the periodic digest sweep ticks independently of this
+		// handler, on any replica, purely off notified_at IS NULL. If this
+		// row (or an unannounced sibling) is already past the sweep's quiet
+		// period, a tick landing inside reopenDebounceWindow would claim and
+		// announce it with fresh-request wording before the debounced flush
+		// ever runs - and the flush would then send it again moments later,
+		// reproducing the exact "two emails about the same shift seconds
+		// apart" bug this file exists to fix. Stamping here closes that
+		// window immediately, the same way the pre-debounce code did.
+		//
+		// The flush's own stamp-before-send, inside
+		// notifyGroupOfOpenCoverageRequestsForReopens, is still needed on
+		// top of this: it covers a sibling created in the gap between this
+		// stamp and the flush's read, which this one can't see yet.
+		if err := rawDB.Model(&models.ShiftCoverageRequest{}).
+			Where("group_id = ? AND requested_by_user_id = ? AND status = ? AND notified_at IS NULL",
+				reqRow.GroupID, reqRow.RequestedByUserID, models.CoverageRequestOpen).
+			Update("notified_at", time.Now()).Error; err != nil {
+			logging.WithField("request_id", reqRow.ID).
+				Error("Failed to stamp reopened coverage requests as announced; the digest sweep may re-announce them", err)
+		}
+
+		// Enqueue into the group's reopen batch so a second reopen in the
+		// same group within reopenDebounceWindow joins this one's batch
+		// instead of firing its own overlapping announcement (the incident
+		// that prompted this - two reopens three seconds apart, two
+		// overlapping full-group emails).
 		coverageReopenDebouncer.enqueue(reqRow.GroupID, reqRow.RequestedByUserID, reqRow.ID, reopenDebounceWindow,
 			func(groupID uint, reopenedByRequester map[uint][]uint) {
 				notifyGroupOfOpenCoverageRequestsForReopens(rawDB, emailService, groupMeService, groupID, reopenedByRequester)

@@ -395,12 +395,22 @@ func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, t
 	return errs
 }
 
+// nonBatchSendPerAttemptTimeout bounds a single SendEmail call inside
+// sendWithRetry, mirroring Service.SendEmail's own 30s per-send timeout.
+// Without a timeout of its own, one attempt sharing the caller's much
+// longer batchSendTimeout could burn most of it on a single hung
+// connection (SMTP in particular takes its deadline from ctx), starving
+// every recipient still waiting behind it in the loop.
+const nonBatchSendPerAttemptTimeout = 30 * time.Second
+
 // sendWithRetry retries a single-recipient send a couple of times for a
 // provider with no batch endpoint of its own. See nonBatchSendMaxAttempts.
 func sendWithRetry(ctx context.Context, provider Provider, to, subject, htmlBody string) error {
 	var err error
 	for attempt := 0; attempt < nonBatchSendMaxAttempts; attempt++ {
-		err = provider.SendEmail(ctx, to, subject, htmlBody)
+		attemptCtx, cancel := context.WithTimeout(ctx, nonBatchSendPerAttemptTimeout)
+		err = provider.SendEmail(attemptCtx, to, subject, htmlBody)
+		cancel()
 		if err == nil {
 			return nil
 		}

@@ -30,10 +30,28 @@ var reopenDebounceWindow = 5 * time.Second
 // just means those reopens fall back to no combined announcement, not to
 // no announcement at all, since each one's row still ends up open and
 // visible on the schedule regardless.
+//
+// KNOWN LIMITATION: this batching is per PROCESS, not per group. Prod runs
+// up to 3 replicas (terraform/environments/prod/main.tf), so two reopens in
+// the same group landing on different replicas within the window still
+// produce two separate announcements - each one still correct and
+// individually coalesced on its own replica, just not coalesced with each
+// other. Closing that fully would need a DB-backed claim the way the
+// creation digest sweep does it, which is a lot more machinery for a case
+// the incident that prompted this (two reopens three seconds apart, same
+// request handled by one replica) didn't actually hit. Left as a known
+// edge, same spirit as claimCoverageDigest's own documented limitation.
 type reopenDebouncer struct {
 	mu      sync.Mutex
 	pending map[uint]map[uint]map[uint]struct{} // groupID -> requesterID -> reopened request IDs
 	timers  map[uint]*time.Timer
+	// generation is bumped by reset(). A timer's callback captures the
+	// generation current at enqueue time and compares it against this
+	// field before touching pending/timers, so a callback whose timer had
+	// already fired (and was merely waiting on d.mu) when reset() ran
+	// can't act on state that belongs to whatever enqueued after the
+	// reset - see reset()'s comment.
+	generation int
 }
 
 func newReopenDebouncer() *reopenDebouncer {
@@ -74,9 +92,19 @@ func (d *reopenDebouncer) enqueue(groupID, requesterID, requestID uint, window t
 		return
 	}
 
+	gen := d.generation
 	coverageNotifyWG.Add(1)
 	d.timers[groupID] = time.AfterFunc(window, func() {
 		d.mu.Lock()
+		if d.generation != gen {
+			// reset() ran between this timer being armed and firing - see
+			// its comment. d.pending/d.timers now belong to whatever
+			// enqueued after that reset, so this callback must not touch
+			// them; it only owes the Add(1) its own enqueue call made.
+			d.mu.Unlock()
+			coverageNotifyWG.Done()
+			return
+		}
 		batch := d.pending[groupID]
 		delete(d.pending, groupID)
 		delete(d.timers, groupID)
@@ -106,9 +134,22 @@ func (d *reopenDebouncer) enqueue(groupID, requesterID, requestID uint, window t
 // could join a batch meant for a different test's db entirely. Called from
 // SetupTestDB so every test starts with a clean slate regardless of what a
 // previous test left pending.
+//
+// Bumping generation (not just clearing pending/timers) matters for a
+// narrow race: a timer that fired just before reset() runs, but whose
+// callback is still waiting on d.mu, has already been dropped from
+// d.timers below by the time it gets the lock - timer.Stop() on it would
+// return false, so this loop wouldn't double-count its Done(). Without the
+// generation check, that callback would then read the FRESH, post-reset
+// d.pending[groupID] - which may by then hold a different test's reopen,
+// enqueued after this reset - and flush that batch through this callback's
+// stale rawDB/emailService closure instead of its own. The generation
+// bump makes that callback recognize it's stale and bail out, owing only
+// its own Done(), rather than acting on state it no longer owns.
 func (d *reopenDebouncer) reset() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.generation++
 	for groupID, timer := range d.timers {
 		if timer.Stop() {
 			// Stopped before it fired, so its own Done() will never run -
