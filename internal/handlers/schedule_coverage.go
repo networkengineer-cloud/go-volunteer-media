@@ -347,10 +347,6 @@ func notifyGroupOfOpenCoverageRequests(rawDB *gorm.DB, emailService *email.Servi
 	// claimCoverageDigest's own documented KNOWN LIMITATION: a row created
 	// strictly after THIS read is correctly excluded from this message and
 	// left for the next tick.
-	//
-	// notifyGroupOfOpenCoverageRequestsForReopens below does the equivalent
-	// stamp-before-send for a reopen's combined, multi-requester
-	// announcement, since this function only covers one requester.
 	ids := make([]uint, len(openRequests))
 	for i, r := range openRequests {
 		ids[i] = r.ID
@@ -382,17 +378,23 @@ func notifyGroupOfOpenCoverageRequests(rawDB *gorm.DB, emailService *email.Servi
 // fix for back-to-back reopens, even by different requesters, producing
 // overlapping group-wide announcements.
 //
-// For each requester in the batch it sends their CURRENT complete open
-// list, same as notifyGroupOfOpenCoverageRequests, so a sibling shift
-// reopened or created in the gap since enqueue is still included - but only
-// the request ids actually in reopenedByRequester get the "needs coverage
-// again" wording; an untouched sibling is still a perfectly normal open
-// request. Runs on rawDB for the same reason notifyGroupOfOpenCoverageRequests
-// does: this is always called off the request path, after its triggering
-// handler has already returned.
-func notifyGroupOfOpenCoverageRequestsForReopens(rawDB *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, groupIDUint uint, reopenedByRequester map[uint][]uint) {
-	requesterIDs := make([]uint, 0, len(reopenedByRequester))
-	for id := range reopenedByRequester {
+// It lists ONLY what is news to the group: the reopened shifts, plus any of
+// the same requesters' shifts that had never been announced (claimed for
+// this email by ReopenCoverageRequest via claimUnannouncedCoverageRequests).
+// Shifts the group was already told about are left out - re-sending a
+// requester's whole open list buried the one shift that changed and made
+// back-to-back reopen emails read as duplicates. Only reopened ids get the
+// "needs coverage again" wording. Rows no longer open by flush time (re-
+// claimed or cancelled inside the window) are dropped.
+//
+// batch is requesterID -> requestID -> reopened. Runs on rawDB for the same
+// reason notifyGroupOfOpenCoverageRequests does: this is always called off
+// the request path, after its triggering handler has already returned. No
+// stamp happens here: every id in batch was already stamped synchronously
+// by ReopenCoverageRequest before it was enqueued.
+func notifyGroupOfOpenCoverageRequestsForReopens(rawDB *gorm.DB, emailService *email.Service, groupMeService *groupme.Service, groupIDUint uint, batch map[uint]map[uint]bool) {
+	requesterIDs := make([]uint, 0, len(batch))
+	for id := range batch {
 		requesterIDs = append(requesterIDs, id)
 	}
 	if len(requesterIDs) == 0 {
@@ -405,32 +407,27 @@ func notifyGroupOfOpenCoverageRequestsForReopens(rawDB *gorm.DB, emailService *e
 
 	reopenedIDs := make(map[uint]bool)
 	var allOpenRequests []models.ShiftCoverageRequest
-	var stampIDs []uint
 	for _, requesterID := range requesterIDs {
-		for _, id := range reopenedByRequester[requesterID] {
-			reopenedIDs[id] = true
+		ids := make([]uint, 0, len(batch[requesterID]))
+		for id, reopened := range batch[requesterID] {
+			ids = append(ids, id)
+			if reopened {
+				reopenedIDs[id] = true
+			}
+		}
+		if len(ids) == 0 {
+			continue
 		}
 
 		var openRequests []models.ShiftCoverageRequest
 		rawDB.Preload("RequestedByUser").
-			Where("group_id = ? AND requested_by_user_id = ? AND status = ?",
-				groupIDUint, requesterID, models.CoverageRequestOpen).
+			Where("group_id = ? AND requested_by_user_id = ? AND status = ? AND id IN ?",
+				groupIDUint, requesterID, models.CoverageRequestOpen, ids).
 			Order("date, hour").Find(&openRequests)
-		for _, r := range openRequests {
-			stampIDs = append(stampIDs, r.ID)
-		}
 		allOpenRequests = append(allOpenRequests, openRequests...)
 	}
 	if len(allOpenRequests) == 0 {
 		return
-	}
-
-	// Same stamp-before-send guard as notifyGroupOfOpenCoverageRequests: see
-	// that function's comment for why this closes the race with a row
-	// created in the gap between enqueue and this read.
-	if err := stampCoverageRequestsAsAnnouncedFunc(rawDB, stampIDs); err != nil {
-		logging.WithField("group_id", groupIDUint).
-			Error("Failed to stamp coverage requests covered by this reopen announcement; the digest sweep may re-announce them", err)
 	}
 
 	// "...again", not the fresh-request title notifyGroupOfOpenCoverageRequests
@@ -1805,38 +1802,31 @@ func ReopenCoverageRequest(db *gorm.DB, emailService *email.Service, groupMeServ
 		reqRow.ClaimedAt = nil
 		c.JSON(http.StatusOK, toCoverageRequestResponse(reqRow))
 
-		// Stamp the requester's whole open-but-unannounced set right now,
-		// synchronously - NOT just the debounced flush's own stamp below -
-		// because the periodic digest sweep ticks independently of this
-		// handler, on any replica, purely off notified_at IS NULL. If this
-		// row (or an unannounced sibling) is already past the sweep's quiet
-		// period, a tick landing inside reopenDebounceWindow would claim and
-		// announce it with fresh-request wording before the debounced flush
-		// ever runs - and the flush would then send it again moments later,
-		// reproducing the exact "two emails about the same shift seconds
-		// apart" bug this file exists to fix. Stamping here closes that
-		// window immediately, the same way the pre-debounce code did.
+		// Claim the requester's open-but-never-announced requests right now,
+		// synchronously, so the reopen announcement can carry them. The
+		// periodic digest sweep ticks independently of this handler, on any
+		// replica, purely off notified_at IS NULL: if one of those rows is
+		// already past the sweep's quiet period, a tick landing inside
+		// reopenDebounceWindow would announce it with fresh-request wording
+		// and then the reopen email would follow seconds later - two emails
+		// about overlapping shifts. Claiming here means exactly one of the two
+		// paths announces each row.
 		//
-		// The flush's own stamp-before-send, inside
-		// notifyGroupOfOpenCoverageRequestsForReopens, is still needed on
-		// top of this: it covers a sibling created in the gap between this
-		// stamp and the flush's read, which this one can't see yet.
-		if err := rawDB.Model(&models.ShiftCoverageRequest{}).
-			Where("group_id = ? AND requested_by_user_id = ? AND status = ? AND notified_at IS NULL",
-				reqRow.GroupID, reqRow.RequestedByUserID, models.CoverageRequestOpen).
-			Update("notified_at", time.Now()).Error; err != nil {
-			logging.WithField("request_id", reqRow.ID).
-				Error("Failed to stamp reopened coverage requests as announced; the digest sweep may re-announce them", err)
-		}
+		// The reopen email lists ONLY the reopened shift(s) plus these
+		// claimed never-announced siblings. Siblings the group was already
+		// told about are left out: repeating an unchanged list buried the one
+		// shift that actually changed, which is what made the incident's
+		// emails read as duplicates.
+		unannouncedIDs := claimUnannouncedCoverageRequests(rawDB, reqRow.GroupID, reqRow.RequestedByUserID)
 
 		// Enqueue into the group's reopen batch so a second reopen in the
 		// same group within reopenDebounceWindow joins this one's batch
 		// instead of firing its own overlapping announcement (the incident
 		// that prompted this - two reopens three seconds apart, two
 		// overlapping full-group emails).
-		coverageReopenDebouncer.enqueue(reqRow.GroupID, reqRow.RequestedByUserID, reqRow.ID, reopenDebounceWindow,
-			func(groupID uint, reopenedByRequester map[uint][]uint) {
-				notifyGroupOfOpenCoverageRequestsForReopens(rawDB, emailService, groupMeService, groupID, reopenedByRequester)
+		coverageReopenDebouncer.enqueue(reqRow.GroupID, reqRow.RequestedByUserID, reqRow.ID, unannouncedIDs, reopenDebounceWindow,
+			func(groupID uint, batch map[uint]map[uint]bool) {
+				notifyGroupOfOpenCoverageRequestsForReopens(rawDB, emailService, groupMeService, groupID, batch)
 			})
 	}
 }
@@ -1861,6 +1851,42 @@ func stampCoverageRequestsAsAnnounced(db *gorm.DB, ids []uint) error {
 	return db.Model(&models.ShiftCoverageRequest{}).
 		Where("id IN ? AND notified_at IS NULL", ids).
 		Update("notified_at", time.Now()).Error
+}
+
+// claimUnannouncedCoverageRequests stamps the requester's open requests in
+// the group that have never been announced (notified_at IS NULL) and
+// returns the ids THIS call actually stamped. Each row is claimed with its
+// own conditional update, so a row the digest sweep (on this or another
+// replica) claimed first is not returned - that row's announcement belongs
+// to the sweep, and including it here too would mention it twice. A request
+// created after the read is left NULL for the sweep to announce normally.
+func claimUnannouncedCoverageRequests(db *gorm.DB, groupID, requesterID uint) []uint {
+	var candidateIDs []uint
+	if err := db.Model(&models.ShiftCoverageRequest{}).
+		Where("group_id = ? AND requested_by_user_id = ? AND status = ? AND notified_at IS NULL",
+			groupID, requesterID, models.CoverageRequestOpen).
+		Pluck("id", &candidateIDs).Error; err != nil {
+		logging.WithField("group_id", groupID).
+			Error("Failed to read unannounced coverage requests for reopen announcement", err)
+		return nil
+	}
+
+	claimed := make([]uint, 0, len(candidateIDs))
+	now := time.Now()
+	for _, id := range candidateIDs {
+		result := db.Model(&models.ShiftCoverageRequest{}).
+			Where("id = ? AND notified_at IS NULL", id).
+			Update("notified_at", now)
+		if result.Error != nil {
+			logging.WithField("request_id", id).
+				Error("Failed to claim unannounced coverage request for reopen announcement; the digest sweep will announce it", result.Error)
+			continue
+		}
+		if result.RowsAffected == 1 {
+			claimed = append(claimed, id)
+		}
+	}
+	return claimed
 }
 
 // stampCoverageRequestsAsAnnouncedFunc is stampCoverageRequestsAsAnnounced,

@@ -52,7 +52,7 @@ var reopenDebounceWindow = 5 * time.Second
 // edge, same spirit as claimCoverageDigest's own documented limitation.
 type reopenDebouncer struct {
 	mu      sync.Mutex
-	pending map[uint]map[uint]map[uint]struct{} // groupID -> requesterID -> reopened request IDs
+	pending map[uint]map[uint]map[uint]bool // groupID -> requesterID -> request ID -> reopened (false = never-announced sibling)
 	timers  map[uint]*time.Timer
 	// generation is bumped by reset(). A timer's callback captures the
 	// generation current at enqueue time and compares it against this
@@ -65,7 +65,7 @@ type reopenDebouncer struct {
 
 func newReopenDebouncer() *reopenDebouncer {
 	return &reopenDebouncer{
-		pending: make(map[uint]map[uint]map[uint]struct{}),
+		pending: make(map[uint]map[uint]map[uint]bool),
 		timers:  make(map[uint]*time.Timer),
 	}
 }
@@ -75,7 +75,9 @@ func newReopenDebouncer() *reopenDebouncer {
 // different HTTP requests must share one batch per group.
 var coverageReopenDebouncer = newReopenDebouncer()
 
-// enqueue adds (requesterID, requestID) to groupID's pending batch and arms
+// enqueue adds the reopened (requesterID, requestID) - plus that
+// requester's never-announced siblings in unannouncedIDs, which the
+// announcement should also carry - to groupID's pending batch and arms
 // a timer to flush it after window, unless one is already running for this
 // group - a second reopen within the window joins the first's batch
 // instead of resetting the clock, so a steady trickle of reopens can't
@@ -86,15 +88,22 @@ var coverageReopenDebouncer = newReopenDebouncer()
 // debounce window still waits for it - the same guarantee
 // trackCoverageNotification gives every other detached coverage send (see
 // its comment in schedule_coverage_digest.go).
-func (d *reopenDebouncer) enqueue(groupID, requesterID, requestID uint, window time.Duration, flush func(groupID uint, reopenedByRequester map[uint][]uint)) {
+func (d *reopenDebouncer) enqueue(groupID, requesterID, requestID uint, unannouncedIDs []uint, window time.Duration, flush func(groupID uint, batch map[uint]map[uint]bool)) {
 	d.mu.Lock()
 	if d.pending[groupID] == nil {
-		d.pending[groupID] = make(map[uint]map[uint]struct{})
+		d.pending[groupID] = make(map[uint]map[uint]bool)
 	}
-	if d.pending[groupID][requesterID] == nil {
-		d.pending[groupID][requesterID] = make(map[uint]struct{})
+	ids := d.pending[groupID][requesterID]
+	if ids == nil {
+		ids = make(map[uint]bool)
+		d.pending[groupID][requesterID] = ids
 	}
-	d.pending[groupID][requesterID][requestID] = struct{}{}
+	for _, id := range unannouncedIDs {
+		if !ids[id] { // never downgrade a reopened id to a plain sibling
+			ids[id] = false
+		}
+	}
+	ids[requestID] = true
 
 	if _, running := d.timers[groupID]; running {
 		d.mu.Unlock()
@@ -120,15 +129,7 @@ func (d *reopenDebouncer) enqueue(groupID, requesterID, requestID uint, window t
 		d.mu.Unlock()
 
 		defer coverageNotifyWG.Done()
-		reopenedByRequester := make(map[uint][]uint, len(batch))
-		for rid, ids := range batch {
-			idList := make([]uint, 0, len(ids))
-			for id := range ids {
-				idList = append(idList, id)
-			}
-			reopenedByRequester[rid] = idList
-		}
-		flush(groupID, reopenedByRequester)
+		flush(groupID, batch)
 	})
 	d.mu.Unlock()
 }
@@ -169,5 +170,5 @@ func (d *reopenDebouncer) reset() {
 		}
 		delete(d.timers, groupID)
 	}
-	d.pending = make(map[uint]map[uint]map[uint]struct{})
+	d.pending = make(map[uint]map[uint]map[uint]bool)
 }

@@ -799,8 +799,8 @@ func TestNotifyGroupOfOpenCoverageRequestsForReopens_FallsBackToFreshSubjectWhen
 	}
 	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
 
-	// A sibling the requester has open right now, so allOpenRequests isn't
-	// empty even though the reopened row itself won't be in it.
+	// A never-announced sibling carried in the same batch, so allOpenRequests
+	// isn't empty even though the reopened row itself won't be in it.
 	sibling := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 11, date)
 
 	// This id never actually appears in allOpenRequests: no row with this
@@ -812,7 +812,7 @@ func TestNotifyGroupOfOpenCoverageRequestsForReopens_FallsBackToFreshSubjectWhen
 	emailSvc := email.NewServiceWithProvider(provider, db)
 
 	notifyGroupOfOpenCoverageRequestsForReopens(db, emailSvc, nil, group.ID,
-		map[uint][]uint{requester.ID: {longGoneReopenedID}})
+		map[uint]map[uint]bool{requester.ID: {longGoneReopenedID: true, sibling.ID: false}})
 
 	if len(provider.sends) != 1 {
 		t.Fatalf("Expected 1 email (to claimant, the only member with email enabled), got %d", len(provider.sends))
@@ -823,13 +823,102 @@ func TestNotifyGroupOfOpenCoverageRequestsForReopens_FallsBackToFreshSubjectWhen
 	if strings.Contains(provider.sends[0].body, "again") {
 		t.Errorf("Expected plain fresh-request body wording for the sibling, got %q", provider.sends[0].body)
 	}
+}
 
-	var stamped models.ShiftCoverageRequest
-	if err := db.First(&stamped, sibling.ID).Error; err != nil {
-		t.Fatalf("Failed to reload sibling: %v", err)
+// The reopen email lists only what's news to the group: the reopened
+// shift and any never-announced sibling. A sibling the group was already
+// told about is left out - repeating an unchanged list buried the one shift
+// that changed and made back-to-back reopen emails read as duplicates.
+func TestReopenCoverageRequest_EmailOmitsShiftsAlreadyAnnounced(t *testing.T) {
+	withShortReopenDebounceWindow(t)
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, claimant, group := setupCoverageTestGroup(t, db)
+	recipient := CreateTestUser(t, db, "recipient", "recipient@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, recipient.ID, group.ID, false)
+	if err := db.Model(recipient).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
 	}
-	if stamped.NotifiedAt == nil {
-		t.Error("Expected the sibling to be stamped as announced")
+
+	tuesday, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	wednesday, _ := time.Parse("2006-01-02", nextWeekday(time.Wednesday))
+	thursday, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+
+	// Already announced to the group earlier and still open: unchanged news.
+	announced := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tuesday)
+	if err := db.Model(announced).Update("notified_at", time.Now().Add(-time.Hour)).Error; err != nil {
+		t.Fatalf("Failed to mark sibling announced: %v", err)
+	}
+	// Flagged moments ago, never announced: should ride along.
+	fresh := createOpenCoverageRequest(t, db, group.ID, requester.ID, 4, 12, thursday)
+	// Announced, claimed, now handed back.
+	reopened := createOpenCoverageRequest(t, db, group.ID, requester.ID, 3, 11, wednesday)
+	if err := db.Model(reopened).Updates(map[string]interface{}{
+		"notified_at":        time.Now().Add(-time.Hour),
+		"status":             models.CoverageRequestClaimed,
+		"claimed_by_user_id": claimant.ID,
+		"claimed_at":         time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("Failed to claim: %v", err)
+	}
+
+	provider := &recordingEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+	if w := performReopenCoverageRequestWithEmail(db, emailSvc, claimant.ID, false, group.ID, reopened.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected reopen to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+	WaitForPendingCoverageNotifications()
+
+	var body string
+	for _, e := range provider.sends {
+		if e.to == recipient.Email {
+			body = e.body
+		}
+	}
+	if body == "" {
+		t.Fatal("Expected the recipient to get the reopen email")
+	}
+	if !strings.Contains(body, wednesday.Format("Monday, January 2")) {
+		t.Errorf("Expected the reopened shift in the email, got %q", body)
+	}
+	if !strings.Contains(body, thursday.Format("Monday, January 2")) {
+		t.Errorf("Expected the never-announced shift in the email, got %q", body)
+	}
+	if strings.Contains(body, tuesday.Format("Monday, January 2")) {
+		t.Errorf("Expected the already-announced shift to be left out, got %q", body)
+	}
+	if !strings.Contains(body, "2 shifts") {
+		t.Errorf("Expected the header to count only the 2 listed shifts, got %q", body)
+	}
+
+	var reloaded models.ShiftCoverageRequest
+	if err := db.First(&reloaded, fresh.ID).Error; err != nil {
+		t.Fatalf("Failed to reload: %v", err)
+	}
+	if reloaded.NotifiedAt == nil {
+		t.Error("Expected the never-announced shift to be stamped, so the digest sweep doesn't announce it again")
+	}
+}
+
+// claimUnannouncedCoverageRequests must not return a row someone else (the
+// digest sweep, possibly on another replica) already stamped - that row's
+// announcement belongs to them.
+func TestClaimUnannouncedCoverageRequests_SkipsRowsAlreadyStamped(t *testing.T) {
+	db := SetupTestDB(t)
+	requester, _, group := setupCoverageTestGroup(t, db)
+	tuesday, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	open := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, tuesday)
+	stamped := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 11, tuesday)
+	if err := db.Model(stamped).Update("notified_at", time.Now()).Error; err != nil {
+		t.Fatalf("Failed to stamp: %v", err)
+	}
+
+	got := claimUnannouncedCoverageRequests(db, group.ID, requester.ID)
+	if !reflect.DeepEqual(got, []uint{open.ID}) {
+		t.Errorf("Expected to claim only %d, got %v", open.ID, got)
+	}
+	if again := claimUnannouncedCoverageRequests(db, group.ID, requester.ID); len(again) != 0 {
+		t.Errorf("Expected a second claim to find nothing, got %v", again)
 	}
 }
 
