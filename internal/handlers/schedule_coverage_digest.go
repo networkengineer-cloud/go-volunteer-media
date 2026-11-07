@@ -61,8 +61,10 @@ const coverageNotifyDrainTimeout = 30 * time.Second
 // pool.
 //
 // That matters most where the send's rows have ALREADY been stamped as
-// announced - the reopen and reminder paths - because there a lost send is
-// never retried by the sweep. The per-recipient sends elsewhere in
+// announced - the reminder path here, and the reopen path, whose debouncer
+// does the same coverageNotifyWG accounting itself (see
+// reopenDebouncer.enqueue) - because there a lost send is never retried by
+// the sweep. The per-recipient sends elsewhere in
 // schedule_coverage.go (claim, claim-batch, reassignment) are still bare
 // `go` and predate this; they lose at most one notification with no
 // database state claiming otherwise, so they have not been converted.

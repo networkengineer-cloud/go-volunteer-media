@@ -330,9 +330,12 @@ func TestResendProvider_SendBatch_GivesUpAfterMaxAttemptsOn429(t *testing.T) {
 }
 
 func TestResendProvider_SendBatch_DoesNotRetryOnBadRequest(t *testing.T) {
-	var callCount atomic.Int32
+	withShortSingleSendInterval(t)
+	var batchCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount.Add(1)
+		if strings.HasSuffix(r.URL.Path, "/batch") {
+			batchCalls.Add(1)
+		}
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ResendBatchEmailResponse{Error: struct {
 			Message string `json:"message"`
@@ -346,11 +349,98 @@ func TestResendProvider_SendBatch_DoesNotRetryOnBadRequest(t *testing.T) {
 	}
 
 	errs := provider.SendBatch(context.Background(), []string{"a@example.com"}, "Subject", "<p>Body</p>")
-	if callCount.Load() != 1 {
-		t.Fatalf("Expected a non-transient 400 to be tried only once, got %d calls", callCount.Load())
+	if batchCalls.Load() != 1 {
+		t.Fatalf("Expected a non-transient 400 batch call to be tried only once, got %d calls", batchCalls.Load())
 	}
 	if errs[0] == nil {
 		t.Fatal("Expected an error for the bad request")
+	}
+}
+
+func withShortSingleSendInterval(t *testing.T) {
+	t.Helper()
+	orig := resendSingleSendInterval
+	resendSingleSendInterval = time.Millisecond
+	t.Cleanup(func() { resendSingleSendInterval = orig })
+}
+
+// Resend validates a batch as a whole, so one bad address rejects the
+// chunk. The others in that chunk must still get their email, and only the
+// bad one should report an error.
+func TestResendProvider_SendBatch_FallsBackPerRecipientWhenChunkRejected(t *testing.T) {
+	withShortSingleSendInterval(t)
+	var mu sync.Mutex
+	var singleTo []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/batch") {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"message":"Invalid to field"}`))
+			return
+		}
+		var req ResendEmailRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		mu.Lock()
+		singleTo = append(singleTo, req.To...)
+		mu.Unlock()
+		if req.To[0] == "bad@example.com" {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"message":"Invalid to field"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"x"}`))
+	}))
+	defer server.Close()
+
+	provider := &ResendProvider{
+		APIKey: "test-api-key", FromEmail: "test@example.com",
+		apiURL: server.URL, client: server.Client(),
+	}
+
+	to := []string{"a@example.com", "bad@example.com", "c@example.com"}
+	errs := provider.SendBatch(context.Background(), to, "Subject", "<p>Body</p>")
+
+	if len(singleTo) != 3 {
+		t.Fatalf("Expected each recipient re-sent individually, got %v", singleTo)
+	}
+	if errs[0] != nil || errs[2] != nil {
+		t.Errorf("Expected the valid recipients to succeed, got %v / %v", errs[0], errs[2])
+	}
+	if errs[1] == nil {
+		t.Error("Expected the bad recipient to report an error")
+	}
+}
+
+// Auth failures and the like are not content rejections: re-sending one by
+// one would just fail N more times, so the chunk error stands.
+func TestResendProvider_SendBatch_NoPerRecipientFallbackOnAuthError(t *testing.T) {
+	var singleCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/batch") {
+			singleCalls.Add(1)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message":"API key is invalid"}`))
+	}))
+	defer server.Close()
+
+	provider := &ResendProvider{
+		APIKey: "test-api-key", FromEmail: "test@example.com",
+		apiURL: server.URL, client: server.Client(),
+	}
+	errs := provider.SendBatch(context.Background(), []string{"a@example.com", "b@example.com"}, "Subject", "<p>Body</p>")
+	if singleCalls.Load() != 0 {
+		t.Errorf("Expected no per-recipient fallback on a 401, got %d single sends", singleCalls.Load())
+	}
+	if errs[0] == nil || errs[1] == nil {
+		t.Error("Expected the chunk error for every recipient")
+	}
+}
+
+func TestNewResendProvider_TrimsTrailingSlashFromAPIURL(t *testing.T) {
+	t.Setenv("RESEND_API_URL", "https://example.test/emails/")
+	if got := NewResendProvider().apiURL; got != "https://example.test/emails" {
+		t.Errorf("Expected trailing slash trimmed, got %q", got)
 	}
 }
 

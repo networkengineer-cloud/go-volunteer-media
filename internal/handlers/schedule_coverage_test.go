@@ -503,12 +503,12 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		}
 	})
 
-	t.Run("a single reopened request says it needs coverage again, not the fresh-request wording", func(t *testing.T) {
+	t.Run("a single reopened request says it is open again, not the fresh-request wording", func(t *testing.T) {
 		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
 			{ID: 42, Date: date, Hour: 10},
 		}, map[uint]bool{42: true})
-		want := fmt.Sprintf("Jane Doe's 10:00 AM shift on %s needs coverage again - the volunteer who had it can no longer make it.", date.Format("Monday, January 2"))
+		want := fmt.Sprintf("Jane Doe's 10:00 AM shift on %s is open again and needs coverage.", date.Format("Monday, January 2"))
 		if summary != want {
 			t.Fatalf("Expected %q, got %q", want, summary)
 		}
@@ -519,7 +519,7 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
 			{ID: 42, Date: date, Hour: 10, Priority: "optional"},
 		}, map[uint]bool{42: true})
-		want := fmt.Sprintf("Jane Doe's 10:00 AM shift on %s could use coverage again (optional) - the volunteer who had it can no longer make it, if anyone's available.", date.Format("Monday, January 2"))
+		want := fmt.Sprintf("Jane Doe's 10:00 AM shift on %s is open again and could use coverage (optional), if anyone's available.", date.Format("Monday, January 2"))
 		if summary != want {
 			t.Fatalf("Expected %q, got %q", want, summary)
 		}
@@ -589,7 +589,7 @@ func TestBuildMultiRequesterCoverageContent(t *testing.T) {
 			{ID: 1, RequestedByUserID: 1, RequestedByUser: jane, Date: date, Hour: 10},
 			{ID: 2, RequestedByUserID: 2, RequestedByUser: bob, Date: date, Hour: 14},
 		}, map[uint]bool{2: true})
-		want := fmt.Sprintf("Jane Doe needs coverage for their 10:00 AM shift on %s.\n\nBob Smith's 2:00 PM shift on %s needs coverage again - the volunteer who had it can no longer make it.",
+		want := fmt.Sprintf("Jane Doe needs coverage for their 10:00 AM shift on %s.\n\nBob Smith's 2:00 PM shift on %s is open again and needs coverage.",
 			date.Format("Monday, January 2"), date.Format("Monday, January 2"))
 		if content != want {
 			t.Fatalf("Expected %q, got %q", want, content)

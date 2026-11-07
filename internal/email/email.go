@@ -12,10 +12,47 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/telemetry"
 	"gorm.io/gorm"
 )
+
+// announcementRecipients counts every recipient of a group announcement by
+// final outcome (after batching, retries and fallback). The incident that
+// prompted batching was one member silently missing an email; a non-zero
+// outcome=failed rate is that, made visible and alertable.
+var announcementRecipients = telemetry.NewInstrument("email.announcement.recipients", func() (metric.Int64Counter, error) {
+	return telemetry.Meter("internal/email").Int64Counter(
+		"email.announcement.recipients",
+		metric.WithDescription("Group announcement recipients by final send outcome"),
+		metric.WithUnit("{recipient}"),
+	)
+})
+
+// recordAnnouncementOutcomes adds one count per recipient to
+// announcementRecipients, split by outcome.
+func recordAnnouncementOutcomes(ctx context.Context, provider string, errs []error) {
+	var sent, failed int64
+	for _, err := range errs {
+		if err == nil {
+			sent++
+		} else {
+			failed++
+		}
+	}
+	if sent > 0 {
+		announcementRecipients.Add(ctx, sent, metric.WithAttributes(
+			attribute.String("email.provider", provider), attribute.String("outcome", "sent")))
+	}
+	if failed > 0 {
+		announcementRecipients.Add(ctx, failed, metric.WithAttributes(
+			attribute.String("email.provider", provider), attribute.String("outcome", "failed")))
+	}
+}
 
 // emailRegex is a basic RFC 5322 compliant email validation pattern
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
@@ -351,8 +388,15 @@ const batchSendTimeout = 2 * time.Minute
 //
 // Returns one error per recipient, in the same order as to (nil for a
 // recipient whose send succeeded), mirroring BatchEmailProvider.SendBatch.
-func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, title, content string) []error {
-	errs := make([]error, len(to))
+func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, title, content string) (errs []error) {
+	errs = make([]error, len(to))
+	defer func() {
+		providerName := "none"
+		if s.provider != nil {
+			providerName = s.provider.GetProviderName()
+		}
+		recordAnnouncementOutcomes(context.WithoutCancel(ctx), providerName, errs)
+	}()
 	if !s.IsConfigured() {
 		err := fmt.Errorf("email service is not configured")
 		for i := range errs {

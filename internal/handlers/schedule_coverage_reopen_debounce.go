@@ -29,10 +29,10 @@ var reopenDebounceWindow = 5 * time.Second
 // restart just delays an announcement), this window is in-memory only. A
 // hard crash (not a graceful shutdown - see coverageNotifyWG's drain in
 // cmd/api/main.go) during the window loses the announcement entirely: the
-// reopen handler already stamped notified_at synchronously before
-// enqueueing (see ReopenCoverageRequest), so the row no longer looks
-// pending to the digest sweep either, and nothing will ever re-announce
-// it. The row itself is unaffected - it's still open and visible on the
+// reopened row (stamped in the reopen UPDATE itself) and any siblings the
+// handler claimed already have notified_at set before enqueueing (see
+// ReopenCoverageRequest), so they no longer look pending to the digest
+// sweep either, and nothing will ever re-announce them. The row itself is unaffected - it's still open and visible on the
 // schedule - only the proactive "hey, this needs coverage" notice is lost.
 // This is the same tradeoff claimCoverageDigest's own comment accepts for
 // its cross-replica claim ("a crash in between drops an announcement
@@ -77,18 +77,22 @@ var coverageReopenDebouncer = newReopenDebouncer()
 
 // enqueue adds the reopened (requesterID, requestID) - plus that
 // requester's never-announced siblings in unannouncedIDs, which the
-// announcement should also carry - to groupID's pending batch and arms
-// a timer to flush it after window, unless one is already running for this
+// announcement should also carry - to groupID's pending batch and arms a
+// timer to flush it after window, unless one is already running for this
 // group - a second reopen within the window joins the first's batch
 // instead of resetting the clock, so a steady trickle of reopens can't
 // hold the group's notification off indefinitely.
 //
+// reopened says whether requestID gets "open again" wording: false when
+// the group was never told about the shift in the first place, so the
+// email is its first notice and reads as a normal request.
+//
 // The pending announcement is added to coverageNotifyWG here, at enqueue
 // time, rather than when the timer fires, so a shutdown landing during the
 // debounce window still waits for it - the same guarantee
-// trackCoverageNotification gives every other detached coverage send (see
+// trackCoverageNotification gives SendCoverageReminder's detached send (see
 // its comment in schedule_coverage_digest.go).
-func (d *reopenDebouncer) enqueue(groupID, requesterID, requestID uint, unannouncedIDs []uint, window time.Duration, flush func(groupID uint, batch map[uint]map[uint]bool)) {
+func (d *reopenDebouncer) enqueue(groupID, requesterID, requestID uint, reopened bool, unannouncedIDs []uint, window time.Duration, flush func(groupID uint, batch map[uint]map[uint]bool)) {
 	d.mu.Lock()
 	if d.pending[groupID] == nil {
 		d.pending[groupID] = make(map[uint]map[uint]bool)
@@ -103,7 +107,7 @@ func (d *reopenDebouncer) enqueue(groupID, requesterID, requestID uint, unannoun
 			ids[id] = false
 		}
 	}
-	ids[requestID] = true
+	ids[requestID] = ids[requestID] || reopened
 
 	if _, running := d.timers[groupID]; running {
 		d.mu.Unlock()
