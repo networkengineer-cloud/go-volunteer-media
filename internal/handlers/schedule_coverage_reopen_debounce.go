@@ -25,11 +25,20 @@ var reopenDebounceWindow = 5 * time.Second
 // reopenDebouncer batches reopen announcements per group: every reopen in
 // the same group within reopenDebounceWindow of the first one joins that
 // batch's single announcement instead of firing its own. Unlike the
-// creation digest (which is durable in the rows themselves and survives a
-// restart), this is a best-effort in-memory window - losing it on a crash
-// just means those reopens fall back to no combined announcement, not to
-// no announcement at all, since each one's row still ends up open and
-// visible on the schedule regardless.
+// creation digest (whose pending state lives in the rows themselves, so a
+// restart just delays an announcement), this window is in-memory only. A
+// hard crash (not a graceful shutdown - see coverageNotifyWG's drain in
+// cmd/api/main.go) during the window loses the announcement entirely: the
+// reopen handler already stamped notified_at synchronously before
+// enqueueing (see ReopenCoverageRequest), so the row no longer looks
+// pending to the digest sweep either, and nothing will ever re-announce
+// it. The row itself is unaffected - it's still open and visible on the
+// schedule - only the proactive "hey, this needs coverage" notice is lost.
+// This is the same tradeoff claimCoverageDigest's own comment accepts for
+// its cross-replica claim ("a crash in between drops an announcement
+// instead of duplicating one"), just with a longer window (seconds,
+// not milliseconds) since closing the sweep race in ReopenCoverageRequest
+// requires stamping before the window rather than after it.
 //
 // KNOWN LIMITATION: this batching is per PROCESS, not per group. Prod runs
 // up to 3 replicas (terraform/environments/prod/main.tf), so two reopens in

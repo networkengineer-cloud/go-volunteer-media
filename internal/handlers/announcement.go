@@ -297,14 +297,30 @@ func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService 
 	}
 	errs := emailService.SendAnnouncementEmailBatch(ctx, emails, title, content)
 
+	// Tally failures by message rather than logging one line per failed
+	// recipient: a whole Resend batch chunk fails (or succeeds) together
+	// (see BatchEmailProvider.SendBatch), so up to resendBatchMaxRecipients
+	// members can share the exact same error - that's one failure worth
+	// investigating, not a hundred identical log lines to scroll past.
 	successCount := 0
+	failureCounts := make(map[string]int)
+	firstErrForMsg := make(map[string]error)
+	var failureOrder []string
 	for _, err := range errs {
-		if err != nil {
-			// Don't log email addresses to prevent PII leakage - just log the error
-			logger.Error("Failed to send announcement email to user", err)
-		} else {
+		if err == nil {
 			successCount++
+			continue
 		}
+		msg := err.Error()
+		if failureCounts[msg] == 0 {
+			failureOrder = append(failureOrder, msg)
+			firstErrForMsg[msg] = err
+		}
+		failureCounts[msg]++
+	}
+	for _, msg := range failureOrder {
+		logger.WithField("recipient_count", failureCounts[msg]).
+			Error("Failed to send announcement email to recipients", firstErrForMsg[msg])
 	}
 	logger.WithFields(map[string]interface{}{
 		"success_count": successCount,

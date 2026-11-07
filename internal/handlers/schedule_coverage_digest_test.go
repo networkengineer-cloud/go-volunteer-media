@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +16,28 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
 )
+
+// recordingEmailProvider implements email.Provider and keeps every send for
+// inspection (recipient, subject, body) - unlike mockEmailProvider's plain
+// counter (user_admin_test.go), which can't tell two combined announcements
+// apart from one. Used only by tests that need to assert on content.
+type recordingEmailProvider struct {
+	mu    sync.Mutex
+	sends []recordedEmail
+}
+
+type recordedEmail struct {
+	to, subject, body string
+}
+
+func (m *recordingEmailProvider) SendEmail(_ context.Context, to, subject, body string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sends = append(m.sends, recordedEmail{to: to, subject: subject, body: body})
+	return nil
+}
+func (m *recordingEmailProvider) IsConfigured() bool      { return true }
+func (m *recordingEmailProvider) GetProviderName() string { return "recording-mock" }
 
 // notifyRecorder captures the (group, user) pairs a sweep decided to
 // announce, standing in for the real email/GroupMe fan-out so these tests
@@ -695,6 +719,117 @@ func TestReopenCoverageRequest_ItsAnnouncementIsDrainedAtShutdown(t *testing.T) 
 	case <-drained:
 	case <-time.After(coverageNotifyDrainTimeout + 2*time.Second):
 		t.Fatal("drain never returned")
+	}
+}
+
+// Independent-review finding: this is the incident's own scenario (two
+// reopens, different requesters, seconds apart) and had no committed test
+// at all - only a throwaway probe the reviewer wrote and deleted. Asserts
+// the actual recipient-facing outcome: one email, not two, with wording
+// that says a shift is available again.
+func TestReopenCoverageRequest_TwoReopensAcrossRequestersCoalesceIntoOneEmail(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, claimant, group := setupCoverageTestGroup(t, db)
+	otherRequester := CreateTestUser(t, db, "requester2", "requester2@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, otherRequester.ID, group.ID, false)
+	recipient := CreateTestUser(t, db, "recipient", "recipient@example.com", "password123", false)
+	AddUserToGroupWithAdmin(t, db, recipient.ID, group.ID, false)
+	if err := db.Model(recipient).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+	reqA := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 10, date)
+	reqB := createOpenCoverageRequest(t, db, group.ID, otherRequester.ID, 2, 11, date)
+	if w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqA.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected claim A to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := performClaimCoverageRequest(db, claimant.ID, group.ID, reqB.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected claim B to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	orig := reopenDebounceWindow
+	reopenDebounceWindow = 500 * time.Millisecond
+	t.Cleanup(func() { reopenDebounceWindow = orig })
+
+	provider := &recordingEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+
+	// Two reopens, different requesters, landing well inside the same
+	// debounce window - exactly the incident's "three seconds apart".
+	if w := performReopenCoverageRequestWithEmail(db, emailSvc, claimant.ID, false, group.ID, reqA.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected reopen A to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := performReopenCoverageRequestWithEmail(db, emailSvc, claimant.ID, false, group.ID, reqB.ID); w.Code != http.StatusOK {
+		t.Fatalf("Expected reopen B to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	WaitForPendingCoverageNotifications()
+
+	var toRecipient []recordedEmail
+	for _, e := range provider.sends {
+		if e.to == recipient.Email {
+			toRecipient = append(toRecipient, e)
+		}
+	}
+	if len(toRecipient) != 1 {
+		t.Fatalf("Expected exactly 1 combined email to the recipient, got %d", len(toRecipient))
+	}
+	if !strings.Contains(toRecipient[0].subject, "Coverage needed again") {
+		t.Errorf("Expected subject to read 'Coverage needed again', got %q", toRecipient[0].subject)
+	}
+	if !strings.Contains(toRecipient[0].body, "needs coverage again") {
+		t.Errorf("Expected body to mention both reopened shifts, got %q", toRecipient[0].body)
+	}
+}
+
+// Independent-review finding: notifyGroupOfOpenCoverageRequestsForReopens
+// falls back to the fresh-request subject when every reopened row got
+// re-claimed again before the debounce flush ran (so none of them are
+// still open) - sending "needs coverage again" over a body that reads as
+// an entirely fresh ask would recreate the exact mismatch this file exists
+// to fix.
+func TestNotifyGroupOfOpenCoverageRequestsForReopens_FallsBackToFreshSubjectWhenReopenedRowNoLongerOpen(t *testing.T) {
+	t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+	db := SetupTestDB(t)
+	requester, claimant, group := setupCoverageTestGroup(t, db)
+	if err := db.Model(claimant).Update("email_notifications_enabled", true).Error; err != nil {
+		t.Fatalf("Failed to enable recipient email: %v", err)
+	}
+	date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+
+	// A sibling the requester has open right now, so allOpenRequests isn't
+	// empty even though the reopened row itself won't be in it.
+	sibling := createOpenCoverageRequest(t, db, group.ID, requester.ID, 2, 11, date)
+
+	// This id never actually appears in allOpenRequests: no row with this
+	// id is open, simulating a reopened row that was re-claimed before the
+	// flush ran.
+	const longGoneReopenedID = 99999
+
+	provider := &recordingEmailProvider{}
+	emailSvc := email.NewServiceWithProvider(provider, db)
+
+	notifyGroupOfOpenCoverageRequestsForReopens(db, emailSvc, nil, group.ID,
+		map[uint][]uint{requester.ID: {longGoneReopenedID}})
+
+	if len(provider.sends) != 1 {
+		t.Fatalf("Expected 1 email (to claimant, the only member with email enabled), got %d", len(provider.sends))
+	}
+	if strings.Contains(provider.sends[0].subject, "again") {
+		t.Errorf("Expected the fresh-request subject since nothing reopened is still open, got %q", provider.sends[0].subject)
+	}
+	if strings.Contains(provider.sends[0].body, "again") {
+		t.Errorf("Expected plain fresh-request body wording for the sibling, got %q", provider.sends[0].body)
+	}
+
+	var stamped models.ShiftCoverageRequest
+	if err := db.First(&stamped, sibling.ID).Error; err != nil {
+		t.Fatalf("Failed to reload sibling: %v", err)
+	}
+	if stamped.NotifiedAt == nil {
+		t.Error("Expected the sibling to be stamped as announced")
 	}
 }
 

@@ -434,11 +434,28 @@ func notifyGroupOfOpenCoverageRequestsForReopens(rawDB *gorm.DB, emailService *e
 	}
 
 	// "...again", not the fresh-request title notifyGroupOfOpenCoverageRequests
-	// uses - every call here originates from at least one reopen, and a
-	// subject line identical to the original request's email is exactly
-	// what made the two look like duplicates in the incident this exists
-	// to fix, even with the body's wording now distinguishing them.
-	title := fmt.Sprintf("Coverage needed again in %s", grp.Name)
+	// uses - a subject line identical to the original request's email is
+	// exactly what made the two look like duplicates in the incident this
+	// exists to fix, even with the body's wording now distinguishing them.
+	//
+	// Checked against what's actually in allOpenRequests, not just whether
+	// this call originated from a reopen: if every reopened row got
+	// re-claimed again inside the debounce window, it's no longer open and
+	// so isn't in allOpenRequests at all (the query above is status=open
+	// only) - reopenedIDs would then tag nothing actually present, and
+	// sending "needs coverage again" over a body that reads as an entirely
+	// fresh ask would recreate the same mismatch this fixes.
+	anyReopenedStillOpen := false
+	for _, r := range allOpenRequests {
+		if reopenedIDs[r.ID] {
+			anyReopenedStillOpen = true
+			break
+		}
+	}
+	title := fmt.Sprintf("Coverage needed in %s", grp.Name)
+	if anyReopenedStillOpen {
+		title = fmt.Sprintf("Coverage needed again in %s", grp.Name)
+	}
 	content := buildMultiRequesterCoverageContent(allOpenRequests, reopenedIDs)
 
 	bgCtx := context.Background()

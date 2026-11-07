@@ -331,9 +331,13 @@ const (
 	nonBatchSendRetryDelay  = 500 * time.Millisecond
 )
 
-// batchSendTimeout bounds a whole SendAnnouncementEmailBatch call - longer
-// than SendEmail's own 30s single-send timeout because a batch covers many
-// recipients and may retry several of Resend's own chunked calls.
+// batchSendTimeout bounds a call to the provider's batch endpoint (see
+// BatchEmailProvider.SendBatch) - longer than SendEmail's own 30s single-
+// send timeout because it may retry several of Resend's own chunked calls.
+// It does NOT bound SendAnnouncementEmailBatch's per-recipient fallback
+// loop for a provider with no batch endpoint - see that loop's own
+// comment for why a single fixed cap doesn't fit a call whose duration
+// scales with recipient count.
 const batchSendTimeout = 2 * time.Minute
 
 // SendAnnouncementEmailBatch sends the same announcement to every address
@@ -378,19 +382,32 @@ func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, t
 	// sendGroupAnnouncementEmails), but detaching here too means a caller
 	// that ever stops doing so doesn't silently abort a group's worth of
 	// sends on client disconnect.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), batchSendTimeout)
-	defer cancel()
+	detachedCtx := context.WithoutCancel(ctx)
 
 	if batchProvider, ok := s.provider.(BatchEmailProvider); ok {
-		results := batchProvider.SendBatch(ctx, valid, subject, body)
+		// batchSendTimeout only bounds the batch-endpoint call: a handful
+		// of chunked HTTP calls with their own bounded retries, so a fixed
+		// cap is the right shape here.
+		batchCtx, cancel := context.WithTimeout(detachedCtx, batchSendTimeout)
+		defer cancel()
+		results := batchProvider.SendBatch(batchCtx, valid, subject, body)
 		for i, err := range results {
 			errs[validIdx[i]] = err
 		}
 		return errs
 	}
 
+	// No batchSendTimeout wrapping the fallback loop: unlike the batch
+	// path, its total duration scales with len(valid), which a single
+	// fixed cap can't account for - a large group would otherwise have its
+	// later recipients fail outright with "context deadline exceeded"
+	// once the cap elapsed, never actually attempted. Each recipient's own
+	// attempts are already bounded (nonBatchSendPerAttemptTimeout *
+	// nonBatchSendMaxAttempts, plus the small inter-attempt delay), so the
+	// loop as a whole can't hang - it just isn't capped at one number that
+	// has no good value for every group size.
 	for i, addr := range valid {
-		errs[validIdx[i]] = sendWithRetry(ctx, s.provider, addr, subject, body)
+		errs[validIdx[i]] = sendWithRetry(detachedCtx, s.provider, addr, subject, body)
 	}
 	return errs
 }
