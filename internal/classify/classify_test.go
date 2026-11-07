@@ -101,6 +101,19 @@ func TestAUROC(t *testing.T) {
 	}
 }
 
+func TestBestF1(t *testing.T) {
+	probs := []float64{0.9, 0.8, 0.6, 0.2}
+	y := []bool{true, false, true, true}
+	m := BestF1(probs, y)
+	// t=0.2 flags all: P=3/4, R=1, F1=0.857 — beats t=0.6 (F1=0.667).
+	if m.Threshold != 0.2 || m.TruePositives != 3 || m.FalsePositives != 1 {
+		t.Fatalf("got %+v", m)
+	}
+	if z := BestF1([]float64{0.5}, []bool{false}); z.TruePositives != 0 {
+		t.Fatalf("no positives: got %+v", z)
+	}
+}
+
 func TestAtThreshold(t *testing.T) {
 	probs := []float64{0.9, 0.8, 0.6, 0.2}
 	y := []bool{true, false, true, true}

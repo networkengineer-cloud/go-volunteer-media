@@ -94,6 +94,32 @@ func AtThreshold(probs []float64, y []bool, t float64) ThresholdMetrics {
 	return m
 }
 
+// BestF1 returns the threshold, among the distinct predicted probabilities,
+// that maximizes F1 (the harmonic mean of precision and recall), along with
+// its metrics. It is a convenience for summarizing many labels in one line;
+// a real cutoff should be chosen from the precision/recall trade-off the
+// feature can tolerate. Returns a zero value if there are no positives.
+func BestF1(probs []float64, y []bool) ThresholdMetrics {
+	var best ThresholdMetrics
+	bestF1 := -1.0
+	seen := map[float64]bool{}
+	for _, t := range probs {
+		if seen[t] {
+			continue
+		}
+		seen[t] = true
+		m := AtThreshold(probs, y, t)
+		if m.TruePositives == 0 {
+			continue
+		}
+		f1 := 2 * m.Precision * m.Recall / (m.Precision + m.Recall)
+		if f1 > bestF1 || (f1 == bestF1 && t > best.Threshold) {
+			bestF1, best = f1, m
+		}
+	}
+	return best
+}
+
 // AUROC is the probability that a randomly chosen positive is scored above a
 // randomly chosen negative (ties count half). 0.5 is chance, 1.0 is perfect.
 // Returns 0 if either class is absent.
