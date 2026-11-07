@@ -137,8 +137,10 @@ jobs:
           govulncheck -format sarif ./... > govulncheck.raw.sarif
           # govulncheck emits duplicate rule tags and duplicate call stacks
           # within a result; code scanning rejects either as invalid SARIF.
-          jq '(.runs[].tool.driver.rules[]?.properties.tags) |= (if . then unique else . end)
-              | (.runs[].results[]?.stacks) |= (if . then unique else . end)' \
+          # select() only touches objects that already have the field, so a
+          # result without stacks isn't given "stacks": null (also invalid).
+          jq '(.runs[].tool.driver.rules[]?.properties | select(.tags)) |= (.tags |= unique)
+              | (.runs[].results[]? | select(.stacks)) |= (.stacks |= unique)' \
             govulncheck.raw.sarif > govulncheck.sarif
           {
             echo "### govulncheck"
