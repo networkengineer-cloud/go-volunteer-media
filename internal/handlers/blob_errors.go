@@ -11,10 +11,10 @@ import (
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/storage"
 )
 
-// StatusClientClosedRequest is nginx's non-standard 499: the client hung up
+// statusClientClosedRequest is nginx's non-standard 499: the client hung up
 // before the response was written. It is a 4xx, so LoggingMiddleware logs
 // it at warn level rather than error.
-const StatusClientClosedRequest = 499
+const statusClientClosedRequest = 499
 
 // respondBlobFetchError writes the response for a failed storage-provider
 // read (GetImage / GetDocument):
@@ -35,7 +35,7 @@ func respondBlobFetchError(c *gin.Context, err error, notFoundMsg, failMsg strin
 		c.JSON(http.StatusNotFound, gin.H{"error": notFoundMsg})
 	case errors.Is(err, context.Canceled) || errors.Is(c.Request.Context().Err(), context.Canceled):
 		middleware.GetLogger(c).WithField("error", err.Error()).Info("Client closed request during blob download")
-		c.AbortWithStatus(StatusClientClosedRequest)
+		c.AbortWithStatus(statusClientClosedRequest)
 	case errors.Is(err, context.DeadlineExceeded):
 		c.JSON(http.StatusGatewayTimeout, gin.H{"error": failMsg})
 	default:

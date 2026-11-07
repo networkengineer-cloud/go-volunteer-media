@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,17 +29,19 @@ import (
 // ("azure blob storage error: %w").
 type blockingImageProvider struct {
 	mockStorageProvider
-	started chan struct{}
+	started     chan struct{}
+	startedOnce sync.Once
 }
 
 func (p *blockingImageProvider) GetImage(ctx context.Context, _ string) ([]byte, string, error) {
-	close(p.started)
+	p.startedOnce.Do(func() { close(p.started) })
 	<-ctx.Done()
 	return nil, "", fmt.Errorf("azure blob storage error: %w", ctx.Err())
 }
 
-// captureLogs swaps the default logger for one writing to a buffer and
-// returns the levels of every line written.
+// captureLogs swaps the package-level default logger for one writing to a
+// buffer and returns a func that reports the level of every line written.
+// It mutates global state, so tests using it must not call t.Parallel().
 func captureLogs(t *testing.T) func() []string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -106,7 +109,7 @@ func TestServeImage_ClientCancelMidDownload(t *testing.T) {
 	}
 
 	assert.Less(t, w.Code, 500, "a client-cancelled request must not produce a 5xx")
-	assert.Equal(t, StatusClientClosedRequest, w.Code)
+	assert.Equal(t, statusClientClosedRequest, w.Code)
 	levels := logLevels()
 	assert.NotEmpty(t, levels, "expected the request to be logged")
 	assert.NotContains(t, levels, "ERROR", "a client-cancelled request must not log at error level")
@@ -138,7 +141,7 @@ func TestRespondBlobFetchError(t *testing.T) {
 	}{
 		{"not found", storage.ErrNotFound, http.StatusNotFound},
 		{"wrapped not found", fmt.Errorf("x: %w", storage.ErrNotFound), http.StatusNotFound},
-		{"client cancelled", fmt.Errorf("azure blob storage error: %w", context.Canceled), StatusClientClosedRequest},
+		{"client cancelled", fmt.Errorf("azure blob storage error: %w", context.Canceled), statusClientClosedRequest},
 		{"deadline exceeded", fmt.Errorf("azure blob storage error: %w", context.DeadlineExceeded), http.StatusGatewayTimeout},
 		{"other failure", errors.New("azure blob storage error: connection refused"), http.StatusInternalServerError},
 	}

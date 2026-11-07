@@ -59,7 +59,7 @@ func mapBlobError(err error) error {
 // real failure.
 func failBlob(span trace.Span, err error, msg string) error {
 	mapped := mapBlobError(err)
-	if mapped == ErrNotFound || errors.Is(mapped, context.Canceled) {
+	if errors.Is(mapped, ErrNotFound) || errors.Is(mapped, context.Canceled) {
 		return mapped
 	}
 	telemetry.RecordError(span, mapped, msg)
