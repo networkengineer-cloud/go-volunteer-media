@@ -3,7 +3,9 @@ package classify
 import (
 	"fmt"
 	"math/rand"
+	"runtime"
 	"sort"
+	"sync"
 )
 
 // CrossValidate runs stratified k-fold cross-validation and returns an
@@ -159,4 +161,64 @@ func AUROC(probs []float64, y []bool) float64 {
 	}
 	u := rankSumPos - float64(nPos)*float64(nPos+1)/2
 	return u / (float64(nPos) * float64(nNeg))
+}
+
+// PermutationResult compares a label's cross-validated AUROC against the
+// AUROCs obtained when the same labels are randomly shuffled across the same
+// examples. With small datasets (tens of animals), a single AUROC can land
+// far from 0.5 by chance; this is how to tell signal from luck.
+type PermutationResult struct {
+	Observed float64   // AUROC with the real labels
+	Null     []float64 // AUROCs with shuffled labels, sorted ascending
+	P        float64   // (1 + #null >= observed) / (1 + len(Null))
+}
+
+// NullQuantile returns the q-th quantile (0..1) of the shuffled AUROCs.
+func (r PermutationResult) NullQuantile(q float64) float64 {
+	if len(r.Null) == 0 {
+		return 0
+	}
+	i := int(q * float64(len(r.Null)-1))
+	return r.Null[i]
+}
+
+// PermutationTest runs CrossValidate on the real labels and on n shuffles of
+// them. Shuffles run concurrently. It returns the out-of-fold probabilities
+// for the real labels alongside the comparison.
+func PermutationTest(X [][]float32, y []bool, k int, opts Options, seed int64, n int) ([]float64, PermutationResult, error) {
+	probs, err := CrossValidate(X, y, k, opts, seed)
+	if err != nil {
+		return nil, PermutationResult{}, err
+	}
+	res := PermutationResult{Observed: AUROC(probs, y), Null: make([]float64, n)}
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			// #nosec G404 -- deterministic shuffling, not security-sensitive.
+			rng := rand.New(rand.NewSource(seed + int64(i) + 1))
+			shuffled := append([]bool(nil), y...)
+			rng.Shuffle(len(shuffled), func(a, b int) { shuffled[a], shuffled[b] = shuffled[b], shuffled[a] })
+			p, err := CrossValidate(X, shuffled, k, opts, seed)
+			if err == nil {
+				res.Null[i] = AUROC(p, shuffled)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	sort.Float64s(res.Null)
+	atLeast := 0
+	for _, a := range res.Null {
+		if a >= res.Observed {
+			atLeast++
+		}
+	}
+	res.P = float64(1+atLeast) / float64(1+n)
+	return probs, res, nil
 }
