@@ -376,6 +376,41 @@ dropdb volunteer_media_dev
 createdb volunteer_media_dev
 ```
 
+### Run Against a Copy of Production Data
+
+`scripts/replicate-db.sh` dumps a deployed database (read-only), restores it
+into a local staging database, anonymizes it with
+`scripts/sql/mask-replica.sql`, and only then swaps it in as
+`volunteer_media_dev`. If masking or its verification fails, nothing is
+swapped and the unmasked copy is deleted.
+
+```bash
+make db-start
+# The Azure firewall only admits Azure services — add a temporary rule for your IP first.
+export SRC_DB_HOST=<server>.postgres.database.azure.com
+export SRC_DB_PASSWORD="$(cd terraform/environments/prod && terraform output -raw postgresql_admin_password)"
+make db-replicate                        # or: ./scripts/replicate-db.sh --help
+make db-replicate ARGS="--scrub-text --no-media"
+```
+
+What the copy contains:
+
+- Every account becomes `user<id>` with a fake name, `user<id>@example.com`,
+  and the password `LocalDev-2026!` (override with `--dev-password`). The
+  script prints the logins and their roles.
+- Reset/setup tokens and API tokens are removed; email notifications are off.
+- GroupMe bot IDs are cleared, so a local instance can't post to real chats.
+- Emails, phone numbers and volunteers' full names inside comments, updates,
+  announcements, animal notes and protocols are redacted. `--scrub-text`
+  replaces that text outright. Bite-incident details are always replaced.
+- Embeddings are cleared (they were computed from unmasked text).
+- Photos and documents stored in Postgres are kept unless `--no-media`.
+  Media in Azure Blob storage is not copied.
+
+Treat the copy as internal data anyway: animal records and shelter content are
+real. Free-text redaction is pattern-based, so a name written only as a first
+name, or a phone number with no separators, will not be caught.
+
 ## Next Steps
 
 - Read the main [README.md](README.md) for API documentation

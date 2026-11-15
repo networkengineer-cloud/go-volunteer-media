@@ -41,6 +41,7 @@ Open `http://localhost:5173` in local mode or `http://localhost:8080` in Docker 
 | `make seed` | Run seed script (`cmd/seed/main.go`) |
 | `make seed-force` | Seed with `--force` flag (overwrites existing data) |
 | `make db-reseed` | Full reset: db-stop → db-start → seed |
+| `make db-replicate` | Replace the local DB with an anonymized copy of a deployed DB (`scripts/replicate-db.sh`; needs `SRC_DB_HOST`/`SRC_DB_PASSWORD`) |
 | `make test` | `go test -v ./...` |
 | `make lint` | Run `golangci-lint run` |
 | `make fmt` | `go fmt ./...` + `cd frontend && npm run lint -- --fix` |

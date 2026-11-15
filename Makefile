@@ -90,6 +90,9 @@ db-reseed: ## Stop database, start fresh, and seed with demo data
 	@$(MAKE) seed
 	@echo "✅ Database reseeded successfully!"
 
+db-replicate: ## Copy a deployed DB into local postgres_dev, anonymized (see scripts/replicate-db.sh)
+	./scripts/replicate-db.sh $(ARGS)
+
 lint: ## Run linter
 	@echo "Running golangci-lint..."
 	golangci-lint run
