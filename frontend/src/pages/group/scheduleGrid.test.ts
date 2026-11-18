@@ -50,6 +50,11 @@ describe('rowHeaderFor', () => {
     expect(rowHeaderFor(10)).toEqual({ label: '10:00–11:00 AM' });
   });
 
+  it('keeps AM on the start of a row that ends at noon or later', () => {
+    expect(rowHeaderFor(11)).toEqual({ label: '11:00 AM–12:00 PM' });
+    expect(rowHeaderFor(12)).toEqual({ label: '12:00–1:00 PM' });
+  });
+
   it('shows the weekday-only terminal hour as its own full range, no note', () => {
     expect(rowHeaderFor(17)).toEqual({ label: '5:00–6:30 PM' });
   });

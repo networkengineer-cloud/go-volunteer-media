@@ -167,9 +167,11 @@ git stash && go test ./internal/handlers/... ; cd frontend && npx vitest run ; c
 ## Feature flags
 
 Backend env-var flags (`SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED`,
-`COVERAGE_REQUESTS_FEED_ENABLED`, `SEMANTIC_SEARCH_ENABLED`) are wired through
-`terraform/environments/{dev,prod}/main.tf` to the container app. Each must be
-exactly `"true"`; a configured API key alone is not enough. When a feature
+`COVERAGE_REQUESTS_FEED_ENABLED`, `WEEKLY_COVERAGE_REMINDER_ENABLED`,
+`SEMANTIC_SEARCH_ENABLED`) are wired through
+`terraform/environments/{dev,prod}/main.tf` to the container app. Each is
+opt-in: on only when set to `"true"` or `"1"` (`embedding.OptInEnvFlag`), off
+when unset; a configured API key alone is not enough. When a feature
 "doesn't appear in prod despite the flag being on", check for a *second* gate on
 the frontend — that class of bug cost a prod debugging session in #315.
 

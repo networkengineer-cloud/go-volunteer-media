@@ -67,7 +67,9 @@ func formatSlotRangeLabel(dayOfWeek, hour int) string {
 
 // formatHourRangeLabel renders a contiguous run of hours [firstHour,
 // lastHour] on the given day-of-week as a "start–end" range, e.g.
-// formatHourRangeLabel(2, 8, 10) -> "8:00–11:00 AM". The end time accounts
+// formatHourRangeLabel(2, 8, 10) -> "8:00–11:00 AM". The start's AM/PM is
+// dropped only when it matches the end's, so a range crossing noon reads
+// "11:00 AM–1:00 PM" rather than the misleading "11:00–1:00 PM". The end time accounts
 // for the terminal slot's 90-minute duration if lastHour happens to be
 // that day's terminal hour. Unlike formatSlotRangeLabel, always renders a
 // full range (even for a single hour) since this is used to summarize a
@@ -78,8 +80,11 @@ func formatHourRangeLabel(dayOfWeek, firstHour, lastHour int) string {
 	endTotalMinutes := lastHour*60 + duration
 	endHour := endTotalMinutes / 60
 	endMinute := endTotalMinutes % 60
-	startTime := strings.TrimSuffix(strings.TrimSuffix(formatClockAMPM(firstHour, 0), " AM"), " PM")
+	startTime := formatClockAMPM(firstHour, 0)
 	endTime := formatClockAMPM(endHour, endMinute)
+	if (firstHour >= 12) == (endHour >= 12) {
+		startTime = strings.TrimSuffix(strings.TrimSuffix(startTime, " AM"), " PM")
+	}
 	return fmt.Sprintf("%s–%s", startTime, endTime)
 }
 

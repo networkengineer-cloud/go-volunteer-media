@@ -65,24 +65,29 @@ type APIToken struct {
 
 // Group represents a volunteer group (dogs, cats, modsquad, etc.)
 type Group struct {
-	ID                uint            `gorm:"primaryKey" json:"id"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
-	DeletedAt         gorm.DeletedAt  `gorm:"index" json:"-"`
-	Name              string          `gorm:"uniqueIndex;not null" json:"name"`
-	Description       string          `json:"description"`
-	ImageURL          string          `json:"image_url"`
-	HeroImageURL      string          `json:"hero_image_url"`
-	HasProtocols      bool            `gorm:"column:has_protocols;default:false" json:"has_protocols"`           // Enable protocols feature for this group
-	SchedulingEnabled bool            `gorm:"column:scheduling_enabled;default:false" json:"scheduling_enabled"` // Enable volunteer shift scheduling feature for this group
-	GroupMeBotID      string          `gorm:"column:groupme_bot_id" json:"-"`                                    // GroupMe Bot ID — omitted from API responses; exposed via adminGroupResponse only
-	GroupMeEnabled    bool            `gorm:"column:groupme_enabled;default:false" json:"groupme_enabled"`       // Enable GroupMe integration for this group
-	Users             []User          `gorm:"many2many:user_groups;" json:"users,omitempty"`
-	Animals           []Animal        `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
-	Updates           []Update        `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
-	Protocols         []Protocol      `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
-	Scripts           []Script        `gorm:"foreignKey:GroupID" json:"scripts,omitempty"`
-	Documents         []GroupDocument `gorm:"foreignKey:GroupID" json:"documents,omitempty"`
+	ID                uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	DeletedAt         gorm.DeletedAt `gorm:"index" json:"-"`
+	Name              string         `gorm:"uniqueIndex;not null" json:"name"`
+	Description       string         `json:"description"`
+	ImageURL          string         `json:"image_url"`
+	HeroImageURL      string         `json:"hero_image_url"`
+	HasProtocols      bool           `gorm:"column:has_protocols;default:false" json:"has_protocols"`           // Enable protocols feature for this group
+	SchedulingEnabled bool           `gorm:"column:scheduling_enabled;default:false" json:"scheduling_enabled"` // Enable volunteer shift scheduling feature for this group
+	// WeeklyCoverageReminderEnabled opts the group into the Sunday email of
+	// the coming week's open coverage requests (handlers/schedule_weekly_reminder.go).
+	// Only takes effect while SchedulingEnabled is also on and the
+	// WEEKLY_COVERAGE_REMINDER_ENABLED / SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED env flags are set.
+	WeeklyCoverageReminderEnabled bool            `gorm:"column:weekly_coverage_reminder_enabled;default:false" json:"weekly_coverage_reminder_enabled"`
+	GroupMeBotID                  string          `gorm:"column:groupme_bot_id" json:"-"`                              // GroupMe Bot ID — omitted from API responses; exposed via adminGroupResponse only
+	GroupMeEnabled                bool            `gorm:"column:groupme_enabled;default:false" json:"groupme_enabled"` // Enable GroupMe integration for this group
+	Users                         []User          `gorm:"many2many:user_groups;" json:"users,omitempty"`
+	Animals                       []Animal        `gorm:"foreignKey:GroupID" json:"animals,omitempty"`
+	Updates                       []Update        `gorm:"foreignKey:GroupID" json:"updates,omitempty"`
+	Protocols                     []Protocol      `gorm:"foreignKey:GroupID" json:"protocols,omitempty"`
+	Scripts                       []Script        `gorm:"foreignKey:GroupID" json:"scripts,omitempty"`
+	Documents                     []GroupDocument `gorm:"foreignKey:GroupID" json:"documents,omitempty"`
 }
 
 // Animal represents an animal in a group

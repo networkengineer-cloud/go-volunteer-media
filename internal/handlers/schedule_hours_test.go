@@ -131,6 +131,8 @@ func TestFormatHourRangeLabel(t *testing.T) {
 		{"a single hour still renders as a start-end range", 2, 8, 8, "8:00–9:00 AM"},
 		{"a range ending at the weekday terminal hour accounts for the 90-min slot", 2, 16, 17, "4:00–6:30 PM"},
 		{"a range ending at the weekend terminal hour accounts for the 90-min slot", 6, 14, 15, "2:00–4:30 PM"},
+		{"a range crossing noon keeps both AM and PM", 2, 11, 12, "11:00 AM–1:00 PM"},
+		{"a range ending exactly at noon keeps both AM and PM", 2, 10, 11, "10:00 AM–12:00 PM"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
