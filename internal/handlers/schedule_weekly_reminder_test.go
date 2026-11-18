@@ -1,10 +1,15 @@
 package handlers
 
 import (
+	"bytes"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -106,6 +111,9 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		if err := db.Model(other).Update("email_notifications_enabled", true).Error; err != nil {
 			t.Fatalf("enable email: %v", err)
 		}
+		if err := db.Model(group).Update("weekly_coverage_reminder_enabled", true).Error; err != nil {
+			t.Fatalf("opt group in: %v", err)
+		}
 		provider := &recordingEmailProvider{}
 		return db, provider, email.NewServiceWithProvider(provider, db), group, requester
 	}
@@ -195,6 +203,21 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		}
 	})
 
+	t.Run("skips groups that haven't opted in", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
+		db, provider, svc, group, requester := setup(t)
+		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
+		if err := db.Model(group).Update("weekly_coverage_reminder_enabled", false).Error; err != nil {
+			t.Fatalf("opt group out: %v", err)
+		}
+
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+		if len(provider.sends) != 0 {
+			t.Fatalf("expected no email for a group that hasn't opted in, got %d", len(provider.sends))
+		}
+	})
+
 	t.Run("skips groups with scheduling disabled", func(t *testing.T) {
 		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
 		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
@@ -209,4 +232,58 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 			t.Fatalf("expected no email for a group without scheduling, got %d", len(provider.sends))
 		}
 	})
+}
+
+func TestUpdateGroupWeeklyCoverageReminder(t *testing.T) {
+	tests := []struct {
+		name       string
+		isAdmin    bool
+		groupAdmin bool
+		body       string
+		wantStatus int
+		wantStored bool
+	}{
+		{"site admin can opt a group in", true, false, `{"enabled":true}`, http.StatusOK, true},
+		{"group admin cannot opt their group in", false, true, `{"enabled":true}`, http.StatusForbidden, false},
+		{"missing enabled is rejected", true, false, `{}`, http.StatusBadRequest, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := SetupTestDB(t)
+			user := CreateTestUser(t, db, "u", "u@test.com", "password123", tt.isAdmin)
+			group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+			if tt.groupAdmin {
+				AddUserToGroupWithAdmin(t, db, user.ID, group.ID, true)
+			}
+
+			c, w := setupGroupTestContext(user.ID, tt.isAdmin)
+			c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+			c.Request = httptest.NewRequest("PATCH", fmt.Sprintf("/api/groups/%d/weekly-coverage-reminder", group.ID), bytes.NewBufferString(tt.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			UpdateGroupWeeklyCoverageReminder(db)(c)
+
+			if w.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d: %s", w.Code, tt.wantStatus, w.Body.String())
+			}
+			var reloaded models.Group
+			if err := db.First(&reloaded, group.ID).Error; err != nil {
+				t.Fatalf("reload: %v", err)
+			}
+			if reloaded.WeeklyCoverageReminderEnabled != tt.wantStored {
+				t.Errorf("stored = %v, want %v", reloaded.WeeklyCoverageReminderEnabled, tt.wantStored)
+			}
+		})
+	}
+}
+
+func TestGroupWeeklyCoverageReminderDefaultsOff(t *testing.T) {
+	db := SetupTestDB(t)
+	group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+	var reloaded models.Group
+	if err := db.First(&reloaded, group.ID).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.WeeklyCoverageReminderEnabled {
+		t.Error("new groups must default to not receiving the weekly reminder")
+	}
 }

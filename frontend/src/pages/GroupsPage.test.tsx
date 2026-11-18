@@ -18,6 +18,7 @@ vi.mock('../api/client', () => ({
     create: vi.fn(),
     delete: vi.fn(),
     updateScheduling: vi.fn(),
+    updateWeeklyCoverageReminder: vi.fn(),
     uploadImage: vi.fn(),
   },
   animalsApi: {
@@ -111,5 +112,31 @@ describe('GroupsPage scheduling setting', () => {
     fireEvent.click(screen.getByRole('button', { name: /update/i }));
 
     await waitFor(() => expect(groupsApi.updateScheduling).toHaveBeenCalledWith(1, true));
+  });
+
+  it('only offers the weekly reminder once scheduling is enabled', async () => {
+    renderGroupsPage();
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit' });
+    fireEvent.click(editButtons[1]); // Dogs - scheduling off
+
+    await screen.findByLabelText(/enable scheduling/i);
+    expect(screen.queryByLabelText(/weekly coverage reminder/i)).not.toBeInTheDocument();
+  });
+
+  it('defaults the weekly reminder off and saves it when checked', async () => {
+    vi.mocked(groupsApi.updateWeeklyCoverageReminder).mockResolvedValue({
+      data: { weekly_coverage_reminder_enabled: true },
+    } as AxiosResponse<{ weekly_coverage_reminder_enabled: boolean }>);
+    renderGroupsPage();
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit' });
+    fireEvent.click(editButtons[0]); // Cats (id 2) - scheduling on, reminder unset
+
+    const checkbox = await screen.findByLabelText(/weekly coverage reminder/i);
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: /update/i }));
+
+    await waitFor(() => expect(groupsApi.updateWeeklyCoverageReminder).toHaveBeenCalledWith(2, true));
+    expect(groupsApi.updateScheduling).not.toHaveBeenCalled();
   });
 });

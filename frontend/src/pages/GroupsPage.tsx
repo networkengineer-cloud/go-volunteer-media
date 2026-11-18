@@ -34,6 +34,7 @@ const GroupsPage: React.FC = () => {
     hero_image_url: '',
     has_protocols: false,
     scheduling_enabled: false,
+    weekly_coverage_reminder_enabled: false,
     groupme_bot_id: '',
     groupme_enabled: false
   });
@@ -139,7 +140,7 @@ const GroupsPage: React.FC = () => {
   // Open modal for creating a new group
   const openCreateModal = () => {
     setEditingGroup(null);
-    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false, scheduling_enabled: false, groupme_bot_id: '', groupme_enabled: false });
+    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false, scheduling_enabled: false, weekly_coverage_reminder_enabled: false, groupme_bot_id: '', groupme_enabled: false });
     setModalError(null);
     setShowModal(true);
   };
@@ -154,6 +155,7 @@ const GroupsPage: React.FC = () => {
       hero_image_url: group.hero_image_url || '',
       has_protocols: group.has_protocols || false,
       scheduling_enabled: group.scheduling_enabled || false,
+      weekly_coverage_reminder_enabled: group.weekly_coverage_reminder_enabled || false,
       groupme_bot_id: group.groupme_bot_id || '',
       groupme_enabled: group.groupme_enabled || false
     });
@@ -174,7 +176,7 @@ const GroupsPage: React.FC = () => {
   const closeModal = () => {
     setShowModal(false);
     setEditingGroup(null);
-    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false, scheduling_enabled: false, groupme_bot_id: '', groupme_enabled: false });
+    setModalData({ name: '', description: '', image_url: '', hero_image_url: '', has_protocols: false, scheduling_enabled: false, weekly_coverage_reminder_enabled: false, groupme_bot_id: '', groupme_enabled: false });
     setModalError(null);
     setAvailableAnimals([]);
     setShowAnimalSelector(false);
@@ -207,6 +209,9 @@ const GroupsPage: React.FC = () => {
         );
         if (modalData.scheduling_enabled !== (editingGroup.scheduling_enabled || false)) {
           await groupsApi.updateScheduling(editingGroup.id, modalData.scheduling_enabled);
+        }
+        if (modalData.weekly_coverage_reminder_enabled !== (editingGroup.weekly_coverage_reminder_enabled || false)) {
+          await groupsApi.updateWeeklyCoverageReminder(editingGroup.id, modalData.weekly_coverage_reminder_enabled);
         }
       } else {
         // Create new group
@@ -508,6 +513,24 @@ const GroupsPage: React.FC = () => {
               </label>
               <small className="group-modal-hint">
                 Scheduling is a one-time setup decision - once enabled, members can claim and request coverage for volunteer shifts.
+              </small>
+            </div>
+          )}
+
+          {editingGroup && modalData.scheduling_enabled && (
+            <div className="form-group">
+              <label htmlFor="weekly_coverage_reminder_enabled" className="group-modal-checkbox-label">
+                <input
+                  id="weekly_coverage_reminder_enabled"
+                  name="weekly_coverage_reminder_enabled"
+                  type="checkbox"
+                  checked={modalData.weekly_coverage_reminder_enabled}
+                  onChange={(e) => setModalData(d => ({ ...d, weekly_coverage_reminder_enabled: e.target.checked }))}
+                />
+                <span>Send weekly coverage reminder email</span>
+              </label>
+              <small className="group-modal-hint">
+                Every Sunday afternoon, members with email notifications on get a list of shifts that still need coverage in the coming week. Nothing is sent in weeks with no open shifts.
               </small>
             </div>
           )}

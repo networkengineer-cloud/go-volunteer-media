@@ -19,7 +19,9 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// The weekly coverage reminder emails every scheduling-enabled group, on
+// The weekly coverage reminder emails every group that has opted in
+// (Group.WeeklyCoverageReminderEnabled, set in Manage Groups; off by default)
+// and has scheduling enabled, on
 // Sunday afternoon shelter time, the coverage requests still open for the
 // coming Monday-Sunday. It is the automatic counterpart to the admin "Send
 // reminder" button (SendCoverageReminder): the digest sweep announces a
@@ -142,7 +144,7 @@ func sendWeeklyCoverageReminders(db *gorm.DB, emailService *email.Service, now t
 	var requests []models.ShiftCoverageRequest
 	if err := db.Preload("RequestedByUser").
 		Joins("JOIN groups ON groups.id = shift_coverage_requests.group_id").
-		Where("groups.scheduling_enabled = ? AND groups.deleted_at IS NULL", true).
+		Where("groups.scheduling_enabled = ? AND groups.weekly_coverage_reminder_enabled = ? AND groups.deleted_at IS NULL", true, true).
 		Where("shift_coverage_requests.status = ? AND shift_coverage_requests.date >= ? AND shift_coverage_requests.date < ?",
 			models.CoverageRequestOpen, start, end).
 		Order("shift_coverage_requests.group_id, shift_coverage_requests.requested_by_user_id, shift_coverage_requests.date, shift_coverage_requests.hour").

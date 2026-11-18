@@ -165,6 +165,7 @@ export interface Group {
   hero_image_url: string;
   has_protocols: boolean;
   scheduling_enabled: boolean;
+  weekly_coverage_reminder_enabled?: boolean;
   groupme_bot_id?: string; // Only present in admin responses; hidden from regular group members
   groupme_enabled: boolean;
 }
@@ -579,6 +580,8 @@ export const groupsApi = {
   getMembership: (id: number) => api.get<GroupMembership>('/groups/' + id + '/membership'),
   updateScheduling: (id: number, enabled: boolean) =>
     api.patch<{ scheduling_enabled: boolean }>(`/groups/${id}/scheduling`, { enabled }),
+  updateWeeklyCoverageReminder: (id: number, enabled: boolean) =>
+    api.patch<{ weekly_coverage_reminder_enabled: boolean }>(`/groups/${id}/weekly-coverage-reminder`, { enabled }),
   getLatestComments: (id: number, limit?: number) => {
     const params = limit ? { limit } : {};
     return api.get<CommentWithAnimal[]>('/groups/' + id + '/latest-comments', { params });

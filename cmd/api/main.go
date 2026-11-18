@@ -464,6 +464,7 @@ func main() {
 			group.POST("/members/:userId/demote", handlers.DemoteMemberFromGroupAdmin(db))
 
 			group.PATCH("/scheduling", handlers.UpdateGroupScheduling(db))
+			group.PATCH("/weekly-coverage-reminder", handlers.UpdateGroupWeeklyCoverageReminder(db))
 			group.GET("/schedule/me", handlers.GetMySchedule(db))
 			group.PUT("/schedule/me", handlers.UpdateMySchedule(db))
 			group.GET("/schedule/overview", handlers.GetGroupScheduleOverview(db))
