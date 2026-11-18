@@ -272,7 +272,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
 		svc := email.NewServiceWithProvider(failingEmailProvider{}, db)
 
-		sent, total, err := sendGroupEmailsCounted(context.Background(), db, group.ID, func(to []string) []error {
+		sent, total, err := sendGroupEmailsCounted(context.Background(), db, group.ID, "test", func(to []string) []error {
 			return svc.SendNotificationEmailBatch(context.Background(), to, email.NotificationEmail{Title: "t", Content: "c"})
 		})
 		if err != nil {

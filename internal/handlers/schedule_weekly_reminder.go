@@ -13,6 +13,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/email"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/embedding"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/logging"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"gorm.io/gorm"
@@ -55,8 +56,7 @@ const (
 // weeklyCoverageReminderEnabled reports whether WEEKLY_COVERAGE_REMINDER_ENABLED
 // is on. Opt-in, like the other feature flags: unset means off.
 func weeklyCoverageReminderEnabled() bool {
-	v := os.Getenv("WEEKLY_COVERAGE_REMINDER_ENABLED")
-	return v == "true" || v == "1"
+	return embedding.OptInEnvFlag("WEEKLY_COVERAGE_REMINDER_ENABLED")
 }
 
 // shelterLocation returns the shelter's time zone from SHELTER_TIMEZONE,
@@ -197,18 +197,21 @@ func sendWeeklyCoverageReminders(db *gorm.DB, emailService *email.Service, now t
 		// Synchronous, like the digest sweep: the stop function waits for the
 		// tick, so shutdown doesn't close the DB pool under an in-flight send.
 		ctx := context.Background()
-		sent, total, err := sendGroupEmailsCounted(ctx, db, grp.ID, func(to []string) []error {
+		sent, total, err := sendGroupEmailsCounted(ctx, db, grp.ID, "weekly coverage reminder", func(to []string) []error {
 			return emailService.SendNotificationEmailBatch(ctx, to, notification)
 		})
 		if err != nil {
 			log.Error("Error sending weekly coverage reminder emails; this group's reminder is lost for this week", err)
 			continue
 		}
-		if total > 0 && sent == 0 {
+		switch {
+		case total == 0:
+			log.Info(fmt.Sprintf("Weekly coverage reminder not sent: %d open request(s), but no group members have email notifications on", len(requests)))
+		case sent == 0:
 			log.Errorf("Weekly coverage reminder failed for all %d recipient(s); this group's reminder is lost for this week", total)
-			continue
+		default:
+			log.Info(fmt.Sprintf("Sent weekly coverage reminder covering %d open request(s) to %d of %d recipient(s)", len(requests), sent, total))
 		}
-		log.Info(fmt.Sprintf("Sent weekly coverage reminder covering %d open request(s) to %d of %d recipient(s)", len(requests), sent, total))
 	}
 }
 

@@ -64,8 +64,16 @@ function endClock(hour: number, durationMinutes: number): string {
   return formatClock(Math.floor(endTotalMinutes / 60), endTotalMinutes % 60);
 }
 
+// formatRangeLabel drops the start's AM/PM only when it matches the end's,
+// so a range crossing noon reads "11:00 AM–12:00 PM", not "11:00–12:00 PM".
+// Mirrors formatHourRangeLabel in internal/handlers/schedule_hours.go.
 function formatRangeLabel(hour: number, durationMinutes: number): string {
-  const startTime = formatClock(hour, 0).replace(/ (AM|PM)$/, '');
+  const endTotalMinutes = hour * 60 + durationMinutes;
+  const endHour = Math.floor(endTotalMinutes / 60);
+  let startTime = formatClock(hour, 0);
+  if ((hour >= 12) === (endHour >= 12)) {
+    startTime = startTime.replace(/ (AM|PM)$/, '');
+  }
   return `${startTime}–${endClock(hour, durationMinutes)}`;
 }
 

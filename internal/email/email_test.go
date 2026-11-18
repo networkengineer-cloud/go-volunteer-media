@@ -713,6 +713,11 @@ func TestSendNotificationEmailBatch(t *testing.T) {
 		if !strings.Contains(sent.body, ">Open the schedule</a>") {
 			t.Errorf("link text missing:\n%s", sent.body)
 		}
+		// Button colour lives on a table cell so Outlook's Word renderer,
+		// which ignores padding/inline-block on <a>, still draws a button.
+		if !strings.Contains(sent.body, `<td align="center" bgcolor="#0e6c55"`) {
+			t.Errorf("button should be a bgcolor table cell for Outlook:\n%s", sent.body)
+		}
 		if !strings.Contains(sent.body, "Line one<br>Line two") {
 			t.Errorf("content newlines should become <br>:\n%s", sent.body)
 		}
@@ -735,6 +740,14 @@ func TestSendNotificationEmailBatch(t *testing.T) {
 			t.Errorf("subject = %q, want %q", provider.sentEmails[0].subject, want)
 		}
 	})
+}
+
+func TestRenderNotificationBody_EscapesSiteName(t *testing.T) {
+	service := NewServiceWithProvider(&mockEmailProvider{configured: true}, nil)
+	body := service.renderNotificationBody(`Shelter <b>&</b>`, "T", "C", "", "")
+	if strings.Contains(body, "<b>&</b>") || !strings.Contains(body, "Shelter &lt;b&gt;&amp;&lt;/b&gt;") {
+		t.Errorf("site name must be HTML-escaped in the footer:\n%s", body)
+	}
 }
 
 func TestFrontendURL(t *testing.T) {

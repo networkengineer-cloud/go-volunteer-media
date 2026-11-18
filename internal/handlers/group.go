@@ -279,7 +279,13 @@ func UpdateGroup(db *gorm.DB) gin.HandlerFunc {
 		group.GroupMeBotID = req.GroupMeBotID
 		group.GroupMeEnabled = req.GroupMeEnabled
 
-		if err := db.Save(&group).Error; err != nil {
+		// Write only the fields this form edits. A full Save would also
+		// write back scheduling_enabled and weekly_coverage_reminder_enabled
+		// as they were when this request loaded the row, silently undoing a
+		// change made through their own endpoints in the meantime.
+		if err := db.Model(&group).
+			Select("name", "description", "image_url", "hero_image_url", "has_protocols", "groupme_bot_id", "groupme_enabled").
+			Updates(&group).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update group"})
 			return
 		}
