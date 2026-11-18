@@ -184,6 +184,12 @@ func main() {
 	// database before it is sent.
 	stopCoverageDigestSweep := handlers.StartCoverageDigestSweep(db, emailService, groupMeService, 60*time.Second)
 
+	// Weekly coverage reminder: Sunday afternoon (shelter time, see
+	// SHELTER_TIMEZONE / WEEKLY_COVERAGE_REMINDER_HOUR), each scheduling group
+	// is emailed the coverage requests still open for the coming week. Safe
+	// with multiple replicas — each group's send is claimed in the database.
+	stopWeeklyCoverageReminder := handlers.StartWeeklyCoverageReminder(db, emailService, 5*time.Minute)
+
 	// Load embedded frontend assets at startup
 	distFS, err := fs.Sub(frontend.DistFS, "dist")
 	if err != nil {
@@ -606,6 +612,7 @@ func main() {
 
 	stopEmbeddingSweep()
 	stopCoverageDigestSweep()
+	stopWeeklyCoverageReminder()
 
 	// srv.Shutdown only waits for in-flight HTTP handlers, not the detached
 	// write-path embed goroutines those handlers spawn (see embedAsync in
