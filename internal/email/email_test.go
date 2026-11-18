@@ -685,3 +685,65 @@ func TestEmailTemplates_UseDynamicSiteName(t *testing.T) {
 		}
 	})
 }
+
+func TestSendNotificationEmailBatch(t *testing.T) {
+	t.Run("subject has no Announcement prefix and the body has an escaped link button", func(t *testing.T) {
+		provider := &mockEmailProvider{configured: true}
+		service := NewServiceWithProvider(provider, nil)
+
+		errs := service.SendNotificationEmailBatch(context.Background(), []string{"a@example.com"}, NotificationEmail{
+			Title:    "Coverage needed this week in Dogs",
+			Content:  "Line one\nLine two",
+			LinkURL:  "https://portal.example.com/groups/3?view=schedule&x=<y>",
+			LinkText: "Open the schedule",
+		})
+		if errs[0] != nil {
+			t.Fatalf("send failed: %v", errs[0])
+		}
+		if len(provider.sentEmails) != 1 {
+			t.Fatalf("expected 1 email, got %d", len(provider.sentEmails))
+		}
+		sent := provider.sentEmails[0]
+		if want := "Coverage needed this week in Dogs - " + models.DefaultSiteName; sent.subject != want {
+			t.Errorf("subject = %q, want %q", sent.subject, want)
+		}
+		if !strings.Contains(sent.body, `href="https://portal.example.com/groups/3?view=schedule&amp;x=&lt;y&gt;"`) {
+			t.Errorf("link should be present and HTML-escaped:\n%s", sent.body)
+		}
+		if !strings.Contains(sent.body, ">Open the schedule</a>") {
+			t.Errorf("link text missing:\n%s", sent.body)
+		}
+		if !strings.Contains(sent.body, "Line one<br>Line two") {
+			t.Errorf("content newlines should become <br>:\n%s", sent.body)
+		}
+	})
+
+	t.Run("no link button when LinkURL is empty", func(t *testing.T) {
+		provider := &mockEmailProvider{configured: true}
+		service := NewServiceWithProvider(provider, nil)
+		service.SendNotificationEmailBatch(context.Background(), []string{"a@example.com"}, NotificationEmail{Title: "T", Content: "C"})
+		if strings.Contains(provider.sentEmails[0].body, "<a ") {
+			t.Errorf("expected no link:\n%s", provider.sentEmails[0].body)
+		}
+	})
+
+	t.Run("announcements keep their existing subject", func(t *testing.T) {
+		provider := &mockEmailProvider{configured: true}
+		service := NewServiceWithProvider(provider, nil)
+		service.SendAnnouncementEmailBatch(context.Background(), []string{"a@example.com"}, "Hello", "C")
+		if want := "Announcement: Hello - " + models.DefaultSiteName; provider.sentEmails[0].subject != want {
+			t.Errorf("subject = %q, want %q", provider.sentEmails[0].subject, want)
+		}
+	})
+}
+
+func TestFrontendURL(t *testing.T) {
+	t.Setenv("FRONTEND_URL", "https://portal.example.com/")
+	if got := FrontendURL(); got != "https://portal.example.com" {
+		t.Errorf("FrontendURL() = %q, want trailing slash trimmed", got)
+	}
+	t.Setenv("FRONTEND_URL", "")
+	if got := FrontendURL(); got != "http://localhost:5173" {
+		t.Errorf("FrontendURL() default = %q", got)
+	}
+}

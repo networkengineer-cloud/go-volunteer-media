@@ -228,14 +228,14 @@ func addUserToGroupForDocTest(db *gorm.DB, userID, groupID uint, isGroupAdmin bo
 
 func TestUploadGroupDocument(t *testing.T) {
 	tests := []struct {
-		name           string
-		setupUser      func(db *gorm.DB, group *models.Group) (userID uint, isAdmin bool)
-		fields         map[string]string
-		fileFieldName  string
-		filename       string
-		fileContent      []byte // nil = don't include a file
+		name              string
+		setupUser         func(db *gorm.DB, group *models.Group) (userID uint, isAdmin bool)
+		fields            map[string]string
+		fileFieldName     string
+		filename          string
+		fileContent       []byte         // nil = don't include a file
 		converterOverride *mockConverter // nil = use default &mockConverter{}
-		expectedStatus int
+		expectedStatus    int
 	}{
 		{
 			name: "non-member cannot upload (403)",

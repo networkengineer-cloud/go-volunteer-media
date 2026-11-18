@@ -145,6 +145,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 	}
 
 	t.Run("emails the coming week's open requests once", func(t *testing.T) {
+		t.Setenv("FRONTEND_URL", "https://portal.example.com")
 		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
 		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
 		db, provider, svc, group, requester := setup(t)
@@ -164,8 +165,11 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		if sent.to != "other@example.com" {
 			t.Errorf("sent to %q", sent.to)
 		}
-		if !strings.Contains(sent.subject, "Dogs") {
-			t.Errorf("subject %q should name the group", sent.subject)
+		if want := "Coverage needed this week in Dogs - " + models.DefaultSiteName; sent.subject != want {
+			t.Errorf("subject = %q, want %q", sent.subject, want)
+		}
+		if want := fmt.Sprintf(`href="https://portal.example.com/groups/%d?view=schedule"`, group.ID); !strings.Contains(sent.body, want) {
+			t.Errorf("body should link to the group's schedule (%s):\n%s", want, sent.body)
 		}
 		if !strings.Contains(sent.body, "Tuesday, November 24") {
 			t.Errorf("body should list the in-week shift:\n%s", sent.body)
@@ -268,7 +272,9 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
 		svc := email.NewServiceWithProvider(failingEmailProvider{}, db)
 
-		sent, total, err := sendGroupAnnouncementEmailsCounted(context.Background(), db, svc, group.ID, "t", "c")
+		sent, total, err := sendGroupEmailsCounted(context.Background(), db, group.ID, func(to []string) []error {
+			return svc.SendNotificationEmailBatch(context.Background(), to, email.NotificationEmail{Title: "t", Content: "c"})
+		})
 		if err != nil {
 			t.Fatalf("per-recipient failures are counted, not returned: %v", err)
 		}

@@ -176,42 +176,49 @@ func sortShiftsByDateHour(requests []models.ShiftCoverageRequest) {
 // prompted this). A reopened request gets "is open again" wording
 // instead, inline for a single request or tagged "(reopened)" per line in
 // a list; nil (every other caller) keeps the original wording unchanged.
+//
+// Back-to-back hours on the same date are merged into one shift (see
+// groupCoverageRuns), so someone covering 10 and 11 AM reads as one
+// "10:00 AM–12:00 PM" shift, and the "N shifts" count counts those merged
+// shifts rather than individual hours.
 func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCoverageRequest, reopenedIDs map[uint]bool) string {
-	if len(requests) == 1 {
-		r := requests[0]
-		shiftLabel := fmt.Sprintf("%s shift on %s", formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour), r.Date.Format("Monday, January 2"))
-		if reopenedIDs[r.ID] {
+	runs := groupCoverageRuns(requests, reopenedIDs)
+
+	if len(runs) == 1 {
+		run := runs[0]
+		shiftLabel := fmt.Sprintf("%s shift on %s", run.label(), run.date.Format("Monday, January 2"))
+		if run.reopened {
 			// Neutral about WHY it's open again: the claimant may have
 			// given it back, or an admin may have reopened it for them.
-			if r.Priority == "optional" {
+			if run.optional {
 				return fmt.Sprintf("%s's %s is open again and could use coverage (optional), if anyone's available.",
 					requesterName, shiftLabel)
 			}
 			return fmt.Sprintf("%s's %s is open again and needs coverage.",
 				requesterName, shiftLabel)
 		}
-		if r.Priority == "optional" {
+		if run.optional {
 			return fmt.Sprintf("%s could use coverage for their %s (optional), if anyone's available.", requesterName, shiftLabel)
 		}
 		return fmt.Sprintf("%s needs coverage for their %s.", requesterName, shiftLabel)
 	}
 
 	allOptional := true
-	for _, r := range requests {
-		if r.Priority != "optional" {
+	for _, run := range runs {
+		if !run.optional {
 			allOptional = false
 			break
 		}
 	}
 
-	lines := make([]string, 0, len(requests))
-	for _, r := range requests {
-		line := fmt.Sprintf("- %s at %s", r.Date.Format("Monday, January 2"), formatSlotRangeLabel(int(r.Date.Weekday()), r.Hour))
+	lines := make([]string, 0, len(runs))
+	for _, run := range runs {
+		line := fmt.Sprintf("- %s at %s", run.date.Format("Monday, January 2"), run.label())
 		var tags []string
-		if r.Priority == "optional" {
+		if run.optional {
 			tags = append(tags, "optional")
 		}
-		if reopenedIDs[r.ID] {
+		if run.reopened {
 			tags = append(tags, "reopened")
 		}
 		if len(tags) > 0 {
@@ -220,9 +227,52 @@ func buildCoverageRequestSummary(requesterName string, requests []models.ShiftCo
 		lines = append(lines, line)
 	}
 	if allOptional {
-		return fmt.Sprintf("%s could use coverage for %d shifts, if anyone's available:\n%s", requesterName, len(requests), strings.Join(lines, "\n"))
+		return fmt.Sprintf("%s could use coverage for %d shifts, if anyone's available:\n%s", requesterName, len(runs), strings.Join(lines, "\n"))
 	}
-	return fmt.Sprintf("%s needs coverage for %d shifts:\n%s", requesterName, len(requests), strings.Join(lines, "\n"))
+	return fmt.Sprintf("%s needs coverage for %d shifts:\n%s", requesterName, len(runs), strings.Join(lines, "\n"))
+}
+
+// coverageRun is one or more coverage requests on the same date at
+// back-to-back hours, with the same priority and reopened status - rendered
+// as one shift ("10:00 AM–12:00 PM") rather than one line per hour.
+type coverageRun struct {
+	date                time.Time
+	firstHour, lastHour int
+	optional, reopened  bool
+}
+
+// label renders the run's time: a single slot exactly as
+// formatSlotRangeLabel does ("10:00 AM", or "5:00–6:30 PM" for the day's
+// 90-minute terminal slot), and a multi-hour run as a full start-end range.
+func (r coverageRun) label() string {
+	dayOfWeek := int(r.date.Weekday())
+	if r.firstHour == r.lastHour {
+		return formatSlotRangeLabel(dayOfWeek, r.firstHour)
+	}
+	return formatHourRangeLabel(dayOfWeek, r.firstHour, r.lastHour)
+}
+
+// groupCoverageRuns merges adjacent requests on the same date at back-to-back
+// hours into runs. It keeps the caller's order rather than sorting, since
+// every caller already loads requests ordered by date and hour. A change of
+// priority or reopened status starts a new run, so each line's "(optional)" /
+// "(reopened)" tag stays accurate.
+func groupCoverageRuns(requests []models.ShiftCoverageRequest, reopenedIDs map[uint]bool) []coverageRun {
+	var runs []coverageRun
+	for _, r := range requests {
+		optional := r.Priority == "optional"
+		reopened := reopenedIDs[r.ID]
+		if n := len(runs); n > 0 {
+			last := &runs[n-1]
+			if last.date.Equal(r.Date) && r.Hour == last.lastHour+1 &&
+				last.optional == optional && last.reopened == reopened {
+				last.lastHour = r.Hour
+				continue
+			}
+		}
+		runs = append(runs, coverageRun{date: r.Date, firstHour: r.Hour, lastHour: r.Hour, optional: optional, reopened: reopened})
+	}
+	return runs
 }
 
 // buildMultiRequesterCoverageContent groups requests by requester, in the

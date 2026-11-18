@@ -163,17 +163,17 @@ func (m *mockConverter) ToPDF(_ context.Context, _ []byte, _ string) ([]byte, er
 // Each successful call returns a unique identifier ("test-uuid-N").
 // DeletedBlobs records every identifier passed to DeleteImage.
 type mockStorageProvider struct {
-	ProviderName             string
-	UploadImageErr           error
+	ProviderName              string
+	UploadImageErr            error
 	UploadImageErrForMimeType map[string]error // mime type → error; safe for concurrent use
-	UploadDocumentErr        error
-	GetImageData             []byte
-	GetImageMime             string
-	GetImageErr              error
-	LastMimeType             string
-	DeletedBlobs             []string
-	mu                       sync.Mutex
-	uploadCallCount          int
+	UploadDocumentErr         error
+	GetImageData              []byte
+	GetImageMime              string
+	GetImageErr               error
+	LastMimeType              string
+	DeletedBlobs              []string
+	mu                        sync.Mutex
+	uploadCallCount           int
 }
 
 func (m *mockStorageProvider) Name() string {

@@ -269,15 +269,18 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 
 // sendGroupAnnouncementEmails sends announcement emails to group members who have opted in
 func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService *email.Service, groupID uint, title, content string) error {
-	_, _, err := sendGroupAnnouncementEmailsCounted(ctx, db, emailService, groupID, title, content)
+	_, _, err := sendGroupEmailsCounted(ctx, db, groupID, func(to []string) []error {
+		return emailService.SendAnnouncementEmailBatch(ctx, to, title, content)
+	})
 	return err
 }
 
-// sendGroupAnnouncementEmailsCounted is sendGroupAnnouncementEmails that also
-// reports how many recipients were sent to successfully out of how many were
-// attempted. Per-recipient send failures are logged, not returned as err, so
+// sendGroupEmailsCounted sends to every group member who has email
+// notifications on, via send (which gets the recipient list and returns one
+// error per recipient), and reports how many sends succeeded out of how many
+// were attempted. Per-recipient failures are logged, not returned as err, so
 // a caller that needs to tell "sent" from "every send failed" uses the counts.
-func sendGroupAnnouncementEmailsCounted(ctx context.Context, db *gorm.DB, emailService *email.Service, groupID uint, title, content string) (sent, total int, err error) {
+func sendGroupEmailsCounted(ctx context.Context, db *gorm.DB, groupID uint, send func(to []string) []error) (sent, total int, err error) {
 	logger := logging.WithContext(ctx)
 
 	// Fetch group members who have email notifications enabled
@@ -304,7 +307,7 @@ func sendGroupAnnouncementEmailsCounted(ctx context.Context, db *gorm.DB, emailS
 	for i, user := range users {
 		emails[i] = user.Email
 	}
-	errs := emailService.SendAnnouncementEmailBatch(ctx, emails, title, content)
+	errs := send(emails)
 
 	// Tally failures by message rather than logging one line per failed
 	// recipient: a whole Resend batch chunk fails (or succeeds) together

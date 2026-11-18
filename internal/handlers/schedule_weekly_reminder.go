@@ -186,13 +186,20 @@ func sendWeeklyCoverageReminders(db *gorm.DB, emailService *email.Service, now t
 			continue
 		}
 
-		title := fmt.Sprintf("This week: coverage still needed in %s", grp.Name)
-		content := fmt.Sprintf("These shifts for the week of %s still need coverage. Open the Schedule tab in the portal to pick one up.\n\n%s",
-			start.Format("Monday, January 2"), buildMultiRequesterCoverageContent(requests, nil))
+		notification := email.NotificationEmail{
+			Title: fmt.Sprintf("Coverage needed this week in %s", grp.Name),
+			Content: fmt.Sprintf("These shifts for the week of %s still need coverage.\n\n%s",
+				start.Format("Monday, January 2"), buildMultiRequesterCoverageContent(requests, nil)),
+			LinkURL:  fmt.Sprintf("%s/groups/%d?view=schedule", email.FrontendURL(), grp.ID),
+			LinkText: "Open the schedule",
+		}
 
 		// Synchronous, like the digest sweep: the stop function waits for the
 		// tick, so shutdown doesn't close the DB pool under an in-flight send.
-		sent, total, err := sendGroupAnnouncementEmailsCounted(context.Background(), db, emailService, grp.ID, title, content)
+		ctx := context.Background()
+		sent, total, err := sendGroupEmailsCounted(ctx, db, grp.ID, func(to []string) []error {
+			return emailService.SendNotificationEmailBatch(ctx, to, notification)
+		})
 		if err != nil {
 			log.Error("Error sending weekly coverage reminder emails; this group's reminder is lost for this week", err)
 			continue

@@ -200,10 +200,7 @@ func (s *Service) SendEmail(ctx context.Context, to, subject, htmlBody string) e
 
 // SendPasswordResetEmail sends a password reset email
 func (s *Service) SendPasswordResetEmail(ctx context.Context, to, username, resetToken string) error {
-	baseURL := os.Getenv("FRONTEND_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:5173"
-	}
+	baseURL := FrontendURL()
 
 	resetLink := fmt.Sprintf("%s/reset-password?token=%s", baseURL, resetToken)
 
@@ -252,10 +249,7 @@ func (s *Service) SendPasswordResetEmail(ctx context.Context, to, username, rese
 
 // SendPasswordSetupEmail sends a password setup email for new user invitations
 func (s *Service) SendPasswordSetupEmail(ctx context.Context, to, username, setupToken string) error {
-	baseURL := os.Getenv("FRONTEND_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:5173"
-	}
+	baseURL := FrontendURL()
 
 	// URL-encode the token for safe transmission
 	encodedToken := url.QueryEscape(setupToken)
@@ -307,6 +301,16 @@ func (s *Service) SendPasswordSetupEmail(ctx context.Context, to, username, setu
 	return s.SendEmail(ctx, to, subject, body)
 }
 
+// FrontendURL is the portal's base URL for links in emails (FRONTEND_URL,
+// defaulting to the Vite dev server), without a trailing slash.
+func FrontendURL() string {
+	baseURL := os.Getenv("FRONTEND_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:5173"
+	}
+	return strings.TrimRight(baseURL, "/")
+}
+
 // SendAnnouncementEmail sends an announcement email
 func (s *Service) SendAnnouncementEmail(ctx context.Context, to, title, content string) error {
 	subject, body := s.buildAnnouncementEmail(title, content)
@@ -319,12 +323,22 @@ func (s *Service) SendAnnouncementEmail(ctx context.Context, to, title, content 
 func (s *Service) buildAnnouncementEmail(title, content string) (subject, body string) {
 	siteName := s.getSiteName()
 	subject = fmt.Sprintf("Announcement: %s - %s", title, siteName)
+	return subject, s.renderNotificationBody(siteName, title, content, "", "")
+}
 
+// renderNotificationBody renders the shared green-header email layout.
+// linkURL/linkText add a button below the content; leave linkURL empty for
+// none.
+func (s *Service) renderNotificationBody(siteName, title, content, linkURL, linkText string) string {
 	// Escape HTML in title and convert newlines to HTML line breaks in content
 	escapedTitle := html.EscapeString(title)
 	htmlContent := strings.ReplaceAll(html.EscapeString(content), "\n", "<br>")
+	if linkURL != "" {
+		htmlContent += fmt.Sprintf(`<p style="margin-top: 24px; text-align: center;"><a href="%s" style="display: inline-block; background-color: #0e6c55; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">%s</a></p>`,
+			html.EscapeString(linkURL), html.EscapeString(linkText))
+	}
 
-	body = fmt.Sprintf(`
+	return fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
 <head>
@@ -352,8 +366,24 @@ func (s *Service) buildAnnouncementEmail(title, content string) (subject, body s
 </body>
 </html>
 `, escapedTitle, htmlContent, siteName)
+}
 
-	return subject, body
+// NotificationEmail is a group email that isn't an announcement: its subject
+// is "<Title> - <site name>" with no "Announcement:" prefix, and it can carry
+// a link button (LinkURL/LinkText) below the content.
+type NotificationEmail struct {
+	Title    string
+	Content  string
+	LinkURL  string
+	LinkText string
+}
+
+// SendNotificationEmailBatch sends n to every address in to, using the same
+// layout, batching and retry behaviour as SendAnnouncementEmailBatch.
+func (s *Service) SendNotificationEmailBatch(ctx context.Context, to []string, n NotificationEmail) []error {
+	siteName := s.getSiteName()
+	subject := fmt.Sprintf("%s - %s", n.Title, siteName)
+	return s.sendRenderedBatch(ctx, to, subject, s.renderNotificationBody(siteName, n.Title, n.Content, n.LinkURL, n.LinkText))
 }
 
 // nonBatchSendMaxAttempts/nonBatchSendRetryDelay bound the fallback retry
@@ -388,7 +418,15 @@ const batchSendTimeout = 2 * time.Minute
 //
 // Returns one error per recipient, in the same order as to (nil for a
 // recipient whose send succeeded), mirroring BatchEmailProvider.SendBatch.
-func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, title, content string) (errs []error) {
+func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, title, content string) []error {
+	subject, body := s.buildAnnouncementEmail(title, content)
+	return s.sendRenderedBatch(ctx, to, subject, body)
+}
+
+// sendRenderedBatch sends an already-rendered subject/body to every address
+// in to - the batching, validation, retry and metrics shared by
+// SendAnnouncementEmailBatch and SendNotificationEmailBatch.
+func (s *Service) sendRenderedBatch(ctx context.Context, to []string, subject, body string) (errs []error) {
 	errs = make([]error, len(to))
 	defer func() {
 		providerName := "none"
@@ -404,8 +442,6 @@ func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, t
 		}
 		return errs
 	}
-
-	subject, body := s.buildAnnouncementEmail(title, content)
 
 	valid := make([]string, 0, len(to))
 	validIdx := make([]int, 0, len(to))
