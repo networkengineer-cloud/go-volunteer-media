@@ -112,6 +112,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 
 	t.Run("emails the coming week's open requests once", func(t *testing.T) {
 		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
 		db, provider, svc, group, requester := setup(t)
 
 		inWeek := createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
@@ -150,6 +151,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 
 	t.Run("does nothing outside the Sunday window", func(t *testing.T) {
 		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
 		db, provider, svc, group, requester := setup(t)
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
 
@@ -161,6 +163,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 
 	t.Run("does nothing while schedule email is off", func(t *testing.T) {
 		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "")
+		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
 		db, provider, svc, group, requester := setup(t)
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
 
@@ -175,8 +178,26 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		}
 	})
 
+	t.Run("does nothing while the weekly reminder flag is off", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "")
+		db, provider, svc, group, requester := setup(t)
+		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
+
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+		if len(provider.sends) != 0 {
+			t.Fatalf("expected no email with WEEKLY_COVERAGE_REMINDER_ENABLED unset, got %d", len(provider.sends))
+		}
+		var claims int64
+		db.Model(&models.SiteSetting{}).Where("key LIKE ?", weeklyReminderMarkerPrefix+"%").Count(&claims)
+		if claims != 0 {
+			t.Error("must not claim the week while the flag is off")
+		}
+	})
+
 	t.Run("skips groups with scheduling disabled", func(t *testing.T) {
 		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
 		db, provider, svc, group, requester := setup(t)
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
 		if err := db.Model(group).Update("scheduling_enabled", false).Error; err != nil {

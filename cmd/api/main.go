@@ -184,7 +184,7 @@ func main() {
 	// database before it is sent.
 	stopCoverageDigestSweep := handlers.StartCoverageDigestSweep(db, emailService, groupMeService, 60*time.Second)
 
-	// Weekly coverage reminder: Sunday afternoon (shelter time, see
+	// Weekly coverage reminder (WEEKLY_COVERAGE_REMINDER_ENABLED): Sunday afternoon (shelter time, see
 	// SHELTER_TIMEZONE / WEEKLY_COVERAGE_REMINDER_HOUR), each scheduling group
 	// is emailed the coverage requests still open for the coming week. Safe
 	// with multiple replicas — each group's send is claimed in the database.

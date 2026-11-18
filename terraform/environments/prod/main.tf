@@ -402,6 +402,12 @@ resource "azurerm_container_app" "main" {
         value = var.schedule_email_notifications_enabled ? "true" : "false"
       }
 
+      # Sunday-afternoon email of the coming week's open coverage requests
+      env {
+        name  = "WEEKLY_COVERAGE_REMINDER_ENABLED"
+        value = var.weekly_coverage_reminder_enabled ? "true" : "false"
+      }
+
       env {
         name  = "COVERAGE_REQUESTS_FEED_ENABLED"
         value = var.coverage_requests_feed_enabled ? "true" : "false"

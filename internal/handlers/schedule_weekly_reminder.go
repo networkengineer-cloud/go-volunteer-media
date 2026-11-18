@@ -26,8 +26,10 @@ import (
 // request once, when it is created, and nothing re-announces it after that
 // unless an admin remembers to - this does, once a week, for the week ahead.
 //
-// Email only, gated like every other schedule email: the email service must
-// be configured AND SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED must be on.
+// Email only. Three gates, all required: the email service must be
+// configured, SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED must be on (as for every
+// schedule email), and WEEKLY_COVERAGE_REMINDER_ENABLED must be on, so the
+// weekly send can be turned off without silencing the rest of schedule email.
 
 const (
 	// defaultShelterTimeZone is used when SHELTER_TIMEZONE is unset or invalid.
@@ -47,6 +49,13 @@ const (
 
 	weeklyReminderStopTimeout = 10 * time.Second
 )
+
+// weeklyCoverageReminderEnabled reports whether WEEKLY_COVERAGE_REMINDER_ENABLED
+// is on. Opt-in, like the other feature flags: unset means off.
+func weeklyCoverageReminderEnabled() bool {
+	v := os.Getenv("WEEKLY_COVERAGE_REMINDER_ENABLED")
+	return v == "true" || v == "1"
+}
 
 // shelterLocation returns the shelter's time zone from SHELTER_TIMEZONE,
 // falling back to defaultShelterTimeZone.
@@ -122,7 +131,7 @@ func claimWeeklyReminder(db *gorm.DB, groupID uint, weekKey string) (bool, error
 // Sunday window, when schedule email is off, or for a group that already
 // got this week's reminder.
 func sendWeeklyCoverageReminders(db *gorm.DB, emailService *email.Service, now time.Time, loc *time.Location, sendHour int) {
-	if emailService == nil || !emailService.IsConfigured() || !scheduleEmailNotificationsEnabled() {
+	if !weeklyCoverageReminderEnabled() || emailService == nil || !emailService.IsConfigured() || !scheduleEmailNotificationsEnabled() {
 		return
 	}
 	weekKey, start, end, ok := weeklyReminderWindow(now, loc, sendHour)

@@ -78,9 +78,10 @@ Coverage-request and claim emails from the Schedule tab are opt-in and default t
 
 Coverage-request emails are sent by a background digest rather than at the moment of creation. A volunteer flagging several shifts is announced once, after they stop adding for a few minutes - so a run of consecutive shifts produces one email, not one per shift. A burst is always announced within about 16 minutes of its first shift (a 15-minute cap plus up to one sweep tick), even if the volunteer keeps adding. Three things still send immediately and bypass the digest: claim emails, handing a shift back with "Request coverage" on a covered shift, and the admin "Send reminder" button.
 
-Every Sunday afternoon, each group with scheduling enabled is emailed a reminder listing the coverage requests still open for the coming Monday through Sunday. Groups with nothing open that week get no email. It goes to members who have email notifications turned on, is gated by this same flag, and is sent once per group per week even with several replicas running. If the server is down at the send time, it goes out when the server comes back, as long as it is still Sunday.
+With `WEEKLY_COVERAGE_REMINDER_ENABLED=true`, every Sunday afternoon each group with scheduling enabled is emailed a reminder listing the coverage requests still open for the coming Monday through Sunday. Groups with nothing open that week get no email. It goes to members who have email notifications turned on, is gated by this same flag, and is sent once per group per week even with several replicas running. If the server is down at the send time, it goes out when the server comes back, as long as it is still Sunday.
 
 ```env
+WEEKLY_COVERAGE_REMINDER_ENABLED=true  # "true" or "1" to enable; off when unset
 SHELTER_TIMEZONE=America/Chicago     # IANA zone that "Sunday afternoon" is measured in (default America/Chicago)
 WEEKLY_COVERAGE_REMINDER_HOUR=17     # local hour on Sunday to send, 0-23 (default 17, i.e. 5 PM)
 ```
