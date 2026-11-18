@@ -139,4 +139,23 @@ describe('GroupsPage scheduling setting', () => {
     await waitFor(() => expect(groupsApi.updateWeeklyCoverageReminder).toHaveBeenCalledWith(2, true));
     expect(groupsApi.updateScheduling).not.toHaveBeenCalled();
   });
+
+  it('saves false when a previously enabled weekly reminder is unchecked', async () => {
+    vi.mocked(groupsApi.getAll).mockResolvedValue({
+      data: [schedulingOffGroup, { ...schedulingOnGroup, weekly_coverage_reminder_enabled: true }],
+    } as AxiosResponse<Group[]>);
+    vi.mocked(groupsApi.updateWeeklyCoverageReminder).mockResolvedValue({
+      data: { weekly_coverage_reminder_enabled: false },
+    } as AxiosResponse<{ weekly_coverage_reminder_enabled: boolean }>);
+    renderGroupsPage();
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit' });
+    fireEvent.click(editButtons[0]); // Cats (id 2) - reminder on
+
+    const checkbox = await screen.findByLabelText(/weekly coverage reminder/i);
+    expect(checkbox).toBeChecked();
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: /update/i }));
+
+    await waitFor(() => expect(groupsApi.updateWeeklyCoverageReminder).toHaveBeenCalledWith(2, false));
+  });
 });

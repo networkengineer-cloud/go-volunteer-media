@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -92,12 +94,36 @@ func TestClaimWeeklyReminder_OncePerGroupPerWeek(t *testing.T) {
 
 func createWeeklyRequest(t *testing.T, db *gorm.DB, groupID, userID uint, date time.Time, hour int, status models.CoverageRequestStatus) *models.ShiftCoverageRequest {
 	t.Helper()
-	req := &models.ShiftCoverageRequest{GroupID: groupID, RequestedByUserID: userID, Date: date, Hour: hour, Status: status}
+	// Already announced by the coverage digest - the normal state of a
+	// request by Sunday. See createUnannouncedWeeklyRequest for one that isn't.
+	announced := time.Now()
+	req := &models.ShiftCoverageRequest{GroupID: groupID, RequestedByUserID: userID, Date: date, Hour: hour, Status: status, NotifiedAt: &announced}
 	if err := db.Create(req).Error; err != nil {
 		t.Fatalf("create request: %v", err)
 	}
 	return req
 }
+
+func createUnannouncedWeeklyRequest(t *testing.T, db *gorm.DB, groupID, userID uint, date time.Time, hour int, age time.Duration) *models.ShiftCoverageRequest {
+	t.Helper()
+	req := &models.ShiftCoverageRequest{GroupID: groupID, RequestedByUserID: userID, Date: date, Hour: hour, Status: models.CoverageRequestOpen}
+	if err := db.Create(req).Error; err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	if err := db.Model(req).UpdateColumn("created_at", time.Now().Add(-age)).Error; err != nil {
+		t.Fatalf("backdate request: %v", err)
+	}
+	return req
+}
+
+// failingEmailProvider fails every send.
+type failingEmailProvider struct{}
+
+func (failingEmailProvider) SendEmail(context.Context, string, string, string) error {
+	return errors.New("provider down")
+}
+func (failingEmailProvider) IsConfigured() bool      { return true }
+func (failingEmailProvider) GetProviderName() string { return "failing-mock" }
 
 func TestSendWeeklyCoverageReminders(t *testing.T) {
 	loc := mustChicago(t)
@@ -123,7 +149,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
 		db, provider, svc, group, requester := setup(t)
 
-		inWeek := createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
+		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(22), 10, models.CoverageRequestOpen)    // today: excluded
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(30), 10, models.CoverageRequestOpen)    // week after: excluded
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(25), 11, models.CoverageRequestClaimed) // filled: excluded
@@ -149,11 +175,105 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 				t.Errorf("body should not mention %s:\n%s", excluded, sent.body)
 			}
 		}
+	})
 
-		var stamped models.ShiftCoverageRequest
-		db.First(&stamped, inWeek.ID)
-		if stamped.NotifiedAt == nil {
-			t.Error("announced request should be stamped so the digest sweep doesn't repeat it")
+	t.Run("leaves requests still waiting for their first announcement to the digest", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
+		db, provider, svc, group, requester := setup(t)
+		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
+		// Filed a minute ago: inside the digest's quiet period.
+		fresh := createUnannouncedWeeklyRequest(t, db, group.ID, requester.ID, day(25), 10, time.Minute)
+
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+
+		if len(provider.sends) != 1 {
+			t.Fatalf("expected 1 weekly email, got %d", len(provider.sends))
+		}
+		if strings.Contains(provider.sends[0].body, "November 25") {
+			t.Errorf("weekly email must not list a request the digest hasn't announced yet:\n%s", provider.sends[0].body)
+		}
+		var reloaded models.ShiftCoverageRequest
+		db.First(&reloaded, fresh.ID)
+		if reloaded.NotifiedAt != nil {
+			t.Fatal("weekly reminder must not stamp a request it didn't list")
+		}
+
+		// Once its quiet period is over, the digest still announces it.
+		if err := db.Model(fresh).UpdateColumn("created_at", time.Now().Add(-10*time.Minute)).Error; err != nil {
+			t.Fatalf("backdate: %v", err)
+		}
+		rec := &notifyRecorder{}
+		sweepCoverageDigests(db, rec.record)
+		if rec.count() != 1 {
+			t.Errorf("digest should still announce the new request, got %d announcements", rec.count())
+		}
+	})
+
+	t.Run("a request filed later on Sunday evening does not trigger a late weekly email", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
+		db, provider, svc, group, requester := setup(t)
+
+		// 17:05, nothing open: the group's turn is used up, no email.
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+		// Announced later that evening, then the 23:55 tick.
+		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
+		sendWeeklyCoverageReminders(db, svc, time.Date(2026, 11, 22, 23, 55, 0, 0, loc), loc, 17)
+
+		if len(provider.sends) != 0 {
+			t.Fatalf("expected no weekly email after the 5 PM pass found nothing open, got %d", len(provider.sends))
+		}
+	})
+
+	t.Run("each group gets only its own requests", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
+		db, provider, svc, dogs, requester := setup(t)
+		cats := CreateTestGroup(t, db, "Cats", "Cat volunteers")
+		if err := db.Model(cats).Updates(map[string]interface{}{"scheduling_enabled": true, "weekly_coverage_reminder_enabled": true}).Error; err != nil {
+			t.Fatalf("enable cats: %v", err)
+		}
+		catPerson := CreateTestUser(t, db, "catperson", "cat@example.com", "password123", false)
+		AddUserToGroupWithAdmin(t, db, catPerson.ID, cats.ID, false)
+		if err := db.Model(catPerson).Update("email_notifications_enabled", true).Error; err != nil {
+			t.Fatalf("enable email: %v", err)
+		}
+		createWeeklyRequest(t, db, dogs.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
+		createWeeklyRequest(t, db, cats.ID, catPerson.ID, day(26), 12, models.CoverageRequestOpen)
+
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+
+		if len(provider.sends) != 2 {
+			t.Fatalf("expected one email per group, got %d", len(provider.sends))
+		}
+		for _, sent := range provider.sends {
+			switch sent.to {
+			case "other@example.com":
+				if !strings.Contains(sent.body, "November 24") || strings.Contains(sent.body, "November 26") {
+					t.Errorf("Dogs email has the wrong shifts:\n%s", sent.body)
+				}
+			case "cat@example.com":
+				if !strings.Contains(sent.body, "November 26") || strings.Contains(sent.body, "November 24") {
+					t.Errorf("Cats email has the wrong shifts:\n%s", sent.body)
+				}
+			default:
+				t.Errorf("unexpected recipient %q", sent.to)
+			}
+		}
+	})
+
+	t.Run("reports when every send fails", func(t *testing.T) {
+		db, _, _, group, requester := setup(t)
+		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
+		svc := email.NewServiceWithProvider(failingEmailProvider{}, db)
+
+		sent, total, err := sendGroupAnnouncementEmailsCounted(context.Background(), db, svc, group.ID, "t", "c")
+		if err != nil {
+			t.Fatalf("per-recipient failures are counted, not returned: %v", err)
+		}
+		if sent != 0 || total != 1 {
+			t.Errorf("got sent=%d total=%d, want 0 of 1", sent, total)
 		}
 	})
 
@@ -246,6 +366,7 @@ func TestUpdateGroupWeeklyCoverageReminder(t *testing.T) {
 		{"site admin can opt a group in", true, false, `{"enabled":true}`, http.StatusOK, true},
 		{"group admin cannot opt their group in", false, true, `{"enabled":true}`, http.StatusForbidden, false},
 		{"missing enabled is rejected", true, false, `{}`, http.StatusBadRequest, false},
+		{"invalid JSON is rejected", true, false, `{`, http.StatusBadRequest, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -286,4 +407,48 @@ func TestGroupWeeklyCoverageReminderDefaultsOff(t *testing.T) {
 	if reloaded.WeeklyCoverageReminderEnabled {
 		t.Error("new groups must default to not receiving the weekly reminder")
 	}
+}
+
+func TestUpdateGroupWeeklyCoverageReminder_EdgeCases(t *testing.T) {
+	perform := func(db *gorm.DB, adminID uint, idParam, body string) *httptest.ResponseRecorder {
+		c, w := setupGroupTestContext(adminID, true)
+		c.Params = gin.Params{{Key: "id", Value: strings.ReplaceAll(idParam, "%20", " ")}}
+		c.Request = httptest.NewRequest("PATCH", "/api/groups/"+idParam+"/weekly-coverage-reminder", bytes.NewBufferString(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		UpdateGroupWeeklyCoverageReminder(db)(c)
+		return w
+	}
+
+	t.Run("site admin can opt a group back out", func(t *testing.T) {
+		db := SetupTestDB(t)
+		admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+		group := CreateTestGroup(t, db, "Dogs", "Dog volunteers")
+		if err := db.Model(group).Update("weekly_coverage_reminder_enabled", true).Error; err != nil {
+			t.Fatalf("opt in: %v", err)
+		}
+		if w := perform(db, admin.ID, fmt.Sprintf("%d", group.ID), `{"enabled":false}`); w.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+		}
+		var reloaded models.Group
+		db.First(&reloaded, group.ID)
+		if reloaded.WeeklyCoverageReminderEnabled {
+			t.Error("expected the group to be opted out")
+		}
+	})
+
+	t.Run("unknown group is 404", func(t *testing.T) {
+		db := SetupTestDB(t)
+		admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+		if w := perform(db, admin.ID, "9999", `{"enabled":true}`); w.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want 404", w.Code)
+		}
+	})
+
+	t.Run("non-numeric group id is 400", func(t *testing.T) {
+		db := SetupTestDB(t)
+		admin := CreateTestUser(t, db, "admin", "admin@test.com", "password123", true)
+		if w := perform(db, admin.ID, "1%20OR%201=1", `{"enabled":true}`); w.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", w.Code)
+		}
+	})
 }

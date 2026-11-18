@@ -269,6 +269,15 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 
 // sendGroupAnnouncementEmails sends announcement emails to group members who have opted in
 func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService *email.Service, groupID uint, title, content string) error {
+	_, _, err := sendGroupAnnouncementEmailsCounted(ctx, db, emailService, groupID, title, content)
+	return err
+}
+
+// sendGroupAnnouncementEmailsCounted is sendGroupAnnouncementEmails that also
+// reports how many recipients were sent to successfully out of how many were
+// attempted. Per-recipient send failures are logged, not returned as err, so
+// a caller that needs to tell "sent" from "every send failed" uses the counts.
+func sendGroupAnnouncementEmailsCounted(ctx context.Context, db *gorm.DB, emailService *email.Service, groupID uint, title, content string) (sent, total int, err error) {
 	logger := logging.WithContext(ctx)
 
 	// Fetch group members who have email notifications enabled
@@ -278,7 +287,7 @@ func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService 
 		Where("user_groups.group_id = ? AND users.email_notifications_enabled = ?", groupID, true).
 		Find(&users).Error; err != nil {
 		logger.Error("Failed to fetch group members for email notifications", err)
-		return err
+		return 0, 0, err
 	}
 
 	logger.WithFields(map[string]interface{}{
@@ -327,5 +336,5 @@ func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService 
 		"total_count":   len(users),
 		"group_id":      groupID,
 	}).Info("Group announcement email sending completed")
-	return nil
+	return successCount, len(users), nil
 }

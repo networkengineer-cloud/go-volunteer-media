@@ -311,8 +311,14 @@ func UpdateGroupWeeklyCoverageReminder(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		groupID, err := strconv.ParseUint(groupIDParam, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
 		var group models.Group
-		if err := db.First(&group, groupIDParam).Error; err != nil {
+		if err := db.First(&group, uint(groupID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
@@ -352,8 +358,14 @@ func UpdateGroupScheduling(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		groupID, err := strconv.ParseUint(groupIDParam, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
 		var group models.Group
-		if err := db.First(&group, groupIDParam).Error; err != nil {
+		if err := db.First(&group, uint(groupID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}

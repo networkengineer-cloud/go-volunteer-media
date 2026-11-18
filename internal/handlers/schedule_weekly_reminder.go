@@ -130,8 +130,14 @@ func claimWeeklyReminder(db *gorm.DB, groupID uint, weekKey string) (bool, error
 }
 
 // sendWeeklyCoverageReminders runs one pass. It is a no-op outside the
-// Sunday window, when schedule email is off, or for a group that already
-// got this week's reminder.
+// Sunday window, when the flags are off, or for a group that already had
+// this week's turn.
+//
+// Every opted-in group is claimed on the first tick of the window, whether
+// or not it has anything open, and a group with nothing to list simply gets
+// no email. Claiming only groups that have open requests would instead let a
+// request filed later that evening trigger the "weekly" email at, say,
+// 11:55 PM, taking over that request's normal announcement.
 func sendWeeklyCoverageReminders(db *gorm.DB, emailService *email.Service, now time.Time, loc *time.Location, sendHour int) {
 	if !weeklyCoverageReminderEnabled() || emailService == nil || !emailService.IsConfigured() || !scheduleEmailNotificationsEnabled() {
 		return
@@ -141,68 +147,61 @@ func sendWeeklyCoverageReminders(db *gorm.DB, emailService *email.Service, now t
 		return
 	}
 
-	var requests []models.ShiftCoverageRequest
-	if err := db.Preload("RequestedByUser").
-		Joins("JOIN groups ON groups.id = shift_coverage_requests.group_id").
-		Where("groups.scheduling_enabled = ? AND groups.weekly_coverage_reminder_enabled = ? AND groups.deleted_at IS NULL", true, true).
-		Where("shift_coverage_requests.status = ? AND shift_coverage_requests.date >= ? AND shift_coverage_requests.date < ?",
-			models.CoverageRequestOpen, start, end).
-		Order("shift_coverage_requests.group_id, shift_coverage_requests.requested_by_user_id, shift_coverage_requests.date, shift_coverage_requests.hour").
-		Find(&requests).Error; err != nil {
-		logging.Error("Failed to load open coverage requests for weekly reminder", err)
+	var groups []models.Group
+	if err := db.Select("id", "name").
+		Where("scheduling_enabled = ? AND weekly_coverage_reminder_enabled = ?", true, true).
+		Order("id").
+		Find(&groups).Error; err != nil {
+		logging.Error("Failed to load groups for weekly coverage reminder", err)
 		return
 	}
 
-	byGroup := make(map[uint][]models.ShiftCoverageRequest)
-	var groupOrder []uint
-	for _, r := range requests {
-		if _, seen := byGroup[r.GroupID]; !seen {
-			groupOrder = append(groupOrder, r.GroupID)
-		}
-		byGroup[r.GroupID] = append(byGroup[r.GroupID], r)
-	}
+	for _, grp := range groups {
+		log := logging.WithField("group_id", grp.ID)
 
-	for _, groupID := range groupOrder {
-		groupRequests := byGroup[groupID]
-		log := logging.WithField("group_id", groupID)
-
-		won, err := claimWeeklyReminder(db, groupID, weekKey)
+		won, err := claimWeeklyReminder(db, grp.ID, weekKey)
 		if err != nil {
 			log.Error("Failed to claim weekly coverage reminder", err)
 			continue
 		}
 		if !won {
-			continue // already sent this week, here or on another replica
+			continue // already handled this week, here or on another replica
 		}
 
-		var grp models.Group
-		if err := db.Select("name").First(&grp, groupID).Error; err != nil {
-			log.Error("Failed to load group for weekly coverage reminder", err)
+		// Only requests the group has already been told about. One still
+		// waiting out the coverage digest's quiet period (notified_at NULL)
+		// is left to the digest, which announces it within minutes as a new
+		// request - listing it here too would either announce it twice or,
+		// if stamped, rob it of that announcement. Nothing here is stamped.
+		var requests []models.ShiftCoverageRequest
+		if err := db.Preload("RequestedByUser").
+			Where("group_id = ? AND status = ? AND notified_at IS NOT NULL AND date >= ? AND date < ?",
+				grp.ID, models.CoverageRequestOpen, start, end).
+			Order("requested_by_user_id, date, hour").
+			Find(&requests).Error; err != nil {
+			log.Error("Failed to load open coverage requests for weekly reminder; this group's reminder is skipped this week", err)
 			continue
 		}
-
-		// Same reason as SendCoverageReminder: anything here still waiting in
-		// the digest queue is being announced now, so stamp it (by id) or the
-		// digest sweep would announce it again minutes later.
-		ids := make([]uint, len(groupRequests))
-		for i, r := range groupRequests {
-			ids[i] = r.ID
-		}
-		if err := stampCoverageRequestsAsAnnouncedFunc(db, ids); err != nil {
-			log.Error("Failed to stamp coverage requests covered by the weekly reminder; the digest sweep may re-announce them", err)
+		if len(requests) == 0 {
+			continue
 		}
 
 		title := fmt.Sprintf("This week: coverage still needed in %s", grp.Name)
 		content := fmt.Sprintf("These shifts for the week of %s still need coverage. Open the Schedule tab in the portal to pick one up.\n\n%s",
-			start.Format("Monday, January 2"), buildMultiRequesterCoverageContent(groupRequests, nil))
+			start.Format("Monday, January 2"), buildMultiRequesterCoverageContent(requests, nil))
 
 		// Synchronous, like the digest sweep: the stop function waits for the
 		// tick, so shutdown doesn't close the DB pool under an in-flight send.
-		if err := sendGroupAnnouncementEmails(context.Background(), db, emailService, groupID, title, content); err != nil {
-			log.Error("Error sending weekly coverage reminder emails", err)
+		sent, total, err := sendGroupAnnouncementEmailsCounted(context.Background(), db, emailService, grp.ID, title, content)
+		if err != nil {
+			log.Error("Error sending weekly coverage reminder emails; this group's reminder is lost for this week", err)
 			continue
 		}
-		log.Info(fmt.Sprintf("Sent weekly coverage reminder covering %d open request(s)", len(groupRequests)))
+		if total > 0 && sent == 0 {
+			log.Errorf("Weekly coverage reminder failed for all %d recipient(s); this group's reminder is lost for this week", total)
+			continue
+		}
+		log.Info(fmt.Sprintf("Sent weekly coverage reminder covering %d open request(s) to %d of %d recipient(s)", len(requests), sent, total))
 	}
 }
 
