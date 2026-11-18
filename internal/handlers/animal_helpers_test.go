@@ -283,8 +283,8 @@ func TestResolveQuarantineEndDate(t *testing.T) {
 	})
 
 	t.Run("explicit end date on the calendar day before start, even with an earlier time-of-day, is rejected", func(t *testing.T) {
-		start := time.Date(2026, 7, 2, 23, 0, 0, 0, time.UTC) // 11pm
-		end := time.Date(2026, 7, 1, 1, 0, 0, 0, time.UTC)    // 1am, previous calendar day
+		start := time.Date(2026, 7, 2, 23, 0, 0, 0, time.UTC)  // 11pm
+		end := time.Date(2026, 7, 1, 1, 0, 0, 0, time.UTC)     // 1am, previous calendar day
 		_, err := resolveQuarantineEndDate(&start, NullableTime{Time: &end, Valid: true})
 		if err == nil {
 			t.Fatal("expected an error, got nil")

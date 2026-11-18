@@ -423,7 +423,7 @@ func TestUploadAnimalVideo_VideoUploadFails_ThumbnailCleanedup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupVideoTestDB(t)
 	store := &mockStorageProvider{
-		ProviderName:              "azure",
+		ProviderName:             "azure",
 		UploadImageErrForMimeType: map[string]error{"video/mp4": fmt.Errorf("azure: container unavailable")},
 	}
 
@@ -454,7 +454,7 @@ func TestUploadAnimalVideo_ThumbnailUploadFails_VideoCleanedup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupVideoTestDB(t)
 	store := &mockStorageProvider{
-		ProviderName:              "azure",
+		ProviderName:             "azure",
 		UploadImageErrForMimeType: map[string]error{"image/jpeg": fmt.Errorf("azure: container unavailable")},
 	}
 

@@ -78,52 +78,52 @@ func TestEscapeSQLWildcards_Integration(t *testing.T) {
 	// This test demonstrates why wildcard escaping is important for security
 
 	testCases := []struct {
-		name           string
-		userInput      string
-		shouldMatch    []string
-		shouldNotMatch []string
-		description    string
+		name            string
+		userInput       string
+		shouldMatch     []string
+		shouldNotMatch  []string
+		description     string
 	}{
 		{
-			name:           "exact match without wildcards",
-			userInput:      "rex",
-			shouldMatch:    []string{"Rex", "REX", "rexie"},
-			shouldNotMatch: []string{"T-Rex", "Tyrannosaurus"},
-			description:    "Normal search should use LIKE with % wrapping",
+			name:            "exact match without wildcards",
+			userInput:       "rex",
+			shouldMatch:     []string{"Rex", "REX", "rexie"},
+			shouldNotMatch:  []string{"T-Rex", "Tyrannosaurus"},
+			description:     "Normal search should use LIKE with % wrapping",
 		},
 		{
-			name:           "user input with percent should be literal",
-			userInput:      "test%",
-			shouldMatch:    []string{"test%", "TEST%"},
-			shouldNotMatch: []string{"test", "tester", "testing"},
-			description:    "User's % should be treated as literal character, not SQL wildcard",
+			name:            "user input with percent should be literal",
+			userInput:       "test%",
+			shouldMatch:     []string{"test%", "TEST%"},
+			shouldNotMatch:  []string{"test", "tester", "testing"},
+			description:     "User's % should be treated as literal character, not SQL wildcard",
 		},
 		{
-			name:           "user input with underscore should be literal",
-			userInput:      "fluffy_dog",
-			shouldMatch:    []string{"fluffy_dog", "FLUFFY_DOG"},
-			shouldNotMatch: []string{"fluffy dog", "fluffyAdog", "fluffy-dog"},
-			description:    "User's _ should be treated as literal character, not single-char wildcard",
+			name:            "user input with underscore should be literal",
+			userInput:       "fluffy_dog",
+			shouldMatch:     []string{"fluffy_dog", "FLUFFY_DOG"},
+			shouldNotMatch:  []string{"fluffy dog", "fluffyAdog", "fluffy-dog"},
+			description:     "User's _ should be treated as literal character, not single-char wildcard",
 		},
 		{
-			name:           "complex pattern with both wildcards",
-			userInput:      "test_%_name",
-			shouldMatch:    []string{"test_%_name"},
-			shouldNotMatch: []string{"test_a_name", "test1%1name"},
-			description:    "Both wildcards should be escaped and treated literally",
+			name:            "complex pattern with both wildcards",
+			userInput:       "test_%_name",
+			shouldMatch:     []string{"test_%_name"},
+			shouldNotMatch:  []string{"test_a_name", "test1%1name"},
+			description:     "Both wildcards should be escaped and treated literally",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			escaped := escapeSQLWildcards(tc.userInput)
-
+			
 			// Log the transformation for documentation
 			t.Logf("User input: %q", tc.userInput)
 			t.Logf("Escaped: %q", escaped)
 			t.Logf("SQL pattern: %%%s%%", escaped)
 			t.Logf("Description: %s", tc.description)
-
+			
 			// Verify that escaping occurred if wildcards were present
 			if tc.userInput != escaped {
 				t.Logf("✅ Wildcard characters were properly escaped")
@@ -139,13 +139,13 @@ func TestEscapeSQLWildcards_Performance(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		longInput += "test%_string"
 	}
-
+	
 	result := escapeSQLWildcards(longInput)
-
+	
 	// Verify the function handles long strings without issues
 	if len(result) == 0 {
 		t.Error("Function failed to process long input")
 	}
-
+	
 	t.Logf("Processed input of length %d to output of length %d", len(longInput), len(result))
 }
