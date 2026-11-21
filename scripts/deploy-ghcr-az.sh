@@ -164,6 +164,11 @@ FULL_IMAGE_TAG="${REPO}:${REVISION_TAG}"
 # Build and push new image (unless rolling back)
 if [[ "${SKIP_BUILD}" == false ]]; then
   echo "Building image ${FULL_IMAGE_TAG} for linux/amd64..."
+  BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  GIT_SHA_FULL=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+  # The org.opencontainers.image.* labels override the ones inherited from
+  # the base image (Dockerfile.base), which otherwise report the base
+  # image's title, commit and build date for every app image.
   docker build --platform linux/amd64 \
     --cache-from "${REPO}:${IMAGE_TAG}" \
     --build-arg GIT_SHA="${GIT_SHA}" \
@@ -172,7 +177,12 @@ if [[ "${SKIP_BUILD}" == false ]]; then
     -t "${REPO}:${IMAGE_TAG}" \
     --label "revision=${REVISION_TAG}" \
     --label "git-sha=${GIT_SHA}" \
-    --label "build-date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --label "build-date=${BUILD_DATE}" \
+    --label "org.opencontainers.image.title=go-volunteer-media" \
+    --label "org.opencontainers.image.description=MyHAWS Volunteer Portal" \
+    --label "org.opencontainers.image.revision=${GIT_SHA_FULL}" \
+    --label "org.opencontainers.image.version=${REVISION_TAG}" \
+    --label "org.opencontainers.image.created=${BUILD_DATE}" \
     .
   
   echo "Pushing revision image to registry..."
