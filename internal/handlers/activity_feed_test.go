@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/networkengineer-cloud/go-volunteer-media/internal/middleware"
 	"github.com/networkengineer-cloud/go-volunteer-media/internal/models"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
@@ -634,4 +636,36 @@ func TestGetGroupActivityFeed_CoverageRequestsAreCappedAtFetchLimit(t *testing.T
 	if body["total"] != float64(coverageRequestFetchCap) {
 		t.Fatalf("expected total to reflect the capped fetch (%d rows created, %d cap), got %v", overCap, coverageRequestFetchCap, body["total"])
 	}
+}
+
+// TestGetGroupActivityFeed_ClientCancelIsNot500 covers the prod alert where a
+// client hung up mid-request: the request context is cancelled after the
+// group-access check passes, so the feed's own query fails with
+// context.Canceled. That must surface as 499, not a 500.
+func TestGetGroupActivityFeed_ClientCancelIsNot500(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupActivityFeedTestDB(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	// Cancel just before the first feed query (updates), i.e. after the
+	// access check has already read users/user_groups/groups.
+	if err := db.Callback().Query().Before("gorm:query").Register("test:cancel_on_updates", func(tx *gorm.DB) {
+		if tx.Statement.Table == "updates" {
+			cancel()
+		}
+	}); err != nil {
+		t.Fatalf("register callback: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user_id", uint(1))
+	c.Set("is_admin", false)
+	c.Params = gin.Params{{Key: "id", Value: "1"}}
+	c.Request = httptest.NewRequest(http.MethodGet, "/groups/1/activity", nil).WithContext(ctx)
+
+	GetGroupActivityFeed(db)(c)
+
+	assert.Equal(t, middleware.StatusClientClosedRequest, w.Code)
 }

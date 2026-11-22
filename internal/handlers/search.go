@@ -152,7 +152,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			if err := db.Model(&models.Animal{}).
 				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
 				Count(&totalAnimals).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count matching animals"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to count matching animals")
 				return
 			}
 
@@ -174,7 +174,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			keywordAnimalsQuery := applyPageOrPool(buildAnimalsKeywordQuery(), semanticAvailable, pool, limit, offset)
 			var keywordRows []animalSearchResult
 			if err := keywordAnimalsQuery.Find(&keywordRows).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search animals"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to search animals")
 				return
 			}
 
@@ -199,7 +199,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				// "Load more" promise results pagination can never reach.
 				animals, total, err := finishSemanticSearch(c.Request.Context(), "animals", keywordRows, buildAnimalsKeywordQuery, semanticQuery, pool, fuseAnimalResults, totalAnimals, offset, limit, semanticCandidates)
 				if err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search animals"})
+					respondInternalErrorUnlessCanceled(c, err, "Failed to search animals")
 					return
 				}
 				response["animals"] = animals
@@ -219,7 +219,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 				Where("animals.group_id = ? AND animal_comments.search_vector @@ websearch_to_tsquery('english', ?)", groupID, query)
 
 			if err := keywordBase.Session(&gorm.Session{}).Count(&totalComments).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count matching comments"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to count matching comments")
 				return
 			}
 
@@ -234,7 +234,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			keywordCommentsQuery := applyPageOrPool(buildCommentsKeywordQuery(), semanticAvailable, pool, limit, offset)
 			var keywordRows []commentSearchResult
 			if err := keywordCommentsQuery.Find(&keywordRows).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search comments"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to search comments")
 				return
 			}
 
@@ -250,7 +250,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 
 				comments, total, err := finishSemanticSearch(c.Request.Context(), "comments", keywordRows, buildCommentsKeywordQuery, semanticQuery, pool, fuseCommentResults, totalComments, offset, limit, semanticCandidates)
 				if err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search comments"})
+					respondInternalErrorUnlessCanceled(c, err, "Failed to search comments")
 					return
 				}
 				response["comments"] = comments
@@ -263,7 +263,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			if err := db.Model(&models.Update{}).
 				Where("group_id = ? AND search_vector @@ websearch_to_tsquery('english', ?)", groupID, query).
 				Count(&totalUpdates).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count matching updates"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to count matching updates")
 				return
 			}
 
@@ -279,7 +279,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 			keywordUpdatesQuery := applyPageOrPool(buildUpdatesKeywordQuery(), semanticAvailable, pool, limit, offset)
 			var keywordUpdateRows []updateSearchResult
 			if err := keywordUpdatesQuery.Find(&keywordUpdateRows).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search updates"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to search updates")
 				return
 			}
 
@@ -295,7 +295,7 @@ func Search(db *gorm.DB, embedder embedding.Embedder) gin.HandlerFunc {
 
 				updates, total, err := finishSemanticSearch(c.Request.Context(), "updates", keywordUpdateRows, buildUpdatesKeywordQuery, semanticQuery, pool, fuseUpdateResults, totalUpdates, offset, limit, semanticCandidates)
 				if err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search updates"})
+					respondInternalErrorUnlessCanceled(c, err, "Failed to search updates")
 					return
 				}
 				response["updates"] = updates
