@@ -155,8 +155,8 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(30), 10, models.CoverageRequestOpen)    // week after: excluded
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(25), 11, models.CoverageRequestClaimed) // filled: excluded
 
-		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
-		sendWeeklyCoverageReminders(db, svc, sundayEvening.Add(10*time.Minute), loc, 17)
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17, nil)
+		sendWeeklyCoverageReminders(db, svc, sundayEvening.Add(10*time.Minute), loc, 17, nil)
 
 		if len(provider.sends) != 1 {
 			t.Fatalf("expected 1 email (one opted-in member, one send per week), got %d", len(provider.sends))
@@ -189,7 +189,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		// Filed a minute ago: inside the digest's quiet period.
 		fresh := createUnannouncedWeeklyRequest(t, db, group.ID, requester.ID, day(25), 10, time.Minute)
 
-		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17, nil)
 
 		if len(provider.sends) != 1 {
 			t.Fatalf("expected 1 weekly email, got %d", len(provider.sends))
@@ -220,10 +220,10 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		db, provider, svc, group, requester := setup(t)
 
 		// 17:05, nothing open: the group's turn is used up, no email.
-		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17, nil)
 		// Announced later that evening, then the 23:55 tick.
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
-		sendWeeklyCoverageReminders(db, svc, time.Date(2026, 11, 22, 23, 55, 0, 0, loc), loc, 17)
+		sendWeeklyCoverageReminders(db, svc, time.Date(2026, 11, 22, 23, 55, 0, 0, loc), loc, 17, nil)
 
 		if len(provider.sends) != 0 {
 			t.Fatalf("expected no weekly email after the 5 PM pass found nothing open, got %d", len(provider.sends))
@@ -246,7 +246,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		createWeeklyRequest(t, db, dogs.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
 		createWeeklyRequest(t, db, cats.ID, catPerson.ID, day(26), 12, models.CoverageRequestOpen)
 
-		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17, nil)
 
 		if len(provider.sends) != 2 {
 			t.Fatalf("expected one email per group, got %d", len(provider.sends))
@@ -289,7 +289,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		db, provider, svc, group, requester := setup(t)
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
 
-		sendWeeklyCoverageReminders(db, svc, time.Date(2026, 11, 22, 12, 0, 0, 0, loc), loc, 17)
+		sendWeeklyCoverageReminders(db, svc, time.Date(2026, 11, 22, 12, 0, 0, 0, loc), loc, 17, nil)
 		if len(provider.sends) != 0 {
 			t.Fatalf("expected no email before the send hour, got %d", len(provider.sends))
 		}
@@ -301,7 +301,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		db, provider, svc, group, requester := setup(t)
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
 
-		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17, nil)
 		if len(provider.sends) != 0 {
 			t.Fatalf("expected no email with the flag off, got %d", len(provider.sends))
 		}
@@ -318,7 +318,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 		db, provider, svc, group, requester := setup(t)
 		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
 
-		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17, nil)
 		if len(provider.sends) != 0 {
 			t.Fatalf("expected no email with WEEKLY_COVERAGE_REMINDER_ENABLED unset, got %d", len(provider.sends))
 		}
@@ -338,7 +338,7 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 			t.Fatalf("opt group out: %v", err)
 		}
 
-		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17, nil)
 		if len(provider.sends) != 0 {
 			t.Fatalf("expected no email for a group that hasn't opted in, got %d", len(provider.sends))
 		}
@@ -353,9 +353,35 @@ func TestSendWeeklyCoverageReminders(t *testing.T) {
 			t.Fatalf("disable scheduling: %v", err)
 		}
 
-		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17)
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17, nil)
 		if len(provider.sends) != 0 {
 			t.Fatalf("expected no email for a group without scheduling, got %d", len(provider.sends))
+		}
+	})
+
+	t.Run("a pass stopped for shutdown leaves unclaimed groups for the next pass", func(t *testing.T) {
+		t.Setenv("SCHEDULE_EMAIL_NOTIFICATIONS_ENABLED", "true")
+		t.Setenv("WEEKLY_COVERAGE_REMINDER_ENABLED", "true")
+		db, provider, svc, group, requester := setup(t)
+		createWeeklyRequest(t, db, group.ID, requester.ID, day(24), 10, models.CoverageRequestOpen)
+
+		stopping := make(chan struct{})
+		close(stopping)
+		sendWeeklyCoverageReminders(db, svc, sundayEvening, loc, 17, stopping)
+
+		if len(provider.sends) != 0 {
+			t.Fatalf("expected no email from a pass stopped for shutdown, got %d", len(provider.sends))
+		}
+		var claims int64
+		db.Model(&models.SiteSetting{}).Where("key LIKE ?", weeklyReminderMarkerPrefix+"%").Count(&claims)
+		if claims != 0 {
+			t.Fatal("a stopped pass must not claim groups it never sent to, or they lose this week's reminder")
+		}
+
+		// The next pass (another replica, or this one after restart) sends it.
+		sendWeeklyCoverageReminders(db, svc, sundayEvening.Add(5*time.Minute), loc, 17, nil)
+		if len(provider.sends) != 1 {
+			t.Fatalf("expected the next pass to send the reminder, got %d emails", len(provider.sends))
 		}
 	})
 }

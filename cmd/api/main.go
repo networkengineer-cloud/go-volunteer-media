@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -598,9 +599,9 @@ func main() {
 	<-quit
 	logger.Info("Shutting down server...")
 
-	// Stop accepting new connections first. stopEmbeddingSweep() and
-	// stopCoverageDigestSweep() below can each block for up to their sweep's
-	// stop timeout (10s) draining an in-flight tick — running them before
+	// Stop accepting new connections first. The background-sweep stop funcs
+	// below can each block for up to their sweep's stop timeout (10s)
+	// draining an in-flight tick — running them before
 	// srv.Shutdown would leave the server still accepting new requests for
 	// that entire window after SIGTERM/SIGINT, delaying the graceful
 	// shutdown clients are waiting on.
@@ -611,9 +612,16 @@ func main() {
 		logger.Fatal("Server forced to shutdown", err)
 	}
 
-	stopEmbeddingSweep()
-	stopCoverageDigestSweep()
-	stopWeeklyCoverageReminder()
+	// Stop the background sweeps concurrently. Each stop func signals its
+	// loop and then waits up to its own bound (10s) for an in-flight tick, so
+	// calling them one after another would add those waits together and
+	// push shutdown past Container Apps' 30s termination grace period. In
+	// parallel the total stays at the longest single wait.
+	var stopSweeps sync.WaitGroup
+	for _, stop := range []func(){stopEmbeddingSweep, stopCoverageDigestSweep, stopWeeklyCoverageReminder} {
+		stopSweeps.Go(stop)
+	}
+	stopSweeps.Wait()
 
 	// srv.Shutdown only waits for in-flight HTTP handlers, not the detached
 	// write-path embed goroutines those handlers spawn (see embedAsync in

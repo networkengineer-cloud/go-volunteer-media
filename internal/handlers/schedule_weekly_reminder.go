@@ -138,7 +138,14 @@ func claimWeeklyReminder(db *gorm.DB, groupID uint, weekKey string) (bool, error
 // no email. Claiming only groups that have open requests would instead let a
 // request filed later that evening trigger the "weekly" email at, say,
 // 11:55 PM, taking over that request's normal announcement.
-func sendWeeklyCoverageReminders(db *gorm.DB, emailService *email.Service, now time.Time, loc *time.Location, sendHour int) {
+//
+// stopping is closed when the server is shutting down. The pass checks it
+// before claiming each group and returns early, so groups not yet claimed
+// stay unclaimed and another replica (or this one after restart, while it
+// is still Sunday) sends them. A group already claimed finishes its send:
+// abandoning it mid-send would lose that group's reminder for the week. A
+// nil channel never fires.
+func sendWeeklyCoverageReminders(db *gorm.DB, emailService *email.Service, now time.Time, loc *time.Location, sendHour int, stopping <-chan struct{}) {
 	if !weeklyCoverageReminderEnabled() || emailService == nil || !emailService.IsConfigured() || !scheduleEmailNotificationsEnabled() {
 		return
 	}
@@ -157,6 +164,13 @@ func sendWeeklyCoverageReminders(db *gorm.DB, emailService *email.Service, now t
 	}
 
 	for _, grp := range groups {
+		select {
+		case <-stopping:
+			logging.Info("Weekly coverage reminder pass stopped for shutdown; unclaimed groups are left for the next pass")
+			return
+		default:
+		}
+
 		log := logging.WithField("group_id", grp.ID)
 
 		won, err := claimWeeklyReminder(db, grp.ID, weekKey)
@@ -232,7 +246,7 @@ func StartWeeklyCoverageReminder(db *gorm.DB, emailService *email.Service, inter
 		for {
 			select {
 			case now := <-ticker.C:
-				sendWeeklyCoverageReminders(db, emailService, now, loc, sendHour)
+				sendWeeklyCoverageReminders(db, emailService, now, loc, sendHour, done)
 			case <-done:
 				ticker.Stop()
 				return
