@@ -264,7 +264,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 				Find(&updates).Error
 
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch announcements"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to fetch announcements")
 				return
 			}
 			totalAnnouncements = len(updates)
@@ -308,7 +308,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 				Find(&coverageRequests).Error
 
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch coverage requests"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to fetch coverage requests")
 				return
 			}
 			groups := groupCoverageRequests(coverageRequests)
@@ -357,7 +357,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			if err := animalQuery.Find(&animals).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch animals"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to fetch animals")
 				return
 			}
 
@@ -422,7 +422,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 				if err := commentQuery.Session(&gorm.Session{}).
 					Model(&models.AnimalComment{}).
 					Count(&totalComments).Error; err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count comments"})
+					respondInternalErrorUnlessCanceled(c, err, "Failed to count comments")
 					return
 				}
 
@@ -436,7 +436,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 				if err := commentQuery.Session(&gorm.Session{}).
 					Select("metadata").
 					Find(&summaryRows).Error; err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to compute activity feed summary"})
+					respondInternalErrorUnlessCanceled(c, err, "Failed to compute activity feed summary")
 					return
 				}
 				for _, row := range summaryRows {
@@ -479,7 +479,7 @@ func GetGroupActivityFeed(db *gorm.DB) gin.HandlerFunc {
 					Order("created_at DESC").
 					Limit(offset + limit).
 					Find(&comments).Error; err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
+					respondInternalErrorUnlessCanceled(c, err, "Failed to fetch comments")
 					return
 				}
 

@@ -74,6 +74,11 @@ func LoggingMiddleware() gin.HandlerFunc {
 		// Log with appropriate level based on status code
 		if status >= 500 {
 			requestLogger.Error("Request failed with server error", nil)
+		} else if status == StatusClientClosedRequest {
+			// The client hung up (closed a tab, scrolled an <img> out of
+			// view). Routine traffic, not a failure on either side, so it
+			// is logged at info to keep warn-level noise meaningful.
+			requestLogger.Info("Client closed request")
 		} else if status >= 400 {
 			requestLogger.Warn("Request failed with client error")
 		} else {
@@ -81,6 +86,13 @@ func LoggingMiddleware() gin.HandlerFunc {
 		}
 	}
 }
+
+// StatusClientClosedRequest is the non-standard 499 status (originated by
+// nginx) for a request whose client disconnected before the response was
+// written. net/http has no constant for it. Handlers write it when they see
+// context.Canceled from the request context; LoggingMiddleware logs it at
+// info rather than as a client or server error.
+const StatusClientClosedRequest = 499
 
 // GetLogger retrieves the logger from gin context
 func GetLogger(c *gin.Context) *logging.Logger {

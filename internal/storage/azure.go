@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -43,19 +44,48 @@ func mapBlobError(err error) error {
 	return fmt.Errorf("azure blob storage error: %w", err)
 }
 
+// isCanceled reports whether a failure is down to the caller abandoning the
+// request: err wraps context.Canceled, or ctx was cancelled and the SDK
+// returned an error of its own that does not wrap it. DeadlineExceeded is
+// deliberately excluded; a timeout is a real failure.
+func isCanceled(ctx context.Context, err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled)
+}
+
 // failBlob maps err and returns it, collapsing the record-then-map pair
-// repeated at every blob-storage error path in this file. A "blob not
-// found" result is expected, routine traffic (e.g. a request for an
-// already-deleted image) — callers translate it into a plain 404, so it is
-// not recorded as a span error, which is reserved for the mapped error
-// cases that represent a real storage problem (auth, network, throttling).
-func failBlob(span trace.Span, err error, msg string) error {
+// repeated at every blob-storage error path in this file. Two results are
+// returned without being recorded as a span error, which is reserved for
+// the mapped error cases that represent a real storage problem (auth,
+// network, throttling, timeouts):
+//
+//   - "blob not found" is expected, routine traffic (e.g. a request for an
+//     already-deleted image); callers translate it into a plain 404.
+//   - cancellation (see isCanceled) means the caller, in practice the HTTP
+//     client that hung up mid-download, abandoned the request. The %w
+//     wrapping in mapBlobError keeps errors.Is(err, context.Canceled) true
+//     for callers.
+func failBlob(ctx context.Context, span trace.Span, err error, msg string) error {
 	mapped := mapBlobError(err)
-	if mapped == ErrNotFound {
+	if errors.Is(mapped, ErrNotFound) || isCanceled(ctx, err) {
 		return mapped
 	}
 	telemetry.RecordError(span, mapped, msg)
 	return mapped
+}
+
+// readBlob reads a downloaded blob body to the end. A read that fails
+// because the caller cancelled is returned without being recorded as a span
+// error, matching failBlob.
+func readBlob(ctx context.Context, span trace.Span, body io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(body)
+	if err == nil {
+		return data, nil
+	}
+	wrapped := fmt.Errorf("failed to read blob data: %w", err)
+	if isCanceled(ctx, err) {
+		return nil, wrapped
+	}
+	return nil, telemetry.Fail(span, wrapped, "read failed")
 }
 
 // NewAzureBlobProvider creates a new Azure Blob Storage provider
@@ -265,14 +295,14 @@ func (a *AzureBlobProvider) getBlob(ctx context.Context, spanName, pathPrefix, i
 	// Download blob
 	downloadResponse, err := blockBlobClient.DownloadStream(ctx, nil)
 	if err != nil {
-		return nil, "", failBlob(span, err, "download failed")
+		return nil, "", failBlob(ctx, span, err, "download failed")
 	}
 	defer downloadResponse.Body.Close()
 
 	// Read all data
-	data, err = io.ReadAll(downloadResponse.Body)
+	data, err = readBlob(ctx, span, downloadResponse.Body)
 	if err != nil {
-		return nil, "", telemetry.Fail(span, fmt.Errorf("failed to read blob data: %w", err), "read failed")
+		return nil, "", err
 	}
 
 	// Get content type
@@ -297,7 +327,7 @@ func (a *AzureBlobProvider) deleteBlob(ctx context.Context, spanName, pathPrefix
 
 	// Try to delete
 	if _, err := blockBlobClient.Delete(ctx, nil); err != nil {
-		return failBlob(span, err, "delete failed")
+		return failBlob(ctx, span, err, "delete failed")
 	}
 
 	return nil

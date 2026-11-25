@@ -167,7 +167,7 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 		var animalImage models.AnimalImage
 		if err := db.Where("image_url = ?", imageURL).First(&animalImage).Error; err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve image"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to retrieve image")
 				return
 			}
 			// Backward compat: videos uploaded before the /api/videos/ route existed have
@@ -182,7 +182,7 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 			var thumbVideo models.AnimalVideo
 			thumbErr := db.Where("thumbnail_url = ?", imageURL).First(&thumbVideo).Error
 			if thumbErr != nil && !errors.Is(thumbErr, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve thumbnail"})
+				respondInternalErrorUnlessCanceled(c, thumbErr, "Failed to retrieve thumbnail")
 				return
 			}
 			if thumbErr == nil {
@@ -192,11 +192,7 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 				}
 				data, mimeType, err := storageProvider.GetImage(ctx, thumbVideo.ThumbnailBlobID)
 				if err != nil {
-					if err == storage.ErrNotFound {
-						c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail not found in storage"})
-					} else {
-						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve thumbnail"})
-					}
+					respondBlobFetchError(c, err, "Thumbnail not found in storage", "Failed to retrieve thumbnail")
 					return
 				}
 				c.Header("Cache-Control", "public, max-age=31536000")
@@ -214,11 +210,7 @@ func ServeImage(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 			// Retrieve from Azure Blob Storage
 			data, mimeType, err := storageProvider.GetImage(ctx, animalImage.BlobIdentifier)
 			if err != nil {
-				if err == storage.ErrNotFound {
-					c.JSON(http.StatusNotFound, gin.H{"error": "Image not found in storage"})
-				} else {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve image"})
-				}
+				respondBlobFetchError(c, err, "Image not found in storage", "Failed to retrieve image")
 				return
 			}
 
@@ -256,7 +248,7 @@ func ServeVideo(db *gorm.DB, storageProvider storage.Provider) gin.HandlerFunc {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"})
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve video"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to retrieve video")
 			}
 			return
 		}
@@ -271,11 +263,7 @@ func serveVideoBlob(c *gin.Context, storageProvider storage.Provider, blobIdenti
 	// correct (video/mp4 etc.), so retrieval works despite the path prefix.
 	data, contentType, err := storageProvider.GetImage(c.Request.Context(), blobIdentifier)
 	if err != nil {
-		if err == storage.ErrNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Video not found in storage"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve video"})
-		}
+		respondBlobFetchError(c, err, "Video not found in storage", "Failed to retrieve video")
 		return
 	}
 	if contentType == "" {

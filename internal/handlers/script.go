@@ -464,7 +464,7 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 				Model(&models.UserGroup{}).
 				Where("user_id = ? AND group_id = ?", userID, script.GroupID).
 				Count(&count).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+				respondInternalErrorUnlessCanceled(c, err, "Failed to verify permissions")
 				return
 			}
 			if count == 0 {
@@ -487,11 +487,7 @@ func ServeScriptFile(db *gorm.DB, storageProvider storage.Provider) gin.HandlerF
 		if script.FileProvider == "azure" && script.FileBlobIdentifier != "" {
 			data, mimeType, err := storageProvider.GetDocument(ctx, script.FileBlobIdentifier)
 			if err != nil {
-				if err == storage.ErrNotFound {
-					c.JSON(http.StatusNotFound, gin.H{"error": "Script file not found in storage"})
-				} else {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve script file"})
-				}
+				respondBlobFetchError(c, err, "Script file not found in storage", "Failed to retrieve script file")
 				return
 			}
 			c.Header("Content-Type", mimeType)
