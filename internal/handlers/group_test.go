@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -1555,5 +1556,57 @@ func TestUploadGroupImage(t *testing.T) {
 				t.Errorf("Expected body to contain %q, got %s", tt.expectedBody, w.Body.String())
 			}
 		})
+	}
+}
+
+// TestUpdateGroup_DoesNotOverwriteSettingsItDoesNotEdit simulates another
+// admin enabling scheduling and the weekly reminder (through their own
+// endpoints) after UpdateGroup has loaded the row but before it writes. The
+// edit form doesn't carry those settings, so it must not write back the
+// stale values it loaded.
+func TestUpdateGroup_DoesNotOverwriteSettingsItDoesNotEdit(t *testing.T) {
+	db := setupGroupTestDB(t)
+	user := createGroupTestUser(t, db, "admin", "admin@example.com", true)
+	group := createTestGroup(t, db, "Dogs", "Dog volunteers")
+	if err := db.Model(group).Update("has_protocols", true).Error; err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	var once sync.Once
+	if err := db.Callback().Update().Before("gorm:update").Register("test:concurrent_admin", func(tx *gorm.DB) {
+		once.Do(func() {
+			if err := tx.Session(&gorm.Session{NewDB: true}).Exec(
+				"UPDATE groups SET scheduling_enabled = ?, weekly_coverage_reminder_enabled = ? WHERE id = ?", true, true, group.ID).Error; err != nil {
+				t.Errorf("concurrent write: %v", err)
+			}
+		})
+	}); err != nil {
+		t.Fatalf("register callback: %v", err)
+	}
+
+	c, w := setupGroupTestContext(user.ID, true)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", group.ID)}}
+	// has_protocols false: the partial update must still write zero values.
+	body := `{"name":"Dogs renamed","description":"New description","has_protocols":false}`
+	c.Request = httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/groups/%d", group.ID), bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	UpdateGroup(db)(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+	var reloaded models.Group
+	if err := db.First(&reloaded, group.ID).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.Name != "Dogs renamed" || reloaded.Description != "New description" {
+		t.Errorf("edited fields not saved: %+v", reloaded)
+	}
+	if reloaded.HasProtocols {
+		t.Error("has_protocols=false from the form should be saved")
+	}
+	if !reloaded.SchedulingEnabled || !reloaded.WeeklyCoverageReminderEnabled {
+		t.Errorf("UpdateGroup overwrote settings it doesn't edit: scheduling=%v weekly=%v",
+			reloaded.SchedulingEnabled, reloaded.WeeklyCoverageReminderEnabled)
 	}
 }

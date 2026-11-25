@@ -33,9 +33,21 @@ var announcementRecipients = telemetry.NewInstrument("email.announcement.recipie
 	)
 })
 
-// recordAnnouncementOutcomes adds one count per recipient to
-// announcementRecipients, split by outcome.
-func recordAnnouncementOutcomes(ctx context.Context, provider string, errs []error) {
+// notificationRecipients counts every recipient of a group notification
+// email (SendNotificationEmailBatch, e.g. the weekly coverage reminder) by
+// provider and outcome - kept apart from announcementRecipients so the two
+// kinds of mail can be told apart.
+var notificationRecipients = telemetry.NewInstrument("email.notification.recipients", func() (metric.Int64Counter, error) {
+	return telemetry.Meter("internal/email").Int64Counter(
+		"email.notification.recipients",
+		metric.WithDescription("Group notification email recipients (e.g. the weekly coverage reminder) by final send outcome"),
+		metric.WithUnit("{recipient}"),
+	)
+})
+
+// recordRecipientOutcomes adds one count per recipient to counter, split by
+// outcome.
+func recordRecipientOutcomes(ctx context.Context, counter metric.Int64Counter, provider string, errs []error) {
 	var sent, failed int64
 	for _, err := range errs {
 		if err == nil {
@@ -45,11 +57,11 @@ func recordAnnouncementOutcomes(ctx context.Context, provider string, errs []err
 		}
 	}
 	if sent > 0 {
-		announcementRecipients.Add(ctx, sent, metric.WithAttributes(
+		counter.Add(ctx, sent, metric.WithAttributes(
 			attribute.String("email.provider", provider), attribute.String("outcome", "sent")))
 	}
 	if failed > 0 {
-		announcementRecipients.Add(ctx, failed, metric.WithAttributes(
+		counter.Add(ctx, failed, metric.WithAttributes(
 			attribute.String("email.provider", provider), attribute.String("outcome", "failed")))
 	}
 }
@@ -200,10 +212,7 @@ func (s *Service) SendEmail(ctx context.Context, to, subject, htmlBody string) e
 
 // SendPasswordResetEmail sends a password reset email
 func (s *Service) SendPasswordResetEmail(ctx context.Context, to, username, resetToken string) error {
-	baseURL := os.Getenv("FRONTEND_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:5173"
-	}
+	baseURL := FrontendURL()
 
 	resetLink := fmt.Sprintf("%s/reset-password?token=%s", baseURL, resetToken)
 
@@ -252,10 +261,7 @@ func (s *Service) SendPasswordResetEmail(ctx context.Context, to, username, rese
 
 // SendPasswordSetupEmail sends a password setup email for new user invitations
 func (s *Service) SendPasswordSetupEmail(ctx context.Context, to, username, setupToken string) error {
-	baseURL := os.Getenv("FRONTEND_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:5173"
-	}
+	baseURL := FrontendURL()
 
 	// URL-encode the token for safe transmission
 	encodedToken := url.QueryEscape(setupToken)
@@ -307,6 +313,16 @@ func (s *Service) SendPasswordSetupEmail(ctx context.Context, to, username, setu
 	return s.SendEmail(ctx, to, subject, body)
 }
 
+// FrontendURL is the portal's base URL for links in emails (FRONTEND_URL,
+// defaulting to the Vite dev server), without a trailing slash.
+func FrontendURL() string {
+	baseURL := os.Getenv("FRONTEND_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:5173"
+	}
+	return strings.TrimRight(baseURL, "/")
+}
+
 // SendAnnouncementEmail sends an announcement email
 func (s *Service) SendAnnouncementEmail(ctx context.Context, to, title, content string) error {
 	subject, body := s.buildAnnouncementEmail(title, content)
@@ -319,12 +335,25 @@ func (s *Service) SendAnnouncementEmail(ctx context.Context, to, title, content 
 func (s *Service) buildAnnouncementEmail(title, content string) (subject, body string) {
 	siteName := s.getSiteName()
 	subject = fmt.Sprintf("Announcement: %s - %s", title, siteName)
+	return subject, s.renderNotificationBody(siteName, title, content, "", "")
+}
 
+// renderNotificationBody renders the shared green-header email layout.
+// linkURL/linkText add a button below the content; leave linkURL empty for
+// none.
+func (s *Service) renderNotificationBody(siteName, title, content, linkURL, linkText string) string {
 	// Escape HTML in title and convert newlines to HTML line breaks in content
 	escapedTitle := html.EscapeString(title)
 	htmlContent := strings.ReplaceAll(html.EscapeString(content), "\n", "<br>")
+	if linkURL != "" {
+		// A table cell carries the button's colour and padding: Outlook's Word
+		// renderer ignores padding and inline-block on an <a>, which would
+		// otherwise shrink the button to plain coloured link text there.
+		htmlContent += fmt.Sprintf(`<table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 24px auto 0;"><tr><td align="center" bgcolor="#0e6c55" style="border-radius: 6px; padding: 12px 24px;"><a href="%s" style="color: #ffffff; text-decoration: none; font-weight: bold; font-family: Arial, sans-serif;">%s</a></td></tr></table>`,
+			html.EscapeString(linkURL), html.EscapeString(linkText))
+	}
 
-	body = fmt.Sprintf(`
+	return fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
 <head>
@@ -351,9 +380,25 @@ func (s *Service) buildAnnouncementEmail(title, content string) (subject, body s
     </div>
 </body>
 </html>
-`, escapedTitle, htmlContent, siteName)
+`, escapedTitle, htmlContent, html.EscapeString(siteName))
+}
 
-	return subject, body
+// NotificationEmail is a group email that isn't an announcement: its subject
+// is "<Title> - <site name>" with no "Announcement:" prefix, and it can carry
+// a link button (LinkURL/LinkText) below the content.
+type NotificationEmail struct {
+	Title    string
+	Content  string
+	LinkURL  string
+	LinkText string
+}
+
+// SendNotificationEmailBatch sends n to every address in to, using the same
+// layout, batching and retry behaviour as SendAnnouncementEmailBatch.
+func (s *Service) SendNotificationEmailBatch(ctx context.Context, to []string, n NotificationEmail) []error {
+	siteName := s.getSiteName()
+	subject := fmt.Sprintf("%s - %s", n.Title, siteName)
+	return s.sendRenderedBatch(ctx, notificationRecipients, to, subject, s.renderNotificationBody(siteName, n.Title, n.Content, n.LinkURL, n.LinkText))
 }
 
 // nonBatchSendMaxAttempts/nonBatchSendRetryDelay bound the fallback retry
@@ -388,14 +433,23 @@ const batchSendTimeout = 2 * time.Minute
 //
 // Returns one error per recipient, in the same order as to (nil for a
 // recipient whose send succeeded), mirroring BatchEmailProvider.SendBatch.
-func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, title, content string) (errs []error) {
+func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, title, content string) []error {
+	subject, body := s.buildAnnouncementEmail(title, content)
+	return s.sendRenderedBatch(ctx, announcementRecipients, to, subject, body)
+}
+
+// sendRenderedBatch sends an already-rendered subject/body to every address
+// in to - the batching, validation, retry and metrics shared by
+// SendAnnouncementEmailBatch and SendNotificationEmailBatch.
+// counter receives each recipient's final outcome.
+func (s *Service) sendRenderedBatch(ctx context.Context, counter metric.Int64Counter, to []string, subject, body string) (errs []error) {
 	errs = make([]error, len(to))
 	defer func() {
 		providerName := "none"
 		if s.provider != nil {
 			providerName = s.provider.GetProviderName()
 		}
-		recordAnnouncementOutcomes(context.WithoutCancel(ctx), providerName, errs)
+		recordRecipientOutcomes(context.WithoutCancel(ctx), counter, providerName, errs)
 	}()
 	if !s.IsConfigured() {
 		err := fmt.Errorf("email service is not configured")
@@ -404,8 +458,6 @@ func (s *Service) SendAnnouncementEmailBatch(ctx context.Context, to []string, t
 		}
 		return errs
 	}
-
-	subject, body := s.buildAnnouncementEmail(title, content)
 
 	valid := make([]string, 0, len(to))
 	validIdx := make([]int, 0, len(to))

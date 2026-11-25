@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -183,6 +184,12 @@ func main() {
 	// through. Safe with multiple replicas — each digest is claimed in the
 	// database before it is sent.
 	stopCoverageDigestSweep := handlers.StartCoverageDigestSweep(db, emailService, groupMeService, 60*time.Second)
+
+	// Weekly coverage reminder (WEEKLY_COVERAGE_REMINDER_ENABLED): Sunday afternoon (shelter time, see
+	// SHELTER_TIMEZONE / WEEKLY_COVERAGE_REMINDER_HOUR), each scheduling group
+	// is emailed the coverage requests still open for the coming week. Safe
+	// with multiple replicas — each group's send is claimed in the database.
+	stopWeeklyCoverageReminder := handlers.StartWeeklyCoverageReminder(db, emailService, 5*time.Minute)
 
 	// Load embedded frontend assets at startup
 	distFS, err := fs.Sub(frontend.DistFS, "dist")
@@ -458,6 +465,7 @@ func main() {
 			group.POST("/members/:userId/demote", handlers.DemoteMemberFromGroupAdmin(db))
 
 			group.PATCH("/scheduling", handlers.UpdateGroupScheduling(db))
+			group.PATCH("/weekly-coverage-reminder", handlers.UpdateGroupWeeklyCoverageReminder(db))
 			group.GET("/schedule/me", handlers.GetMySchedule(db))
 			group.PUT("/schedule/me", handlers.UpdateMySchedule(db))
 			group.GET("/schedule/overview", handlers.GetGroupScheduleOverview(db))
@@ -591,9 +599,9 @@ func main() {
 	<-quit
 	logger.Info("Shutting down server...")
 
-	// Stop accepting new connections first. stopEmbeddingSweep() and
-	// stopCoverageDigestSweep() below can each block for up to their sweep's
-	// stop timeout (10s) draining an in-flight tick — running them before
+	// Stop accepting new connections first. The background-sweep stop funcs
+	// below can each block for up to their sweep's stop timeout (10s)
+	// draining an in-flight tick — running them before
 	// srv.Shutdown would leave the server still accepting new requests for
 	// that entire window after SIGTERM/SIGINT, delaying the graceful
 	// shutdown clients are waiting on.
@@ -604,8 +612,16 @@ func main() {
 		logger.Fatal("Server forced to shutdown", err)
 	}
 
-	stopEmbeddingSweep()
-	stopCoverageDigestSweep()
+	// Stop the background sweeps concurrently. Each stop func signals its
+	// loop and then waits up to its own bound (10s) for an in-flight tick, so
+	// calling them one after another would add those waits together and
+	// push shutdown past Container Apps' 30s termination grace period. In
+	// parallel the total stays at the longest single wait.
+	var stopSweeps sync.WaitGroup
+	for _, stop := range []func(){stopEmbeddingSweep, stopCoverageDigestSweep, stopWeeklyCoverageReminder} {
+		stopSweeps.Go(stop)
+	}
+	stopSweeps.Wait()
 
 	// srv.Shutdown only waits for in-flight HTTP handlers, not the detached
 	// write-path embed goroutines those handlers spawn (see embedAsync in

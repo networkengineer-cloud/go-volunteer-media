@@ -553,6 +553,65 @@ func TestBuildCoverageRequestSummary(t *testing.T) {
 		}
 	})
 
+	t.Run("back-to-back hours on the same day merge into one shift", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: tue, Hour: 10},
+			{Date: tue, Hour: 11},
+		}, nil)
+		want := fmt.Sprintf("Jane Doe needs coverage for their 10:00 AM–12:00 PM shift on %s.", tue.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("merged shifts count as one in the list, separate blocks stay separate", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		thu, _ := time.Parse("2006-01-02", nextWeekday(time.Thursday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: tue, Hour: 8},
+			{Date: tue, Hour: 9},
+			{Date: tue, Hour: 10},
+			{Date: tue, Hour: 13},
+			{Date: thu, Hour: 16},
+			{Date: thu, Hour: 17},
+		}, nil)
+		want := fmt.Sprintf("Jane Doe needs coverage for 3 shifts:\n- %s at 8:00–11:00 AM\n- %s at 1:00 PM\n- %s at 4:00–6:30 PM",
+			tue.Format("Monday, January 2"), tue.Format("Monday, January 2"), thu.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("a priority or reopened change splits back-to-back hours so tags stay accurate", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{ID: 1, Date: tue, Hour: 10},
+			{ID: 2, Date: tue, Hour: 11, Priority: "optional"},
+			{ID: 3, Date: tue, Hour: 12, Priority: "optional"},
+			{ID: 4, Date: tue, Hour: 13, Priority: "optional"},
+		}, map[uint]bool{4: true})
+		day := tue.Format("Monday, January 2")
+		want := fmt.Sprintf("Jane Doe needs coverage for 3 shifts:\n- %s at 10:00 AM\n- %s at 11:00 AM–1:00 PM (optional)\n- %s at 1:00 PM (optional, reopened)", day, day, day)
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
+	t.Run("the same hours on different days do not merge", func(t *testing.T) {
+		tue, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
+		wed := tue.AddDate(0, 0, 1)
+		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{
+			{Date: tue, Hour: 17},
+			{Date: wed, Hour: 8},
+		}, nil)
+		want := fmt.Sprintf("Jane Doe needs coverage for 2 shifts:\n- %s at 5:00–6:30 PM\n- %s at 8:00 AM",
+			tue.Format("Monday, January 2"), wed.Format("Monday, January 2"))
+		if summary != want {
+			t.Fatalf("Expected %q, got %q", want, summary)
+		}
+	})
+
 	t.Run("nil reopenedIDs behaves exactly like no reopened requests", func(t *testing.T) {
 		date, _ := time.Parse("2006-01-02", nextWeekday(time.Tuesday))
 		summary := buildCoverageRequestSummary("Jane Doe", []models.ShiftCoverageRequest{

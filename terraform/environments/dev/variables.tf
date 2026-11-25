@@ -216,6 +216,12 @@ variable "schedule_email_notifications_enabled" {
   default     = false
 }
 
+variable "weekly_coverage_reminder_enabled" {
+  type        = bool
+  description = "Whether each scheduling group is emailed its still-open coverage requests for the coming week every Sunday afternoon. Also requires schedule_email_notifications_enabled."
+  default     = false
+}
+
 # Axiom / OpenTelemetry Configuration
 variable "axiom_api_token" {
   type        = string

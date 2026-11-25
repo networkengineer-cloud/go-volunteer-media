@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -269,6 +270,20 @@ func CreateGroupAnnouncement(db *gorm.DB, emailService *email.Service, groupMeSe
 
 // sendGroupAnnouncementEmails sends announcement emails to group members who have opted in
 func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService *email.Service, groupID uint, title, content string) error {
+	_, _, err := sendGroupEmailsCounted(ctx, db, groupID, "announcement", func(to []string) []error {
+		return emailService.SendAnnouncementEmailBatch(ctx, to, title, content)
+	})
+	return err
+}
+
+// sendGroupEmailsCounted sends to every group member who has email
+// notifications on, via send (which gets the recipient list and returns one
+// error per recipient), and reports how many sends succeeded out of how many
+// were attempted. Per-recipient failures are logged, not returned as err, so
+// a caller that needs to tell "sent" from "every send failed" uses the counts.
+// kind names the email in log lines ("announcement", "weekly coverage
+// reminder"), so a failure can be traced to the feature that sent it.
+func sendGroupEmailsCounted(ctx context.Context, db *gorm.DB, groupID uint, kind string, send func(to []string) []error) (sent, total int, err error) {
 	logger := logging.WithContext(ctx)
 
 	// Fetch group members who have email notifications enabled
@@ -277,14 +292,14 @@ func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService 
 		Joins("JOIN user_groups ON user_groups.user_id = users.id").
 		Where("user_groups.group_id = ? AND users.email_notifications_enabled = ?", groupID, true).
 		Find(&users).Error; err != nil {
-		logger.Error("Failed to fetch group members for email notifications", err)
-		return err
+		logger.Error(fmt.Sprintf("Failed to fetch group members for %s emails", kind), err)
+		return 0, 0, err
 	}
 
 	logger.WithFields(map[string]interface{}{
 		"user_count": len(users),
 		"group_id":   groupID,
-	}).Info("Sending group announcement emails to members")
+	}).Info(fmt.Sprintf("Sending group %s emails to members", kind))
 
 	// SendAnnouncementEmailBatch prefers the provider's batch endpoint when
 	// it has one (Resend), which is what actually keeps a group-wide send
@@ -295,7 +310,7 @@ func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService 
 	for i, user := range users {
 		emails[i] = user.Email
 	}
-	errs := emailService.SendAnnouncementEmailBatch(ctx, emails, title, content)
+	errs := send(emails)
 
 	// Tally failures by message rather than logging one line per failed
 	// recipient: a whole Resend batch chunk fails (or succeeds) together
@@ -320,12 +335,12 @@ func sendGroupAnnouncementEmails(ctx context.Context, db *gorm.DB, emailService 
 	}
 	for _, msg := range failureOrder {
 		logger.WithField("recipient_count", failureCounts[msg]).
-			Error("Failed to send announcement email to recipients", firstErrForMsg[msg])
+			Error(fmt.Sprintf("Failed to send %s email to recipients", kind), firstErrForMsg[msg])
 	}
 	logger.WithFields(map[string]interface{}{
 		"success_count": successCount,
 		"total_count":   len(users),
 		"group_id":      groupID,
-	}).Info("Group announcement email sending completed")
-	return nil
+	}).Info(fmt.Sprintf("Group %s email sending completed", kind))
+	return successCount, len(users), nil
 }

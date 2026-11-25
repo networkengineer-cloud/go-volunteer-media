@@ -288,6 +288,50 @@ type updateSchedulingRequest struct {
 	Enabled *bool `json:"enabled"`
 }
 
+// UpdateGroupWeeklyCoverageReminder opts a group in or out of the Sunday
+// email of the coming week's open coverage requests. Site admin only, like
+// UpdateGroupScheduling: both are set from Manage Groups.
+func UpdateGroupWeeklyCoverageReminder(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := middleware.GetDB(c, db)
+		groupIDParam := c.Param("id")
+
+		if !middleware.GetIsAdmin(c) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Site admin access required"})
+			return
+		}
+
+		var req updateSchedulingRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+		if req.Enabled == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "enabled is required"})
+			return
+		}
+
+		groupID, err := strconv.ParseUint(groupIDParam, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
+		var group models.Group
+		if err := db.First(&group, uint(groupID)).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+
+		if err := db.Model(&group).Update("weekly_coverage_reminder_enabled", *req.Enabled).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update group"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"weekly_coverage_reminder_enabled": *req.Enabled})
+	}
+}
+
 // UpdateGroupScheduling turns the shift-scheduling feature on or off for a
 // group. Requires site admin access - unlike the rest of a group's schedule
 // (member shifts, coverage requests), enabling scheduling itself is a
@@ -314,8 +358,14 @@ func UpdateGroupScheduling(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		groupID, err := strconv.ParseUint(groupIDParam, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+			return
+		}
+
 		var group models.Group
-		if err := db.First(&group, groupIDParam).Error; err != nil {
+		if err := db.First(&group, uint(groupID)).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
